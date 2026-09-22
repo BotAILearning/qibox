@@ -1,0 +1,19 @@
+{
+  "compiler": "Zig 0.14.1",
+  "windowsArchiveSha256": "554f5378228923ffd558eac35e21af020c73789d87afeabf4bfd16f2e6feed2c",
+  "sourceSha256": "fad8f4e514757ddad077237fc110a54d596fddf9c2119c032240c50ce63455ff",
+  "targets": {
+    "amd64": {
+      "target": "x86_64-linux-musl",
+      "elf": 62,
+      "sha256": "37e416db71ca8fa760e67142044921099df024944d51ee08094a6602589056e8",
+      "bytes": 25944
+    },
+    "arm64": {
+      "target": "aarch64-linux-musl",
+      "elf": 183,
+      "sha256": "5755bfd7f7217889a833a56bb1ba44f60ce01a584ec54e17fb75ed3839c033b3",
+      "bytes": 33696
+    }
+  }
+}

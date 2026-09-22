@@ -1,0 +1,53 @@
+{
+  "license": "OFL-1.1",
+  "fonts": [
+    {
+      "family": "Noto Color Emoji",
+      "file": "fonts/NotoColorEmoji.ttf",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/8998f5dd683424a73e2314a8c1f1e359c19e8742/fonts/NotoColorEmoji.ttf",
+      "sha256": "72a635cb3d2f3524c51620cdde406b217204e8a6a06c6a096ff8ed4b5fd6e27b",
+      "bytes": 10673480
+    },
+    {
+      "family": "Noto Sans Symbols",
+      "file": "fonts/NotoSansSymbols-Regular.ttf",
+      "url": "https://raw.githubusercontent.com/notofonts/notofonts.github.io/92d2ea744479d3379927f1fb5f8b0945dd0349b7/fonts/NotoSansSymbols/unhinted/ttf/NotoSansSymbols-Regular.ttf",
+      "sha256": "6eea9cb4cd39269ea9f95ba5c2735f80ae74049dfc9e1a7c932a5cfc8f0c3030",
+      "bytes": 145508
+    },
+    {
+      "family": "Noto Sans Symbols2",
+      "file": "fonts/NotoSansSymbols2-Regular.ttf",
+      "url": "https://raw.githubusercontent.com/notofonts/notofonts.github.io/92d2ea744479d3379927f1fb5f8b0945dd0349b7/fonts/NotoSansSymbols2/unhinted/ttf/NotoSansSymbols2-Regular.ttf",
+      "sha256": "c4a0a80f0041ce4be81e2478faad22776d23edb98ae3f0d19bd37044820ecf9d",
+      "bytes": 671568
+    },
+    {
+      "family": "Noto Sans Math",
+      "file": "fonts/NotoSansMath-Regular.ttf",
+      "url": "https://raw.githubusercontent.com/notofonts/notofonts.github.io/92d2ea744479d3379927f1fb5f8b0945dd0349b7/fonts/NotoSansMath/unhinted/ttf/NotoSansMath-Regular.ttf",
+      "sha256": "b127e84699212b6b2ef50aff58e0ebebeec04ffe6db1b9eb9e209c8c3d97b4aa",
+      "bytes": 657440
+    }
+  ],
+  "licenses": [
+    {
+      "file": "licenses/fonts/NotoColorEmoji-OFL.txt",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/8998f5dd683424a73e2314a8c1f1e359c19e8742/fonts/LICENSE",
+      "sha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2",
+      "bytes": 4301
+    },
+    {
+      "file": "licenses/fonts/NotoSymbols-OFL.txt",
+      "url": "https://raw.githubusercontent.com/notofonts/symbols/866ec5e8d715f2ee60efa5ff7495acc218d459a7/OFL.txt",
+      "sha256": "b118dd41337806a5d4797052c77caf3bd096aed783e5eb21b4d11154351e1ac0",
+      "bytes": 4383
+    },
+    {
+      "file": "licenses/fonts/NotoMath-OFL.txt",
+      "url": "https://raw.githubusercontent.com/notofonts/math/fbb2a1334f1d693c3c863b3b694ffadf75094b36/OFL.txt",
+      "sha256": "403a95275b469061b7d4371c328e0ada3bc7d63328abe2e88aad5cd243b2fe21",
+      "bytes": 4380
+    }
+  ]
+}

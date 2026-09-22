@@ -1,0 +1,13 @@
+{
+  "scope": "Disposable local fixtures; no live account, NAS or WeChat messages.",
+  "checks": [
+    "Generated report renders model short-title sections and excludes system excerpts",
+    "Refresh reads persisted history/detail without another provider call and copy returns complete report",
+    "Cancel and Escape close delete confirmation without deleting",
+    "Delete failure preserves history and reports the server error",
+    "Confirmed deletion removes one test snapshot after second confirmation",
+    "390px analysis/history view has no horizontal overflow"
+  ],
+  "errors": [],
+  "passed": true
+}

@@ -1,0 +1,25 @@
+{
+  "trustedImports": [
+    {
+      "version": "4.1.13.9",
+      "sha256": "096865e050ba0d3c1a23887227e2400bf343037b1d7d658c84c88ff26bfdc17f",
+      "verifiedAt": "2026-09-10",
+      "source": "https://dldir1v6.qq.com/weixin/Universal/Linux/WeChatLinux_x86_64.deb",
+      "arch": "x64"
+    },
+    {
+      "version": "4.1.13.23",
+      "sha256": "b7d0f8d53e9f648bc2c77a6096a04100d008f2d9f0d3988a2a4859b5992aca0a",
+      "verifiedAt": "2026-09-22",
+      "source": "https://dldir1v6.qq.com/weixin/Universal/Linux/WeChatLinux_x86_64.deb",
+      "arch": "x64"
+    },
+    {
+      "version": "4.1.13.9",
+      "arch": "arm64",
+      "sha256": "a6d115d24dfe3ed1b7e7de16cf6cc02acef8df5668150f702ac8d8c5256405fa",
+      "verifiedAt": "2026-09-10",
+      "source": "https://dldir1v6.qq.com/weixin/Universal/Linux/WeChatLinux_arm64.deb"
+    }
+  ]
+}

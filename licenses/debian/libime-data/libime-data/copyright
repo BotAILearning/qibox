@@ -1,0 +1,141 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: libime
+Upstream-Contact: Weng Xuetian <wengxt@gmail.com>
+Source: https://github.com/fcitx/libime
+
+Files: *
+Copyright: 2015-2019, CSSlayer <wengxt@gmail.com>
+License: LGPL-2.1+
+
+Files: debian/*
+Copyright: 2019, Boyuan Yang <byang@debian.org>
+License: CC0-1.0
+
+Files:
+ data/dict*.xz
+ data/lm*.xz
+ data/table.tar.gz
+Copyright: 2015-2022, CSSlayer <wengxt@gmail.com>
+License: LGPL-2.1+
+Comment:
+  Downloaded from https://download.fcitx-im.org/data
+
+Files: src/libime/core/kenlm/*
+Copyright: Kenneth Heafield <github@kheafield.com>
+License: LGPL-2.1+
+Comment:
+ Upstream project: https://github.com/kpu/kenlm
+
+Files: src/libime/core/kenlm/util/murmur_hash.*
+Copyright: Austin Appleby <aappleby@gmail.com>
+License: public-domain or Expat
+Comment:
+ Files retrieved from https://sites.google.com/site/murmurhash/.
+ .
+ The original comment is:
+ All code is released to the public domain.
+ For business purposes, Murmurhash is under the MIT license.
+
+Files: src/libime/core/kenlm/util/getopt.*
+Copyright: 1985 AT&T
+License: ATT-Public-License
+ the AT&T public domain
+ source for getopt(3).  It is the code which was given out at the 1985
+ UNIFORUM conference in Dallas.  I obtained it by electronic mail
+ directly from AT&T.  The people there assure me that it is indeed
+ in the public domain.
+Comment:
+ https://opensource.apple.com/source/patch_cmds/patch_cmds-17/diffstat/porting/getopt.c.auto.html
+
+Files: src/libime/core/kenlm/util/string_piece.hh
+Copyright: 2008, Google Inc.
+License: BSD-3-Clause
+
+Files: src/libime/core/kenlm/util/string_piece.cc
+Copyright: 2004 The RE2 Authors.
+License: BSD-3-Clause
+
+Files: src/libime/core/kenlm/util/file.cc
+Copyright: 1991-1999, 2000, 2001, 2006 Free Software Foundation, Inc.
+License: LGPL-2.1+
+Comment:
+ mkstemp extracted from libc/sysdeps/posix/tempname.c.
+
+Files: src/libime/core/kenlm/util/double-conversion/*
+Copyright: 2006-2008, 2010-2012 The V8 project authors
+License: BSD-3-Clause
+
+Files: src/libime/core/kenlm/util/integer_to_string.*
+Copyright: 2014 Milo Yip
+           2011 Wojciech MuÅ‚a <wojciech_mula@poczta.onet.pl>
+License: Expat and BSD-3-Clause
+
+License: public-domain
+ All code is released to the public domain.
+
+License: Expat
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to
+ deal in the Software without restriction, including without limitation the
+ rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+ sell copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
+ X CONSORTIUM BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
+ AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNEC-
+ TION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+License: LGPL-2.1+
+ This library is free software; you can redistribute it and/or modify
+ it under the terms of the GNU Lesser General Public License as
+ published by the Free Software Foundation; either version 2.1 of the
+ License, or (at your option) any later version.
+ .
+ This library is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ Lesser General Public License for more details.
+ .
+ You should have received a copy of the GNU Lesser General Public
+ License along with this library; see the file COPYING. If not,
+ see <https://www.gnu.org/licenses/>.
+ .
+ On Debian-based systems, the full text of LGPL-2.1 could be found at
+ /usr/share/common-licenses/LGPL-2.1 .
+
+License: CC0-1.0
+ On Debian systems, the full text of the CC0 1.0 Universal
+ License can be found in the file
+ `/usr/share/common-licenses/CC0-1.0'.
+
+License: BSD-3-Clause
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions are met:
+ .
+  * Redistributions of source code must retain the above copyright notice,
+    this list of conditions and the following disclaimer.
+ .
+  * Redistributions in binary form must reproduce the above copyright notice,
+    this list of conditions and the following disclaimer in the documentation
+    and/or other materials provided with the distribution.
+ .
+  * Neither name of the copyright holders nor the names of any contributors
+    may be used to endorse or promote products derived from this software
+    without specific prior written permission.
+ .
+ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS ``AS IS''
+ AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ ARE DISCLAIMED. IN NO EVENT SHALL THE AUTHORS OR CONTRIBUTORS BE LIABLE FOR
+ ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.

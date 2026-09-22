@@ -1,0 +1,43 @@
+#!/bin/bash
+set -eu
+umask 077
+export PATH="/var/apps/nodejs_v22/target/bin:/usr/local/bin:/usr/bin:/bin"
+: "${TRIM_APPDEST:?}" "${TRIM_PKGVAR:?}"
+PID_FILE="${TRIM_PKGVAR}/app.pid"
+ENTRY="${TRIM_APPDEST}/server/index.mjs"
+mkdir -p "${TRIM_PKGVAR}/logs"
+running() {
+    [ -f "$PID_FILE" ] || return 1
+    read -r app_pid < "$PID_FILE" || return 1
+    case "$app_pid" in ''|*[!0-9]*) return 1 ;; esac
+    [ "$app_pid" -gt 1 ] || return 1
+    kill -0 "$app_pid" 2>/dev/null || return 1
+    [ -r "/proc/${app_pid}/cmdline" ] || return 1
+    tr '\0' '\n' < "/proc/${app_pid}/cmdline" | grep -Fx -- "$ENTRY" >/dev/null
+}
+case "${1:-}" in
+start)
+    if running; then exit 0; fi
+    command -v node >/dev/null || exit 1
+    nohup node "$ENTRY" >> "${TRIM_PKGVAR}/logs/service.log" 2>&1 </dev/null &
+    printf '%s\n' "$!" > "$PID_FILE"
+    for attempt in {1..20}; do
+        if running && [ -S "${TRIM_APPDEST}/app.sock" ]; then exit 0; fi
+        sleep 1
+    done
+    exit 1
+    ;;
+stop)
+    if ! running; then exit 0; fi
+    kill -TERM "$app_pid"
+    # Allow installation cleanup and orderly shutdown of application processes.
+    for attempt in {1..60}; do
+        if ! running; then rm -f -- "$PID_FILE"; exit 0; fi
+        sleep 1
+    done
+    # Report a stop failure rather than silently leaving children running.
+    exit 1
+    ;;
+status) if running; then exit 0; else exit 3; fi ;;
+*) exit 1 ;;
+esac

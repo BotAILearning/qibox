@@ -1,0 +1,65 @@
+import { createRequire } from 'node:module';
+import { mkdir, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+import { root, playwrightPath } from './tooling.mjs';
+import { proactiveFixture } from './proactive-ui-fixture.mjs';
+const { chromium } = createRequire(import.meta.url)(playwrightPath);
+const fixture = await proactiveFixture(), output = path.join(root, 'reports/development-2026-09-18/browser');
+const report = { scope: 'Local HTTP + real Edge + noVNC; WeChat/model fixtures; no NAS or real recipient.', checks: [], errors: [] };
+await mkdir(output, { recursive: true }); let browser;
+try {
+  await fixture.ai.settings({ enabled: true, reply: true }); await fixture.ai.tick();
+  const p = fixture.ai.profiles()[0], own = fixture.bridge.push(p.contact, 'self', '本轮已确认正文，不应因切换消失。');
+  p.generatedIds = [own.id]; p.sentMessages = [{ id: own.id, at: Date.now(), source: 'reply', body: fixture.ai.vault.seal({ text: own.text }) }];
+  fixture.ai.pauseProfile(p, 'handoff'); p.handoffReason = 'file'; await fixture.ai.save();
+  browser = await chromium.launch({ channel: 'msedge', headless: true });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 960 } }); page.setDefaultTimeout(12000);
+  page.on('pageerror', e => report.errors.push(e.message));
+  const open = async () => { await page.goto(fixture.url); await page.locator('[data-action=open]').first().click(); await page.locator('#ai-open').click(); };
+  const nav = key => page.locator(`.ai-main-tabs [data-ai-nav=${key}]`).click();
+  const shot = name => page.screenshot({ path: path.join(output, name + '.png') });
+  await open(); await nav('activity'); await page.locator('[data-ai-record-source=reply]').click();
+  await page.locator('[data-ai-record-expand]').first().click(); await page.getByText(own.text, { exact: true }).waitFor();
+  let release; const gate = new Promise(r => { release = r; }); let hold = false;
+  await page.route('**/api/instances/*/ai', async route => {
+    const data = route.request().postDataJSON();
+    if (hold && data?.action === 'activity-records') { await gate; await route.fulfill({ status: 503, json: { error: '临时离线回归' } }); }
+    else await route.continue();
+  });
+  hold = true; await nav('overview'); await nav('activity');
+  assert.ok(await page.getByText(own.text, { exact: true }).isVisible());
+  release(); await page.getByText('临时离线回归').first().waitFor();
+  assert.ok(await page.getByText(own.text, { exact: true }).isVisible()); await shot('records-retained');
+  report.checks.push('Saved record visible during tab return and failed refresh, with error notice');
+  hold = false;
+  const read = fixture.bridge.read.bind(fixture.bridge); let finish;
+  const slow = new Promise(r => { finish = r; });
+  fixture.bridge.read = async args => { await slow; return read(args); };
+  await page.locator('[data-ai-review]').first().click();
+  await page.locator('.ai-review-dialog[open]').waitFor(); assert.match(await page.locator('.ai-review-dialog').textContent(), /正在读取当前聊天/);
+  assert.equal(p.pauseReason, 'handoff'); await shot('review-loading');
+  await page.locator('[data-ai-close-review]').click(); finish();
+  await page.waitForResponse(response => response.request().postDataJSON()?.action === 'review');
+  await nav('overview'); assert.equal(await page.locator('.ai-review-dialog[open]').count(), 0);
+  fixture.bridge.read = read;
+  report.checks.push('Review opens immediately; close invalidates delayed response; page remains clickable');
+  await page.locator('[data-ai-object]').first().click();
+  const reviewButton = page.locator('.ai-person-tags [data-ai-review]'); await reviewButton.waitFor();
+  assert.equal(await reviewButton.textContent(), '核对并恢复'); await reviewButton.click();
+  await page.locator('[data-ai-resolve-review]').waitFor(); await page.locator('[data-ai-resolve-review]').click();
+  await page.waitForFunction(() => !document.querySelector('.ai-review-dialog').open); assert.equal(p.paused, false);
+  report.checks.push('Paused object status links to the same review; explicit resolve preserves style and closes dialog');
+  fixture.ai.pauseProfile(p, 'explicit'); await fixture.ai.save(); await page.reload(); await page.locator('[data-action=open]').first().click(); await page.locator('#ai-open').click();
+  await page.locator('[data-ai-object]').first().click(); await page.locator('[data-ai-resume-profile]').click();
+  await page.waitForResponse(response => response.request().postDataJSON()?.action === 'profile');
+  assert.equal(p.paused, false); assert.equal(await page.locator('.ai-review-dialog[open]').count(), 0);
+  report.checks.push('Ordinary pause resumes directly without creating a content-review dialog');
+  await nav('proactive'); await page.locator('[data-proactive-new]').click();
+  assert.equal(await page.locator('[name=sendMode]').inputValue(), 'segments'); await page.locator('[name=sendMode]').selectOption('single');
+  await shot('proactive-send-mode'); await nav('overview'); await nav('proactive');
+  assert.equal(await page.locator('[name=sendMode]').inputValue(), 'single');
+  report.checks.push('Task send mode defaults to natural segments and draft retains explicit single-send choice');
+  assert.deepEqual(report.errors, []); report.passed = true;
+} catch (e) { report.failure = e.stack; throw e; }
+finally { await writeFile(path.join(output, 'report.json'), JSON.stringify(report, null, 2)); await browser?.close(); await fixture.close(); }

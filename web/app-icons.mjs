@@ -1,0 +1,2 @@
+const icons = { wechat: "<svg viewBox=\"0 0 64 64\"><path d=\"M37 27c0 9-8 16-18 16-2 0-4 0-6-1l-7 4 2-7C3 36 1 32 1 27c0-9 8-16 18-16s18 7 18 16Z\"/><path d=\"M62 40c0 7-7 13-15 13-2 0-4 0-5-1l-6 3 1-6c-5-2-7-6-7-10 0-7 7-13 16-13s16 6 16 14Z\"/><circle cx=\"13\" cy=\"24\" r=\"2\"/><circle cx=\"25\" cy=\"24\" r=\"2\"/><circle cx=\"42\" cy=\"37\" r=\"1.8\"/><circle cx=\"53\" cy=\"37\" r=\"1.8\"/></svg>" };
+export const appIcon = name => icons[name] || '<svg viewBox="0 0 64 64"><rect x="12" y="12" width="40" height="40" rx="8" fill="white"/></svg>';

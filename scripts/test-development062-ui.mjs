@@ -1,0 +1,87 @@
+import { createRequire } from 'node:module';
+import { proactiveCommand } from './proactive-browser-checks.mjs';
+import { mkdir, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+import { createApplication } from '../server/index.mjs';
+import { root, playwrightPath } from './tooling.mjs';
+import { temp, cleanup, runtimeFactory, extractor, fetcher } from '../test/fixtures.mjs';
+import { ChatFixture, AIModelFixture, modelConfig, key } from '../test/ai-fixtures.mjs';
+import { rfbFixture } from '../test/rfb-fixture.mjs';
+const { chromium } = createRequire(import.meta.url)(playwrightPath);
+const dataRoot = await temp(), bridge = new ChatFixture(), provider = new AIModelFixture();
+const output = path.join(root, process.argv[2] || 'reports/development-2026-09-17/browser'); await mkdir(output, { recursive: true });
+const completed = [], report = { scope: 'Disposable local fixtures; no live model, NAS or WeChat messages.', checks: [], errors: [] };
+bridge.contacts[0].label = '陈小雨'; bridge.contacts[1].label = '林一'; bridge.contacts[2].label = '周末';
+bridge.contacts.push({ id: key('group'), label: '产品设计讨论', kind: 'group' });
+bridge.readRange = async args => ({ account: args.account, contact: args.contact, rangeRevision: key(args.contact), messages: [{ id: key(args.contact), timestamp: args.from + 1, text: args.contact, direction: 'self' }] });
+bridge.readDates = async args => ({account:args.account,contact:args.contact,dates:['2025-01-03','2026-09-01','2026-09-03']});
+const learningComplete=provider.complete.bind(provider);
+provider.complete = async (config, _system, input) => { if(input.material || input.conversations) return learningComplete(config,_system,input); completed.push({ config, input }); return { report: `独立报告：${input.contact}\n\n事项与约定\n双方约定继续确认周末安排。` }; };
+for(let i=0;i<40;i++) bridge.contacts.push({id:key('extra'+i),label:'联系人 '+i,kind:'person'});
+const peer = await rfbFixture(path.join(root, 'web/backgrounds/mist.jpg'));
+const app = await createApplication({ appRoot: root, dataRoot, dev: true, extract: extractor, fetcher, aiProvider: provider,
+  runtimeFactory: (...args) => ({ ...runtimeFactory(...args), port: peer.port, aiBridge: bridge, loginStatus: 'logged-in' }) });
+await new Promise(r => app.server.listen(0, '127.0.0.1', r));
+const space = await app.users.get('development'); await space.setConsent(true); app.library.download(); await app.library.working;
+const meta = await space.add('界面验收微信'); await space.start(meta.id); const ai = space.get(meta.id).ai;
+clearInterval(ai.timer); await ai.verifyProvider(modelConfig); await ai.scan(); await ai.settings({ enabled: false, takeover:{enabled:false,minutes:5} });
+
+let browser;
+try {
+ browser=await chromium.launch({channel:'msedge',headless:true});
+ const page=await browser.newPage({viewport:{width:1440,height:900}});page.setDefaultTimeout(12000);
+ page.on('pageerror',e=>report.errors.push(e.message));
+ await page.goto('http://127.0.0.1:'+app.server.address().port+app.prefix+'/?dev='+app.devKey);
+ await page.locator('[data-action=open]').first().click();await page.locator('#ai-open').click();
+ const settled=()=>page.waitForFunction(()=>document.querySelector('#ai-panel').getAttribute('aria-busy')!=='true');
+ const shot=async name=>{await page.locator('#toast').waitFor({state:'hidden'});await page.screenshot({path:path.join(output,name+'.png')});};
+ await page.locator('[data-ai-object]').first().click();
+ assert.equal(await page.locator('[data-ai-fold=memory]').getAttribute('open'),'');
+ assert.equal(await page.locator('[data-ai-fold=reply]').getAttribute('open'),null);
+ assert.equal(await page.locator('[data-ai-fold=strategy]').getAttribute('open'),null);
+ assert.equal(await page.locator('.ai-scope-field').count(),0);
+ await shot('default-person');
+ report.layout=await page.locator('.ai-object-detail').evaluate(n=>({height:n.clientHeight,content:n.scrollHeight}));
+ assert.ok(report.layout.content<=report.layout.height+2,JSON.stringify(report.layout));
+ await page.locator('#ai-object-list').evaluate(n=>n.scrollTop=700);
+ const before=await page.locator('#ai-object-list').evaluate(n=>n.scrollTop);
+ await page.locator('[data-ai-object]').nth(13).click();
+ assert.equal(await page.locator('#ai-object-list').evaluate(n=>n.scrollTop),before);
+ await page.locator('[data-ai-fold=strategy] summary').click();
+ assert.equal(await page.locator('[name=takeoverMinutes]').count(),0);
+ await page.locator('[name=maxRounds]').fill('75');await page.getByRole('button',{name:'保存设置',exact:true}).click();await settled();
+ const selected=ai.profiles().find(p=>p.contact===bridge.contacts.filter(c=>c.kind==='person')[13].id);
+ assert.equal(selected.replyStrategy.maxRounds,75);assert.equal(selected.takeover,undefined);assert.equal(ai.data.settings.takeover.enabled,false,'saving personal settings preserves the global disabled rule');
+ await page.locator('.ai-main-tabs [data-ai-nav=provider]').click();assert.equal(await page.locator('[data-ai-provider-scope]').count(),0);await shot('shared-model');
+ await page.locator('.ai-main-tabs [data-ai-nav=analysis]').click();assert.equal(await page.locator('.ai-model-summary').count(),0);
+ await page.locator('.ai-main-tabs [data-ai-nav=overview]').click();await page.locator('[data-ai-nav=learning]').click();
+ assert.equal(await page.locator('#ai-learning-scope,.ai-intro').count(),0);
+ await page.locator('[data-ai-contact]').first().check();await page.locator('[data-ai-date-range]').click();await page.locator('[data-mode=all]').click();
+ await page.locator('.ai-calendar-dialog').waitFor({state:'detached'});assert.equal(provider.calls.length,0);
+ await page.locator('[data-ai-contact]').first().check();await page.locator('[data-ai-action=learn-selected]').click();await settled();
+ assert.equal(await page.locator('[data-ai-apply-result]').count(),1);await shot('separate-results');
+ await page.locator('[data-ai-apply-result]').click();await settled();assert.equal(await page.locator('#ai-object-form').count(),1);
+ await page.locator('[data-ai-nav=learning]').click();assert.ok(await page.getByText('已学习',{exact:true}).count());
+ await page.locator('[data-ai-action=select-contacts]').click();assert.equal(await page.locator('[data-ai-contact]:checked').count(),10);
+ assert.equal(await page.locator('[data-ai-contact]').first().isChecked(),false);await shot('learning');
+ await ai.settings({enabled:true,proactive:true,reply:false});
+ await ai.proactiveTaskAction({command:'create',name:'讨论方案',goal:'讨论方案',requirements:'不做承诺',contacts:[bridge.contacts[0].id],schedule:{cycle:'daily',mode:'fixed',time:'09:00'}});
+ await page.locator('.ai-main-tabs [data-ai-nav=proactive]').click();
+ const sid=ai.publicState().proactiveTasks[0].id;await page.locator(`[data-proactive-task="${sid}"]`).waitFor();
+ await proactiveCommand(page,sid,'pause');assert.equal(ai.data.proactiveTasks[0].status,'paused');
+ await proactiveCommand(page,sid,'edit');assert.equal(await page.locator('.ai-steps').count(),0);
+ assert.equal(await page.locator('[name=goal]').inputValue(),'讨论方案');
+ await page.locator('[name=goal]').fill('修订目标');
+ await page.locator('#ai-proactive-form button[type=submit]').click();await settled();
+ assert.equal(ai.data.proactiveTasks[0].id,sid);assert.equal(ai.data.proactiveTasks[0].goal,'修订目标');assert.equal(ai.data.proactiveTasks[0].status,'paused');
+ await proactiveCommand(page,sid,'resume');assert.equal(ai.data.proactiveTasks[0].status,'running');await shot('tasks');
+ for(const width of [768,390]) {
+  await page.setViewportSize({width,height:844});await page.locator('.ai-main-tabs [data-ai-nav=overview]').click();
+  if(await page.locator('.ai-object-sidebar').isVisible())await page.locator('[data-ai-object]').first().click();
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await shot('person-'+width);
+ }
+ assert.deepEqual(report.errors,[]);assert.equal(bridge.sent.length,0);report.passed=true;
+ report.checks=['Default expanded memory fits 1440x900; larger style area','Contact selection retains list scroll','Shared model and hidden analysis card','All applies without confirmation or learning','First ten unlearned contacts selected','Learning results navigate to the correct person','Scheduled item pause/edit-prefill/save/resume','Tablet and mobile no horizontal overflow'];
+}catch(error){report.failure=error.stack;throw error;}
+finally{await writeFile(path.join(output,'report.json'),JSON.stringify(report,null,2));await browser?.close();await app.close();await peer.close();await cleanup(dataRoot);}

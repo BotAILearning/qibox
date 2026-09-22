@@ -1,0 +1,1154 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>栖盒 · AI 辅助 产品演示</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%234F6BFB'/%3E%3Cpath d='M16 6l2.2 6.3L24.5 14.5l-6.3 2.2L16 23l-2.2-6.3L7.5 14.5l6.3-2.2z' fill='%23fff'/%3E%3C/svg%3E">
+<style>
+:root{
+  --c-bg:#F5F6FA; --c-surface:#FFFFFF; --c-sidebar:#1E2130; --c-primary:#4F6BFB; --c-primary-dark:#3A54E0;
+  --c-text:#1E2130; --c-text-2:#5F6475; --c-text-3:#9BA0B5; --c-border:#E5E7F0;
+  --c-danger:#F04B4B; --c-success:#2CB56B; --c-warn:#F0902B;
+  --c-hover:#F5F6FB; --c-soft:#EEF1FB; --radius:12px; --radius-sm:8px;
+  --shadow:0 4px 20px rgba(30,33,48,.08); --shadow-lg:0 12px 48px rgba(0,0,0,.28);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;background:var(--c-bg);color:var(--c-text);font-size:14px;overflow:hidden}
+button{font-family:inherit;cursor:pointer;border:none;background:none;font-size:inherit;color:inherit}
+input,select,textarea{font-family:inherit;font-size:inherit;color:inherit}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-thumb{background:#C9CDDB;border-radius:4px}
+::-webkit-scrollbar-track{background:transparent}
+
+/* ===== 图标 ===== */
+.ic{width:18px;height:18px;flex:none;display:inline-block;vertical-align:middle}
+.ic.sm{width:15px;height:15px}
+.ic.lg{width:22px;height:22px}
+
+/* ===== 布局 ===== */
+#app{display:flex;height:100vh}
+
+/* ===== 侧栏 ===== */
+#sidebar{width:216px;background:var(--c-sidebar);color:#C6C9D8;display:flex;flex-direction:column;flex-shrink:0}
+#sidebar .logo{padding:20px 18px 16px;display:flex;align-items:center;gap:10px}
+#sidebar .logo-icon{width:34px;height:34px;border-radius:9px;background:var(--c-primary);display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0}
+#sidebar .logo-text{font-size:16px;font-weight:600;color:#fff;line-height:1.2}
+#sidebar .logo-text small{display:block;font-size:10px;color:#8B90A8;letter-spacing:1.5px;font-weight:400;margin-top:2px}
+.nav-title{padding:16px 18px 6px;font-size:10.5px;color:#8B90A8;letter-spacing:1.2px}
+#nav{flex:1;overflow-y:auto;padding-bottom:8px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:10px 18px;margin:1px 10px;border-radius:8px;cursor:pointer;font-size:13.5px;transition:background .15s;user-select:none}
+.nav-item:hover{background:#2A2E42;color:#fff}
+.nav-item.active{background:var(--c-primary);color:#fff}
+.nav-item .ni{width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+.nav-item .ni .ic{width:18px;height:18px}
+#navBottom{padding:12px 0 14px;border-top:1px solid #2A2E42}
+#navBottom .nav-item{font-size:12.5px;color:#8B90A8}
+#navBottom .nav-item:hover{color:#fff}
+.side-note{display:flex;gap:7px;align-items:center;padding:0 24px;font-size:10.5px;color:#6E7388;line-height:1.6}
+
+/* ===== 主区 ===== */
+#main{flex:1;min-width:0;display:flex;flex-direction:column}
+.topbar{height:58px;background:var(--c-surface);border-bottom:1px solid var(--c-border);display:flex;align-items:center;padding:0 24px;gap:14px;flex-shrink:0}
+.crumb{display:flex;align-items:center;gap:9px;font-size:12.5px;color:var(--c-text-3)}
+.crumb b{font-weight:600;color:var(--c-text)}
+.crumb .sep{color:#C9CDDB}
+.top-sp{flex:1}
+.top-status{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--c-text-2)}
+.preview-tag{font-size:11px;color:var(--c-text-3);background:var(--c-bg);border:1px solid var(--c-border);padding:4px 10px;border-radius:20px}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--c-success);display:inline-block}
+.dot.off{background:var(--c-text-3)}
+
+.content{flex:1;overflow-y:auto;padding:22px 24px 30px}
+
+/* ===== 开关 ===== */
+.switch{position:relative;width:38px;height:22px;border-radius:20px;background:#D3D7E3;transition:background .18s;flex-shrink:0;cursor:pointer;padding:0}
+.switch::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:transform .18s}
+.switch.on{background:var(--c-primary)}
+.switch.on::after{transform:translateX(16px)}
+.switch:disabled{opacity:.45;cursor:not-allowed}
+
+/* ===== 按钮 ===== */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:9px 16px;border-radius:var(--radius-sm);font-size:13px;font-weight:500;transition:background .15s,color .15s,border-color .15s;user-select:none}
+.btn .ic{width:15px;height:15px}
+.btn-primary{background:var(--c-primary);color:#fff}
+.btn-primary:hover{background:var(--c-primary-dark)}
+.btn-ghost{background:var(--c-surface);border:1px solid var(--c-border);color:var(--c-text-2)}
+.btn-ghost:hover{background:var(--c-hover);color:var(--c-primary)}
+.btn-danger{background:var(--c-danger);color:#fff}
+.btn-danger:hover{opacity:.88}
+.btn-danger-ghost{background:var(--c-surface);border:1px solid #F3CFCF;color:var(--c-danger)}
+.btn-danger-ghost:hover{background:#FBEFEF}
+.btn-sm{padding:6px 12px;font-size:12px;border-radius:7px}
+.btn-soft{background:var(--c-soft);color:var(--c-primary-dark)}
+.btn-soft:hover{background:#E2E8FB}
+.btn-block{width:100%}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+
+/* ===== 卡片 ===== */
+.card{background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--radius);box-shadow:var(--shadow)}
+.page-head{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+.page-head h1{font-size:20px;font-weight:600}
+.page-head .sub{font-size:12px;color:var(--c-text-3)}
+
+/* ===== 表单 ===== */
+.field{display:flex;flex-direction:column;gap:7px;margin-bottom:16px}
+.field>label{font-size:12.5px;color:var(--c-text-2);font-weight:500}
+.field .req{color:var(--c-danger)}
+input[type=text],input[type=url],input[type=password],input[type=number],input[type=date],select,textarea{
+  width:100%;border:1px solid var(--c-border);border-radius:var(--radius-sm);padding:9px 12px;font-size:13px;background:var(--c-surface);outline:none;transition:border-color .15s,box-shadow .15s;color:var(--c-text)}
+input:focus,select:focus,textarea:focus{border-color:var(--c-primary);box-shadow:0 0 0 3px rgba(79,107,251,.12)}
+input::placeholder,textarea::placeholder{color:#B4B9CB}
+textarea{resize:vertical;line-height:1.7}
+select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239BA0B5' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 11px center;padding-right:32px}
+.field-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.field-hint{font-size:11px;color:var(--c-text-3);line-height:1.6}
+.checkline{display:flex;gap:9px;align-items:flex-start;font-size:12.5px;color:var(--c-text-2);line-height:1.7;cursor:pointer}
+.checkline input{width:15px;height:15px;margin-top:2px;accent-color:var(--c-primary);flex-shrink:0}
+
+/* ===== 自动回复工作区 ===== */
+.workspace{display:grid;grid-template-columns:272px minmax(0,1fr);gap:18px;align-items:start}
+.contact-card{padding:14px 12px 16px;display:flex;flex-direction:column;max-height:calc(100vh - 130px);overflow:hidden}
+.tabbar{display:flex;padding:3px;background:var(--c-bg);border-radius:9px;gap:3px;margin-bottom:12px}
+.tabbar button{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:8px 4px;border-radius:7px;font-size:12.5px;color:var(--c-text-2);transition:all .15s}
+.tabbar button .ic{width:15px;height:15px}
+.tabbar button.on{background:var(--c-surface);color:var(--c-primary);font-weight:600;box-shadow:0 2px 8px rgba(30,33,48,.08)}
+.tabbar button em{font-style:normal;font-size:10px;color:var(--c-text-3)}
+.searchbox{display:flex;align-items:center;gap:8px;border:1px solid var(--c-border);border-radius:var(--radius-sm);padding:8px 11px;background:var(--c-bg);margin-bottom:12px}
+.searchbox .ic{width:15px;height:15px;color:var(--c-text-3)}
+.searchbox input{border:none;background:none;outline:none;flex:1;font-size:12.5px;min-width:0}
+.contact-list{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:3px;margin:0 -4px;padding:0 4px}
+.contact-row{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:9px;cursor:pointer;transition:background .13s;text-align:left;width:100%}
+.contact-row:hover{background:var(--c-hover)}
+.contact-row.sel{background:var(--c-soft)}
+.contact-row .avatar{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:#fff;flex-shrink:0}
+.contact-row .info{flex:1;min-width:0}
+.contact-row .info b{display:block;font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.contact-row .info small{display:block;font-size:10.5px;color:var(--c-text-3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.contact-row .st{display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--c-text-3);flex-shrink:0}
+.contact-row .st .pdot{width:6px;height:6px;border-radius:50%}
+.pdot.g{background:var(--c-success)}.pdot.o{background:var(--c-warn)}.pdot.r{background:var(--c-danger)}
+.contact-row .dirty{width:6px;height:6px;border-radius:50%;background:var(--c-warn);flex-shrink:0;display:none}
+.contact-row.dirty .dirty{display:block}
+.contact-footer{border-top:1px solid var(--c-border);padding:13px 4px 2px;display:flex;flex-direction:column;gap:9px}
+.contact-footer .frow{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--c-text-2)}
+.contact-footer .frow select{flex:1;font-size:12px;padding:7px 10px}
+.list-empty{padding:28px 10px;text-align:center;font-size:12px;color:var(--c-text-3)}
+
+/* 详情卡 */
+.detail-card{padding:20px 22px 0;max-height:calc(100vh - 130px);overflow-y:auto}
+.person-head{display:flex;align-items:center;gap:14px;padding-bottom:16px;border-bottom:1px solid var(--c-border)}
+.person-head .avatar{width:50px;height:50px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:600;color:#fff;flex-shrink:0}
+.person-head .info{flex:1;min-width:0}
+.person-head .info h2{font-size:17px;font-weight:600}
+.person-head .info p{font-size:11.5px;color:var(--c-text-3);margin-top:3px}
+.person-head .tags{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.badge{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:500;white-space:nowrap}
+.badge.g{background:#E6F6ED;color:#1E8E55}
+.badge.o{background:#FDF1E4;color:#C46A12}
+.badge.b{background:var(--c-soft);color:var(--c-primary-dark)}
+.badge.r{background:#FBE9E9;color:#D23B3B}
+.sec{margin-top:18px}
+.sec-head{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;margin-bottom:12px}
+.sec-head .ic{width:16px;height:16px;color:var(--c-text-3)}
+.sec-head .extra{margin-left:auto;font-weight:400}
+.optrow{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 14px;border:1px solid var(--c-border);border-radius:10px;background:var(--c-surface)}
+.optrow+.optrow{margin-top:9px}
+.optrow .tx{flex:1;min-width:0}
+.optrow .tx b{display:block;font-size:13px;font-weight:500}
+.optrow .tx small{display:block;font-size:11px;color:var(--c-text-3);margin-top:3px;line-height:1.5}
+.optrow.dim{opacity:.55}
+.optrow.wrap{flex-wrap:wrap}
+.grp3{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+.grp3 .optrow{flex-direction:column;align-items:flex-start;gap:10px;padding:13px 14px}
+.grp3 .optrow .tx b{font-size:12.5px}
+.grp3 .optrow .tx small{font-size:10.5px}
+
+/* 风格 */
+.style-box{border:1px solid var(--c-border);border-radius:10px;padding:14px;background:var(--c-bg)}
+.style-pick{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:12px}
+.spill{display:inline-flex;align-items:center;gap:5px;padding:7px 13px;border-radius:20px;background:var(--c-surface);border:1px solid var(--c-border);font-size:12px;color:var(--c-text-2);cursor:pointer;transition:all .13s}
+.spill:hover{border-color:var(--c-primary);color:var(--c-primary)}
+.spill.on{background:var(--c-primary);border-color:var(--c-primary);color:#fff}
+.learn-result{border:1px dashed var(--c-border);border-radius:9px;padding:12px;margin-top:11px;background:var(--c-surface)}
+.learn-result .lr-row{display:flex;align-items:center;gap:10px;padding:7px 4px;font-size:12.5px;border-bottom:1px solid var(--c-border)}
+.learn-result .lr-row:last-child{border-bottom:none}
+.radio{display:flex;align-items:center;gap:7px;cursor:pointer;font-size:12.5px;color:var(--c-text-2)}
+.radio input{width:15px;height:15px;accent-color:var(--c-primary)}
+
+/* 保存栏 */
+.save-row{display:flex;align-items:center;justify-content:space-between;gap:14px;border-top:1px solid var(--c-border);padding:16px 0 18px;margin-top:20px}
+.save-row .note{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--c-text-3)}
+.save-row .note .ic{width:14px;height:14px}
+.dirty-hint{display:none;align-items:center;gap:6px;font-size:11px;color:var(--c-warn)}
+.dirty-hint.show{display:inline-flex}
+
+/* ===== 主动聊天 ===== */
+.page-top{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+.page-top h1{font-size:20px;font-weight:600;margin-right:auto}
+.task-list{display:flex;flex-direction:column;gap:12px}
+.task-card{padding:16px 18px}
+.task-card .tc-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.task-card .tc-head .t-title{font-size:14.5px;font-weight:600;flex:1;min-width:0}
+.task-card .tc-head .t-title small{display:block;font-size:11px;color:var(--c-text-3);font-weight:400;margin-top:2px}
+.task-card .tc-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;padding:12px 0;border-top:1px solid var(--c-border);border-bottom:1px solid var(--c-border);margin-bottom:12px}
+.task-card .tc-meta .m{font-size:11px;color:var(--c-text-3)}
+.task-card .tc-meta .m b{display:block;font-size:12.5px;color:var(--c-text);font-weight:500;margin-top:3px}
+.task-card .tc-actions{display:flex;gap:8px;flex-wrap:wrap}
+.steps{display:flex;align-items:center;gap:6px;margin:0 0 20px;flex-wrap:wrap}
+.step{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--c-text-3);padding:6px 12px;border-radius:20px;background:var(--c-surface);border:1px solid var(--c-border)}
+.step .num{width:18px;height:18px;border-radius:50%;background:#E2E6F0;color:var(--c-text-3);display:inline-flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:600}
+.step.on{color:var(--c-primary-dark);border-color:var(--c-primary);background:var(--c-soft)}
+.step.on .num{background:var(--c-primary);color:#fff}
+.step.done{color:var(--c-success);border-color:#CBEBD9}
+.step.done .num{background:var(--c-success);color:#fff}
+.pick-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:9px;max-height:260px;overflow-y:auto}
+.pick-item{display:flex;align-items:center;gap:9px;padding:9px 11px;border:1px solid var(--c-border);border-radius:9px;cursor:pointer;font-size:12.5px;transition:all .13s;user-select:none}
+.pick-item:hover{border-color:var(--c-primary)}
+.pick-item.on{background:var(--c-soft);border-color:var(--c-primary)}
+.pick-item input{width:14px;height:14px;accent-color:var(--c-primary)}
+.pick-item .avatar{width:26px;height:26px;border-radius:7px;font-size:11px}
+.wizard-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;border-top:1px solid var(--c-border);padding-top:16px;margin-top:6px}
+.wizard-foot .cnt{font-size:12px;color:var(--c-text-3)}
+.chiprow{display:flex;flex-wrap:wrap;gap:7px}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:6px 13px;border-radius:20px;background:var(--c-bg);border:1px solid var(--c-border);font-size:12px;color:var(--c-text-2);cursor:pointer;transition:all .13s}
+.chip:hover{border-color:var(--c-primary);color:var(--c-primary)}
+.chip.on{background:var(--c-primary);border-color:var(--c-primary);color:#fff}
+.range-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+
+/* ===== 运行记录 ===== */
+.filter-bar{background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--radius);padding:14px 16px;margin-bottom:16px;display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
+.filter-bar .field{margin:0;min-width:130px;flex:1}
+.filter-bar .field>label{font-size:11px}
+.table-wrap{background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--radius);overflow:hidden}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+thead th{background:#F8F9FD;font-weight:500;color:var(--c-text-2);text-align:left;padding:12px 16px;border-bottom:1px solid var(--c-border);white-space:nowrap}
+tbody td{padding:12px 16px;border-bottom:1px solid var(--c-border);color:var(--c-text-2);vertical-align:middle}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:var(--c-hover)}
+tbody tr{cursor:pointer}
+.td-main{font-weight:500;color:var(--c-text)}
+.empty-state{padding:56px 16px;text-align:center;color:var(--c-text-3)}
+.empty-state .ic{width:38px;height:38px;color:#D0D4E2;margin-bottom:10px}
+.empty-state p{font-size:12px;margin-top:6px}
+
+/* ===== 弹窗 ===== */
+.mask{position:fixed;inset:0;background:rgba(15,17,28,.45);display:none;align-items:center;justify-content:center;z-index:100;padding:20px}
+.mask.show{display:flex;animation:fadeIn .16s}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.modal{background:var(--c-surface);border-radius:14px;box-shadow:var(--shadow-lg);width:min(560px,100%);max-height:88vh;overflow-y:auto;animation:popIn .18s}
+@keyframes popIn{from{opacity:0;transform:translateY(10px) scale(.985)}to{opacity:1;transform:none}}
+.modal-head{display:flex;align-items:center;gap:10px;padding:18px 20px 0}
+.modal-head h2{font-size:16px;font-weight:600;flex:1}
+.modal-head .x{width:28px;height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;color:var(--c-text-3);cursor:pointer}
+.modal-head .x:hover{background:var(--c-hover);color:var(--c-text)}
+.modal-body{padding:16px 20px}
+.modal-foot{display:flex;justify-content:flex-end;gap:10px;padding:14px 20px 18px;border-top:1px solid var(--c-border)}
+.modal .alertbox{display:flex;gap:10px;background:#FDF1E4;border:1px solid #F6DFC2;border-radius:9px;padding:11px 13px;font-size:12.5px;color:#9C5B10;line-height:1.7;margin-bottom:14px}
+.modal .alertbox .ic{width:16px;height:16px;color:var(--c-warn);flex-shrink:0;margin-top:2px}
+.modal .alertbox.danger{background:#FBE9E9;border-color:#F3CFCF;color:#B03A3A}
+.modal .alertbox.danger .ic{color:var(--c-danger)}
+.report-out{background:#F8F9FD;border:1px solid var(--c-border);border-radius:9px;padding:13px 15px;font-size:12.5px;line-height:1.9;color:var(--c-text-2);white-space:pre-wrap;max-height:260px;overflow-y:auto}
+.progress-bar{height:6px;background:var(--c-bg);border-radius:4px;overflow:hidden;margin:10px 0 6px}
+.progress-bar i{display:block;height:100%;width:0;background:var(--c-primary);border-radius:4px;transition:width .25s}
+
+/* ===== toast ===== */
+#toast{position:fixed;bottom:30px;left:50%;transform:translateX(-50%) translateY(20px);background:#23263A;color:#fff;padding:11px 20px;border-radius:10px;font-size:13px;display:flex;align-items:center;gap:9px;box-shadow:var(--shadow-lg);opacity:0;pointer-events:none;transition:all .22s;z-index:200;max-width:86vw}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+#toast .ic{width:16px;height:16px;color:#7CE0A8}
+#toast.warn .ic{color:var(--c-warn)}
+#toast.err .ic{color:var(--c-danger)}
+
+/* 返回按钮（移动） */
+.mobile-back{display:none}
+
+/* ===== 响应式 ===== */
+@media(max-width:1100px){
+  .workspace{grid-template-columns:240px minmax(0,1fr)}
+  .grp3{grid-template-columns:1fr}
+}
+@media(max-width:860px){
+  #sidebar{width:64px}
+  #sidebar .logo{padding:16px 0;justify-content:center}
+  #sidebar .logo-text,.nav-title,#navBottom .nav-item span,.side-note,.nav-item .nav-label{display:none}
+  #sidebar .logo-icon{width:30px;height:30px}
+  .nav-item{padding:11px 0;margin:1px 8px;justify-content:center}
+  .nav-item .ni{margin:0}
+  .workspace{grid-template-columns:1fr}
+  .contact-card{display:none}
+  .workspace.detail-open .contact-card{display:flex}
+  .workspace.detail-open .detail-card{display:none}
+  .mobile-back{display:inline-flex;margin-bottom:14px}
+  .detail-card{max-height:none}
+  .field-grid,.range-grid{grid-template-columns:1fr}
+  .grp3{grid-template-columns:1fr}
+}
+@media(max-width:560px){
+  input[type=text],input[type=url],input[type=password],input[type=number],input[type=date],select,textarea{font-size:16px}
+  .btn{padding:12px 16px;min-height:44px}
+  .btn-sm{padding:10px 14px;min-height:40px}
+  .topbar{padding:0 14px}
+  .content{padding:16px 14px 26px}
+  .preview-tag{display:none}
+  .filter-bar{flex-direction:column;align-items:stretch}
+  .task-card .tc-actions{flex-direction:column}
+  .task-card .tc-actions .btn{width:100%}
+  .modal-body{padding:14px 16px}
+}
+</style>
+</head>
+<body>
+
+<svg style="display:none" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <symbol id="i-chat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></symbol>
+  <symbol id="i-sparkle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><line x1="19" y1="15" x2="19" y2="21"/><line x1="16" y1="18" x2="22" y2="18"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></symbol>
+  <symbol id="i-chev-r" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></symbol>
+  <symbol id="i-chev-d" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></symbol>
+  <symbol id="i-arrow-l" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></symbol>
+  <symbol id="i-skip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></symbol>
+  <symbol id="i-brain" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44A2.5 2.5 0 0 1 4 18.5a2.5 2.5 0 0 1-2-2.45V14a2.5 2.5 0 0 1 2-2.45A2.5 2.5 0 0 1 4 7.5a2.5 2.5 0 0 1 1-2A2.5 2.5 0 0 1 7.5 2z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44A2.5 2.5 0 0 0 20 18.5a2.5 2.5 0 0 0 2-2.45V14a2.5 2.5 0 0 0-2-2.45A2.5 2.5 0 0 0 20 7.5a2.5 2.5 0 0 0-1-2A2.5 2.5 0 0 0 16.5 2z"/></symbol>
+  <symbol id="i-doc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></symbol>
+  <symbol id="i-box" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
+</svg>
+
+<div id="app">
+  <!-- ===== 侧栏 ===== -->
+  <aside id="sidebar">
+    <div class="logo">
+      <span class="logo-icon"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.4 5.6L20 10l-5.6 2.4L12 18l-2.4-5.6L4 10l5.6-2.4z"/></svg></span>
+      <span class="logo-text">AI 辅助<small>栖盒 · QIBOX</small></span>
+    </div>
+    <div class="nav-title">工作台</div>
+    <nav id="nav">
+      <div class="nav-item active" data-page="reply"><span class="ni"><svg class="ic"><use href="#i-chat" xlink:href="#i-chat"/></svg></span><span class="nav-label">自动回复</span></div>
+      <div class="nav-item" data-page="proactive"><span class="ni"><svg class="ic"><use href="#i-send" xlink:href="#i-send"/></svg></span><span class="nav-label">主动聊天</span></div>
+      <div class="nav-item" data-page="records"><span class="ni"><svg class="ic"><use href="#i-clock" xlink:href="#i-clock"/></svg></span><span class="nav-label">运行记录</span></div>
+      <div class="nav-item" data-page="provider"><span class="ni"><svg class="ic"><use href="#i-sliders" xlink:href="#i-sliders"/></svg></span><span class="nav-label">模型设置</span></div>
+    </nav>
+    <div id="navBottom">
+      <div class="nav-item" id="navAccount"><span class="ni"><svg class="ic"><use href="#i-user" xlink:href="#i-user"/></svg></span><span class="nav-label">我的微信</span></div>
+      <div class="side-note"><svg class="ic sm"><use href="#i-shield" xlink:href="#i-shield"/></svg>演示数据 · 不发送真实消息</div>
+    </div>
+  </aside>
+
+  <!-- ===== 主区 ===== -->
+  <main id="main">
+    <div class="topbar">
+      <div class="crumb"><span>AI 辅助</span><span class="sep">/</span><b id="crumbPage">自动回复</b></div>
+      <span class="top-sp"></span>
+      <span class="preview-tag">产品演示 · 可编辑操作</span>
+      <span class="top-status"><span class="dot" id="masterDot"></span><span id="masterText">AI 已开启</span></span>
+      <button class="switch on" id="masterSwitch" role="switch" aria-checked="true" title="AI 总开关（作用于当前微信）"></button>
+    </div>
+
+    <div class="content" id="content">
+      <!-- 自动回复页由 JS 渲染 -->
+    </div>
+  </main>
+</div>
+
+<!-- 弹窗容器 -->
+<div class="mask" id="mask"></div>
+<div id="toast" role="status"><svg class="ic"><use href="#i-check" xlink:href="#i-check"/></svg><span id="toastText"></span></div>
+
+<script>
+/* =========================================================
+   栖盒 · AI 辅助 产品演示
+   功能结构依据：ai辅助.xmind
+   视觉参考：相册(PC端) / 影视墙-demo
+   ========================================================= */
+'use strict';
+
+/* ================= 数据 ================= */
+const AV_COLORS = ['#5B8DEF','#8E7CE8','#E88B7C','#5BBFA5','#D98BC4','#C9A45C'];
+const CONTACTS = [
+  {id:'chen', name:'陈小雨', note:'朋友', group:false, color:0, online:true},
+  {id:'lin',  name:'林一',   note:'同事', group:false, color:1, online:true},
+  {id:'zhou', name:'周末',   note:'朋友', group:false, color:2, online:false},
+  {id:'xu',   name:'许知远', note:'同事', group:false, color:3, online:true},
+];
+const GROUPS = [
+  {id:'family', name:'家人群',    note:'群聊 · 6 人',  group:true, color:4},
+  {id:'design', name:'产品设计讨论', note:'群聊 · 12 人', group:true, color:5},
+];
+const STYLES = ['自然交流','简短直接','礼貌正式','耐心解释','学习到的风格 1','学习到的风格 2'];
+const STYLE_DESC = {
+  '自然交流':'像平时聊天一样自然，语气轻松友好，不刻意。',
+  '简短直接':'直接给结论，少客套，适合高效的场景。',
+  '礼貌正式':'用词礼貌、句式完整，适合工作或长辈。',
+  '耐心解释':'多给背景和原因，一步步说明白。',
+};
+const DEFAULTS = {enabled:true,multi:true,judge:true,atMe:true,atAll:false,realtime:false,style:'自然交流',styleDesc:'',memory:'',requirement:'',learnedStyle:'',learnedMemory:'',dirty:false};
+const OBJ = {}; // 按 id 存对象设置
+function objOf(id){ if(!OBJ[id]) OBJ[id] = {...DEFAULTS}; return OBJ[id]; }
+
+/* 任务初始数据 */
+let TASKS = [
+  {id:'t1', goal:'问候近况，聊聊周末安排', category:'日常问候', people:['chen','zhou'], plan:'多轮沟通 · 每轮间隔 2-4 分钟 · 追问等待 3-5 分钟', status:'running', created:'09-15 10:20'},
+  {id:'t2', goal:'确认设计稿修改意见', category:'工作沟通', people:['lin','xu'], plan:'单条发送 · 下班后发送', status:'paused', created:'09-14 18:05'},
+];
+/* 运行记录初始数据 */
+let RECORDS = [
+  {time:'09-16 09:12', who:'陈小雨', type:'联系人', trigger:'自动回复', result:'已代发'},
+  {time:'09-15 22:41', who:'家人群', type:'群聊', trigger:'@我时回复', result:'需要本人处理'},
+  {time:'09-15 20:03', who:'许知远', type:'联系人', trigger:'主动聊天', result:'已代发'},
+  {time:'09-15 18:27', who:'产品设计讨论', type:'群聊', trigger:'@所有人时回复', result:'已代发'},
+  {time:'09-15 11:15', who:'林一', type:'联系人', trigger:'自动回复', result:'需要本人处理'},
+];
+let MASTER = true;
+let RANGE = 'set'; // all | set
+let curKind = false;   // false=联系人 true=群聊
+let curId = 'chen';
+let curPage = 'reply';
+let provider = {service:'DeepSeek', kind:'OpenAI 兼容', base:'https://api.deepseek.com/v1', model:'deepseek-chat', timeout:60, agree:false, key:''};
+
+/* ================= 工具 ================= */
+const $ = s => document.querySelector(s);
+const el = (tag, cls, html) => { const e = document.createElement(tag); if(cls) e.className = cls; if(html!=null) e.innerHTML = html; return e; };
+const esc = s => String(s??'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const avHtml = (o, big) => `<span class="avatar" style="background:${AV_COLORS[o.color]}${big?';width:50px;height:50px;border-radius:13px;font-size:20px':''}">${o.group?'<svg class="ic" style="width:20px;height:20px"><use href="#i-users" xlink:href="#i-users"/></svg>':esc(o.name.slice(0,1))}</span>`;
+const fmt = n => String(n).padStart(2,'0');
+
+function toast(text, type){
+  const t = $('#toast');
+  $('#toastText').textContent = text;
+  t.className = 'show' + (type ? ' '+type : '');
+  clearTimeout(t._h);
+  t._h = setTimeout(()=>{ t.className=''; }, 2600);
+}
+function maskOpen(html){
+  const m = $('#mask');
+  m.innerHTML = html;
+  m.classList.add('show');
+  m.querySelector('.x')?.addEventListener('click', maskClose);
+  const first = m.querySelector('input,select,textarea,button:not(.x)');
+  first?.focus();
+}
+function maskClose(){ $('#mask').classList.remove('show'); $('#mask').innerHTML=''; }
+
+/* ================= 导航 ================= */
+const PAGE_TITLE = {reply:'自动回复', proactive:'主动聊天', records:'运行记录', provider:'模型设置'};
+function go(page){
+  curPage = page;
+  document.querySelectorAll('#nav .nav-item').forEach(n=> n.classList.toggle('active', n.dataset.page===page));
+  $('#crumbPage').textContent = PAGE_TITLE[page];
+  render();
+}
+document.querySelectorAll('#nav .nav-item[data-page]').forEach(n=> n.addEventListener('click', ()=> go(n.dataset.page)));
+
+/* ================= 渲染入口 ================= */
+function render(){
+  if(curPage==='reply') return renderReply();
+  if(curPage==='proactive') return renderProactive();
+  if(curPage==='records') return renderRecords();
+  if(curPage==='provider') return renderProvider();
+}
+
+/* ================= 自动回复 ================= */
+function renderReply(){
+  const c = $('#content');
+  const list = curKind ? GROUPS : CONTACTS;
+  const person = list.find(o=>o.id===curId);
+  const obj = objOf(curId);
+  const dirty = obj.dirty;
+  const masterOn = MASTER;
+  const isGroup = !!person.group;
+  const statusTxt = isGroup
+    ? (obj.realtime ? '实时回复中' : (obj.atMe||obj.atAll ? '已配置' : '未配置'))
+    : (obj.enabled ? '自动回复已开启' : '自动回复已关闭');
+  const statusCls = isGroup ? (obj.realtime?'g':(obj.atMe||obj.atAll?'b':'o')) : (obj.enabled?'g':'o');
+
+  c.innerHTML = `
+  <div class="workspace" id="ws">
+    <!-- 联系人列 -->
+    <section class="card contact-card">
+      <div class="tabbar">
+        <button class="${!curKind?'on':''}" data-k="0"><svg class="ic"><use href="#i-user" xlink:href="#i-user"/></svg>联系人<em>${CONTACTS.length}</em></button>
+        <button class="${curKind?'on':''}" data-k="1"><svg class="ic"><use href="#i-users" xlink:href="#i-users"/></svg>群聊<em>${GROUPS.length}</em></button>
+      </div>
+      <div class="searchbox"><svg class="ic"><use href="#i-search" xlink:href="#i-search"/></svg><input id="contactSearch" placeholder="搜索名称…" value="${esc(window._cs||'')}"></div>
+      <div class="contact-list" id="contactList">${renderContactRows(list)}</div>
+      <div class="contact-footer">
+        <div class="frow"><span>回复范围</span>
+          <select id="rangeSel">
+            <option value="set" ${RANGE==='set'?'selected':''}>仅已设置回复风格的联系人</option>
+            <option value="all" ${RANGE==='all'?'selected':''}>所有联系人</option>
+          </select>
+        </div>
+        <button class="btn btn-soft btn-sm" id="btnBatchLearn"><svg class="ic"><use href="#i-sparkle" xlink:href="#i-sparkle"/></svg>批量学习聊天风格</button>
+      </div>
+    </section>
+
+    <!-- 对象详情 -->
+    <section class="card detail-card">
+      <button class="btn btn-ghost btn-sm mobile-back" data-back="1"><svg class="ic"><use href="#i-arrow-l" xlink:href="#i-arrow-l"/></svg>返回对象列表</button>
+      <div class="person-head">
+        ${avHtml(person, true)}
+        <div class="info">
+          <h2>${esc(person.name)}</h2>
+          <p>${isGroup?'群聊设置 · 专属回复策略':'联系人设置 · 专属回复策略'}</p>
+        </div>
+        <div class="tags"><span class="badge ${statusCls}">${statusTxt}</span>
+        ${!masterOn?'<span class="badge o">AI 总开关已关闭</span>':''}</div>
+      </div>
+
+      <!-- 回复方式 -->
+      <div class="sec">
+        <div class="sec-head"><svg class="ic"><use href="#i-chat" xlink:href="#i-chat"/></svg>回复方式</div>
+        ${isGroup ? `
+          <div class="grp3">
+            ${optRow('atMe','@我时回复','群成员提到我时回复', obj.atMe, false)}
+            ${optRow('atAll','@所有人时回复','群成员 @所有人 时回复', obj.atAll, false)}
+            ${optRow('realtime','AI 实时回复','持续分析群消息，按需发言', obj.realtime, false, 'confirm')}
+          </div>
+          <p class="field-hint" style="margin-top:9px">实时回复会持续分析群聊消息，消息较多时增加 Token 用量，频繁自动发言存在账号风险，开启前需二次确认。</p>
+        ` : `
+          <div class="optrow">
+            <div class="tx"><b>自动回复</b><small>收到新消息时，按照下方风格和要求回复</small></div>
+            <button class="switch ${obj.enabled?'on':''}" data-k="enabled" role="switch" aria-checked="${obj.enabled}"></button>
+          </div>
+          <div class="optrow ${!obj.enabled?'dim':''}" style="margin-top:9px">
+            <div class="tx"><b>多轮交流</b><small>让对话自然延续，不打断话题</small></div>
+            <button class="switch ${obj.enabled&&obj.multi?'on':''}" data-k="multi" ${!obj.enabled?'disabled':''} role="switch" aria-checked="${obj.enabled&&obj.multi}"></button>
+          </div>
+          <div class="optrow ${!obj.enabled?'dim':''}" style="margin-top:9px">
+            <div class="tx"><b>智能判断是否回复</b><small>在合适的时候回应，避免过度打扰</small></div>
+            <button class="switch ${obj.enabled&&obj.judge?'on':''}" data-k="judge" ${!obj.enabled?'disabled':''} role="switch" aria-checked="${obj.enabled&&obj.judge}"></button>
+          </div>
+        `}
+      </div>
+
+      <!-- 聊天风格 -->
+      <div class="sec">
+        <div class="sec-head"><svg class="ic"><use href="#i-sparkle" xlink:href="#i-sparkle"/></svg>聊天风格
+          <span class="extra"><button class="btn btn-soft btn-sm" id="btnLearn"><svg class="ic"><use href="#i-brain" xlink:href="#i-brain"/></svg>学习风格与记忆</button></span>
+        </div>
+        <div class="style-box">
+          <div class="style-pick">${STYLES.map(s=>`<span class="spill ${obj.style===s?'on':''}" data-style="${esc(s)}">${esc(s)}</span>`).join('')}</div>
+          <label class="field" style="margin-bottom:0"><span style="font-size:11px;color:var(--c-text-3)">风格说明</span>
+            <textarea rows="2" data-f="styleDesc" placeholder="描述这一风格的口吻、称呼与表达习惯…">${esc(obj.styleDesc)}</textarea></label>
+        </div>
+        ${obj.learnedStyle ? `
+        <div class="learn-result">
+          <div style="font-size:11px;color:var(--c-text-3);margin-bottom:4px">已采用的学习结果</div>
+          <div class="lr-row"><span style="color:var(--c-success)"><svg class="ic sm"><use href="#i-check" xlink:href="#i-check"/></svg></span>风格：${esc(obj.learnedStyle)}</div>
+          <div class="lr-row"><span style="color:var(--c-success)"><svg class="ic sm"><use href="#i-check" xlink:href="#i-check"/></svg></span>记忆：${esc(obj.learnedMemory||'未采用记忆')}</div>
+        </div>`:''}
+      </div>
+
+      <!-- 聊天记忆 -->
+      <div class="sec">
+        <div class="sec-head"><svg class="ic"><use href="#i-brain" xlink:href="#i-brain"/></svg>聊天记忆
+          <span class="extra" style="font-size:10.5px;font-weight:400;color:var(--c-text-3)">可编辑</span></div>
+        <label class="field" style="margin-bottom:0">
+          <textarea rows="3" data-f="memory" placeholder="记录与对方的称呼、关系、偏好等关键记忆，AI 回复时参考。">${esc(obj.memory)}</textarea>
+        </label>
+      </div>
+
+      <!-- 回复要求 -->
+      <div class="sec">
+        <div class="sec-head"><svg class="ic"><use href="#i-doc" xlink:href="#i-doc"/></svg>回复要求<span class="extra" style="font-size:10.5px;font-weight:400;color:var(--c-text-3)">可选</span></div>
+        <label class="field" style="margin-bottom:0">
+          <textarea rows="3" data-f="requirement" placeholder="明确回复目的、边界或需要注意的事情…">${esc(obj.requirement)}</textarea>
+        </label>
+      </div>
+
+      <!-- 保存栏 -->
+      <div class="save-row">
+        <span class="note"><svg class="ic"><use href="#i-shield" xlink:href="#i-shield"/></svg>仅应用于当前${isGroup?'群聊':'联系人'}</span>
+        <span class="dirty-hint ${dirty?'show':''}"><svg class="ic"><use href="#i-alert" xlink:href="#i-alert"/></svg>有未保存的修改</span>
+        <button class="btn btn-primary" id="btnSave"><svg class="ic"><use href="#i-check" xlink:href="#i-check"/></svg>保存设置</button>
+      </div>
+    </section>
+  </div>`;
+
+  /* 事件绑定 */
+  c.querySelectorAll('.tabbar button').forEach(b=> b.addEventListener('click', ()=>{ curKind = b.dataset.k==='1'; curId = curKind?GROUPS[0].id:CONTACTS[0].id; renderReply(); }));
+  c.querySelector('#contactSearch').addEventListener('input', e=>{ window._cs = e.target.value; renderContactList(); });
+  c.querySelectorAll('.contact-row').forEach(r=> r.addEventListener('click', ()=>{ curId = r.dataset.id; renderReply(); }));
+  c.querySelector('#rangeSel').addEventListener('change', e=>{ RANGE = e.target.value; toast('回复范围：'+(RANGE==='all'?'所有联系人':'仅已设置回复风格的联系人')); });
+  c.querySelector('#btnBatchLearn').addEventListener('click', openBatchLearn);
+  c.querySelector('#btnLearn').addEventListener('click', openLearn);
+  c.querySelectorAll('.spill').forEach(s=> s.addEventListener('click', ()=>{ obj.style = s.dataset.style; touch(); renderReply(); }));
+  c.querySelectorAll('[data-f]').forEach(t=> t.addEventListener('input', ()=>{ obj[t.dataset.f] = t.value; touch(); }));
+  c.querySelectorAll('.switch[data-k]').forEach(s=> s.addEventListener('click', ()=>{
+    const k = s.dataset.k;
+    if(k==='realtime' && !obj.realtime){ openRealtimeConfirm(); return; }
+    obj[k] = !obj[k]; touch(); renderReply();
+  }));
+  c.querySelector('#btnSave').addEventListener('click', ()=>{ obj.dirty=false; saveObj(); toast('设置已保存'); logRecord(curObjName(), '保存回复设置'); renderReply(); });
+  c.querySelector('[data-back]')?.addEventListener('click', ()=> renderReplyMobileBack());
+}
+
+function optRow(k, title, hint, val, disabled, mode){
+  return `<div class="optrow">
+    <div class="tx"><b>${title}</b><small>${hint}</small></div>
+    <button class="switch ${val?'on':''}" ${disabled?'disabled':''} data-k="${k}" ${mode?'data-mode="'+mode+'"':''} role="switch" aria-checked="${val}"></button>
+  </div>`;
+}
+function curObjName(){ const list = curKind?GROUPS:CONTACTS; const o = list.find(x=>x.id===curId); return o?o.name:''; }
+function touch(){ objOf(curId).dirty = true; }
+function saveObj(){ localStorage.setItem('qibox-ai-preview', JSON.stringify({OBJ, MASTER, RANGE})); }
+function loadStore(){ try{ const s = JSON.parse(localStorage.getItem('qibox-ai-preview')||'{}'); if(s.OBJ) Object.assign(OBJ, s.OBJ); if(typeof s.MASTER==='boolean') MASTER = s.MASTER; if(s.RANGE) RANGE = s.RANGE; }catch(e){} }
+function logRecord(who, result, type, trigger){
+  const t = new Date();
+  RECORDS.unshift({time:`${fmt(t.getMonth()+1)}-${fmt(t.getDate())} ${fmt(t.getHours())}:${fmt(t.getMinutes())}`, who, type:type||(curKind?'群聊':'联系人'), trigger:trigger||'手动操作', result});
+  if(RECORDS.length>50) RECORDS.pop();
+}
+
+function renderContactRows(list){
+  const q = (window._cs||'').trim();
+  const rows = list.filter(o=> o.name.includes(q));
+  if(!rows.length) return '<div class="list-empty">没有找到匹配对象</div>';
+  return rows.map(o=>{
+    const st = objOf(o.id);
+    const running = o.group ? (st.realtime ? ['g','实时'] : (st.atMe||st.atAll ? ['b','已配置'] : ['o','未配置'])) : (st.enabled ? ['g','开启'] : ['o','关闭']);
+    return `<div class="contact-row ${o.id===curId?'sel':''} ${st.dirty?'dirty':''}" data-id="${o.id}">
+      ${avHtml(o)}
+      <span class="info"><b>${esc(o.name)}</b><small>${esc(o.note)}</small></span>
+      <span class="st"><span class="pdot ${running[0]}"></span>${running[1]}<span class="dirty"></span></span>
+    </div>`;
+  }).join('');
+}
+function renderContactList(){
+  const list = curKind ? GROUPS : CONTACTS;
+  $('#contactList').innerHTML = renderContactRows(list);
+  $('#contactList').querySelectorAll('.contact-row').forEach(r=> r.addEventListener('click', ()=>{ curId = r.dataset.id; renderReply(); }));
+}
+function renderReplyMobileBack(){ curKind = false; curId = CONTACTS[0].id; renderReply(); }
+
+/* ================= 实时回复确认 ================= */
+function openRealtimeConfirm(){
+  maskOpen(`
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modal-head"><h2>开启群聊实时回复？</h2><button class="x"><svg class="ic"><use href="#i-x" xlink:href="#i-x"/></svg></button></div>
+      <div class="modal-body">
+        <div class="alertbox"><svg class="ic"><use href="#i-alert" xlink:href="#i-alert"/></svg><span>AI 将持续分析群聊消息。消息较多时会增加 Token 用量和费用，频繁自动发言也存在账号风险，请确认是否开启。</span></div>
+        <div class="checkline"><input type="checkbox" id="rtAgree"><span>我已了解上述风险，确认开启该群聊的实时回复</span></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" data-close="1">取消</button>
+        <button class="btn btn-primary" id="rtOk"><svg class="ic"><use href="#i-check" xlink:href="#i-check"/></svg>确认开启</button>
+      </div>
+    </div>`);
+  $('#mask').querySelector('[data-close]').addEventListener('click', maskClose);
+  $('#mask').querySelector('#rtOk').addEventListener('click', ()=>{
+    if(!$('#rtAgree').checked){ toast('请先勾选确认已了解风险','warn'); return; }
+    objOf(curId).realtime = true; touch(); saveObj();
+    maskClose(); toast('实时回复已开启'); logRecord(curObjName(),'开启群聊实时回复','群聊'); renderReply();
+  });
+}
+
+/* ================= 学习风格与记忆 ================= */
+let learnStep = 'scope';
+function openLearn(){
+  learnStep = 'scope';
+  const obj = objOf(curId);
+  maskOpen(`
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modal-head"><h2>学习风格与记忆</h2><button class="x"><svg class="ic"><use href="#i-x" xlink:href="#i-x"/></svg></button></div>
+      <div class="modal-body" id="learnBody">
+        <p style="font-size:12.5px;color:var(--c-text-2);line-height:1.8;margin-bottom:14px">分析与「${esc(curObjName())}」的聊天，学习你的语气、称呼和表达习惯，并提取关键记忆。</p>
+        <label class="field"><span style="font-size:12px;color:var(--c-text-2)">学习范围</span>
+          <select id="learnRange"><option>最近 100 条聊天</option><option>最近 300 条聊天</option><option>全部聊天记录</option></select></label>
+        <div class="field-hint">学习结果会与当前内容对比，可分别选择采用「历史」或「替换」结果。</div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" data-close="1">取消</button>
+        <button class="btn btn-primary" id="learnGo"><svg class="ic"><use href="#i-sparkle" xlink:href="#i-sparkle"/></svg>开始学习</button>
+      </div>
+    </div>`);
+  $('#mask').querySelector('[data-close]').addEventListener('click', maskClose);
+  $('#mask').querySelector('#learnGo').onclick = ()=>{
+    const body = $('#learnBody');
+    body.innerHTML = `<div class="field-hint">正在分析聊天记录…</div><div class="progress-bar"><i id="pg"></i></div><div class="field-hint" id="pgTxt" style="text-align:right">0%</div>`;
+    $('#learnGo').disabled = true;
+    let p = 0;
+    const timer = setInterval(()=>{
+      p += 8 + Math.random()*14;
+      if(p>=100){ p=100; clearInterval(timer); showLearnResult(); return; }
+      $('#pg').style.width = p+'%';
+      $('#pgTxt').textContent = Math.round(p)+'%';
+    }, 120);
+  };
+}
+function showLearnResult(){
+  const obj = objOf(curId);
+  const histStyle = obj.style && obj.style!=='学习到的风格 1' && obj.style!=='学习到的风格 2' ? obj.style : '自然交流';
+  $('#learnBody').innerHTML = `
+    <div style="font-size:12.5px;color:var(--c-text-2);margin-bottom:12px">学习完成，请选择要采用的内容：</div>
+    <div class="sec-head" style="font-size:13px;margin-bottom:8px"><svg class="ic"><use href="#i-sparkle" xlink:href="#i-sparkle"/></svg>学习结果</div>
+    <div class="learn-result" style="margin-top:0">
+      <div class="lr-row"><span style="font-size:12px;color:var(--c-text-3);width:64px;flex-shrink:0">风格</span>
+        <label class="radio"><input type="radio" name="lr-style" value="history" checked>保留历史（${esc(histStyle)}）</label>
+        <label class="radio"><input type="radio" name="lr-style" value="replace">替换为新风格（${esc(obj.learnedStyle||'学习到的风格 1')}）</label></div>
+      <div class="lr-row"><span style="font-size:12px;color:var(--c-text-3);width:64px;flex-shrink:0">记忆</span>
+        <label class="radio"><input type="radio" name="lr-mem" value="history" checked>保留历史记忆</label>
+        <label class="radio"><input type="radio" name="lr-mem" value="replace">替换为新记忆</label></div>
+    </div>
+    <p class="field-hint" style="margin-top:10px">手动编辑过的记忆不会被重新学习静默覆盖。</p>`;
+  $('#learnGo').disabled = false;
+  $('#learnGo').innerHTML = '<svg class="ic"><use href="#i-check" xlink:href="#i-check"/></svg>学习并应用';
+  $('#learnGo').onclick = ()=>{
+    const styleChoice = document.querySelector('input[name="lr-style"]:checked').value;
+    const memChoice = document.querySelector('input[name="lr-mem"]:checked').value;
+    obj.learnedStyle = styleChoice==='replace' ? (obj.learnedStyle||'学习到的风格 1') : histStyle;
+    obj.learnedMemory = memChoice==='replace' ? '新学习到的称呼与关系记忆' : '保留原有记忆';
+    obj.style = obj.learnedStyle;
+    if(!obj.memory) obj.memory = '对方喜欢直接一点的沟通方式，称呼「老'+(curObjName().slice(0,1))+'」。';
+    touch(); saveObj(); maskClose(); toast('已应用学习结果'); logRecord(curObjName(),'学习风格与记忆'); renderReply();
+  };
+}
+
+/* ================= 批量学习 ================= */
+function openBatchLearn(){
+  maskOpen(`
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modal-head"><h2>批量学习聊天风格</h2><button class="x"><svg class="ic"><use href="#i-x" xlink:href="#i-x"/></svg></button></div>
+      <div class="modal-body">
+        <p style="font-size:12.5px;color:var(--c-text-2);line-height:1.8;margin-bottom:13px">为列表中的全部个人联系人学习专属聊天风格，学习结果保存为草稿，可逐项确认后应用。</p>
+        <div class="pick-list">${CONTACTS.map(o=>`
+          <label class="pick-item on" data-id="${o.id}"><input type="checkbox" checked>${avHtml(o)}<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(o.name)}</span></label>`).join('')}
+        </div>
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button class="btn btn-ghost btn-sm" id="blAll">全选</button>
+          <button class="btn btn-ghost btn-sm" id="blNone">取消</button>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" data-close="1">取消</button>
+        <button class="btn btn-primary" id="blGo"><svg class="ic"><use href="#i-sparkle" xlink:href="#i-sparkle"/></svg>开始批量学习</button>
+      </div>
+    </div>`);
+  $('#mask').querySelector('[data-close]').addEventListener('click', maskClose);
+  $('#blAll').addEventListener('click', ()=> $('#mask').querySelectorAll('.pick-item input').forEach(i=> i.checked=true));
+  $('#blNone').addEventListener('click', ()=> $('#mask').querySelectorAll('.pick-item input').forEach(i=> i.checked=false));
+  $('#blGo').addEventListener('click', ()=>{
+    const ids = [...$('#mask').querySelectorAll('.pick-item input:checked')].map(i=> i.closest('.pick-item').dataset.id);
+    if(!ids.length){ toast('请至少选择一个联系人','warn'); return; }
+    ids.forEach(id=>{ const o = objOf(id); o.learnedStyle = '学习到的风格 1'; o.style = '学习到的风格 1'; o.dirty = true; });
+    saveObj(); maskClose(); toast(`已为 ${ids.length} 位联系人学习风格（草稿待保存）`); renderReply();
+  });
+}
+/* ================= 主动聊天 ================= */
+const STATUS_MAP = {running:['运行中','g'], paused:['已暂停','o'], ended:['已结束','b']};
+function renderProactive(){
+  const c = $('#content');
+  c.innerHTML = `
+  <div class="page-top">
+    <h1>主动聊天</h1>
+    <button class="btn btn-ghost btn-sm" id="btnReport"><svg class="ic"><use href="#i-doc" xlink:href="#i-doc"/></svg>分析报告</button>
+    <button class="btn btn-primary" id="btnNewTask"><svg class="ic"><use href="#i-plus" xlink:href="#i-plus"/></svg>新建任务</button>
+  </div>
+  <div class="task-list" id="taskList">${renderTasks()}</div>`;
+  $('#btnNewTask').addEventListener('click', openTaskWizard);
+  $('#btnReport').addEventListener('click', openReport);
+  c.querySelectorAll('[data-task]').forEach(card=>{
+    const id = card.dataset.task;
+    card.querySelectorAll('[data-op]').forEach(b=> b.addEventListener('click', ()=>{ taskOp(id, b.dataset.op); }));
+  });
+}
+function renderTasks(){
+  if(!TASKS.length) return `<div class="card empty-state"><svg class="ic"><use href="#i-send" xlink:href="#i-send"/></svg><h3 style="font-size:14px;font-weight:600;color:var(--c-text-2)">暂无任务</h3><p>点击右上角「新建任务」，配置沟通策略后一键发起。</p></div>`;
+  return TASKS.map(t=>{
+    const [stTxt, stCls] = STATUS_MAP[t.status];
+    const people = t.people.map(id=>{ const o = [...CONTACTS,...GROUPS].find(x=>x.id===id); return o?o.name:id; }).join('、');
+    return `
+    <div class="card task-card" data-task="${t.id}">
+      <div class="tc-head">
+        <span class="badge ${stCls}">${stTxt}</span>
+        <div class="t-title">${esc(t.goal)}<small>${esc(t.category)} · 创建于 ${t.created}</small></div>
+        <button class="btn btn-danger-ghost btn-sm" data-op="del"><svg class="ic sm"><use href="#i-trash" xlink:href="#i-trash"/></svg>删除任务</button>
+      </div>
+      <div class="tc-meta">
+        <div class="m">联系人<b>${t.people.length} 位</b></div>
+        <div class="m">对象<b style="font-size:12px">${esc(people)}</b></div>
+        <div class="m">执行计划<b style="font-size:12px">${esc(t.plan)}</b></div>
+      </div>
+      <div class="tc-actions">
+        ${t.status==='running'?`<button class="btn btn-ghost btn-sm" data-op="pause"><svg class="ic"><use href="#i-pause" xlink:href="#i-pause"/></svg>暂停</button>`:''}
+        ${t.status==='paused'?`<button class="btn btn-primary btn-sm" data-op="resume"><svg class="ic"><use href="#i-play" xlink:href="#i-play"/></svg>继续</button>`:''}
+        ${t.status!=='ended'?`<button class="btn btn-ghost btn-sm" data-op="skip"><svg class="ic"><use href="#i-skip" xlink:href="#i-skip"/></svg>跳过当前任务</button>`:''}
+        ${t.status!=='ended'?`<button class="btn btn-ghost btn-sm" data-op="end"><svg class="ic"><use href="#i-x" xlink:href="#i-x"/></svg>结束</button>`:''}
+      </div>
+    </div>`;
+  }).join('');
+}
+function taskOp(id, op){
+  const t = TASKS.find(x=>x.id===id);
+  if(!t) return;
+  if(op==='del'){
+    TASKS = TASKS.filter(x=>x.id!==id);
+    toast('任务已删除'); logRecord(t.goal.slice(0,8)+'…','删除任务','联系人','主动聊天');
+  } else if(op==='pause'){ t.status='paused'; toast('任务已暂停'); logRecord(t.goal.slice(0,8)+'…','暂停任务','联系人','主动聊天'); }
+  else if(op==='resume'){ t.status='running'; toast('任务已继续'); logRecord(t.goal.slice(0,8)+'…','继续任务','联系人','主动聊天'); }
+  else if(op==='skip'){ toast('已跳过当前任务，进入下一位联系人'); logRecord(t.goal.slice(0,8)+'…','跳过当前任务','联系人','主动聊天'); }
+  else if(op==='end'){ t.status='ended'; toast('任务已结束'); logRecord(t.goal.slice(0,8)+'…','结束任务','联系人','主动聊天'); }
+  renderProactive();
+}
+
+/* ---- 新建任务向导 ---- */
+let wiz = {step:1, people:[], category:'日常问候', goal:'', content:'', allow:'', sendMode:'多轮沟通', gapMin:2, gapMax:4, waitMin:3, waitMax:5, styleSrc:'manual', styleInput:'', learnedPick:'学习到的风格 1', paste:'', styleDesc:''};
+function openTaskWizard(){
+  wiz = {step:1, people:[], category:'日常问候', goal:'', content:'', allow:'', sendMode:'多轮沟通', gapMin:2, gapMax:4, waitMin:3, waitMax:5, styleSrc:'manual', styleInput:'', learnedPick:'学习到的风格 1', paste:'', styleDesc:''};
+  maskOpen(`<div class="modal" role="dialog" aria-modal="true" style="width:min(680px,100%)">
+    <div class="modal-head"><h2>新建主动聊天任务</h2><button class="x"><svg class="ic"><use href="#i-x" xlink:href="#i-x"/></svg></button></div>
+    <div class="modal-body" id="wizBody">
+      <div class="steps" id="wizSteps"></div>
+      <div id="wizStep"></div>
+    </div>
+    <div class="modal-foot">
+      <span class="cnt" id="wizCnt" style="margin-right:auto"></span>
+      <button class="btn btn-ghost" id="wizPrev" style="display:none">上一步</button>
+      <button class="btn btn-ghost" data-close="1">取消</button>
+      <button class="btn btn-primary" id="wizNext">下一步</button>
+    </div>
+  </div>`);
+  $('#mask').querySelector('[data-close]').addEventListener('click', maskClose);
+  $('#wizPrev').addEventListener('click', ()=>{ wiz.step--; wizRender(); });
+  $('#wizNext').addEventListener('click', wizNext);
+  wizRender();
+}
+function wizStepsHtml(){
+  const names = ['选择联系人','聊天目标','内容要求','风格人设','确认发起'];
+  return names.map((n,i)=>{
+    const no = i+1;
+    const cls = no<wiz.step?'done':(no===wiz.step?'on':'');
+    return `<span class="step ${cls}"><span class="num">${no<wiz.step?'<svg class="ic sm" style="width:11px;height:11px"><use href="#i-check" xlink:href="#i-check"/></svg>':no}</span>${n}</span>`;
+  }).join('');
+}
+function wizRender(){
+  $('#wizSteps').innerHTML = wizStepsHtml();
+  $('#wizPrev').style.display = wiz.step>1 ? 'inline-flex' : 'none';
+  const next = $('#wizNext');
+  const body = $('#wizStep');
+  if(wiz.step===1){
+    next.innerHTML = '下一步';
+    body.innerHTML = `
+      <p class="field-hint" style="margin-bottom:12px">选择本次聊天的对象（支持多选）：</p>
+      <div class="pick-list" style="max-height:230px">${CONTACTS.map(o=>`
+        <label class="pick-item ${wiz.people.includes(o.id)?'on':''}" data-id="${o.id}"><input type="checkbox" ${wiz.people.includes(o.id)?'checked':''}>${avHtml(o)}<span>${esc(o.name)}</span></label>`).join('')}</div>
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button class="btn btn-ghost btn-sm" id="wpAll">全选</button>
+        <button class="btn btn-ghost btn-sm" id="wpNone">取消</button>
+        <button class="btn btn-ghost btn-sm" id="wpRefresh"><svg class="ic sm"><use href="#i-refresh" xlink:href="#i-refresh"/></svg>刷新</button>
+      </div>`;
+    $('#wpAll').addEventListener('click', ()=>{ wiz.people = CONTACTS.map(o=>o.id); wizRender(); });
+    $('#wpNone').addEventListener('click', ()=>{ wiz.people = []; wizRender(); });
+    $('#wpRefresh').addEventListener('click', ()=>{ toast('联系人列表已刷新'); });
+    body.querySelectorAll('.pick-item').forEach(p=> p.addEventListener('click', ()=>{
+      const id = p.dataset.id;
+      wiz.people = wiz.people.includes(id) ? wiz.people.filter(x=>x!==id) : [...wiz.people, id];
+      p.classList.toggle('on', wiz.people.includes(id));
+      p.querySelector('input').checked = wiz.people.includes(id);
+    }));
+  } else if(wiz.step===2){
+    body.innerHTML = `
+      <label class="field"><span>目标分类</span>
+        <select id="wGoalCat">${['日常问候','工作沟通','邀约活动','情感维系','其他'].map(x=>`<option ${wiz.category===x?'selected':''}>${x}</option>`).join('')}</select></label>
+      <label class="field"><span>目标描述<span class="req">*</span></span>
+        <textarea id="wGoal" rows="3" placeholder="例如：问候近况，了解周末是否有空一起吃饭">${esc(wiz.goal)}</textarea></label>
+      <p class="field-hint">描述越具体，AI 越能围绕目标展开自然对话。</p>`;
+  } else if(wiz.step===3){
+    body.innerHTML = `
+      <label class="field"><span>内容要求</span><textarea id="wContent" rows="2" placeholder="希望包含或避免的内容…">${esc(wiz.content)}</textarea></label>
+      <label class="field"><span>允许使用的信息</span><textarea id="wAllow" rows="2" placeholder="可提及的时间、地点、已知信息或沟通边界…">${esc(wiz.allow)}</textarea></label>
+      <label class="field"><span>发起方式</span>
+        <select id="wMode"><option ${wiz.sendMode==='单条发送'?'selected':''}>单条发送</option><option ${wiz.sendMode==='多轮沟通'?'selected':''}>多轮沟通</option></select></label>
+      <div class="range-grid">
+        <label class="field"><span>同轮间隔 · 最短（分钟）</span><input type="number" min="1" max="30" id="wGapMin" value="${wiz.gapMin}"></label>
+        <label class="field"><span>同轮间隔 · 最长（分钟）</span><input type="number" min="1" max="60" id="wGapMax" value="${wiz.gapMax}"></label>
+        <label class="field"><span>按需追问等待 · 最短（分钟）</span><input type="number" min="1" max="30" id="wWaitMin" value="${wiz.waitMin}"></label>
+        <label class="field"><span>按需追问等待 · 最长（分钟）</span><input type="number" min="1" max="60" id="wWaitMax" value="${wiz.waitMax}"></label>
+      </div>`;
+  } else if(wiz.step===4){
+    body.innerHTML = `
+      <label class="field"><span>风格来源</span>
+        <select id="wStyleSrc"><option value="manual" ${wiz.styleSrc==='manual'?'selected':''}>手动输入</option><option value="learned" ${wiz.styleSrc==='learned'?'selected':''}>选择已学习的风格</option><option value="paste" ${wiz.styleSrc==='paste'?'selected':''}>粘贴内容学习风格</option></select></label>
+      <div id="wStyleWrap"></div>
+      <label class="field" style="margin-top:14px"><span>风格描述</span><textarea id="wStyleDesc" rows="2" placeholder="描述口吻、称呼与表达习惯…">${esc(wiz.styleDesc)}</textarea></label>`;
+    const wrap = $('#wStyleWrap');
+    const renderWrap = ()=>{
+      if(wiz.styleSrc==='manual') wrap.innerHTML = `<label class="field" style="margin:12px 0 0"><span>风格内容</span><textarea id="wStyleInput" rows="2" placeholder="例如：语气轻松，喜欢用「哈」结尾，称呼对方小名…">${esc(wiz.styleInput)}</textarea></label>`;
+      else if(wiz.styleSrc==='learned') wrap.innerHTML = `<label class="field" style="margin:12px 0 0"><span>选择来源</span><select id="wLearnedPick">${STYLES.filter(s=>s.includes('学习到')).map(s=>`<option ${wiz.learnedPick===s?'selected':''}>${s}</option>`).join('')}</select></label>`;
+      else wrap.innerHTML = `<label class="field" style="margin:12px 0 0"><span>用于学习的内容</span><textarea id="wPaste" rows="2" placeholder="粘贴一段你写过的对话或文字…">${esc(wiz.paste)}</textarea></label>
+        <button class="btn btn-soft btn-sm" id="wLearnPaste" style="margin-top:9px"><svg class="ic sm"><use href="#i-brain" xlink:href="#i-brain"/></svg>学习这段风格</button>`;
+      $('#wStyleSrc').addEventListener('change', e=>{ wiz.styleSrc = e.target.value; renderWrap(); });
+      if(wiz.styleSrc==='paste') $('#wLearnPaste')?.addEventListener('click', ()=>{ wiz.paste = $('#wPaste').value; if(!wiz.paste.trim()){ toast('请先粘贴内容','warn'); return; } toast('已从内容中学习风格'); });
+    };
+    renderWrap();
+  } else {
+    const people = wiz.people.map(id=>{ const o = CONTACTS.find(x=>x.id===id); return o?o.name:id; }).join('、');
+    const styleTxt = wiz.styleSrc==='manual' ? (wiz.styleInput||'手动输入风格') : wiz.styleSrc==='learned' ? wiz.learnedPick : '粘贴内容学习风格';
+    body.innerHTML = `
+      <div class="report-out" style="background:var(--c-bg)">${[
+        ['聊天目标', `${wiz.category} · ${wiz.goal}`],
+        ['聊天对象', `${wiz.people.length} 位 · ${people}`],
+        ['发起方式', wiz.sendMode==='多轮沟通'?`多轮沟通（同轮间隔 ${wiz.gapMin}-${wiz.gapMax} 分钟，追问等待 ${wiz.waitMin}-${wiz.waitMax} 分钟）`:'单条发送'],
+        ['风格', styleTxt]
+      ].map(([k,v])=>`<b style="color:var(--c-text)">${k}</b>　${esc(v)}\n`).join('')}</div>
+      <div class="checkline" style="margin-top:14px"><input type="checkbox" id="wConfirm"><span>确认按以上策略发起聊天，AI 将按联系人设置执行。</span></div>`;
+  }
+}
+function wizNext(){
+  if(wiz.step===1){ if(!wiz.people.length){ toast('请至少选择一位联系人','warn'); return; } }
+  if(wiz.step===2){
+    const g = $('#wGoal').value.trim();
+    if(!g){ toast('请填写聊天目标','warn'); return; }
+    wiz.category = $('#wGoalCat').value; wiz.goal = g;
+  }
+  if(wiz.step===3){
+    wiz.content = $('#wContent').value; wiz.allow = $('#wAllow').value;
+    wiz.sendMode = $('#wMode').value;
+    wiz.gapMin = +$('#wGapMin').value||2; wiz.gapMax = +$('#wGapMax').value||4;
+    wiz.waitMin = +$('#wWaitMin').value||3; wiz.waitMax = +$('#wWaitMax').value||5;
+    if(wiz.gapMin>wiz.gapMax){ [wiz.gapMin,wiz.gapMax]=[wiz.gapMax,wiz.gapMin]; }
+    if(wiz.waitMin>wiz.waitMax){ [wiz.waitMin,wiz.waitMax]=[wiz.waitMax,wiz.waitMin]; }
+  }
+  if(wiz.step===4){
+    wiz.styleSrc = $('#wStyleSrc').value;
+    if(wiz.styleSrc==='manual') wiz.styleInput = $('#wStyleInput').value;
+    if(wiz.styleSrc==='learned') wiz.learnedPick = $('#wLearnedPick').value;
+    if(wiz.styleSrc==='paste') wiz.paste = $('#wPaste').value;
+    wiz.styleDesc = $('#wStyleDesc').value;
+  }
+  if(wiz.step===5){
+    if(!$('#wConfirm').checked){ toast('请确认发起策略','warn'); return; }
+    const plan = wiz.sendMode==='多轮沟通' ? `多轮沟通 · 同轮间隔 ${wiz.gapMin}-${wiz.gapMax} 分钟 · 追问等待 ${wiz.waitMin}-${wiz.waitMax} 分钟` : '单条发送';
+    TASKS.unshift({id:'t'+Date.now(), goal:wiz.goal, category:wiz.category, people:[...wiz.people], plan, status:'running', created: nowStr()});
+    logRecord(wiz.goal.slice(0,8)+'…','创建并开始任务','联系人','主动聊天');
+    maskClose(); toast('任务已创建并开始执行'); renderProactive(); return;
+  }
+  wiz.step++;
+  wizRender();
+}
+function nowStr(){ const t = new Date(); return `${fmt(t.getMonth()+1)}-${fmt(t.getDate())} ${fmt(t.getHours())}:${fmt(t.getMinutes())}`; }
+
+/* ---- 分析报告 ---- */
+function openReport(){
+  maskOpen(`
+    <div class="modal" role="dialog" aria-modal="true" style="width:min(620px,100%)">
+      <div class="modal-head"><h2>分析报告</h2><button class="x"><svg class="ic"><use href="#i-x" xlink:href="#i-x"/></svg></button></div>
+      <div class="modal-body">
+        <label class="field"><span>分析要求</span><textarea id="rpReq" rows="3" placeholder="例如：分析最近与这些联系人的沟通情况，指出哪些关系需要主动维护…"></textarea></label>
+        <label class="field"><span>选择联系人</span>
+          <select id="rpWho">${CONTACTS.map(o=>`<option>${o.name}</option>`).join('')}</select></label>
+        <div class="checkline" style="margin-bottom:12px"><input type="checkbox" id="rpText" checked><span>以文本方式输出报告</span></div>
+        <div id="rpOut"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" data-close="1">关闭</button>
+        <button class="btn btn-primary" id="rpGo"><svg class="ic"><use href="#i-brain" xlink:href="#i-brain"/></svg>生成报告</button>
+      </div>
+    </div>`);
+  $('#mask').querySelector('[data-close]').addEventListener('click', maskClose);
+  $('#rpGo').addEventListener('click', ()=>{
+    const req = $('#rpReq').value.trim() || '近期沟通情况分析';
+    const who = $('#rpWho').value;
+    $('#rpOut').innerHTML = `<div class="progress-bar"><i id="rpg" style="transition:width 1.2s"></i></div>`;
+    setTimeout(()=>{ $('#rpg').style.width='100%'; }, 60);
+    setTimeout(()=>{
+      $('#rpOut').innerHTML = `<div class="report-out">【沟通分析报告】对象：${who}
+分析范围：${req}
+
+1. 沟通频率：近 30 天共 14 次互动，其中 9 次由对方主动发起，关系热度正常。
+2. 话题偏好：围绕工作项目、周末安排为主，对方回复意愿较高。
+3. 建议：可每周主动问候一次，重要事项提前 1-2 天沟通更合适。</div>`;
+      $('#rpGo').innerHTML = '<svg class="ic"><use href="#i-brain" xlink:href="#i-brain"/></svg>重新生成';
+    }, 1400);
+  });
+}
+
+/* ================= 运行记录 ================= */
+let recFilter = {start:'', end:'', who:'', type:'', content:''};
+function renderRecords(){
+  const c = $('#content');
+  c.innerHTML = `
+  <div class="page-head"><h1>运行记录</h1><span class="sub">自动回复与主动聊天的执行情况</span></div>
+  <div class="filter-bar">
+    <label class="field"><span>开始日期</span><input type="date" id="rfStart" value="${recFilter.start}"></label>
+    <label class="field"><span>结束日期</span><input type="date" id="rfEnd" value="${recFilter.end}"></label>
+    <label class="field"><span>对象</span><select id="rfWho"><option value="">全部对象</option>${[...CONTACTS,...GROUPS].map(o=>`<option ${recFilter.who===o.name?'selected':''}>${o.name}</option>`).join('')}</select></label>
+    <div style="display:flex;flex-direction:column;gap:7px;min-width:170px">
+      <span style="font-size:11px;color:var(--c-text-2);font-weight:500">类型</span>
+      <div class="chiprow">${[['','全部'],['联系人','联系人'],['群聊','群聊']].map(([v,t])=>`<span class="chip ${recFilter.type===v?'on':''}" data-t="${v}">${t}</span>`).join('')}</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:7px;min-width:190px">
+      <span style="font-size:11px;color:var(--c-text-2);font-weight:500">内容</span>
+      <div class="chiprow">${[['','全部'],['已代发','已代发'],['需要本人处理','需要本人处理']].map(([v,t])=>`<span class="chip ${recFilter.content===v?'on':''}" data-c="${v}">${t}</span>`).join('')}</div>
+    </div>
+    <button class="btn btn-ghost btn-sm" id="rfReset"><svg class="ic sm"><use href="#i-refresh" xlink:href="#i-refresh"/></svg>清空筛选</button>
+  </div>
+  <div class="table-wrap">
+    <table><thead><tr><th style="width:110px">时间</th><th>联系人名称</th><th style="width:100px">类型</th><th style="width:150px">触发方式</th><th style="width:140px">结果</th><th style="width:110px">操作</th></tr></thead>
+    <tbody id="recBody"></tbody></table>
+    <div class="empty-state" id="recEmpty" style="display:none"><svg class="ic"><use href="#i-clock" xlink:href="#i-clock"/></svg><p>没有符合条件的运行记录</p></div>
+  </div>`;
+  $('#rfStart').addEventListener('change', e=>{ recFilter.start = e.target.value; renderRecBody(); });
+  $('#rfEnd').addEventListener('change', e=>{ recFilter.end = e.target.value; renderRecBody(); });
+  $('#rfWho').addEventListener('change', e=>{ recFilter.who = e.target.value; renderRecBody(); });
+  $('#rfReset').addEventListener('click', ()=>{ recFilter = {start:'',end:'',who:'',type:'',content:''}; renderRecords(); });
+  c.querySelectorAll('[data-t]').forEach(x=> x.addEventListener('click', ()=>{ recFilter.type = x.dataset.t; renderRecords(); }));
+  c.querySelectorAll('[data-c]').forEach(x=> x.addEventListener('click', ()=>{ recFilter.content = x.dataset.c; renderRecords(); }));
+  renderRecBody();
+}
+function renderRecBody(){
+  const rows = RECORDS.filter(r=>{
+    if(recFilter.who && r.who!==recFilter.who) return false;
+    if(recFilter.type && r.type!==recFilter.type) return false;
+    if(recFilter.content && r.result!==recFilter.content) return false;
+    if(recFilter.start || recFilter.end){
+      const d = r.time.slice(0,5);
+      if(recFilter.start && d < recFilter.start.slice(5)) return false;
+      if(recFilter.end && d > recFilter.end.slice(5)) return false;
+    }
+    return true;
+  });
+  const body = $('#recBody');
+  $('#recEmpty').style.display = rows.length ? 'none' : 'block';
+  body.innerHTML = rows.map(r=>`
+    <tr data-who="${esc(r.who)}">
+      <td style="color:var(--c-text-3)">${r.time}</td>
+      <td class="td-main">${esc(r.who)}</td>
+      <td><span class="badge b">${r.type}</span></td>
+      <td style="font-size:12px">${esc(r.trigger)}</td>
+      <td><span class="badge ${r.result==='已代发'?'g':(r.result==='需要本人处理'?'o':'b')}">${r.result}</span></td>
+      <td><button class="btn btn-ghost btn-sm" data-open="${esc(r.who)}"><svg class="ic sm"><use href="#i-chat" xlink:href="#i-chat"/></svg>打开聊天</button></td>
+    </tr>`).join('');
+  body.querySelectorAll('tr').forEach(tr=> tr.addEventListener('click', ()=>{ openRecordDetail(tr.dataset.who); }));
+  body.querySelectorAll('[data-open]').forEach(b=> b.addEventListener('click', e=>{ e.stopPropagation(); openRecordDetail(b.dataset.open); }));
+}
+function openRecordDetail(who){
+  const rec = RECORDS.find(r=>r.who===who);
+  maskOpen(`
+    <div class="modal" role="dialog" aria-modal="true" style="width:min(460px,100%)">
+      <div class="modal-head"><h2>${esc(who)}</h2><button class="x"><svg class="ic"><use href="#i-x" xlink:href="#i-x"/></svg></button></div>
+      <div class="modal-body">
+        <p class="field-hint" style="margin-bottom:14px">${rec?esc(rec.time)+' · '+esc(rec.trigger)+' · '+esc(rec.result):''}</p>
+        <div style="display:flex;flex-direction:column;gap:9px">
+          <button class="btn btn-ghost" id="rdChat"><svg class="ic"><use href="#i-chat" xlink:href="#i-chat"/></svg>打开聊天</button>
+          <button class="btn btn-ghost" id="rdContent"><svg class="ic"><use href="#i-doc" xlink:href="#i-doc"/></svg>查看聊天内容</button>
+        </div>
+        <div id="rdOut" style="margin-top:12px"></div>
+      </div>
+      <div class="modal-foot"><button class="btn btn-ghost" data-close="1">关闭</button></div>
+    </div>`);
+  $('#mask').querySelector('[data-close]').addEventListener('click', maskClose);
+  $('#rdChat').addEventListener('click', ()=>{ toast('演示中：已在微信打开与 '+who+' 的聊天'); });
+  $('#rdContent').addEventListener('click', ()=>{
+    $('#rdOut').innerHTML = `<div class="report-out">与「${who}」最近一次对话：
+AI：${who}，刚看到你发来的消息，我这边没问题，明天见！
+对方：好的，到时候见。</div>`;
+  });
+}
+
+/* ================= 模型设置 ================= */
+function renderProvider(){
+  const c = $('#content');
+  const p = provider;
+  c.innerHTML = `
+  <div class="page-head"><h1>模型设置</h1><span class="sub">连接模型服务，用于学习风格与生成回复</span></div>
+  <div class="card" style="padding:22px;max-width:780px">
+    <div class="field-grid">
+      <label class="field"><span>模型服务</span>
+        <select id="pvService"><option ${p.service==='DeepSeek'?'selected':''}>DeepSeek</option><option ${p.service==='通义千问'?'selected':''}>通义千问</option><option ${p.service==='自定义服务'?'selected':''}>自定义服务</option></select></label>
+      <label class="field"><span>接口类型</span>
+        <select id="pvKind"><option ${p.kind==='OpenAI 兼容'?'selected':''}>OpenAI 兼容</option><option ${p.kind==='Anthropic Messages'?'selected':''}>Anthropic Messages</option></select></label>
+    </div>
+    <label class="field"><span>服务地址</span><input type="url" id="pvBase" value="${esc(p.base)}" placeholder="https://你的服务地址/v1"></label>
+    <label class="field"><span>API Key</span>
+      <div style="display:flex;gap:8px"><input type="password" id="pvKey" value="${esc(p.key)}" placeholder="sk-…" style="flex:1"><button class="btn btn-ghost btn-sm" id="pvEye" style="flex-shrink:0"><svg class="ic sm"><use href="#i-eye" xlink:href="#i-eye"/></svg></button></div></label>
+    <div class="field-grid">
+      <label class="field"><span>对话模型</span>
+        <div style="display:flex;gap:8px"><input type="text" id="pvModel" value="${esc(p.model)}" placeholder="填写完整模型名称" style="flex:1"><button class="btn btn-ghost btn-sm" id="pvPull" style="flex-shrink:0"><svg class="ic sm"><use href="#i-refresh" xlink:href="#i-refresh"/></svg>拉取支持的模型</button></div></label>
+      <label class="field"><span>响应超时（秒）</span><input type="number" id="pvTimeout" min="10" max="120" value="${p.timeout}"></label>
+    </div>
+    <div id="pvModelList" style="display:none;margin-bottom:14px"></div>
+    <label class="checkline"><input type="checkbox" id="pvAgree" ${p.agree?'checked':''}><span>同意将选定聊天发送至此模型服务，用于学习风格和生成回复。</span></label>
+    <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:20px;border-top:1px solid var(--c-border);padding-top:18px">
+      <button class="btn btn-ghost" id="pvTest"><svg class="ic"><use href="#i-link" xlink:href="#i-link"/></svg>测试连接</button>
+      <button class="btn btn-primary" id="pvSave"><svg class="ic"><use href="#i-check" xlink:href="#i-check"/></svg>验证并保存</button>
+    </div>
+  </div>`;
+  const eye = $('#pvEye');
+  eye.addEventListener('click', ()=>{
+    const k = $('#pvKey');
+    const hidden = k.type==='password';
+    k.type = hidden?'text':'password';
+    eye.innerHTML = `<svg class="ic sm"><use href="#${hidden?'i-eye-off':'i-eye'}"/></svg>`;
+  });
+  $('#pvService').addEventListener('change', e=>{
+    provider.service = e.target.value;
+    if(e.target.value==='DeepSeek'){ $('#pvBase').value = 'https://api.deepseek.com/v1'; $('#pvModel').value = 'deepseek-chat'; }
+    else if(e.target.value==='通义千问'){ $('#pvBase').value = 'https://dashscope.aliyuncs.com/compatible-mode/v1'; $('#pvModel').value = 'qwen-plus'; }
+    else { $('#pvBase').value=''; $('#pvModel').value=''; }
+  });
+  $('#pvPull').addEventListener('click', ()=>{
+    const list = $('#pvModelList');
+    list.style.display = 'block';
+    const models = provider.service==='通义千问' ? ['qwen-plus','qwen-turbo','qwen-max'] : provider.service==='自定义服务' ? ['custom-chat-1','custom-chat-2'] : ['deepseek-chat','deepseek-reasoner'];
+    list.innerHTML = `<div class="field-hint" style="margin-bottom:7px">支持的模型：</div><div class="chiprow">${models.map(m=>`<span class="chip ${provider.model===m?'on':''}" data-m="${m}">${m}</span>`).join('')}</div>`;
+    list.querySelectorAll('.chip').forEach(ch=> ch.addEventListener('click', ()=>{
+      $('#pvModel').value = ch.dataset.m;
+      list.querySelectorAll('.chip').forEach(x=>x.classList.remove('on'));
+      ch.classList.add('on');
+      toast('已选择模型：'+ch.dataset.m);
+    }));
+  });
+  $('#pvTest').addEventListener('click', ()=>{
+    if(!$('#pvBase').value.trim() || !$('#pvKey').value.trim()){ toast('请先填写服务地址与 API Key','warn'); return; }
+    toast('连接测试通过（演示）'); logRecord('模型设置','测试连接通过','系统','模型设置');
+  });
+  $('#pvSave').addEventListener('click', ()=>{
+    if(!$('#pvAgree').checked){ toast('请先勾选同意条款','warn'); return; }
+    provider = {service:provider.service, kind:$('#pvKind').value, base:$('#pvBase').value.trim(), model:$('#pvModel').value.trim(), timeout:+$('#pvTimeout').value||60, agree:true, key:provider.key};
+    if(!provider.base || !provider.model){ toast('服务地址与模型不能为空','warn'); return; }
+    toast('配置已验证并保存（演示）'); logRecord('模型设置','验证并保存配置','系统','模型设置');
+  });
+}
+
+/* ================= 总开关 & 初始化 ================= */
+$('#masterSwitch').addEventListener('click', ()=>{
+  MASTER = !MASTER;
+  $('#masterSwitch').classList.toggle('on', MASTER);
+  $('#masterSwitch').setAttribute('aria-checked', MASTER);
+  $('#masterDot').classList.toggle('off', !MASTER);
+  $('#masterText').textContent = MASTER ? 'AI 已开启' : 'AI 已关闭';
+  saveObj();
+  toast(MASTER ? 'AI 总开关已开启' : 'AI 总开关已关闭（不影响已保存的对象设置）', MASTER?'':'warn');
+  render();
+});
+document.getElementById('navAccount')?.addEventListener('click', ()=> toast('演示中：当前微信账号为演示数据'));
+function init(){
+  loadStore();
+  $('#masterSwitch').classList.toggle('on', MASTER);
+  $('#masterSwitch').setAttribute('aria-checked', MASTER);
+  $('#masterDot').classList.toggle('off', !MASTER);
+  $('#masterText').textContent = MASTER ? 'AI 已开启' : 'AI 已关闭';
+  render();
+}
+init();
+</script>
+</body>
+</html>

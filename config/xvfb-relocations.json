@@ -1,0 +1,40 @@
+{
+  "x64": {
+    "sourceSha256": "6eda36f0c84969a0fbe3f411c4a16521620db8a16c13defbee690cad86bd9ef8",
+    "legacySha256": "b7333c926fd9a1bdb3b8af64b38bf833b5c4544c0ba4e22d9cbeba0235a36cf4",
+    "sha256": "a2b6935776ef52acf4bb8d6102eae2acf121e7b75bdaa9089d55b9d6ac28dd2e",
+    "patches": [
+      {
+        "purpose": "xkbcomp directory relative to the private session",
+        "offset": 1674868,
+        "before": "2f7573722f62696e00",
+        "after": "2e0000000000000000"
+      },
+      {
+        "purpose": "keyboard output relative to the private session",
+        "offset": 1074632,
+        "before": "2f746d70",
+        "after": "2e2f2e2f"
+      }
+    ]
+  },
+  "arm64": {
+    "sourceSha256": "15965f9329dc7677a57e4417df8e93ba8d60a243365855599996b16bcf900aa0",
+    "legacySha256": "e15d8672f4bc0d37283919eb2674efbb062e42c2c0cf52989cdffdfffc117942",
+    "sha256": "9af299f38ca73ea3393add43450bb0cc9081aa142c561ee722d539d757aab241",
+    "patches": [
+      {
+        "purpose": "xkbcomp directory relative to the private session",
+        "offset": 1680776,
+        "before": "2f7573722f62696e00",
+        "after": "2e0000000000000000"
+      },
+      {
+        "purpose": "keyboard output relative to the private session",
+        "offset": 1684728,
+        "before": "2f746d702f00",
+        "after": "2e2f00000000"
+      }
+    ]
+  }
+}

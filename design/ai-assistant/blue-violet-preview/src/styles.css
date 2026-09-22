@@ -1,0 +1,33 @@
+@import url('./theme.css');
+
+/* Readable supporting text and a complete first desktop screen. */
+.help,.option-row small,.person-heading p,.contact-row small{font-size:12px;color:#7b829a}
+.field-footer,.save-row>span,.contact-footer label{color:#8088a1;font-size:11px}
+.contact-tabs button,.option-row,.style-controls select,.requirements textarea{font-size:14px}
+.tag{font-size:11px;color:#5365bd}
+@media(min-width:1201px) and (max-width:1799px){
+ .topbar{height:72px}.page-content{padding-top:26px}
+ .hero{min-height:138px;padding:24px 32px;margin-bottom:22px}
+ .setting-section{margin-top:20px}.person-heading{padding-bottom:18px}
+ .save-row{margin-top:18px;padding:15px 0}.child-options{margin-top:14px}
+ .requirements textarea{min-height:88px}
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+.mobile-prototype {
+  width: min(100vw, 390px);
+  height: min(100dvh, 844px);
+  margin-inline: auto;
+  overflow: hidden;
+  position: relative;
+}

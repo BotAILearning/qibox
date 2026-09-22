@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f5f7f5"><title>栖盒</title><link rel="icon" href="./icon.png"><link rel="stylesheet" href="./style.css"><link rel="stylesheet" href="./ai-workspace.css"><script type="module" src="./app.js"></script></head>
+<body>
+  <header class="topbar"><a class="brand" href="./"><img src="./icon.png" alt="" width="32" height="32"><span>栖盒</span></a></header>
+  <main class="content">
+    <div id="connection-error" class="connection-error" role="status" hidden></div>
+    <h1 class="sr-only">栖盒应用中心</h1>
+    <div class="workspace">
+      <section id="store-panel" class="market-panel" aria-labelledby="market-title">
+        <div class="panel-heading"><h2 id="market-title">精选应用</h2></div>
+        <div id="catalog-list" class="catalog-list"></div>
+      </section>
+      <section id="mine-panel" class="desktop-panel pc-only" aria-labelledby="desktop-title">
+        <div class="panel-heading"><h2 id="desktop-title">桌面</h2><span id="desktop-count"></span></div>
+        <div id="instances" class="instance-grid"></div>
+        <div id="empty-state" class="empty-state"><svg viewBox="0 0 48 48" aria-hidden="true"><rect x="7" y="8" width="34" height="24" rx="4"/><path d="M17 40h14M24 32v8"/></svg><p>从左侧精选应用添加到桌面</p></div>
+      </section>
+    </div>
+    <section id="mobile-ai" class="mobile-only" aria-label="微信 AI 辅助" hidden><h2>AI 辅助</h2><p>登录微信后，可在这里管理回复设置与聊天任务。</p><div id="mobile-ai-list"></div></section>
+    <footer><span id="version">栖盒</span><a href="./privacy.html" target="_blank" rel="noopener">隐私政策</a><a href="./terms.html" target="_blank" rel="noopener">用户协议</a></footer>
+  </main>
+  <dialog id="modal"><form id="modal-form"><div class="modal-heading"><h2 id="modal-title"></h2><button type="button" class="icon-button" id="modal-close" aria-label="关闭">×</button></div><div id="modal-body"></div><p id="modal-error" role="alert" hidden></p><div id="modal-actions" class="modal-actions"></div></form></dialog>
+  <section id="desktop-view" hidden><header class="desktop-bar"><button id="desktop-back" class="secondary">← 返回栖盒</button><strong id="desktop-name">微信</strong><div><button id="desktop-reconnect" class="quiet">连接微信</button><button id="desktop-fullscreen" class="quiet">全屏</button></div></header><div id="desktop-body">
+  <aside id="ai-rail" aria-label="AI 辅助" hidden><button type="button" id="ai-open" aria-expanded="false" aria-controls="ai-panel"><strong aria-hidden="true">AI</strong><span>AI 辅助</span></button><label class="ai-outer-master"><input type="checkbox" role="switch" data-ai-setting="enabled" aria-label="AI 总开关"><span>AI 总开关</span></label></aside>
+  <aside id="ai-panel" aria-labelledby="ai-title" hidden>
+    <div class="ai-panel-heading"><div class="ai-breadcrumb"><span>AI 辅助</span><span aria-hidden="true">/</span><h2 id="ai-title">自动回复</h2></div><div class="ai-heading-actions"><span id="ai-account-label"></span><label class="ai-header-master"><input type="checkbox" role="switch" data-ai-panel-master aria-label="AI 总开关"><span id="ai-panel-master-label">AI 已关闭</span></label><button type="button" class="quiet" data-ai-nav="settings">高级设置</button><button type="button" id="ai-model-settings" class="quiet" data-ai-nav="provider">模型设置</button><button type="button" id="ai-close" class="icon-button" aria-label="收起 AI 辅助">×</button></div></div>
+    <p id="ai-feedback" role="status" hidden></p><div id="ai-operation" hidden><span id="ai-operation-text"></span><button type="button" class="quiet" data-ai-action="cancel">取消操作</button></div>
+    <div id="ai-content"></div>
+  </aside><div id="desktop-screen"><div id="remote-canvas"></div><textarea id="native-input" aria-label="微信文字输入" autocomplete="off" autocapitalize="off" spellcheck="false" hidden></textarea><section id="input-recovery" class="input-recovery" hidden><p>输入未完成，请先核对微信草稿。下方保留的文字可选中复制。</p><textarea id="input-recovery-text" aria-label="保留的输入文字" readonly></textarea><div><button type="button" id="input-recovery-select" class="secondary">选中文字</button><button type="button" id="input-recovery-done" class="primary">已核对，继续输入</button></div></section><div id="desktop-status" role="status">正在连接微信…</div><div id="file-transfer" hidden><div class="file-transfer-card"><p data-file-status role="status">选择要发送的文件</p><input data-file-name aria-label="保存文件名" maxlength="240" hidden><p data-file-destination-help hidden>选择 NAS 文件夹或当前设备的保存位置。浏览器不支持位置选择时，将使用浏览器下载设置。</p><progress max="100" aria-label="文件传输进度" hidden></progress><div><button type="button" data-file-cancel class="secondary">取消</button><button type="button" data-file-nas class="secondary" hidden>选择 NAS 文件</button><button type="button" data-file-choose class="primary">选择本地文件</button></div></div></div></div></div></section>
+  <div id="toast" role="status" hidden></div><input id="package-file" type="file" accept=".deb" hidden><input id="chat-file" type="file" hidden>
+</body></html>
