@@ -20,7 +20,7 @@ export function dateRange(value = {}) {
 // live, and re-reading only made the window longer. The bridge now returns one
 // globally ordered, bounded result, so validate that result in one pass.
 export async function readStableRange(bridge, args, check = () => args.signal?.throwIfAborted()) {
-  const limit = 30000;
+  const limit = 150000;
   check();
   const { cursor: _cursor, ...request } = args;
   const page = await bridge.readRange(request);

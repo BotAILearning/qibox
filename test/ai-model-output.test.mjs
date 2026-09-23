@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { messageSegments, generationProtocol, learningPrompt, batchLearningPrompt } from '../server/ai-prompts.mjs';
-import { memoryLearningPrompt } from '../server/ai-wiki.mjs';
+import { messageSegments, generationProtocol, learningPrompt, batchLearningPrompt, learningWithMemoryPrompt, batchLearningWithMemoryPrompt } from '../server/ai-prompts.mjs';
+import { memoryLearningPrompt, memoryPrompt } from '../server/ai-wiki.mjs';
 
 // 真机实测（2026-09-22，MiniMax-M3）：自动回复里模型把不需要的字段也写进 JSON，
 // 例如 {"action":"send","text":"…","segments":null}。旧逻辑按"字段是否出现"判断，
@@ -58,4 +58,23 @@ test('提示词对返回结构有明确约定，对正文写法不做格式化�
     assert.match(prompt, /只返回 JSON/);
   }
   assert.match(batchLearningPrompt, /profiles 的长度必须与输入 conversations 的长度完全一致/);
+});
+
+test('记忆学习覆盖全部材料、筛掉寒暄占位并允许空 entries', () => {
+  for (const prompt of [memoryLearningPrompt, memoryPrompt]) {
+    assert.match(prompt, /全部聊天材料/);
+    assert.match(prompt, /好友验证/);
+    assert.match(prompt, /问候寒暄/);
+    assert.match(prompt, /链接.*占位文本/);
+    assert.match(prompt, /稳定偏好.*关系信息.*重要事件.*已确认约定/);
+    assert.match(prompt, /多条互不重复的事实分别写成条目/);
+    assert.match(prompt, /不凑数量.*不编造/);
+    assert.match(prompt, /entries/);
+  }
+  assert.match(memoryLearningPrompt, /"entries":\[\]/);
+  for (const prompt of [learningWithMemoryPrompt, batchLearningWithMemoryPrompt]) {
+    assert.doesNotMatch(prompt, /memoryMaterial/);
+    assert.match(prompt, /entries 可以为空/);
+    assert.doesNotMatch(prompt, /不要写成 null、空字符串或空数组/);
+  }
 });

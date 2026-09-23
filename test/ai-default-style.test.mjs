@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { AIAssistant } from '../server/ai-service.mjs';
-import { AIModelFixture, ChatFixture, modelConfig, key } from './ai-fixtures.mjs';
+import { AIModelFixture, ChatFixture, modelConfig, key, learnedStyle } from './ai-fixtures.mjs';
 import { temp, cleanup } from './fixtures.mjs';
 
 async function fixture(t, count = 3) {
@@ -17,19 +17,21 @@ async function fixture(t, count = 3) {
   return { a, bridge, provider, root, contacts: bridge.contacts.map(c => c.id) };
 }
 
-test('default style learning combines selected chats into one account-level style without profiles', async t => {
+test('default style learns each selected chat then combines once without profiles', async t => {
   const { a, bridge, provider, contacts } = await fixture(t, 5);
-  let reads = 0; const read = bridge.read.bind(bridge);
-  bridge.read = async value => { reads++; return read(value); };
-  provider.next = async input => ({ style: { summary: '自然简洁，常用短句。' } });
+  let reads = 0; const read = bridge.readRange.bind(bridge);
+  bridge.readRange = async value => { reads++; return read(value); };
+  provider.next = async () => ({ style: learnedStyle('自然简洁，常用短句。') });
   await a.learn({ contacts: contacts.slice(0, 3), asDefault: true, perspective: 'self' });
-  assert.equal(reads, 3); assert.equal(provider.calls.length, 1);
-  const { input, system } = provider.calls[0];
-  assert.equal(input.styleOwner, 'self'); assert.equal(input.defaultStyle, true);
-  assert.deepEqual(input.conversations.map(c => c.contact), contacts.slice(0, 3));
-  assert.match(system, /综合成一份通用风格总结/);
+  assert.equal(reads, 3); assert.equal(provider.calls.length, 4);
+  assert.deepEqual(provider.calls.slice(0, 3).map(c => c.input.contact), contacts.slice(0, 3));
+  assert.ok(provider.calls.slice(0, 3).every(c => c.input.styleOwner === 'self' && c.input.defaultStyle));
+  const { input, system } = provider.calls.at(-1);
+  assert.deepEqual(input.profiles.map(c => c.contact), contacts.slice(0, 3));
+  assert.ok(input.profiles.every(p => ['language','rhythm','interaction','emotion','role'].every(k => typeof p.style[k] === 'string')));
+  assert.match(system, /提炼跨联系人一致的表达习惯/);
   const learned = a.publicState().learnedDefaultStyle;
-  assert.ok(learned); assert.equal(learned.style.summary, '自然简洁，常用短句。');
+  assert.ok(learned); assert.match(learned.style.summary, /汇总后保持自然简洁/);
   assert.equal(learned.perspective, 'self'); assert.equal(learned.source, 'learned');
   assert.deepEqual(learned.contacts, contacts.slice(0, 3));
   assert.equal(a.profiles().length, 0);
@@ -40,7 +42,7 @@ test('default style learning combines selected chats into one account-level styl
 
 test('default style learning honors the other-party perspective and requires their speech', async t => {
   const { a, bridge, provider, contacts } = await fixture(t, 3);
-  provider.next = async () => ({ style: { summary: '对方爱用表情包，句子简短。' } });
+  provider.next = async () => ({ style: learnedStyle('对方爱用表情包，句子简短。') });
   await a.learn({ contacts: contacts.slice(0, 2), asDefault: true, perspective: 'other' });
   const { input } = provider.calls[0];
   assert.equal(input.styleOwner, 'other');
@@ -53,20 +55,20 @@ test('default style learning honors the other-party perspective and requires the
   await assert.rejects(a.learn({ contacts: [contacts[0]], asDefault: true, perspective: 'self' }), /没有你的发言/);
 });
 
-test('default style learning rejects more than five contacts before reading', async t => {
+test('default style learning processes more than five contacts without a count cap', async t => {
   const { a, bridge, provider, contacts } = await fixture(t, 6);
-  bridge.read = async () => assert.fail('oversized default learning read chats');
-  await assert.rejects(a.learn({ contacts, asDefault: true }), /最多学习 5/);
-  assert.equal(provider.calls.length, 0);
-  assert.equal(a.publicState().learnedDefaultStyle, null);
+  await a.learn({ contacts, asDefault: true });
+  assert.equal(provider.calls.length, 7);
+  assert.deepEqual(provider.calls.slice(0, 6).map(c => c.input.contact), contacts);
+  assert.equal(a.publicState().learnedDefaultStyle.contacts.length, 6);
 });
 
 test('pasted chat can update the default style without creating a profile', async t => {
   const { a, provider } = await fixture(t, 1);
-  provider.next = async () => ({ style: { summary: '粘贴得到的默认口吻。' } });
+  provider.next = async () => ({ style: learnedStyle('粘贴得到的默认口吻。') });
   await a.learn({ text: '我：在吗？\n对方：在呀', asDefault: true, perspective: 'self' });
   const learned = a.publicState().learnedDefaultStyle;
-  assert.ok(learned); assert.equal(learned.source, 'paste'); assert.equal(learned.style.summary, '粘贴得到的默认口吻。');
+  assert.ok(learned); assert.equal(learned.source, 'paste'); assert.match(learned.style.summary, /粘贴得到的默认口吻/);
   assert.deepEqual(learned.contacts, []);
   assert.equal(a.profiles().length, 0);
 });
@@ -75,12 +77,12 @@ test('default style can be edited and cleared; ordinary learning leaves it untou
   const { a, provider, contacts } = await fixture(t, 3);
   assert.equal(a.publicState().learnedDefaultStyle, null);
   // 普通学习不产生默认风格
-  provider.next = async () => ({ style: { summary: '按联系人学习。' } });
+  provider.next = async () => ({ style: learnedStyle('按联系人学习。') });
   await a.learn({ contacts: [contacts[0]] });
   assert.equal(a.publicState().learnedDefaultStyle, null);
   assert.equal(a.profiles().length, 1);
   // 学习默认风格后可编辑
-  provider.next = async () => ({ style: { summary: '初版默认风格。' } });
+  provider.next = async () => ({ style: learnedStyle('初版默认风格。') });
   await a.learn({ contacts: contacts.slice(0, 2), asDefault: true });
   await a.saveDefaultStyle({ summary: '修改后的默认风格。' });
   assert.equal(a.publicState().learnedDefaultStyle.style.summary, '修改后的默认风格。');
@@ -94,10 +96,10 @@ test('default style can be edited and cleared; ordinary learning leaves it untou
 
 test('applying the default style refreshes only the objects on the default style and keeps others following', async t => {
   const { a, provider, contacts } = await fixture(t, 3);
-  provider.next = async () => ({ style: { summary: '账号级默认风格。' } });
+  provider.next = async () => ({ style: learnedStyle('账号级默认风格。') });
   await a.learn({ contacts: contacts.slice(0, 2), asDefault: true });
   await a.settings({ enabled: true, reply: true, replyScope: 'all' });
-  provider.next = async () => ({ style: { summary: '联系人自己的风格。' } });
+  provider.next = async () => ({ style: learnedStyle('联系人自己的风格。') });
   await a.learn({ contacts: [contacts[0]] });
   const own = () => a.profiles().find(p => p.contact === contacts[0]);
   const plain = () => a.profiles().find(p => p.contact === contacts[1]);
@@ -105,7 +107,7 @@ test('applying the default style refreshes only the objects on the default style
   // 「默认风格」只有一套：账号级默认风格更新后，选择默认风格的对象立即跟随
   await a.saveDefaultStyle({ summary: '更新后的默认风格。' });
   assert.equal(a.generationStyle(plain(), {}, 'reply').summary, '更新后的默认风格。');
-  assert.equal(a.generationStyle(own(), {}, 'reply').summary, '联系人自己的风格。');
+  assert.match(a.generationStyle(own(), {}, 'reply').summary, /联系人自己的风格/);
   const before = { replyTargets: [...a.data.replyTargets], settings: structuredClone(a.data.settings) };
   const result = await a.applyDefaultStyle();
   // 只有使用默认风格的两个对象被刷新
@@ -115,8 +117,8 @@ test('applying the default style refreshes only the objects on the default style
   assert.equal(plain().defaultStyle, undefined);
   // 已选择其他聊天风格的对象不受影响
   assert.equal(own().styleId, 'learned');
-  assert.equal(own().style.summary, '联系人自己的风格。');
-  assert.equal(own().learnedStyle.summary, '联系人自己的风格。');
+  assert.match(own().style.summary, /联系人自己的风格/);
+  assert.match(own().learnedStyle.summary, /联系人自己的风格/);
   assert.deepEqual(a.data.replyTargets, before.replyTargets);
   assert.deepEqual(a.data.settings, before.settings);
   // 与默认风格内容一致时保存仍按「默认风格」处理；改过内容才固化为对象自己的【自定义】风格
@@ -133,33 +135,33 @@ test('cancelling a default style learning restores the previous one; saving comm
   const { a, provider, contacts } = await fixture(t, 3);
   assert.equal(a.publicState().defaultStyleUndoable, false);
   // 第一次学习时学习前没有默认风格，取消即回到「未设置默认风格」
-  provider.next = async () => ({ style: { summary: '第一版默认风格。' } });
+  provider.next = async () => ({ style: learnedStyle('第一版默认风格。') });
   await a.learn({ contacts: contacts.slice(0, 2), asDefault: true, perspective: 'other' });
   assert.equal(a.publicState().defaultStyleUndoable, true);
   assert.equal((await a.cancelDefaultStyle()).defaultStyleCancelled, 'cleared');
   assert.equal(a.publicState().learnedDefaultStyle, null);
   assert.equal(a.publicState().defaultStyleUndoable, false);
   // 学习前已有默认风格时，取消整份还原（含来源、方向、学习时间等元信息）
-  provider.next = async () => ({ style: { summary: '第一版默认风格。' } });
+  provider.next = async () => ({ style: learnedStyle('第一版默认风格。') });
   await a.learn({ contacts: contacts.slice(0, 2), asDefault: true, perspective: 'other' });
   const first = structuredClone(a.publicState().learnedDefaultStyle);
-  provider.next = async () => ({ style: { summary: '第二版默认风格。' } });
+  provider.next = async () => ({ style: learnedStyle('第二版默认风格。') });
   await a.learn({ contacts: [contacts[1]], asDefault: true, perspective: 'self' });
-  assert.equal(a.publicState().learnedDefaultStyle.style.summary, '第二版默认风格。');
+  assert.match(a.publicState().learnedDefaultStyle.style.summary, /第二版默认风格/);
   assert.equal((await a.cancelDefaultStyle()).defaultStyleCancelled, 'reverted');
   assert.deepEqual(a.publicState().learnedDefaultStyle, first);
   // 保存 = 保存说明 + 应用到聊天风格一步完成，并结束可撤销状态；联系人自己的风格不受影响
   await a.settings({ enabled: true, reply: true, replyScope: 'all' });
-  provider.next = async () => ({ style: { summary: '联系人自己的风格。' } });
+  provider.next = async () => ({ style: learnedStyle('联系人自己的风格。') });
   await a.learn({ contacts: [contacts[0]] });
   const own = () => a.profiles().find(p => p.contact === contacts[0]);
-  assert.equal(own().style.summary, '联系人自己的风格。');
+  assert.match(own().style.summary, /联系人自己的风格/);
   const saved = await a.commitDefaultStyle({ summary: '保存后的默认风格。' });
   assert.ok(saved.appliedDefaultStyle >= 1);
   assert.equal(a.publicState().learnedDefaultStyle.style.summary, '保存后的默认风格。');
   assert.equal(a.publicState().learnedDefaultStyle.perspective, 'other');
   assert.equal(a.publicState().defaultStyleUndoable, false);
-  assert.equal(own().style.summary, '联系人自己的风格。');
+  assert.match(own().style.summary, /联系人自己的风格/);
   // 保存过之后再取消即清除默认风格
   assert.equal((await a.cancelDefaultStyle()).defaultStyleCancelled, 'cleared');
   assert.equal(a.publicState().learnedDefaultStyle, null);
@@ -167,7 +169,7 @@ test('cancelling a default style learning restores the previous one; saving comm
 
 test('untouched default profiles fall back to the learned default style at generation time', async t => {
   const { a, provider, contacts } = await fixture(t, 3);
-  provider.next = async () => ({ style: { summary: '账号级默认风格。' } });
+  provider.next = async () => ({ style: learnedStyle('账号级默认风格。') });
   await a.learn({ contacts: contacts.slice(0, 2), asDefault: true });
   const learned = a.publicState().learnedDefaultStyle.style;
   await a.settings({ enabled: true, reply: true, replyScope: 'all' });
@@ -175,9 +177,9 @@ test('untouched default profiles fall back to the learned default style at gener
   assert.ok(fallback);
   assert.equal(a.generationStyle(fallback, {}, 'reply'), learned);
   // 该联系人随后单独学习后，不再回退到默认风格
-  provider.next = async () => ({ style: { summary: '本人风格。' } });
+  provider.next = async () => ({ style: learnedStyle('本人风格。') });
   await a.learn({ contacts: [fallback.contact] });
   const own = a.profiles().find(p => p.contact === fallback.contact);
-  assert.equal(own.style.summary, '本人风格。');
+  assert.match(own.style.summary, /本人风格/);
   assert.equal(a.generationStyle(own, {}, 'reply'), own.style);
 });

@@ -16,20 +16,34 @@ async function fixture(t, kind = 'person') {
   t.after(async () => { await a.close(); await cleanup(root); });
   return { bridge, a, profile: () => a.profiles().find(p => p.contact === bridge.contacts[0].id) };
 }
+
+test('legacy pause migration clears only obsolete states and preserves explicit stops', async t => {
+  const f = await fixture(t, 'person'), profile = f.profile();
+  const legacy = { ...profile, paused: true, pauseReason: 'handoff', handoffReason: 'file', handoffMessageId: 'old-message' };
+  assert.equal(f.a.dropLegacyPause(legacy), true);
+  assert.equal(legacy.paused, false);
+  for (const reason of ['explicit', 'limit', 'stop']) {
+    const deliberate = { ...profile, paused: true, pauseReason: reason, manualPause: true };
+    assert.equal(f.a.dropLegacyPause(deliberate), false, `${reason} is a deliberate pause`);
+    assert.equal(deliberate.paused, true);
+    assert.equal(f.a.resumeForSavedReply(deliberate), false, `${reason} survives saving settings`);
+    assert.equal(deliberate.paused, true);
+  }
+});
 // 复用真实暂停形态：交接需要本人处理时写入 handoffReason，普通暂停只写 pauseReason。
 const pause = (profile, reason = 'handoff') => {
   profile.paused = true; profile.pauseReason = reason; profile.pausedAt = 1700000000000;
   if (reason === 'handoff') profile.handoffReason = 'file';
 };
 
-test('person: saving settings with auto reply on clears paused, including handoff', async t => {
+test('person: saving settings with auto reply on preserves handoff until explicit review', async t => {
   const f = await fixture(t, 'person'), contact = f.profile().contact;
   pause(f.profile());
   await f.a.saveReplyProfile({ contact, style: f.profile().style, styleId: 'custom', replyEnabled: true, strategy: {} });
   const saved = f.profile();
-  assert.equal(saved.paused, false);
-  assert.equal(saved.pauseReason, undefined);
-  assert.equal(saved.handoffReason, undefined);
+  assert.equal(saved.paused, true);
+  assert.equal(saved.pauseReason, 'handoff');
+  assert.equal(saved.handoffReason, 'file');
   assert.equal(f.a.replySelected(saved), true);
 });
 
@@ -48,13 +62,13 @@ test('person: saving only style or strategy does not resume a paused contact', a
   assert.equal(f.profile().paused, true);
 });
 
-test('group: saving settings with a reply trigger on clears paused', async t => {
+test('group: saving settings with a reply trigger on preserves handoff until explicit review', async t => {
   const f = await fixture(t, 'group'), contact = f.profile().contact;
   pause(f.profile());
   await f.a.setGroupOptions({ contact, atMe: true, atAll: false, realtime: false });
   const saved = f.profile();
-  assert.equal(saved.paused, false);
-  assert.equal(saved.handoffReason, undefined);
+  assert.equal(saved.paused, true);
+  assert.equal(saved.handoffReason, 'file');
   assert.equal(f.a.replySelected(saved), true);
 });
 

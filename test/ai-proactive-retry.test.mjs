@@ -88,3 +88,32 @@ test('an unconfirmed send never auto-retries', async t => {
   tasks.reviveRetryable(task);
   assert.equal(item.status, 'uncertain');
 });
+
+test('pausing and resuming a retryable recurring task preserves its next occurrence without replaying the failed run', async t => {
+  const { a, bridge } = await fixture(t);
+  const task = await create(a, bridge, { schedule: { cycle: 'daily', mode: 'fixed', time: '12:00' } });
+  const item = { ...a.proactiveV2.item(task.contacts[0]), status: 'failed', attempts: 1 };
+  task.run = { id: 'failed-run', at: a.now(), occurrenceDate: '2026-09-17', schedule: structuredClone(task.schedule), items: [item] };
+  a.proactiveV2.settle(task);
+  const nextAt = task.nextAt, completedAt = task.run.completedAt;
+  await a.proactiveTaskAction({ command: 'pause', id: task.id });
+  await a.proactiveTaskAction({ command: 'resume', id: task.id });
+  assert.equal(task.status, 'running');
+  assert.equal(task.nextAt, nextAt);
+  assert.equal(task.run.completedAt, completedAt);
+  assert.equal(item.status, 'failed');
+  await a.tick();
+  assert.equal(bridge.sent.length, 0);
+});
+
+test('pause does not let resume bypass uncertain receipts or exhausted retries', async t => {
+  const { a, bridge } = await fixture(t);
+  for (const [status, attempts] of [['uncertain', 1], ['failed', 3]]) {
+    const task = await create(a, bridge, { schedule: { cycle: 'daily', mode: 'fixed', time: '12:00' } });
+    task.run = { id: status, at: a.now(), occurrenceDate: '2026-09-17', schedule: structuredClone(task.schedule), items: [{ ...a.proactiveV2.item(task.contacts[0]), status, attempts }] };
+    a.proactiveV2.settle(task);
+    await a.proactiveTaskAction({ command: 'pause', id: task.id });
+    await assert.rejects(a.proactiveTaskAction({ command: 'resume', id: task.id }), /重试|核对/);
+    assert.equal(task.status, 'paused');
+  }
+});

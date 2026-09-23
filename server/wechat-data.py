@@ -61,11 +61,11 @@ RECENT_REPLY_MESSAGES = 50
 RECENT_REPLY_SCAN = 300
 # A range read is one globally ordered snapshot. Keep one extra metadata row so
 # the caller can distinguish exactly 30,000 messages from a larger range.
-RANGE_MAX_MESSAGES = 30000
+RANGE_MAX_MESSAGES = 150000
 # The worker's line protocol has a 12 MiB ceiling. Range reads are allowed to
 # use that transport budget, with a small margin for the JSON envelope; plain
 # reads continue to use their existing 80 KiB response budget below.
-RANGE_OUTPUT_BYTES = 11 * 1024 * 1024
+RANGE_OUTPUT_BYTES = 48 * 1024 * 1024
 
 
 class ScanBudget(Exception):
@@ -623,15 +623,16 @@ def messages(db, shard, account, contact, self_name, target, selected=None, meta
         # addressable, but never let an unresolved sender become a reply
         # trigger or be mistaken for the logged-in account.
         direction = 'system' if kind in (10000, 10002) else ('self' if sender_name == self_name else 'other' if known_other else 'system' if group else None)
-        parsed, unparsable = True, False
+        parsed, unparsable, text_truncated = True, False, False
         try:
             if direction is None:
                 raise ValueError('unknown message sender')
             content = decode(content, compressed)
             if group and sender_name and content.startswith(sender_name + ':\n'): content = content[len(sender_name) + 2:]
             text = message_text(content, kind)
-            if utf16_length(text) > 20000:
-                raise ValueError('message too long')
+            if len(text) > 150000:
+                text = text[:150000]
+                text_truncated = True
             if kind == 3: image_ref = images.image_reference(content)
         except (ValueError, ET.ParseError):
             # An unreadable body keeps its identity and ordering so pagination
@@ -650,6 +651,7 @@ def messages(db, shard, account, contact, self_name, target, selected=None, meta
                        'text': text, 'timestamp': timestamp, '_order': (timestamp, order, shard_number, local),
                        '_dedup': f'server:{remote}' if remote else identity})
         if unparsable: result[-1]['_unparsable'] = True
+        if text_truncated: result[-1]['_text_truncated'] = True
         if kind == 3 and parsed:
             result[-1]['type'] = 'image'
             result[-1]['_image'] = image_ref
@@ -1151,8 +1153,11 @@ def execute(request, pid, home, check, cache=None):
                 counted = 0
                 for message in iterable:
                     public = {k: v for k, v in message.items() if not k.startswith('_')}
-                    if bounds and isinstance(public.get('text'), str) and len(public['text']) > 20000:
-                        public = {**public, 'text': public['text'][:20000]}
+                    if bounds and message.get('_text_truncated'):
+                        truncated = True
+                        truncated_reasons.add('message_length')
+                    if bounds and isinstance(public.get('text'), str) and len(public['text']) > 150000:
+                        public = {**public, 'text': public['text'][:150000]}
                         truncated = True
                         truncated_reasons.add('message_length')
                     encoded = json.dumps(public, ensure_ascii=False, separators=(',', ':'))

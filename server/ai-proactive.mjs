@@ -2,12 +2,13 @@ import { createHash, randomUUID } from 'node:crypto';
 import { AppError } from './files.mjs';
 import { defaultStyle, textField } from './ai-schema.mjs';
 import { messageSegments } from './ai-prompts.mjs';
+import { stripUnauthorizedProactiveVocatives } from './ai-reply-rules.mjs';
 import { proactiveSchedule, nextProactiveOccurrence, proactiveOccurrenceDeadline } from './ai-proactive-schedule.mjs';
 
 const terminal = new Set(['sent', 'skipped', 'failed', 'uncertain', 'cancelled', 'reviewed']);
 // Recipients who failed inside one occurrence are re-queued for the next one.
 // The cap stops a recurring task from retrying forever against someone whose
-// chat can never be read, while a manual reply or a handoff stays untouched.
+// chat can never be read, while a manual reply stays untouched.
 const maxAutoRetries = 3;
 // 分段发送中途对方回了话时，本次发起尚未完成，需要结合新消息重新生成剩余内容。
 // 设上限避免对方连续回话时不停重生成。
@@ -143,7 +144,15 @@ export class ProactiveTasks {
       if (['resume', 'retry'].includes(command) && task.migrationRequired) throw new AppError('请先核对并保存旧任务的联系人、目标和执行周期');
       if (['resume', 'retry'].includes(command) && task.status === 'ended') throw new AppError('任务已结束，请新建任务');
       if (command === 'resume' && task.status === 'failed') throw new AppError('失败任务请使用重试');
-      if (command === 'resume' && task.run?.completedAt && task.run.items.some(i => ['failed', 'uncertain'].includes(i.status))) throw new AppError('请重试失败对象；不确定的发送结果需先核对');
+      if (command === 'resume' && task.run?.completedAt) {
+        const failed = task.run.items.filter(i => i.status === 'failed');
+        // A recurring failure below the retry cap already owns a future slot.
+        // Pausing that schedule must not turn normal resume into an immediate
+        // retry. Preserve the slot and let tick revive it when it becomes due.
+        const scheduledRetry = task.schedule.cycle !== 'once' && Number.isFinite(task.nextAt) &&
+          failed.length > 0 && failed.every(i => (i.attempts || 0) < maxAutoRetries);
+        if (task.run.items.some(i => i.status === 'uncertain') || failed.length && !scheduledRetry) throw new AppError('请重试失败对象；不确定的发送结果需先核对');
+      }
       if (command === 'retry' && !task.run?.items.some(i => i.status === 'failed')) throw new AppError('没有可以安全重试的失败对象；不确定的发送不会重发');
       this.activate();
       if (command === 'create') {
@@ -307,7 +316,7 @@ export class ProactiveTasks {
   // 主动聊天不再自造暂停状态：暂停只有自动回复那一套。这里只尊重「面向本人」的
   // 三类（本人显式关闭、转交本人、对方要求停止），回复侧的连续上限、群聊冷却与
   // 发送未确认都不冻结主动任务。
-  blocked(profile) { return !!profile?.paused && ['explicit', 'handoff', 'stop'].includes(profile.pauseReason); }
+  blocked(profile) { return !!profile?.paused && ['explicit', 'stop'].includes(profile.pauseReason); }
   // 段落之间聊天发生变化时判断是谁在说话：对方回话要重新生成剩余内容，
   // 本人自己发了话则按接管处理、停止剩余段落。
   interruption(snapshot, profile) {
@@ -322,13 +331,15 @@ export class ProactiveTasks {
   async draft(task, item, profile, context, signal, check, extra = '') {
     const a = this.ai;
     const result = await a.generateProactiveMessage(task, profile, context, signal, extra); check();
-    const texts = messageSegments(result, { multiTurn: task.sendMode !== 'single', allowSkip: false });
+    let texts = messageSegments(result, { multiTurn: task.sendMode !== 'single', allowSkip: false });
     if (result.action !== 'send') {
       this.record(task, item, result.action === 'skip' ? 'skipped' : 'failed', result.action === 'skip' ? '模型判断本次无需发送' : result.action === 'stop' ? '对方要求停止联系，请人工核对' : '需要本人决定，请人工核对');
       // 只记录、不暂停：需要本人处理或对方要求停止都体现在运行记录与任务状态里，
       // 暂停与恢复交给自动回复那套状态统一处理。
       return null;
     }
+    texts = texts.map(text => stripUnauthorizedProactiveVocatives(text, profile, context)).filter(Boolean);
+    if (!texts.length) { this.record(task, item, 'skipped', '生成内容只有未获授权的亲昵称呼，本次未发送'); return null; }
     const unsupported = a.proactiveUnsupported(texts.join('\n'), context);
     if (unsupported) { this.record(task, item, 'skipped', unsupported); return null; }
     return { texts };

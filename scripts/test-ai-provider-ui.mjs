@@ -4,7 +4,7 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 import { createApplication } from '../server/index.mjs';
 import { root, playwrightPath } from './tooling.mjs';
-import { temp, cleanup, runtimeFactory, extractor, fetcher } from '../test/fixtures.mjs';
+import { temp, cleanup, runtimeFactory, extractor, fetcher, packageSha256 } from '../test/fixtures.mjs';
 import { ChatFixture, AIModelFixture, key, strategy } from '../test/ai-fixtures.mjs';
 import { AIProvider } from '../server/ai-provider.mjs';
 import { rfbFixture } from '../test/rfb-fixture.mjs';
@@ -23,7 +23,7 @@ bridge.scan = async (...args) => { scans++; return fixtureScan(...args); };
 const fixtureRead = bridge.read.bind(bridge);
 bridge.read = async (...args) => { reads++; return fixtureRead(...args); };
 const peer = await rfbFixture(path.join(root, 'web/backgrounds/mist.jpg'));
-const app = await createApplication({ appRoot: root, dataRoot, dev: true, extract: extractor, fetcher, aiProvider: provider,
+const app = await createApplication({ appRoot: root, dataRoot, dev: true, extract: extractor, fetcher, trustedHashes: [packageSha256], aiProvider: provider,
   runtimeFactory: (...args) => ({ ...runtimeFactory(...args), port: peer.port, aiBridge: bridge }) });
 await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve));
 const base = `http://127.0.0.1:${app.server.address().port}${app.prefix}`;
@@ -98,9 +98,9 @@ try {
   await page.getByRole('button', { name: '保存模型', exact: true }).click();
   const firstItem = page.locator('.ai-model-item').filter({ hasText: 'MiniMax-M3' });
   await firstItem.waitFor();
-  assert.match(await firstItem.innerText(), /用于：聊天回复、主动聊天、风格学习、聊天分析/);
+  assert.match(await firstItem.innerText(), /用于：聊天类、学习分析类/);
   const firstId = await page.locator('[data-ai-assignment=chat]').inputValue();
-  for (const feature of ['chat', 'proactive', 'learning', 'analysis']) assert.equal(await page.locator(`[data-ai-assignment=${feature}]`).inputValue(), firstId);
+  for (const feature of ['chat', 'learningAnalysis']) assert.equal(await page.locator(`[data-ai-assignment=${feature}]`).inputValue(), firstId);
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('#ai-panel').getAttribute('aria-busy') === 'false' && document.querySelector('#ai-feedback').textContent.includes('保存'));
   assert.match(await firstItem.locator('.ai-model-item-title').innerText(), /已验证/);
@@ -143,33 +143,33 @@ try {
   assert.match(await secondItem.innerText(), /未分配功能/);
   const secondId = await secondItem.locator('[data-ai-model-edit]').getAttribute('data-ai-model-edit');
   assert.ok(secondId && secondId !== firstId, secondId);
-  for (const feature of ['chat', 'proactive', 'learning']) assert.equal(await page.locator(`[data-ai-assignment=${feature}]`).inputValue(), firstId);
-  assert.equal(await page.locator('[data-ai-assignment=analysis]').inputValue(), firstId);
-  // 下拉把“聊天分析”切到第二个模型 → 保存后生效
-  await page.locator('[data-ai-assignment=analysis]').selectOption(secondId);
+  assert.equal(await page.locator('[data-ai-assignment=chat]').inputValue(), firstId);
+  assert.equal(await page.locator('[data-ai-assignment=learningAnalysis]').inputValue(), firstId);
+  // 下拉把学习分析类切到第二个模型 → 保存后生效
+  await page.locator('[data-ai-assignment=learningAnalysis]').selectOption(secondId);
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('#ai-panel').getAttribute('aria-busy') === 'false' && document.querySelector('#ai-feedback').textContent.includes('保存'));
   assert.equal(ai.publicState().assignments.chat, firstId);
-  assert.equal(ai.publicState().assignments.analysis, secondId);
-  assert.equal(ai.publicState().models.find(m => m.id === secondId).usedBy.join(','), 'analysis');
-  assert.match(await secondItem.innerText(), /用于：聊天分析/);
+  assert.equal(ai.publicState().assignments.learningAnalysis, secondId);
+  assert.equal(ai.publicState().models.find(m => m.id === secondId).usedBy.join(','), 'learningAnalysis');
+  assert.match(await secondItem.innerText(), /用于：学习分析类/);
   // 应用于所有功能 → 全部下拉切换到第二个模型
   await page.locator(`[data-ai-model-apply=${secondId}]`).click();
-  for (const feature of ['chat', 'proactive', 'learning', 'analysis']) assert.equal(await page.locator(`[data-ai-assignment=${feature}]`).inputValue(), secondId);
+  for (const feature of ['chat', 'learningAnalysis']) assert.equal(await page.locator(`[data-ai-assignment=${feature}]`).inputValue(), secondId);
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('#ai-panel').getAttribute('aria-busy') === 'false' && document.querySelector('#ai-feedback').textContent.includes('保存'));
-  assert.equal(ai.publicState().assignments.analysis, secondId);
+  assert.equal(ai.publicState().assignments.learningAnalysis, secondId);
   assert.equal(ai.publicState().assignments.chat, secondId);
   assert.match(await firstItem.innerText(), /未分配功能/);
   report.checks.push('Second model is not auto-assigned; per-feature dropdown saves and applies; “应用于所有功能” reassigns every feature; unassigned models show 未分配功能');
   // 删除第二个模型 → 引用它的功能回退到剩余第一个
   await page.locator(`[data-ai-model-delete=${secondId}]`).click();
   await page.locator('.ai-model-item').filter({ hasText: 'fixture-chat-pro' }).waitFor({ state: 'detached' });
-  for (const feature of ['chat', 'proactive', 'learning', 'analysis']) assert.equal(await page.locator(`[data-ai-assignment=${feature}]`).inputValue(), firstId);
+  for (const feature of ['chat', 'learningAnalysis']) assert.equal(await page.locator(`[data-ai-assignment=${feature}]`).inputValue(), firstId);
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('#ai-panel').getAttribute('aria-busy') === 'false' && document.querySelector('#ai-feedback').textContent.includes('保存'));
   assert.equal(ai.publicState().models.length, 1);
-  assert.equal(ai.publicState().assignments.analysis, firstId);
+  assert.equal(ai.publicState().assignments.learningAnalysis, firstId);
   report.checks.push('Deleting a model falls back to the remaining first model for features that referenced it');
   // 重新打开面板：密钥仍掩码；保存请求不携带掩码值
   await page.getByRole('button', { name: '收起 AI 辅助', exact: true }).click();

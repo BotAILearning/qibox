@@ -49,7 +49,7 @@ test('restart removes only disposable interrupted install directories', async ()
 test('unverified uploaded executables cannot become the shared application', async () => {
   const dataRoot = await temp(); let extracted = false;
   const library = new PackageLibrary({ dataRoot, appRoot: dataRoot, extract: async () => { extracted = true; return { version: '4.1.13.9' }; } });
-  try { await library.init(); await library.upload(Readable.from(packageBytes), packageBytes.length); assert.equal(library.current, null); assert.equal(extracted, true); assert.match(library.job.message, /尚未通过栖盒适配/); }
+  try { await library.init(); await library.upload(Readable.from(packageBytes), packageBytes.length); assert.equal(library.current, null); assert.equal(extracted, true); assert.match(library.job.message, /与栖盒适配的版本结构差异较大/); }
   finally { await library.close(); await cleanup(dataRoot); }
 });
 

@@ -32,7 +32,7 @@ test('chat memory accepts only evidence IDs actually supplied for this contact',
 test('analysis omits unreadable bodies but keeps database errors visible',async t=>{
  const {a,bridge,provider}=await fixture(t);let fail=false;
  bridge.readRange=async args=>{assert.equal(args.skipUnparsed,true);if(fail)throw Error('database unavailable');return {account:args.account,contact:args.contact,messages:[{id:'bad',text:'',timestamp:args.from},{id:'ok',text:'有效信息',timestamp:args.from+1}]};};
- provider.complete=async(_c,_s,input)=>{assert.deepEqual(input.messages.map(m=>m.id),['ok']);return {report:'完成'};};
+ provider.complete=async(_c,_s,input)=>{assert.deepEqual(input.messages.map(m=>m[2]),['有效信息']);return {report:'完成'};};
  const args={contacts:[bridge.contacts[0].id],request:'总结',from:'2026-09-01',to:'2026-09-02'};
  const result=await a.analyze(args);assert.equal(result.reports[0].skipped,1);assert.equal(result.reports[0].count,1);
  fail=true;assert.equal((await a.analyze(args)).reports[0].status,'error');

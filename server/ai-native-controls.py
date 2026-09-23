@@ -95,6 +95,31 @@ def unique(nodes, all_nodes):
     return result[0]
 
 
+def is_history_import_hint(nodes):
+    """The first-login history tip is non-modal and has no text input.
+
+    Recognize the complete small widget, not a matching label inside an
+    arbitrary dialog. Unknown popups must still block native navigation.
+    """
+    if not nodes or nodes[0]['role'] != 'filler':
+        return False
+    bounds = nodes[0].get('bounds')
+    if not bounds or not 0 < bounds[2] <= 400 or not 0 < bounds[3] <= 80:
+        return False
+    visible = [n for n in nodes if shown(n)]
+    if any(n['role'] not in ('filler', 'label', 'push button')
+           or n.get('interfaces') or not inside(n.get('bounds'), bounds) for n in visible):
+        return False
+    named = [n for n in visible if n['name']]
+    if len(named) != 1 or named[0]['role'] != 'label' or named[0]['name'] != '点此从手机导入更多聊天记录':
+        return False
+    try:
+        close = unique([n for n in visible if n['role'] == 'push button' and not n['name']], nodes)
+        return close['bounds'][0] >= named[0]['bounds'][0] + named[0]['bounds'][2]
+    except ControlsUnavailable:
+        return False
+
+
 def first_line(value):
     if not isinstance(value, str):
         raise ControlsUnavailable('conversation unavailable')
@@ -754,6 +779,12 @@ class NativeControls(base.Inspector):
                     mapped_frames = self._mapped_frames()
                 node['frame_viewable'] = self.string('get_name', obj) in mapped_frames
             if shown(node):
+                if self.string('get_role_name', obj) == 'filler':
+                    try:
+                        if is_history_import_hint(self.tree(obj)):
+                            continue
+                    except ControlsUnavailable:
+                        pass  # An uninspectable popup remains a blocker.
                 result.append(obj)
         return result
 

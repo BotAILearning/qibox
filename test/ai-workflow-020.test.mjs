@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { AIAssistant } from '../server/ai-service.mjs';
 import { parseSchedule, advanceSchedule } from '../server/ai-schedule.mjs';
 import { styleValue } from '../server/ai-schema.mjs';
-import { AIModelFixture, ChatFixture, modelConfig, key } from './ai-fixtures.mjs';
+import { AIModelFixture, ChatFixture, modelConfig, key, learnedStyle } from './ai-fixtures.mjs';
 import { temp, cleanup } from './fixtures.mjs';
 
 async function fixture(t) {
@@ -16,12 +16,12 @@ async function fixture(t) {
   await a.init(); await a.configure(modelConfig); // Model connectivity deliberately not retested.
   t.after(async () => { await a.close(); await cleanup(root); });
   const tick = async () => { await a.tick(); if (!a.available) await a.tick(); };
-  const enable = async () => { await a.settings({ enabled: true }); await tick(); await tick(); };
+  const enable = async () => { await a.settings({ enabled: true, replyScope: 'all' }); await tick(); await tick(); };
   const receive = async (contact, text, answer) => { bridge.push(contact, 'other', text); await tick(); now += 8000; if (answer) provider.next = async () => answer; await tick(); };
   return { a, bridge, provider, root, enable, receive, tick, setTime: value => { now = value; }, advance: value => { now += value; } };
 }
 
-test('step 2: saved model alone enables default replies, ignores old history, and judges whether to reply', async t => {
+test('step 2: explicitly enabling all personal contacts ignores old history and judges whether to reply', async t => {
   const { a, bridge, provider, enable, receive } = await fixture(t);
   await enable(); assert.equal(a.data.settings.enabled, true); assert.equal(a.data.settings.replyDelay, 3); assert.equal(a.configured(), false); assert.equal(bridge.sent.length, 0);
   await receive(bridge.contacts[0].id, '你觉得怎么样？', { action: 'send', text: '挺好的，你呢？' });
@@ -110,12 +110,12 @@ test('background proactive polling never starts a second recipient before the co
   assert.equal(calls, 2); assert.equal(bridge.sent.length, 2);
 });
 
-test('step 4: learning accepts free summaries, maps reversed results by contact, and edits affect the next reply', async t => {
+test('step 4: batch learning calls each contact with a valid five-layer result', async t => {
   const { a, bridge, provider, enable, receive } = await fixture(t); await enable();
-  provider.next = async input => ({ profiles: input.conversations.map((c, i) => ({ contact: c.contact, style: { summary: i ? '礼貌，直接说明。' : '习惯称呼对方为【宝】，例如【宝，吃饭了吗？】。' } })).reverse() });
+  provider.next = async input => ({ style: learnedStyle(input.contact === bridge.contacts[0].id ? '习惯称呼对方为【宝】，例如【宝，吃饭了吗？】。' : '礼貌，直接说明。') });
   await a.learn({ contacts: bridge.contacts.slice(0, 2).map(c => c.id) });
   const profile = a.profiles().find(p => p.contact === bridge.contacts[0].id); assert.match(profile.style.summary, /【宝】/);
-  assert.match(provider.calls[0].system, /profiles/); assert.match(provider.calls[0].system, /不能混用/);
+  assert.equal(provider.calls.length, 2); assert.ok(provider.calls.every(call => call.input.material && !Object.hasOwn(call.input, 'conversations')));
   await a.editProfile(profile.id, { style: { summary: '称呼对方为【宝贝】，少量问句。', customAvoid: '不要催促' } });
   await receive(profile.contact, '现在方便吗？', { action: 'send', text: '宝贝，方便的。' });
   assert.equal(provider.calls.at(-1).input.style.summary, profile.style.summary); assert.equal(provider.calls.at(-1).input.style.customAvoid, '不要催促');
@@ -124,7 +124,7 @@ test('step 4: learning accepts free summaries, maps reversed results by contact,
 
 test('reply format retains punctuation and skips model self introductions', async t => {
   const { a, bridge, provider, enable, receive } = await fixture(t); await enable();
-  await receive(bridge.contacts[0].id, '你好', { action: 'send', text: '你好呀' }); assert.equal(bridge.sent[0].text, '你好呀。');
+  await receive(bridge.contacts[0].id, '你好', { action: 'send', text: '你好呀' }); assert.equal(bridge.sent[0].text, '你好呀');
   await receive(bridge.contacts[0].id, '你是AI吗', { action: 'send', text: '作为AI，我可以帮助你。' }); assert.equal(bridge.sent.length, 1);
   assert.match(provider.calls.at(-1).system, /不要永远不用问句/); assert.match(provider.calls.at(-1).system, /表示是本人/);
   assert.ok(a.profiles()[0].generatedIds.length);
@@ -134,7 +134,8 @@ test('review reads the exact chat, rejects stale confirmation and resumes withou
   const { a, bridge, enable, receive, tick, advance } = await fixture(t); await enable();
   bridge.delivery = async () => ({ status: 'uncertain' });
   await receive(bridge.contacts[0].id, '收到吗？', { action: 'send', text: '收到了。' });
-  const profile = a.profiles().find(p => p.contact === bridge.contacts[0].id); assert.equal(profile.paused, true);
+  const profile = a.profiles().find(p => p.contact === bridge.contacts[0].id);
+  assert.equal(profile.paused, false); assert.equal(profile.delivery.status, 'uncertain');
   const first = await a.review(profile.id); assert.equal(first.messages.at(-1).text, '收到吗？');
   bridge.push(profile.contact, 'self', '手动处理了。');
   await assert.rejects(a.review(profile.id, { resolve: true, revision: first.revision }), /新变化/);
@@ -190,7 +191,6 @@ test('learning excludes previous AI-generated outgoing messages and never resume
   const { a, bridge, provider, enable, receive } = await fixture(t); await enable();
   await receive(bridge.contacts[0].id, '你好', { action: 'send', text: 'AI代发的文字。' });
   const profile = a.profiles().find(p => p.contact === bridge.contacts[0].id); profile.paused = true; profile.delivery = { status: 'uncertain' };
-  provider.next = async input => { assert.equal(JSON.stringify(input).includes('AI代发的文字'), false); return { style: { summary: '简短自然。' } }; };
+  provider.next = async input => { assert.equal(JSON.stringify(input).includes('AI代发的文字'), false); return { style: learnedStyle('简短自然。') }; };
   await a.learn({ contacts: [profile.contact] }); assert.equal(a.profile(profile.id).paused, true); assert.equal(a.profile(profile.id).delivery.status, 'uncertain');
 });
-

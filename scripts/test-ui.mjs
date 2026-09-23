@@ -2,9 +2,10 @@ import { createRequire } from 'node:module';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { createApplication } from '../server/index.mjs';
 import { root, playwrightPath } from './tooling.mjs';
-import { temp, cleanup, runtimeFactory, extractor, fetcher, packageBytes } from '../test/fixtures.mjs';
+import { temp, cleanup, runtimeFactory, extractor, fetcher, packageBytes, packageSha256 } from '../test/fixtures.mjs';
 const { chromium } = createRequire(import.meta.url)(playwrightPath);
 const dataRoot = await temp();
 const downloadBytes = Buffer.alloc(4 * 1024 ** 2); packageBytes.copy(downloadBytes);
@@ -18,6 +19,10 @@ const app = await createApplication({ appRoot: root, dataRoot, dev: true, runtim
   }
 });
 const beforeInstall = app.library.beforeInstall;
+// The disposable fixture is an intentionally tiny fake executable; trust its
+// exact bytes here so this UI test exercises installation progress, not the
+// production executable-structure compatibility gate.
+app.library.trustedHashes.push(createHash('sha256').update(downloadBytes).digest('hex'), packageSha256);
 app.library.beforeInstall = async () => { await beforeInstall(); if (++preparations === 1) await preparation.promise; };
 await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve));
 const base = `http://127.0.0.1:${app.server.address().port}${app.prefix}`;
@@ -76,7 +81,13 @@ try {
   await page.waitForFunction(() => document.querySelector('#job-percent').textContent === '100%');
   assert.equal(await page.locator('#launch-installed').count(), 0);
   extraction.resolve();
-  await page.locator('#add-instance').waitFor();
+  try { await page.locator('#add-instance').waitFor(); }
+  catch (error) {
+    report.installDiagnostic = await page.evaluate(() => ({ message: document.querySelector('#job-message')?.textContent || '',
+      progress: document.querySelector('#job-percent')?.textContent || '', body: document.body.innerText.slice(-600) }));
+    await page.screenshot({ path: path.join(root, 'reports/screenshots/install-timeout.png'), fullPage: true });
+    throw error;
+  }
   assert.equal(await page.locator('#install-progress').isVisible(), false);
   report.checks.push('Received-byte download 50% and 75% with MB/s; stalled speed becomes zero and recovers; preparing/checking indeterminate; unpacking has its own byte percentage; no stale transfer speed or premature installed state; mobile progress fits');
   await page.locator('#add-instance').click(); await page.locator('input[name=name]').fill('工作微信'); await page.getByRole('button', { name: '确定', exact: true }).click();

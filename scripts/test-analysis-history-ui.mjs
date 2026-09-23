@@ -11,13 +11,14 @@ import { rfbFixture } from '../test/rfb-fixture.mjs';
 const { chromium } = createRequire(import.meta.url)(playwrightPath);
 const dataRoot = await temp();
 const bridge = new ChatFixture();
+for (let index = 0; index < 10; index++) bridge.contacts.push({ id: key(`analysis-ui-batch-${index}`), label: `批量测试对象${index + 1}`, kind: 'person' });
 const provider = new AIModelFixture();
 const contact = bridge.contacts[0];
 contact.label = '分析报告测试联系人';
 const output = path.join(root, process.argv[2] || 'reports/analysis-report-history-ui/browser');
 await mkdir(output, { recursive: true });
 const report = { scope: 'Disposable local fixtures; no live account, NAS or WeChat messages.', checks: [], errors: [] };
-let peer, app, browser, ai, restoreAiSave;
+let peer, app, browser, ai, restoreAiSave, queuedAnalyzeCalls = [];
 
 bridge.readRange = async args => ({
   account: args.account,
@@ -30,7 +31,10 @@ bridge.readRange = async args => ({
 });
 provider.complete = async (_config, system, input) => {
   provider.calls.push({ system, input });
-  return { report: `数据开场\n\n这段时间记录了 ${input.metrics.total} 条消息。\n\n值得记住\n\n周六下午三点见，记得带票。` };
+  return {
+    report: `数据开场\n\n这段时间记录了 ${input.metrics.total} 条消息。\n\n值得记住\n\n周六下午三点见，记得带票。`,
+    excerptIds: input.messages.filter(item => item[1] === 's' || item[1] === 'o').slice(0, 2).map(item => item[0]),
+  };
 };
 
 try {
@@ -53,6 +57,8 @@ try {
   const meta = await space.add('分析报告 UI 测试微信');
   await space.start(meta.id);
   ai = space.get(meta.id).ai;
+  const analyze = ai.analyze.bind(ai);
+  ai.analyze = value => { queuedAnalyzeCalls.push(value.contacts?.length); return analyze(value); };
   clearInterval(ai.timer);
   await ai.verifyProvider(modelConfig);
   await ai.scan();
@@ -79,7 +85,10 @@ try {
     await page.locator('#ai-analysis-form [name=contacts]').first().check();
     const before = provider.calls.length;
     await page.getByRole('button', { name: '开始分析', exact: true }).click();
-    await page.locator('[data-analysis-report]').first().waitFor();
+    await settled();
+    await page.locator('[data-analysis-status=complete], [data-analysis-status=error]').first().waitFor();
+    const status = await page.locator('[data-analysis-report]').first().getAttribute('data-analysis-status');
+    assert.equal(status, 'complete', await page.locator('[data-analysis-report]').first().innerText());
     assert.ok(provider.calls.length > before, '生成分析报告必须调用模型');
     return before;
   };
@@ -144,6 +153,45 @@ try {
   await page.locator('#ai-feedback').filter({ hasText: '分析报告已删除' }).waitFor();
   assert.equal(await historyCount(), 1, 'confirmed deletion removes only the selected test report');
   report.checks.push('Confirmed deletion removes one test snapshot after second confirmation');
+
+  for (let index = 1; index < 11; index++) await page.locator('#ai-analysis-form [name=contacts]').nth(index).check();
+  let queuedModelCalls = 0;
+  provider.complete = async (_config, system, input) => {
+    provider.calls.push({ system, input });
+    if (++queuedModelCalls === 1) throw new Error('fixture first-contact failure');
+    return { report: `批量测试报告 ${input.contact}`, excerptIds: input.messages.slice(-1).map(item => item.id) };
+  };
+  const beforeQueue = queuedAnalyzeCalls.length, beforeModels = provider.calls.length;
+  await page.getByRole('button', { name: '开始分析', exact: true }).click();
+  await settled();
+  assert.equal(await page.locator('[data-analysis-status=error]').count(), 1, 'first failed contact remains visible');
+  assert.equal(await page.locator('[data-analysis-status=complete]').count(), 10, 'later contacts continue and finish');
+  assert.equal(queuedAnalyzeCalls.length - beforeQueue, 11);
+  assert.ok(queuedAnalyzeCalls.slice(beforeQueue).every(count => count === 1), 'every analyze POST contains exactly one contact');
+  assert.equal(provider.calls.length - beforeModels, 11, 'each selected contact makes exactly one model call');
+  report.checks.push('Eleven-contact queue posts one contact per request and continues after an individual model failure');
+
+  for (let index = 0; index < 11; index++) await page.locator('#ai-analysis-form [name=contacts]').nth(index).uncheck();
+  await page.locator('#ai-analysis-form [name=contacts]').nth(0).check();
+  await page.locator('#ai-analysis-form [name=contacts]').nth(1).check();
+  provider.complete = async (_config, _system, _input, signal) => {
+    provider.calls.push({ input: _input });
+    await new Promise((resolve, reject) => {
+      if (signal.aborted) { reject(new Error('aborted')); return; }
+      signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+    });
+    return { report: '不应在取消后出现', excerptIds: [] };
+  };
+  const beforeCancel = queuedAnalyzeCalls.length, modelCallsBeforeCancel = provider.calls.length;
+  await page.getByRole('button', { name: '开始分析', exact: true }).click();
+  await page.locator('[data-analysis-status=analyzing]').first().waitFor();
+  await page.locator('#ai-operation [data-ai-action=cancel]').waitFor();
+  await page.locator('#ai-operation [data-ai-action=cancel]').click();
+  await settled();
+  assert.equal(queuedAnalyzeCalls.length - beforeCancel, 1, 'cancel stops before posting the next contact');
+  assert.equal(provider.calls.length - modelCallsBeforeCancel, 1, 'in-flight contact was the only model request');
+  assert.equal(await page.locator('[data-analysis-status=cancelled]').count(), 2);
+  report.checks.push('Cancel aborts the in-flight contact and prevents later contacts from being posted');
 
   await page.setViewportSize({ width: 390, height: 844 });
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), '390px page must not overflow horizontally');

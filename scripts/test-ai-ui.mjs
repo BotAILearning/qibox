@@ -1,15 +1,16 @@
-// Current production UI regression entry. The previous controller test assumed
-// the retired overview controls; each suite below exercises the current UI.
+// Active browser regressions for the current AI interface. The small set below
+// exercises model setup, sequential one-request-per-contact analysis, report history,
+// contact search, date bounds, report copy, and native file handoff.
+// Retired UI snapshots stay runnable by hand; see HISTORICAL-AI-UI-TESTS.md.
 import { run } from './tooling.mjs';
-for (const [script, report] of [
-  ['test-ai-provider-ui.mjs'],
-  ['test-batch2-ui.mjs', 'reports/layout-2026-09-16/browser'],
-  ['test-ai-fixes-ui.mjs', 'reports/layout-2026-09-16/browser-ai-fixes'],
-  ['test-development050-ui.mjs'],
-  ['test-layout060-ui.mjs'],
-  ['test-development061-ui.mjs'],
-  ['test-development062-ui.mjs'],
-  ['test-proactive070-ui.mjs'],
-  ['test-repair071-ui.mjs'],
-]) await run(process.execPath, ['scripts/' + script, ...(process.argv[2] ? [process.argv[2]+'/browser-'+script.replace(/^test-|\.mjs$/g,'')] : report ? [report] : [])]);
-console.log('Current AI browser regressions passed: provider, contacts, independent proactive tasks, memory, analysis and desktop recovery.');
+
+const output = process.argv[2] || 'reports/ai-ui-current';
+for (const [script, folder] of [
+  ['test-ai-provider-ui.mjs', 'provider'],
+  ['test-analysis-history-ui.mjs', 'analysis-history'],
+  ['test-analysis-search-ui.mjs', 'analysis-search'],
+  ['test-development050-ui.mjs', 'analysis-queue-and-files'],
+]) {
+  await run(process.execPath, ['scripts/' + script, `${output}/browser-${folder}`]);
+}
+console.log('Active AI browser regressions passed: provider setup, sequential contact queue, per-contact report history/copy, contact search, date bounds and file handoff.');

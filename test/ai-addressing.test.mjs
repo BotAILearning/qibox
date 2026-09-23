@@ -1,8 +1,28 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { AIAssistant } from '../server/ai-service.mjs';
-import { AIModelFixture, ChatFixture, modelConfig, strategy } from './ai-fixtures.mjs';
+import { AIModelFixture, ChatFixture, modelConfig, strategy, learnedStyle } from './ai-fixtures.mjs';
 import { temp, cleanup } from './fixtures.mjs';
+import { stripUnauthorizedProactiveVocatives } from '../server/ai-reply-rules.mjs';
+
+test('proactive output strips a pet name found only in old AI text, but keeps authorized or repeatedly human-used names', () => {
+  const aiOnlyProfile = { generatedIds: ['old-ai'] };
+  const aiOnlyHistory = { messages: [
+    { id: 'old-ai', direction: 'self', text: '晚安宝', aiGenerated: true },
+    { id: 'recent', direction: 'other', text: '明天见' }
+  ] };
+  assert.equal(stripUnauthorizedProactiveVocatives('想你了宝', aiOnlyProfile, aiOnlyHistory), '想你了');
+  assert.equal(stripUnauthorizedProactiveVocatives('宝，我想你', aiOnlyProfile, aiOnlyHistory), '我想你');
+
+  const explicit = { replyStyleSource: 'manual', style: { summary: '称呼对方为【宝】，说话自然。' } };
+  assert.equal(stripUnauthorizedProactiveVocatives('想你了宝', explicit, { messages: [] }), '想你了宝');
+  const humanEvidence = { messages: [
+    { id: 'human-1', direction: 'self', text: '宝，吃饭了吗？' },
+    { id: 'human-2', direction: 'self', text: '想你了宝。' },
+    { id: 'model', direction: 'self', text: '晚安宝', aiGenerated: true }
+  ] };
+  assert.equal(stripUnauthorizedProactiveVocatives('想你了宝', { generatedIds: ['model'] }, humanEvidence), '想你了宝');
+});
 
 async function fixture(t) {
   const root = await temp(), bridge = new ChatFixture(), provider = new AIModelFixture();
@@ -20,7 +40,7 @@ for (const source of ['learned', 'paste']) test(`${source} reference stays disti
   await a.prepareTargets({ contacts: [contact] });
   const target = a.profiles()[0];
   await a.editProfile(target.id, { style: { summary: '直接说正文，不加称呼。' } });
-  provider.next = async () => ({ style: { summary: '称呼对方为【宝】，温柔简短。' } });
+  provider.next = async () => ({ style: learnedStyle('称呼对方为【宝】，温柔简短。') });
   if (source === 'learned') await a.learn({ contacts: [bridge.contacts[1].id] });
   else await a.learn({ text: '我：宝，吃饭了吗？', label: '参考样本' });
   const reference = a.profiles().find(p => p.learnedAt);
@@ -65,7 +85,7 @@ test('explicit current-contact salutation remains available while other-party an
 test('a contact display name supplies no salutation to a default reply', async t => {
   const { a, bridge, provider, advance } = await fixture(t);
   const target = bridge.contacts[0]; target.label = '林宝平_Bot';
-  await a.scan(); await a.settings({ enabled: true }); await a.tick();
+  await a.scan(); await a.setReplyOptions({ contact: target.id, enabled: true }); await a.settings({ enabled: true }); await a.tick();
   bridge.push(target.id, 'other', '今天有时间吗？'); await a.tick(); advance();
   provider.next = async () => ({ action: 'send', text: '有时间，什么事？' });
   await a.tick();
@@ -81,9 +101,12 @@ test('single and batch learning identify groups without seeding a pet name', asy
   bridge.contacts[1].kind = 'group'; await a.scan();
   await a.learn({ contacts: [bridge.contacts[1].id] });
   assert.equal(provider.calls.at(-1).input.kind, 'group');
+  const beforeBatch = provider.calls.length;
   await a.learn({ contacts: bridge.contacts.slice(0, 2).map(c => c.id) });
-  const call = provider.calls.at(-1);
-  assert.deepEqual(call.input.conversations.map(c => c.kind), ['person', 'group']);
+  const calls = provider.calls.slice(beforeBatch);
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls.map(call => call.input.kind), ['person', 'group']);
+  assert.ok(calls.every(call => !Object.hasOwn(call.input, 'conversations')));
   for (const { system } of provider.calls) {
     assert.match(system, /默认不加称呼/);
     assert.match(system, /不能把用户对某个成员的称呼总结为全群通用称呼/);

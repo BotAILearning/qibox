@@ -253,9 +253,6 @@
 /* Analysis and records. */
 #ai-panel #ai-analysis-form{display:grid;grid-template-columns:280px minmax(0,1fr);gap:18px;border:0;background:transparent;padding:0;box-shadow:none;align-items:start}
 #ai-panel .ai-analysis-main{min-width:0}
-#ai-panel .ai-analysis-request-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;flex-wrap:wrap}
-#ai-panel .ai-analysis-request-heading h4{margin:0}
-#ai-panel .ai-analysis-request-heading .ai-date-range{margin:0}
 #ai-panel .ai-analysis-selection,#ai-panel .ai-analysis-request{padding:20px;border:1px solid var(--ai-border);border-radius:12px;background:#fff;min-width:0}
 #ai-panel .ai-analysis-contacts{display:flex;flex-direction:column;gap:5px;max-height:365px;overflow:auto;border:0;padding:0;margin:12px 0}
 #ai-panel .ai-analysis-contacts label{display:flex;gap:10px;align-items:center;padding:9px 10px;border-radius:8px;cursor:pointer}
@@ -267,7 +264,6 @@
 #ai-panel .ai-analysis-reports{margin-top:24px}
 #ai-panel .ai-analysis-reports>.ai-card{margin-bottom:16px}
 #ai-panel .ai-report-text{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.9;color:var(--ai-muted);font-size:13px;padding-top:14px;border-top:1px solid var(--ai-border)}
-#ai-panel .ai-analysis-ready{padding:32px;text-align:center;background:#fff;border:1px dashed var(--ai-border);border-radius:12px;color:var(--ai-hint);margin-top:22px}
 #ai-panel .ai-analysis-history{margin-top:28px}
 #ai-panel .ai-analysis-history-list{display:grid;gap:10px}
 #ai-panel .ai-analysis-history-list>.ai-card{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:0}
@@ -279,10 +275,6 @@
 #ai-panel .ai-report-metrics strong,#ai-panel .ai-report-metrics span{display:block}
 #ai-panel .ai-report-metrics strong{font-size:22px;color:var(--ai-primary)}
 #ai-panel .ai-report-metrics span{margin-top:4px;font-size:11px;color:var(--ai-muted)}
-#ai-panel .ai-report-excerpts{margin:16px 0}
-#ai-panel .ai-report-excerpts h4{margin:0 0 8px}
-#ai-panel .ai-report-excerpts blockquote{margin:8px 0;padding:10px 12px;border-left:3px solid #8d7be4;background:#faf9ff;color:var(--ai-text);font-size:12px;line-height:1.7;overflow-wrap:anywhere}
-#ai-panel .ai-report-excerpts blockquote span{display:block;color:var(--ai-hint);font-size:11px;margin-bottom:2px}
 #ai-panel .ai-analysis-history-detail .ai-report-text{background:#fff;border:1px solid var(--ai-border);border-radius:12px;padding:20px;margin-top:18px}
 #ai-panel .ai-report-sections h4{margin:0 0 6px;color:var(--ai-text);font-size:14px}
 #ai-panel .ai-report-sections p{margin:0 0 18px;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.9;color:var(--ai-muted);font-size:13px}
@@ -316,6 +308,46 @@
 #ai-panel .ai-record-context-menu.open{display:block}
 #ai-panel .ai-record-context-menu button{display:block;width:100%;min-height:30px;padding:6px 10px;border:0;border-radius:7px;background:transparent;color:#d64541;font-size:12px;text-align:left;cursor:pointer}
 #ai-panel .ai-record-context-menu button:hover{background:#fff1ef}
+#ai-panel #ai-analysis-form.ai-analysis-setup{grid-template-columns:minmax(230px,.72fr) minmax(0,1.8fr);gap:14px;align-items:stretch}
+#ai-panel .ai-analysis-selection,#ai-panel .ai-analysis-request{padding:19px;border-color:#e3e5ef;border-radius:14px;box-shadow:0 2px 10px #20245c08}
+#ai-panel .ai-analysis-section-title{display:flex;align-items:center;gap:11px;margin-bottom:16px}
+#ai-panel .ai-analysis-section-title h4,#ai-panel .ai-analysis-section-heading h3{margin:0;color:var(--ai-text);font-size:14px;font-weight:650}
+#ai-panel .ai-analysis-section-title p,#ai-panel .ai-analysis-section-heading p{margin:3px 0 0;color:var(--ai-hint);font-size:10.5px;line-height:1.5}
+#ai-panel .ai-analysis-section-title>small{display:flex;align-items:baseline;gap:3px;margin-left:auto;color:#5452d1;font-size:18px;font-weight:700}
+#ai-panel .ai-analysis-section-title>small i{font-size:10px;font-style:normal;font-weight:500;color:var(--ai-hint)}
+#ai-panel .ai-analysis-search{margin-top:0;border-radius:9px;background:#f8f9fc}
+#ai-panel .ai-analysis-contacts{max-height:312px;margin:9px 0 12px;gap:3px}
+#ai-panel .ai-analysis-contacts label{min-height:38px;padding:8px 9px;font-size:12px}
+#ai-panel .ai-analysis-contacts label:has(:checked){box-shadow:inset 0 0 0 1px #d9d9ff}
+#ai-panel .ai-analysis-selection .ai-wide{margin-top:0;border-color:#e2e4f0;color:#5556c8;background:#fafaff}
+#ai-panel .ai-analysis-request .ai-analysis-section-title{margin-bottom:17px}
+#ai-panel .ai-analysis-presets{gap:6px;margin:0 0 10px}
+#ai-panel .ai-analysis-presets button{min-height:30px;padding:6px 10px;border-color:#e5e6f0;background:#fff;font-size:10.5px}
+#ai-panel .ai-analysis-presets button[aria-pressed=true]{border-color:#5c5bd7;background:#5c5bd7;color:#fff}
+#ai-panel .ai-analysis-request textarea[name=request]{min-height:112px;border-color:#e5e6f0;border-radius:10px;background:#fcfcfe;line-height:1.7}
+#ai-panel .ai-analysis-request .ai-provider-footer{margin-top:13px;padding-top:12px;border-top:1px solid #eff0f5}
+#ai-panel .ai-analysis-request .ai-provider-footer p{font-size:10.5px}
+#ai-panel .ai-analysis-request .ai-provider-footer .primary{min-width:132px;box-shadow:0 4px 12px #5b58d826}
+#ai-panel .ai-analysis-reports{margin-top:22px}
+#ai-panel .ai-analysis-section-heading{display:flex;align-items:center;gap:10px;margin:0 0 12px}
+#ai-panel .ai-analysis-report-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:12px}
+#ai-panel .ai-analysis-report-grid>.ai-card{min-width:0;margin:0;padding:18px;border-color:#e3e5ef;border-radius:13px;box-shadow:0 2px 10px #20245c08}
+#ai-panel .ai-analysis-report-grid .ai-card-heading{align-items:flex-start}
+#ai-panel .ai-analysis-report-grid .ai-card-heading h3{margin:0;font-size:14px}
+#ai-panel .ai-analysis-report-grid .ai-card-heading .ai-help{margin:4px 0 0;font-size:10px}
+#ai-panel .ai-analysis-report-grid .ai-report-text{border-color:#eff0f5}
+#ai-panel .ai-analysis-history{margin-top:24px;padding-top:18px;border-top:1px solid #e8e9f1}
+#ai-panel .ai-analysis-history>.ai-page-heading h3{font-size:14px}
+#ai-panel .ai-analysis-history-list>.ai-card{padding:14px 16px;border-radius:11px}
+@media(max-width:1100px){#ai-panel #ai-analysis-form.ai-analysis-setup{grid-template-columns:minmax(210px,.8fr) minmax(0,1.7fr)}}
+@media(max-width:860px){#ai-panel #ai-analysis-form.ai-analysis-setup{grid-template-columns:1fr}#ai-panel .ai-analysis-contacts{max-height:220px;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}}
+@media(max-width:560px){#ai-panel .ai-analysis-selection,#ai-panel .ai-analysis-request{padding:15px}#ai-panel .ai-analysis-presets button{font-size:11px}#ai-panel .ai-analysis-report-grid{grid-template-columns:1fr}#ai-panel .ai-analysis-report-grid>.ai-card{padding:15px}#ai-panel .ai-analysis-history-list>.ai-card .ai-actions{width:100%}#ai-panel .ai-analysis-history-list>.ai-card .ai-actions button{flex:1}}
+#ai-panel .ai-analysis-history-detail .ai-sticky-back{position:sticky;top:0;z-index:4;background:var(--ai-bg);padding:8px 0;align-items:center}
+#ai-panel .ai-icon-back{display:inline-grid;place-items:center;width:38px;height:38px;min-width:38px;padding:0;border:1px solid var(--ai-border);border-radius:50%;background:#fff;color:var(--ai-text)}
+#ai-panel .ai-icon-back .ai-icon{width:18px;height:18px}
+#ai-panel .ai-analysis-time-entry{display:flex;align-items:center}
+#ai-panel .ai-time-filter{color:var(--ai-primary)}
+#ai-panel .ai-analysis-setup .ai-analysis-section-title{align-items:center}
 #ai-panel :focus-visible{outline:2px solid var(--ai-primary);outline-offset:3px}
 @media(max-width:1100px){
   #ai-panel .ai-object-workspace{grid-template-columns:240px minmax(0,1fr)}
@@ -528,6 +560,8 @@
 /* Batch learning page redesign (2026-09-20). Keeps every field and handler intact. */
 #ai-panel .ai-learning-page{max-width:1120px;margin:0 auto}
 #ai-panel .ai-learning-page-heading{display:block;margin-bottom:16px}
+#ai-panel .ai-learning-page-heading{position:sticky;top:0;z-index:4;background:var(--ai-bg);padding:8px 0}
+#ai-panel .ai-provider-page-heading{position:sticky;top:0;z-index:4;background:var(--ai-bg);padding:8px 0}
 #ai-panel .ai-learning-back{min-height:32px;padding:6px 10px;margin:0 0 10px;font-size:12.5px}
 #ai-panel .ai-learning-page-heading h3{margin-top:2px}
 #ai-panel .ai-learning-page-heading p{margin:6px 0 0;max-width:600px}
@@ -573,6 +607,8 @@
 #ai-panel .ai-default-style-page .ai-paste>summary .ai-icon{width:16px;height:16px;color:var(--ai-primary)}
 #ai-panel .ai-default-style-page .ai-paste[open]>summary{border-bottom:1px dashed var(--ai-border);margin-bottom:14px}
 #ai-panel .ai-default-style-page .ai-paste .ai-field:last-of-type{margin-bottom:12px}
+#ai-panel .ai-reply-options-grid.group .ai-option-card{flex-direction:row;align-items:center;justify-content:space-between;gap:14px}
+#ai-panel .ai-reply-options-grid.group .ai-option-card>span{text-align:left}
 @media(max-width:720px){#ai-panel .ai-perspective-options{grid-template-columns:1fr}}
 /* 学习方向弹窗：挂在 body 下，不在 #ai-panel 内，需独立作用域 */
 .ai-perspective-dialog{width:min(560px,calc(100vw - 24px))}

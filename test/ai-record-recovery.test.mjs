@@ -11,7 +11,7 @@ test('record metadata appears without reading WeChat; old bodies hydrate by rang
   const root = await temp(), bridge = new ChatFixture();
   const a = new AIAssistant({ dataRoot: root, bridge, provider: new AIModelFixture() }); await a.init();
   t.after(async () => { await a.close(); await cleanup(root); });
-  await a.verifyProvider(modelConfig); await a.scan(); await a.settings({ enabled: true });
+  await a.verifyProvider(modelConfig); await a.scan(); await a.settings({ enabled: true, replyScope: 'all' });
   const p = a.profiles()[0], id = key('legacy'), at = Date.now() - 86400000;
   p.generatedIds = [id]; p.sentMessages = [{ id, at, source: 'reply' }];
   bridge.read = async () => assert.fail('Known times must use the bounded history range first');

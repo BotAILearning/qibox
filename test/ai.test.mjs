@@ -101,7 +101,8 @@ test('manual outgoing messages take over even when a new incoming message arrive
   const { assistant: a, bridge, advance } = await fixture(t);
   await enabled(a, { reply: true }); await a.tick(); const contact = bridge.contacts[0].id;
   bridge.push(contact, 'self', '用户接管'); bridge.push(contact, 'other', '同时收到'); await a.tick(); advance(10000); await a.tick();
-  assert.equal(a.profiles()[0].paused, false); assert.equal(bridge.sent.length, 1);
+  assert.equal(a.profiles()[0].paused, false); assert.equal(bridge.sent.length, 0);
+  advance(290000); await a.tick(); assert.equal(bridge.sent.length, 1);
 });
 
 test('deselecting a queued contact skips it when the remaining queue resumes', async t => {
@@ -234,7 +235,8 @@ test('provider uses private server requests, rejects redirects and never echoes 
   assert.throws(() => providerValue({ ...modelConfig, baseUrl: 'https://name:password@example.com' }));
   assert.throws(() => providerValue({ ...modelConfig, baseUrl: 'http://169.254.169.254' }));
   assert.equal(providerValue({ ...modelConfig, baseUrl: 'https://other.example.test/v1', apiKey: '' }, modelConfig).apiKey, '');
-  assert.equal(providerValue({ ...modelConfig, apiKey: '' }, modelConfig).apiKey, modelConfig.apiKey);
+  assert.equal(providerValue({ ...modelConfig, apiKey: '' }, modelConfig).apiKey, '');
+  assert.equal(providerValue({ ...modelConfig, apiKey: undefined }, modelConfig).apiKey, modelConfig.apiKey);
   assert.equal(providerValue({ ...modelConfig, clearKey: true }, modelConfig).apiKey, '');
   assert.throws(() => providerValue({ ...modelConfig, apiKey: '********' }, modelConfig), /完整的 API Key/);
   assert.equal(providerValue({ ...modelConfig, baseUrl: 'http://192.168.1.2:11434/v1' }).baseUrl, 'http://192.168.1.2:11434/v1');
@@ -251,19 +253,20 @@ test('user interaction temporarily yields the desktop while preserving the queue
 test('manual style corrections survive per-round model updates and repeated learning', async t => {
   const { assistant: a, bridge, advance } = await fixture(t);
   const profile = a.profiles()[0];
-  await a.editProfile(profile.id, { style: { ...profile.style, warmth: '克制', customAvoid: '不要使用叹号' } });
-  await a.learn({ contacts: [profile.contact] }); assert.equal(a.profiles()[0].style.warmth, '克制');
+  await a.editProfile(profile.id, { style: { ...profile.style, customTone: '保持克制', customAvoid: '不要使用叹号' } });
+  await a.learn({ contacts: [profile.contact] }); assert.equal(a.profiles()[0].style.customTone, '保持克制');
   await enabled(a, { reply: true }); await a.settings({ updateStyle: true }); await a.tick();
   bridge.push(profile.contact, 'other'); await a.tick(); advance(8000); await a.tick();
-  assert.equal(a.profiles()[0].style.warmth, '克制'); assert.equal(a.profiles()[0].style.customAvoid, '不要使用叹号');
+  assert.equal(a.profiles()[0].style.customTone, '保持克制'); assert.equal(a.profiles()[0].style.customAvoid, '不要使用叹号');
 });
 
-test('model skip never becomes an implicit handoff even with judgment disabled', async t => {
+test('judgment-disabled skip is retried without becoming an implicit handoff', async t => {
   const { assistant: a, bridge, provider, advance } = await fixture(t);
   await enabled(a, { reply: true }); await a.settings({ judgeReply: false }); await a.tick();
   bridge.push(bridge.contacts[0].id, 'other'); await a.tick(); advance(8000);
   provider.next = async () => ({ action: 'skip' }); await a.tick();
-  assert.equal(a.profiles()[0].paused, false); assert.equal(a.publicState().events[0].code, 'skip');
+  assert.equal(a.profiles()[0].paused, false); assert.equal(a.publicState().events[0].code, 'replied');
+  assert.equal(bridge.sent.length, 1); assert.equal(a.publicState().events.some(e=>e.code==='handoff'),false);
 });
 
 test('pasted learning can bind explicitly to a detected contact without storing pasted content', async t => {
@@ -280,8 +283,9 @@ test('model discovery validates drafts, retains only same-service credentials an
   const { assistant: a, provider, root } = await fixture(t);
   const before = await readFile(path.join(root, 'ai-assistant.json'), 'utf8'); let received;
   provider.models = async config => { received = config; return ['chat']; };
-  assert.deepEqual(await a.discoverModels({ ...modelConfig, model: '', apiKey: '' }), { models: ['chat'] });
+  assert.deepEqual(await a.discoverModels({ ...modelConfig, model: '', apiKey: undefined }), { models: ['chat'] });
   assert.equal(received.apiKey, modelConfig.apiKey);
+  await a.discoverModels({ ...modelConfig, model: '', apiKey: '' }); assert.equal(received.apiKey, '');
   await a.discoverModels({ ...modelConfig, model: '', baseUrl: 'https://new.example/v1', apiKey: '' });
   assert.equal(received.apiKey, '');
   assert.equal(await readFile(path.join(root, 'ai-assistant.json'), 'utf8'), before);
@@ -371,17 +375,15 @@ test('connection failures distinguish address/protocol, authentication and servi
   }
 });
 
-for (const [request, reason] of [['请把文件发给我', 'file'], ['现在给我打电话', 'call'], ['[语音]', 'media']]) {
-  test('text-only request pauses one contact without sending or retaining content: ' + reason, async t => {
+for (const [request, reply] of [['请把文件发给我', '我现在不能发送文件，可以先用文字说明。'], ['现在给我打电话', '我不能打电话，但可以先用文字沟通。'], ['[语音]', '这段语音目前无法识别，请转成文字发我。']]) {
+  test('text-only request gets an honest text response without pausing or retaining content: ' + request, async t => {
     const { assistant: a, bridge, advance, root, provider } = await fixture(t);
-    provider.next = async () => ({action:'handoff',reason});
+    provider.next = async () => ({ action: 'send', text: reply });
     await enabled(a); await a.tick();
     bridge.push(bridge.contacts[0].id, 'other', request); await a.tick(); advance(8000); await a.tick();
-    const profile = a.profiles()[0]; assert.equal(profile.paused, true); assert.equal(profile.handoffReason, reason);
-    assert.equal(a.profiles()[1].paused, false); assert.equal(bridge.sent.length, 0);
+    const profile = a.profiles()[0]; assert.equal(profile.paused, false); assert.equal(profile.handoffReason, undefined);
+    assert.equal(a.profiles()[1].paused, false); assert.equal(bridge.sent.length, 1); assert.equal(bridge.sent[0].text, reply);
     assert.equal((await readFile(path.join(root, 'ai-assistant.json'), 'utf8')).includes(request), false);
-    const view = await a.review(profile.id); await a.review(profile.id, { resolve: true, revision: view.revision });
-    assert.equal(profile.handoffReason, undefined); assert.equal(profile.paused, false);
   });
 }
 
@@ -394,12 +396,13 @@ test('proactive handoff skips only the affected contact and continues queue; gen
   advance(180000); await a.tick(); assert.equal(bridge.sent.length, 1); assert.equal(a.publicState().queue.status, 'completed');
 });
 
-test('text explanations remain available and model-based handoff covers requests beyond the backstop', async t => {
+test('text explanations remain available and a model skip is recorded without pausing', async t => {
   const { assistant: a, bridge, provider, advance } = await fixture(t);
   await enabled(a); await a.tick();
   bridge.push(bridge.contacts[0].id, 'other', '如何发送文件？'); await a.tick(); advance(8000); await a.tick();
   assert.equal(bridge.sent.length, 1);
   bridge.push(bridge.contacts[0].id, 'other', '帮我完成这笔转账'); await a.tick(); advance(8000);
-  provider.next = async () => ({ action: 'handoff', reason: 'other' }); await a.tick();
-  assert.equal(bridge.sent.length, 1); assert.equal(a.profiles()[0].paused, true);
+  provider.next = async () => ({ action: 'skip' }); await a.tick();
+  assert.equal(bridge.sent.length, 1); assert.equal(a.profiles()[0].paused, false);
+  assert.equal(a.publicState().skipRecords[0].source, 'model-skip');
 });

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { AIAssistant } from '../server/ai-service.mjs';
-import { groupDefaults, groupOptions, groupTrigger, groupDecision } from '../server/ai-group.mjs';
+import { groupDefaults, groupOptions, groupTrigger, groupDecision, groupRealtimeIntervalMs } from '../server/ai-group.mjs';
 import { DockerRuntime } from '../server/docker-runtime.mjs';
 import { Instances } from '../server/instances.mjs';
 import { testDefinition as applicationDefinition, testCatalog } from './fixtures/app-catalog.mjs';
@@ -45,7 +45,8 @@ test('contact parent toggle preserves children, aborts its pending work and reen
   assert.deepEqual(a.replyOptions(profile), { enabled: false, multiTurn: true, judgeReply: false });
   bridge.push(contact, 'other', 'disabled-period');
   await a.setReplyOptions({ contact, enabled: true });
-  assert.equal(a.cursors.get(profile.id).pending, false); assert.equal(a.replyOptions(profile).judgeReply, false);
+  assert.equal(a.cursors.get(profile.id)?.pending ?? false, false); assert.equal(a.replyOptions(profile).judgeReply, false);
+  await a.settings({ enabled: true }); await a.tick();
   assert.equal(bridge.sent.length, 0);
 });
 
@@ -79,7 +80,7 @@ test('group switches cancel only matching trigger work, persist wait and never r
   await a.setGroupOptions({ contact, atMe: false }); assert.equal(atMe.signal.aborted, true); assert.equal(live.signal.aborted, false);
   await a.settings({ enabled: true, replyScope: 'selected' }); await a.tick();
   Object.assign(bridge.push(contact, 'other'), { sender: key('group-member'), mentions: { verified: true, self: false, all: false, others: false } });
-  await a.tick(); advance(4000); provider.next = async () => ({ action: 'wait', waitSeconds: 5 }); await a.tick();
+  await a.tick(); provider.next = async () => ({ action: 'wait', waitSeconds: 5 }); advance(groupRealtimeIntervalMs); await a.tick();
   assert.equal(profile.groupWait.trigger, 'realtime'); assert.equal(bridge.sent.length, 0);
   advance(61000); await a.tick(); assert.equal(profile.groupWait, undefined); assert.equal(a.cursors.get(profile.id).pending, false);
 });

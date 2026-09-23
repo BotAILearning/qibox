@@ -961,5 +961,29 @@ class StateSnapshots(unittest.TestCase):
         inspector.gobject.g_object_unref.assert_called_once_with(123)
 
 
+class HistoryImportHint(unittest.TestCase):
+    def hint(self):
+        return [node(1, None, 'filler', bounds=(0, 0, 212, 39), depth=0),
+                node(2, 1, 'label', '点此从手机导入更多聊天记录', (16, 10, 156, 19)),
+                node(3, 1, 'push button', bounds=(180, 11, 16, 16)),
+                node(4, 3, 'push button', bounds=(180, 11, 16, 16), depth=2)]
+
+    def test_exact_nonmodal_hint_is_recognized(self):
+        self.assertTrue(native.is_history_import_hint(self.hint()))
+
+    def test_unknown_popup_or_editable_widget_still_blocks(self):
+        for extra in [node(5, 1, 'text', bounds=(1, 1, 10, 10), interfaces={'editable_text': 5}),
+                      node(5, 1, 'push button', '确认', (1, 1, 10, 10)),
+                      node(5, 1, 'label', '其他提示', (1, 1, 10, 10)),
+                      node(5, 1, 'push button', bounds=(180, 11, 16, 16))]:
+            self.assertFalse(native.is_history_import_hint(self.hint() + [extra]))
+        nodes = self.hint()
+        nodes[0]['role'] = 'dialog'
+        self.assertFalse(native.is_history_import_hint(nodes))
+        nodes = self.hint()
+        nodes[2]['bounds'] = (180, 11, 100, 100)
+        self.assertFalse(native.is_history_import_hint(nodes))
+
+
 if __name__ == '__main__':
     unittest.main()

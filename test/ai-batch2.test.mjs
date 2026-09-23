@@ -5,14 +5,14 @@ import path from 'node:path';
 import { AIAssistant } from '../server/ai-service.mjs';
 import { orderedContacts } from '../server/ai-contact-order.mjs';
 import { ChatFixture, AIModelFixture, modelConfig, key } from './ai-fixtures.mjs';
-import { defaultStyle } from '../server/ai-schema.mjs';
+const learningStyle = { language: '口语简洁', rhythm: '回复及时', interaction: '自然提问', emotion: '温和', role: '平等交流' };
 import { temp, cleanup } from './fixtures.mjs';
 
 async function fixture(t) {
   const root = await temp(), bridge = new ChatFixture(), provider = new AIModelFixture();
   let now = 1700000000000;
   const a = new AIAssistant({ dataRoot: root, bridge, provider, now: () => now, delay: async () => {} });
-  await a.init(); await a.configure(modelConfig); await a.scan(); await a.settings({ enabled: true }); await a.tick();
+  await a.init(); await a.configure(modelConfig); await a.scan(); await a.settings({ enabled: true, replyScope: 'all' }); await a.tick();
   t.after(async () => { await a.close(); await cleanup(root); });
   return { a, root, bridge, provider, p: a.profiles().find(p => p.contact === bridge.contacts[0].id), advance(ms) { now += ms; a.lastScanAt = now; } };
 }
@@ -40,7 +40,7 @@ test('已设置自动回复的排前面（按设置先后升序，先设置的�
 
 test('learned memory is encrypted, used only for this contact, and never updates from a reply result', async t => {
   const { a, root, bridge, provider, p, advance } = await fixture(t);
-  provider.next = async () => ({ style: defaultStyle, memory: { summary: '对方偏好 MEMORY_PRIVATE_MARKER' } });
+  provider.next = async () => ({ style: learningStyle, memory: { summary: '对方偏好 MEMORY_PRIVATE_MARKER' } });
   await a.learn({ contacts: [p.contact] });
   assert.equal(a.publicState().profiles.find(x => x.id === p.id).memory.summary, '对方偏好 MEMORY_PRIVATE_MARKER');
   assert.doesNotMatch(await readFile(path.join(root, 'ai-assistant.json'), 'utf8'), /MEMORY_PRIVATE_MARKER/);
@@ -58,13 +58,13 @@ test('nonempty manual memory survives learning; explicitly empty memory is fille
   const { a, provider, p } = await fixture(t);
   for (const summary of ['本人确认：周六再联系', '']) {
     await a.editMemory(p.id, { summary });
-    provider.next = async input => { assert.equal(input.previousMemory.summary, summary); return { style: defaultStyle, memory: { summary: '模型新整理' } }; };
+    provider.next = async input => { assert.equal(input.previousMemory.summary, summary); return { style: learningStyle, memory: { summary: '模型新整理' } }; };
     await a.learn({ contacts: [p.contact] });
     const result = a.publicState().profiles.find(x => x.id === p.id);
     assert.equal(result.memory.summary, summary ? summary + '\n模型新整理' : '模型新整理');
     assert.ok(!result.memorySuggestion, 'non-conflicting facts append without replacing manual text');
   }
-  provider.next = async () => ({ style: defaultStyle }); await a.learn({ contacts: [p.contact] });
+  provider.next = async () => ({ style: learningStyle }); await a.learn({ contacts: [p.contact] });
   assert.match(a.publicState().profiles.find(x => x.id === p.id).memoryNotice, /未返回/);
 });
 

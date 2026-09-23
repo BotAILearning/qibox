@@ -10,7 +10,7 @@ const { chromium } = createRequire(import.meta.url)(playwrightPath);
 const fixture = await proactiveFixture(), output = path.join(root, process.argv[2] || 'reports/repair-2026-09-17/browser');
 fixture.bridge.readRange = async args => ({ account: args.account, contact: args.contact, messages: [{ id: args.contact, timestamp: args.from + 1, direction: 'self', text: '周末见面，时间稍后确认。' }] });
 const originalComplete = fixture.provider.complete.bind(fixture.provider);
-fixture.provider.complete = async (config, system, input, signal) => input.request ? { report: '双方约定周末见面，具体时间待确认。' } : originalComplete(config, system, input, signal);
+fixture.provider.complete = async (config, system, input, signal) => input.messages ? { report: '双方约定周末见面，具体时间待确认。', excerptIds: [] } : originalComplete(config, system, input, signal);
 await mkdir(output, { recursive: true });
 const report = { scope: 'Local HTTP application, model and WeChat fixtures; no device acceptance.', checks: [], errors: [] };
 let browser;

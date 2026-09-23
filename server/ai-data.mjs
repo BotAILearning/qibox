@@ -201,11 +201,34 @@ export class DataChatBridge extends NativeChatBridge {
       // shards or chat-body decoding to succeed just to navigate.
       const current = await this.data('identity', { account: binding.account }, context);
       const target = current.contacts?.find(c => c.id === binding.id && c.kind === binding.kind);
-      if (!target || !key(target.native?.account) || !key(target.native?.contact) || !label(target.label)) throw unavailable();
+      if (!target || !key(target.native?.account) || !key(target.native?.contact) || !label(target.label)) {
+        console.error('[ai-open-chat-identity]', JSON.stringify({
+          accountMatch: current.account === binding.account,
+          contactCount: Array.isArray(current.contacts) ? current.contacts.length : -1,
+          targetMatch: !!target,
+          accountKeyValid: key(target?.native?.account),
+          contactKeyValid: key(target?.native?.contact),
+          labelValid: label(target?.label),
+          kind: binding.kind,
+        }));
+        throw unavailable();
+      }
       const route = { ...target.native, label: target.label, kind: binding.kind, source: 'contacts',
         background: { account: binding.account, contact: binding.id }, ...(binding.sessionHint ? { sessionHint: binding.sessionHint } : {}), ...(args.locate ? { locate: args.locate } : {}) };
-      const result = await this.request('open-chat', route, context);
-      if (result.account !== route.account || result.contact !== route.contact || result.opened !== true) throw unavailable();
+      let result;
+      try { result = await this.request('open-chat', route, context); }
+      catch (error) {
+        const frames = String(error?.stack || '').split('\n').slice(1, 7).map(line => line.trim()).filter(Boolean);
+        console.error('[ai-open-chat-native-failure]', JSON.stringify({ name: error?.name || 'Error', code: error?.code || null, frames }));
+        throw error;
+      }
+      const accountMatch = result.account === route.account;
+      const contactMatch = result.contact === route.contact;
+      const opened = result.opened === true;
+      if (!accountMatch || !contactMatch || !opened) {
+        console.error('[ai-open-chat-native-result]', JSON.stringify({ accountMatch, contactMatch, opened }));
+        throw unavailable();
+      }
       return { opened: true, ...(args.locate ? { located: result.located === true && result.messageId === args.locate.messageId, messageId: args.locate.messageId } : {}) };
     }
     if (action === 'send') return this.sendData(args, context);
@@ -276,7 +299,7 @@ export class DataChatBridge extends NativeChatBridge {
     const priority = args.priority === true;
     const result = await this.data(range ? 'read-range' : 'read', { account: binding.account, contact: binding.id, ...(range ? { from: args.from, to: args.to, skipUnparsed: true } : {}) }, context, { priority });
     if (this.bindings.get(binding.id) !== binding) throw unavailable();
-    const maxMessages = range ? 30000 : 300;
+    const maxMessages = range ? 150000 : 300;
     if (result.contact !== binding.id || !key(result.revision) || !Array.isArray(result.messages) || result.messages.length > maxMessages ||
         !label(result.label) || !key(result.native?.account) || !key(result.native?.contact)) throw unavailable();
     const ids = new Set();
@@ -291,7 +314,8 @@ export class DataChatBridge extends NativeChatBridge {
       if (message.type !== undefined && !['voice','image'].includes(message.type)) throw unavailable();
       if (binding.kind === 'group' && (!key(message.sender) || !message.mentions || ['verified', 'self', 'all', 'others'].some(k => typeof message.mentions[k] !== 'boolean'))) throw unavailable();
       let text = message.text;
-      if (text.length > 20000) { text = text.slice(0, 20000); clipped = true; truncatedReasons.add('message_length'); }
+      const textChars = Array.from(text);
+      if (textChars.length > 150000) { text = textChars.slice(0, 150000).join(''); clipped = true; truncatedReasons.add('message_length'); }
       return { id: message.id, direction: message.direction, text, timestamp: message.timestamp, ...(['voice','image'].includes(message.type) ? { type: message.type } : {}),
         ...(binding.kind === 'group' ? { sender: message.sender, mentions: Object.fromEntries(['verified', 'self', 'all', 'others'].map(k => [k, message.mentions[k]])) } : {}) };
     });

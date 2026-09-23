@@ -4,10 +4,11 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { AIAssistant } from '../server/ai-service.mjs';
 import { AIProvider } from '../server/ai-provider.mjs';
-import { defaultStyle } from '../server/ai-schema.mjs';
 import { replyPresets } from '../server/ai-presets.mjs';
 import { AIModelFixture, ChatFixture, modelConfig, strategy, key } from './ai-fixtures.mjs';
 import { temp, cleanup } from './fixtures.mjs';
+
+const learningStyle = { language: '口语简洁', rhythm: '回复及时', interaction: '自然提问', emotion: '温和', role: '平等交流' };
 
 async function fixture(t, count = 3, { configured = true } = {}) {
   const root = await temp(), bridge = new ChatFixture(), provider = new AIModelFixture();
@@ -22,7 +23,7 @@ async function fixture(t, count = 3, { configured = true } = {}) {
   return { a, bridge, provider, root, contacts: bridge.contacts.map(c => c.id) };
 }
 
-test('automatic contact fetching stops after the first successful scan but manual refresh remains available', async t => {
+test('healthy selected-scope polling keeps the contact list cached; unavailable state and manual refresh can rescan', async t => {
   const root = await temp(), bridge = new ChatFixture(), provider = new AIModelFixture();
   let scans = 0;
   const scan = bridge.scan.bind(bridge);
@@ -32,40 +33,71 @@ test('automatic contact fetching stops after the first successful scan but manua
   await a.init(); await a.configure(modelConfig); await a.settings({ enabled: true });
   await a.tick();
   assert.equal(scans, 1);
-  assert.equal(a.publicState().contactScanCompleted, true);
+  assert.equal(a.available, true);
+  await a.tick(); assert.equal(scans, 1);
   bridge.contacts.push({ id: key('new-contact'), label: '新联系人', kind: 'person' });
   a.available = false;
   await a.tick();
-  assert.equal(scans, 1);
-  await a.scan();
   assert.equal(scans, 2);
+  await a.scan();
+  assert.equal(scans, 3);
   assert.equal(a.contacts.has(key('new-contact')), true);
 });
 
-test('ten selected contacts use one bounded model request and keyed results preserve correspondence', async t => {
+test('ten selected contacts are read and learned independently with keyed results', async t => {
   const { a, bridge, provider, root, contacts } = await fixture(t, 12);
   let reads = 0; const read = bridge.read.bind(bridge);
   bridge.read = async value => { reads++; return read(value); };
-  provider.next = async input => ({ profiles: input.conversations.map(({ contact }, i) => ({ contact, style: { ...defaultStyle, warmth: i % 2 ? '克制' : '亲切' } })).reverse() });
+  provider.next = async () => ({ style: learningStyle });
   await a.learn({ contacts: contacts.slice(0, 10) });
-  assert.equal(reads, 10); assert.equal(provider.calls.length, 1);
-  const { input, system } = provider.calls[0];
-  assert.equal(input.styleOwner, 'self'); assert.match(system, /不能混用不同联系人的关系和风格/);
-  assert.deepEqual(input.conversations.map(c => c.contact), contacts.slice(0, 10));
-  for (const [i, conversation] of input.conversations.entries()) {
-    assert.deepEqual(conversation.material, [{ direction: 'other', text: `对方-${i}`, timestamp: null }, { direction: 'self', text: `本人-${i}`, timestamp: null }]);
-    assert.equal(a.profiles().find(p => p.contact === conversation.contact).style.warmth, i % 2 ? '克制' : '亲切');
+  assert.equal(reads, 10); assert.equal(provider.calls.length, 10);
+  assert.deepEqual(provider.calls.map(call => call.input.contact), contacts.slice(0, 10));
+  for (const [i, call] of provider.calls.entries()) {
+    assert.equal(call.input.styleOwner, 'self'); assert.match(call.system, /语言|节奏/);
+    assert.deepEqual(call.input.material, [{ direction: 'other', text: `对方-${i}`, timestamp: 0 }, { direction: 'self', text: `本人-${i}`, timestamp: 1 }]);
+    assert.ok(a.profiles().find(p => p.contact === call.input.contact));
   }
   assert.equal(a.profiles().length, 10); assert.equal(a.operation, null); assert.equal(bridge.sent.length, 0);
   const saved = await readFile(path.join(root, 'ai-assistant.json'), 'utf8');
   assert.equal(/本人-|对方-/.test(saved), false); assert.deepEqual(a.data.replyTargets, []);
 });
 
-test('an eleventh distinct contact is rejected before reading or calling the model', async t => {
+test('combined style and memory learning calls and saves once per contact', async t => {
+  const { a, provider, contacts } = await fixture(t, 2);
+  provider.complete = async (_config, system, input) => {
+    provider.calls.push({ system, input });
+    const index = contacts.indexOf(input.contact);
+    assert.match(system, /"style":\{"language"/);
+    assert.match(system, /"memory":\{"entries"/);
+    assert.deepEqual(input.material.map(row => row.text), [`对方-${index}`, `本人-${index}`]);
+    return { style: learningStyle, memory: { entries: [{ text: `可核对的长期事实 ${index}` }] } };
+  };
+  await a.learn({ contacts });
+  assert.equal(provider.calls.length, 2);
+  for (const [index, contact] of contacts.entries()) {
+    const profile = a.publicState().profiles.find(row => row.contact === contact);
+    assert.equal(profile.memory.summary, `可核对的长期事实 ${index}`);
+    assert.equal(profile.memoryNotice, '');
+  }
+});
+
+test('missing learned memory is visible and preserves the previous memory', async t => {
+  const { a, provider, contacts } = await fixture(t, 1);
+  await a.learn({ contacts });
+  const profile = a.profiles()[0];
+  await a.editMemory(profile.id, { summary: '已有确认事实' });
+  provider.next = async () => ({ style: learningStyle });
+  const state = await a.learn({ contacts });
+  const result = state.profiles.find(row => row.contact === contacts[0]);
+  assert.equal(result.memory.summary, '已有确认事实');
+  assert.match(result.memoryNotice, /未返回/);
+  assert.match(state.notice, /未返回记忆/);
+});
+
+test('batch learning has no contact ceiling and persists each result independently', async t => {
   const { a, bridge, provider, contacts } = await fixture(t, 11);
-  bridge.read = async () => assert.fail('oversized batch read chats');
-  await assert.rejects(a.learn({ contacts }), /最多学习 10/);
-  assert.equal(provider.calls.length, 0); assert.equal(a.operation, null);
+  await a.learn({ contacts });
+  assert.equal(provider.calls.length, 11); assert.equal(a.profiles().length, 11); assert.equal(a.operation, null);
 });
 
 test('duplicate selections are deduplicated and an individual contact can learn alone', async t => {
@@ -75,39 +107,34 @@ test('duplicate selections are deduplicated and an individual contact can learn 
   assert.equal(a.profiles().length, 1); assert.equal(a.profiles()[0].contact, contacts[0]);
 });
 
-for (const variant of ['missing', 'duplicate', 'unknown', 'invalid-style']) test(`invalid batch result ${variant} cannot partially apply styles`, async t => {
+test('one contact model failure does not discard successful contacts', async t => {
   const { a, provider, contacts } = await fixture(t);
-  await a.learn({ contacts: [contacts[0]] });
-  const before = structuredClone(a.data.profiles);
-  provider.next = async input => {
-    const profiles = input.conversations.map(({ contact }) => ({ contact, style: { ...defaultStyle, warmth: '克制' } }));
-    if (variant === 'missing') profiles.pop();
-    if (variant === 'duplicate') profiles[1].contact = profiles[0].contact;
-    if (variant === 'unknown') profiles[1].contact = key('not-selected');
-    if (variant === 'invalid-style') profiles[1].style = { category: 'made-up' };
-    return { profiles };
-  };
-  await assert.rejects(a.learn({ contacts }));
-  assert.deepEqual(a.data.profiles, before); assert.equal(a.operation, null);
+  let call = 0;
+  provider.next = async () => call++ === 0 ? {} : { style: learningStyle };
+  const state = await a.learn({ contacts });
+  assert.equal(provider.calls.length, 3);
+  assert.equal(a.profiles().length, 2);
+  assert.match(state.notice, /模型未返回完整的风格学习结果/);
+  assert.ok(a.data.events.some(event => event.code === 'error' && /联系人0/.test(event.detail)));
 });
 
 test('batch learning retains each contact manual corrections and reply strategy', async t => {
   const { a, contacts } = await fixture(t);
   await a.learn({ contacts }); const first = a.profiles()[0];
-  await a.editProfile(first.id, { style: { ...first.style, warmth: '克制', customTone: '简洁直接' } });
+  await a.editProfile(first.id, { style: { ...first.style, customTone: '简洁直接' } });
   await a.saveStrategy(strategy, first.id, 'reply');
   await a.learn({ contacts });
-  assert.equal(a.profile(first.id).style.warmth, '克制'); assert.equal(a.profile(first.id).style.customTone, '简洁直接');
+  assert.equal(a.profile(first.id).style.customTone, '简洁直接');
   assert.equal(a.profile(first.id).replyStrategy.replyGoal, strategy.replyGoal);
 });
 
-test('large multi-contact histories are limited to recent whole messages before the one model request', async t => {
+test('style-only learning bounds each large contact history to recent whole messages', async t => {
   const { a, bridge, provider, contacts } = await fixture(t, 10);
-  for (const c of contacts) bridge.messages.set(c, Array.from({ length: 80 }, (_, i) => ({ id: `${c}-${i}`, direction: i % 2 ? 'self' : 'other', text: `${i}:` + '正文'.repeat(400) })));
-  await a.learn({ contacts });
-  const input = provider.calls[0].input;
-  assert.ok(JSON.stringify(input).length < 90000);
-  assert.ok(input.conversations.every(c => c.material.length < 80 && c.material.at(-1).text.startsWith('79:') && c.material.some(m => m.direction === 'self')));
+  for (const c of contacts) bridge.messages.set(c, Array.from({ length: 80 }, (_, i) => ({ id: `${c}-${i}`, direction: i % 2 ? 'self' : 'other', text: `${i}:` + '正文'.repeat(1000) })));
+  await a.learn({ contacts, target: 'style' });
+  assert.equal(provider.calls.length, 10);
+  assert.ok(provider.calls.every(({ input }) => input.material.reduce((total, message) => total + [...message.text].length, 0) <= 150000));
+  assert.ok(provider.calls.every(({ input }) => input.material.length < 80 && input.material.some(m => m.text.startsWith('79:')) && input.material.some(m => m.direction === 'self')));
 });
 
 test('cancellation during chat reading prevents a later model request', async t => {
@@ -119,12 +146,16 @@ test('cancellation during chat reading prevents a later model request', async t 
   assert.equal(provider.calls.length, 0); assert.equal(a.profiles().length, 0); assert.equal(a.operation, null);
 });
 
-test('cancellation during the merged model request discards every result', async t => {
+test('cancellation during one per-contact model request discards that batch', async t => {
   const { a, provider, contacts } = await fixture(t);
-  const entered = Promise.withResolvers(), release = Promise.withResolvers();
-  provider.next = async input => { entered.resolve(); await release.promise; return { profiles: input.conversations.map(({ contact }) => ({ contact, style: defaultStyle })) }; };
+  const entered = Promise.withResolvers();
+  provider.complete = async (_config, system, input, signal) => {
+    provider.calls.push({ system, input }); entered.resolve();
+    await new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(new Error('request aborted')), { once: true }));
+  };
   const work = a.learn({ contacts }); const rejected = assert.rejects(work);
-  await entered.promise; assert.equal(a.operation.phase, 'model'); await a.cancel(); release.resolve(); await rejected;
+  await Promise.race([entered.promise, new Promise((_resolve, reject) => setTimeout(() => reject(new Error(`no model call; phase=${a.operation?.phase}; calls=${provider.calls.length}`)), 2000))]);
+  assert.ok(['model', 'memory'].includes(a.operation.phase)); await a.cancel(); await rejected;
   assert.equal(a.profiles().length, 0); assert.equal(a.operation, null);
 });
 
@@ -235,20 +266,20 @@ test('manual configuration rejects stale contacts and malformed styles, and pres
   a.available = false; await assert.rejects(a.saveReplyProfile({ contact: contacts[0], ...replyPresets[0] }));
 });
 
-for (const reason of ['manual', 'handoff', 'uncertain']) test(`changing a manual reply strategy preserves existing ${reason} takeover until explicitly resumed`, async t => {
+for (const reason of ['manual', 'uncertain']) test(`changing a manual reply strategy preserves existing ${reason} takeover until explicitly resumed`, async t => {
   const { a, contacts } = await fixture(t);
   await a.saveReplyProfile({ contact: contacts[0], ...replyPresets[0] });
   const profile = a.profiles()[0]; profile.paused = true; profile.rounds = 3;
-  if (reason === 'handoff') profile.handoffReason = 'external';
   if (reason === 'uncertain') profile.delivery = { status: 'uncertain' };
   await a.saveReplyProfile({ contact: contacts[0], ...replyPresets[1] });
   const updated = a.profile(profile.id);
   assert.equal(updated.paused, true); assert.equal(updated.rounds, 3);
-  assert.equal(updated.handoffReason, profile.handoffReason); assert.deepEqual(updated.delivery, profile.delivery);
-  // uncertain 只是【待核验】标记，不再阻断手动恢复；handoff 仍需核对后恢复。
-  if (reason !== 'handoff') await a.editProfile(updated.id, { style: updated.style, paused: false });
-  else { await assert.rejects(a.editProfile(updated.id, { style: updated.style, paused: false }), /先核对/); const view = await a.review(updated.id); await a.review(updated.id, { resolve: true, revision: view.revision }); }
-  assert.equal(a.profile(profile.id).paused, false); assert.equal(a.profile(profile.id).rounds, 0);
+  assert.deepEqual(updated.delivery, profile.delivery);
+  if (reason !== 'manual') {
+    await assert.rejects(a.editProfile(updated.id, { style: updated.style, paused: false }), /先核对/);
+  }
+  if (reason === 'uncertain') { assert.equal(a.profile(profile.id).paused, true); assert.equal(a.profile(profile.id).rounds, 3); }
+  else { assert.equal(a.profile(profile.id).paused, true); assert.equal(a.profile(profile.id).rounds, 3); }
 });
 
 test('contact scan progress is observable, contains no chat data and disappears on cancellation', async t => {

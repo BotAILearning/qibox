@@ -8,7 +8,7 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 import { createApplication } from '../server/index.mjs';
 import { root, playwrightPath } from './tooling.mjs';
-import { temp, cleanup, runtimeFactory, extractor, fetcher } from '../test/fixtures.mjs';
+import { temp, cleanup, runtimeFactory, extractor, fetcher, packageSha256 } from '../test/fixtures.mjs';
 import { ChatFixture, AIModelFixture, modelConfig, key } from '../test/ai-fixtures.mjs';
 import { rfbFixture } from '../test/rfb-fixture.mjs';
 const { chromium } = createRequire(import.meta.url)(playwrightPath);
@@ -18,9 +18,10 @@ const completed = [], report = { scope: 'Disposable local fixtures; no live mode
 bridge.contacts[0].label = '陈小雨'; bridge.contacts[1].label = '林一'; bridge.contacts[2].label = '周末';
 bridge.contacts.push({ id: key('group'), label: '产品设计讨论', kind: 'group' });
 bridge.readRange = async args => ({ account: args.account, contact: args.contact, rangeRevision: key(args.contact), messages: [{ id: key(args.contact), timestamp: args.from + 1, text: args.contact, direction: 'self' }] });
-provider.complete = async (config, _system, input) => { completed.push({ config, input }); return { report: `独立报告：${input.contact}\n\n事项与约定\n双方约定继续确认周末安排。` }; };
+provider.complete = async (config, _system, input) => { completed.push({ config, input }); return { report: `独立报告：${input.contact}\n\n事项与约定\n双方约定继续确认周末安排。`, excerptIds: [] }; };
 const peer = await rfbFixture(path.join(root, 'web/backgrounds/mist.jpg'));
 const app = await createApplication({ appRoot: root, dataRoot, dev: true, extract: extractor, fetcher, aiProvider: provider,
+  trustedHashes: [packageSha256],
   runtimeFactory: (...args) => ({ ...runtimeFactory(...args), port: peer.port, aiBridge: bridge, loginStatus: 'logged-in' }) });
 await new Promise(r => app.server.listen(0, '127.0.0.1', r));
 const space = await app.users.get('development'); await space.setConsent(true); app.library.download(); await app.library.working;
@@ -49,7 +50,7 @@ try {
   // 2) Select two contacts (one will be filtered out later).
   await page.locator('#ai-analysis-contacts [name=contacts]').nth(0).check();   // 陈小雨
   await page.locator('#ai-analysis-contacts [name=contacts]').nth(2).check();   // 周末
-  assert.equal(await page.locator('#ai-analysis-count').textContent(), '2 / 10');
+  assert.equal(await page.locator('#ai-analysis-count').textContent(), '2');
 
   // 3) Search "林" -> only 林一 visible; filtered-out labels stay hidden but checked.
   await search.fill('林');
@@ -57,7 +58,7 @@ try {
   assert.equal(await page.locator('#ai-analysis-contacts label:not([hidden])').count(), 1);
   assert.equal(await page.locator('#ai-analysis-contacts label:not([hidden])').textContent(), '林一');
   assert.equal(await page.locator('#ai-analysis-contacts [name=contacts]:checked').count(), 2, 'checked state preserved while filtering');
-  assert.equal(await page.locator('#ai-analysis-count').textContent(), '2 / 10', 'count unaffected by filtering');
+  assert.equal(await page.locator('#ai-analysis-count').textContent(), '2', 'count unaffected by filtering');
   await shot('search-filtered');
 
   // 4) No-match search shows the empty hint, not the generic refresh hint.
@@ -72,15 +73,16 @@ try {
   report.checks.push('搜索过滤隐藏不匹配项、保留勾选、计数不变，清空恢复全部');
 
   // 6) Submit while a filtered-out contact is checked: hidden checked inputs must
-  //    still be submitted via FormData, so the analysis covers both contacts.
+  //    still be included in the queue and each sent in its own request.
   await page.locator('[name=request]').fill('分别总结约定');
   await search.fill('林');  // 陈小雨/周末 now hidden but still checked
   await page.getByRole('button', { name: '开始分析', exact: true }).click(); await settled();
-  assert.equal(completed.length, 2, 'hidden checked contacts still submitted');
+  assert.equal(completed.length, 2, 'hidden checked contacts are each sent once');
+  assert.ok(completed.every(call => !Array.isArray(call.input.contacts)), 'each provider call carries a single contact payload');
   assert.deepEqual(new Set(completed.map(c => c.input.contact)), new Set(['陈小雨', '周末']));
   assert.equal(await page.locator('[data-analysis-report]').count(), 2);
   await shot('search-reports');
-  report.checks.push('隐藏的已勾选联系人仍随表单提交，生成对应报告');
+  report.checks.push('隐藏的已勾选联系人仍进入逐人队列并分别生成报告');
 
   assert.equal(bridge.sent.length, 0); assert.deepEqual(report.errors, []); report.passed = true;
 

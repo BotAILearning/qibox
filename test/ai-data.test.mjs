@@ -27,8 +27,9 @@ function fixture(handler) {
       const result = await handler?.(action, args, context) ?? (['contacts', 'identity'].includes(action)
         ? { available: true, account, contacts: [person, { ...person, id: second, native: { ...person.native, contact: key('native-b') } }] }
         : { ...structuredClone(snapshot), contact: args.contact });
-      return action === 'read' ? { label: person.label, native: { ...person.native,
-        contact: args.contact === second ? key('native-b') : person.native.contact }, ...result } : result;
+      return ['read', 'read-range'].includes(action) ? { label: person.label, native: { ...person.native,
+        contact: args.contact === second ? key('native-b') : person.native.contact }, ...result,
+        ...(action === 'read-range' ? { from: args.from, to: args.to, rangeRevision: key(`range-${args.contact}`) } : {}) } : result;
     } });
   return { bridge, runtime, calls };
 }
@@ -190,17 +191,17 @@ test('unbound contacts, duplicate message IDs and invalid senders are rejected',
     await assert.rejects(bridge.read({ account, contact: key('unbound') }));
   }
 });
-test('selected data histories are parsed and combined into one model call without persisting text', async t => {
+test('selected data histories are learned per contact without persisting text', async t => {
   const root = await temp(), { bridge, calls } = fixture(), provider = new AIModelFixture();
   const a = new AIAssistant({ dataRoot: root, bridge, provider }); await a.init();
   t.after(async () => { await a.close(); await cleanup(root); });
   await a.configure(modelConfig); await a.testProvider(); await a.scan();
-  provider.next = async input => ({ profiles: input.conversations.map(c => ({ contact: c.contact, style: defaultStyle })) });
+  provider.next = async () => ({ style: { language: '口语简洁', rhythm: '回复及时', interaction: '自然提问', emotion: '温和', role: '平等交流' }, memory: { entries: [{ text: '长期事实' }] } });
   await a.learn({ contacts: [contact, second] });
-  assert.equal(calls.filter(c => c.action === 'read').length, 2);
-  assert.equal(provider.calls.length, 1);
-  assert.deepEqual(provider.calls[0].input.conversations.map(c => c.contact), [contact, second]);
-  assert.deepEqual(provider.calls[0].input.conversations[0].material, snapshot.messages.map(({ direction, text, timestamp }) => ({ direction, text, timestamp })));
+  assert.equal(calls.filter(c => c.action === 'read-range').length, 2);
+  assert.equal(provider.calls.length, 2);
+  assert.deepEqual(provider.calls.map(call => call.input.contact), [contact, second]);
+  assert.deepEqual(provider.calls[0].input.material, snapshot.messages.map(({ direction, text, timestamp }) => ({ direction, text, timestamp })));
   assert.equal((await readFile(path.join(root, 'ai-assistant.json'), 'utf8')).includes('DATA_PRIVATE_TEXT'), false);
   assert.equal(bridge.snapshots.size, 0);
 });
@@ -414,7 +415,8 @@ test('a later manual self message remains visible and the receipt cursor matches
   const after = await bridge.read({ account, contact });
   assert.equal(after.revision, key('full-after-manual')); assert.equal(after.messages.at(-1).id, manual.id);
   await assistant.observe(profile, after);
-  assert.equal(profile.paused, true); assert.equal(assistant.cursors.get(profile.id).pending, false);
+  assert.equal(profile.paused, false); assert.equal(profile.manualWait.ownId, manual.id);
+  assert.equal(assistant.cursors.get(profile.id).pending, false);
   assert.equal(assistant.data.events[0].code, 'manual');
 });
 

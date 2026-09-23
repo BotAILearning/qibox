@@ -11,6 +11,7 @@ __pycache__/
 # ===== 接入 git 时补充（2026-09-22） =====
 # 机密：含真机 SSH 密码 / 主机指纹，严禁入库
 密码.txt
+账号.txt
 known_hosts
 *.pem
 *.key

@@ -14,7 +14,10 @@ import { EventEmitter } from 'node:events';
 async function fixture(t, delay = async () => {}) {
   const root = await temp(), bridge = new ChatFixture(), provider = new AIModelFixture(); let now = Date.now();
   const options = { dataRoot: root, bridge, provider, now: () => now, delay, random: min => min };
-  const a = new AIAssistant(options); await a.init(); await a.configure(modelConfig); await a.scan(); await a.settings({ enabled: true }); await a.tick();
+  const a = new AIAssistant(options); await a.init(); await a.configure(modelConfig); await a.scan();
+  await a.prepareTargets({ contacts: [bridge.contacts[0].id] });
+  await a.targets([a.profiles()[0].id], 'reply');
+  await a.settings({ enabled: true }); await a.tick();
   const p = a.profiles()[0];
   t.after(async () => { await a.close(); await cleanup(root); });
   return { a, p, bridge, provider, root, options, advance: ms => { now += ms; },
@@ -32,23 +35,25 @@ test('generation protocol rejects ambiguous, empty, excessive or disallowed segm
   assert.throws(() => messageSegments({ action: 'send', segments: ['一段'] }));
   assert.deepEqual(messageSegments({ action: 'send', segments: ['第一段', '第二段？'] }, { multiTurn: true }), ['第一段', '第二段？']);
 });
-test('learning and batch learning request style plus independent memory in one consistent output', async t => {
+test('single and multi-contact learning request style plus independent memory per person', async t => {
   const f = await fixture(t);
   await f.a.learn({ contacts: [f.p.contact] });
   let prompt = f.provider.calls.at(-1).system;
   // 风格按五个层次输出，memory 由追加的记忆规则在同一个 JSON 中返回。
   assert.match(prompt, /"style":\{"language":"语言层","rhythm":"节奏层","interaction":"互动层","emotion":"情感层","role":"角色层"\}/);
-  assert.match(prompt, /在同一个 JSON 中返回 memory:\{"entries":\[\{"id":"修改旧条目时原样引用其id，新增时省略","text":"一条带事实时间语境的记忆"\}\]\}/);
+  assert.match(prompt, /在同一个 JSON 中返回 memory:\{"entries":\[\{"id":"[^"]+","text":"[^"]+"\}\]\}/);
+  const before = f.provider.calls.length;
   await f.a.learn({ contacts: f.bridge.contacts.slice(0, 2).map(c => c.id) });
-  prompt = f.provider.calls.at(-1).system;
-  assert.match(prompt, /"profiles":\[\{"contact".*"style".*"language"/);
-  assert.match(prompt, /不能混用/);
+  const calls = f.provider.calls.slice(before);
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls.map(call => call.input.contact), f.bridge.contacts.slice(0, 2).map(c => c.id));
+  assert.ok(calls.every(call => /"style"/.test(call.system) && /"memory"/.test(call.system) && !/"profiles"/.test(call.system)));
 });
 test('independent proactive sends every segment with encrypted confirmed receipts and shared task protocol', async t => {
   const delays = [], f = await fixture(t, async ms => delays.push(ms)); const task = await f.task();
   f.provider.next = async () => ({ action: 'send', segments: ['首段秘密', '第二段秘密', '第三段秘密'], followUp: true });
   await f.a.tick();
-  assert.deepEqual(f.bridge.sent.map(m => m.text), ['首段秘密。', '第二段秘密。', '第三段秘密。']);
+  assert.deepEqual(f.bridge.sent.map(m => m.text), ['首段秘密', '第二段秘密', '第三段秘密']);
   assert.deepEqual(delays, [2000, 2000]); assert.equal(task.status, 'ended');
   const item = task.run.items[0], record = f.a.proactiveRecords({}).records[0];
   assert.equal(item.segmentsSent, 3); assert.equal(record.segmentsTotal, 3); assert.equal(record.segmentsSent, 3);
@@ -95,12 +100,12 @@ test('review preview is read-only, explicit resolve consumes current history and
   await f.a.tick(); f.advance(6000); await f.a.tick(); assert.equal(f.bridge.sent.length, 0);
   f.bridge.push(f.p.contact, 'other', '新问题'); await f.a.tick(); f.advance(6000); await f.a.tick(); assert.equal(f.bridge.sent.length, 1);
 });
-test('manual message clears content handoff but incoming and AI-generated messages do not; uncertain stays protected', async t => {
-  const f = await fixture(t); f.a.pauseProfile(f.p, 'handoff'); f.p.handoffReason = 'file';
-  f.bridge.push(f.p.contact, 'other', '仍在等'); await f.a.tick(); assert.equal(f.p.pauseReason, 'handoff');
-  const auto = f.bridge.push(f.p.contact, 'self', 'AI旧消息'); f.p.generatedIds = [auto.id]; await f.a.tick(); assert.equal(f.p.pauseReason, 'handoff');
+test('explicit pauses survive manual messages and uncertain delivery stays protected', async t => {
+  const f = await fixture(t); f.a.pauseProfile(f.p, 'explicit');
+  f.bridge.push(f.p.contact, 'other', '仍在等'); await f.a.tick(); assert.equal(f.p.pauseReason, 'explicit');
+  const auto = f.bridge.push(f.p.contact, 'self', 'AI旧消息'); f.p.generatedIds = [auto.id]; await f.a.tick(); assert.equal(f.p.pauseReason, 'explicit');
   f.bridge.push(f.p.contact, 'self', '本人已提供'); await f.a.tick();
-  assert.equal(f.p.handoffReason, undefined); assert.equal(f.p.pauseReason, 'manual');
+  assert.equal(f.p.paused, true); assert.equal(f.p.pauseReason, 'explicit');
   f.a.pauseProfile(f.p, 'uncertain'); f.p.delivery = { status: 'uncertain' };
   f.bridge.push(f.p.contact, 'self', '人工发送'); await f.a.tick(); assert.equal(f.p.pauseReason, 'uncertain');
   await assert.rejects(f.a.editProfile(f.p.id, { style: f.p.style, paused: false }), /先核对/);

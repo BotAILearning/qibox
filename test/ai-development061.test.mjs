@@ -34,7 +34,7 @@ test('selected material is read once, keeps the latest contents and still reject
   bridge.readRange=async()=>({account:'b',contact:'c',messages:[]});await assert.rejects(readStableRange(bridge,args),/归属/);
   assert.equal(dateRange({}).from,0);assert.throws(()=>dateRange({from:'2026-02-30',to:'2026-03-02'}));
 });
-test('range material is returned once, capped at 30000, and rejects malformed order', async()=>{
+test('range material is returned once, supports the raised bound, and rejects malformed order', async()=>{
   const args={account:'a',contact:'c',from:0,to:40000};
   const messages = count => Array.from({length:count},(_,i)=>({id:`m-${i}`,timestamp:i,text:'x'}));
   let result=await readStableRange({readRange:async()=>({account:'a',contact:'c',messages:messages(301),truncated:false})},args);
@@ -45,16 +45,15 @@ test('range material is returned once, capped at 30000, and rejects malformed or
   await assert.rejects(readStableRange({readRange:async()=>({account:'a',contact:'c',messages:[{id:'a',timestamp:2},{id:'b',timestamp:1}]})},args),/顺序完整性/);
   await assert.rejects(readStableRange({readRange:async()=>({account:'a',contact:'c',messages:[{id:'a',timestamp:40000}]})},args),/顺序完整性/);
 });
-test('manual reply does not pause; model handoff pauses and a manual reply resumes',async t=>{
+test('manual reply waits; model skip is recorded without pausing the contact',async t=>{
   const f=await fixture(t);
   f.push('self','我手动回一句');await f.a.tick();f.advance(3000);
   assert.equal(f.p.paused,false);assert.equal(f.p.pauseReason,undefined);
-  await f.receive('发个文件给我',{action:'handoff',reason:'file'});
-  assert.equal(f.p.paused,true);assert.equal(f.p.pauseReason,'handoff');assert.ok(f.p.handoffReason);
+  await f.receive('发个文件给我',{action:'skip'});
+  f.advance(297000);await f.a.tick();
+  assert.equal(f.p.paused,false);assert.equal(f.a.publicState().skipRecords[0].source,'model-skip');
   f.push('self','文件我发了');await f.a.tick();
-  assert.equal(f.p.paused,false);assert.equal(f.p.handoffReason,undefined);
-  f.push('other','收到');await f.a.tick();f.advance(3000);await f.a.tick();
-  assert.equal(f.bridge.sent.length,1);
+  assert.equal(f.bridge.sent.length,0);
 });
 test('identity setting only allows AI disclosure in response to an identity question',async t=>{
   const f=await fixture(t);assert.match(identityPrompt(false),/表示是本人/);
@@ -62,15 +61,10 @@ test('identity setting only allows AI disclosure in response to an identity ques
   await f.receive('今天天气怎么样',{action:'send',text:'我是AI。'});assert.equal(f.bridge.sent.length,1);
   await f.a.settings({acknowledgeAI:false});await f.receive('你是AI吗',{action:'send',text:'我是AI。'});assert.equal(f.bridge.sent.length,1);
 });
-test('handoff pauses only the current turn; a later incoming message resumes it, and explicit review still works',async t=>{
-  const f=await fixture(t);await f.receive('给我发文件',{action:'handoff',reason:'file'});assert.equal(f.p.pauseReason,'handoff');assert.equal(f.bridge.sent.length,0);
-  // 暂停只作用于本轮：对方再发新消息即自动恢复，上一条的转交不再牵连后续。
-  await f.receive('算了，今晚聊什么',{action:'send',text:'聊聊最近看的书吧。'});assert.equal(f.p.paused,false);assert.equal(f.bridge.sent.length,1);assert.equal(f.a.data.settings.enabled,true);
-  // 还没等到新消息时，显式核对同样解除暂停。
-  await f.receive('给我发文件',{action:'handoff',reason:'file'});assert.equal(f.p.pauseReason,'handoff');
-  const view=await f.a.review(f.p.id);await f.a.review(f.p.id,{resolve:true,revision:view.revision});
-  assert.equal(f.p.paused,false);
-  await f.receive('现在聊聊书吧',{action:'send',text:'你最近在看哪一本？'});assert.equal(f.bridge.sent.length,2);
+test('model skip has no review flow; later incoming messages remain eligible',async t=>{
+  const f=await fixture(t);await f.receive('给我发文件',{action:'skip'});assert.equal(f.p.paused,false);assert.equal(f.bridge.sent.length,0);
+  assert.equal(f.a.publicState().skipRecords[0].reasonCode,'model-no-reply');
+  await f.receive('算了，今晚聊什么',{action:'send',text:'聊聊最近看的书吧。'});assert.equal(f.bridge.sent.length,1);
 });
 test('missing image is skipped even with judgment off; available image reaches only current chat model',async t=>{
   const f=await fixture(t);await f.a.setReplyOptions({contact:f.p.contact,judgeReply:false});
@@ -116,7 +110,7 @@ test('preview learning preserves active style until explicit application and kee
   assert.ok(!p.pendingStyle);assert.equal(JSON.stringify(other),untouched);assert.equal(a.data.settings.enabled,true);
 });
 test('multi-segment reply cannot exceed remaining confirmed-message allowance',async t=>{
-  const f=await fixture(t);await f.a.settings({multiTurn:true});await f.a.saveStrategy({maxRounds:2},undefined,'reply');
+  const f=await fixture(t);await f.a.setReplyOptions({contact:f.p.contact,multiTurn:true});await f.a.saveStrategy({maxRounds:2},undefined,'reply');
   await f.receive('详细说说',{action:'send',segments:['第一条。','第二条。','第三条。']});
   assert.equal(f.bridge.sent.length,2);assert.equal(f.p.rounds,2);
   await f.receive('还有呢');assert.equal(f.bridge.sent.length,2);assert.equal(f.p.pauseReason,'limit');

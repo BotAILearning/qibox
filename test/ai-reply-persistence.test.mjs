@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { AIAssistant } from '../server/ai-service.mjs';
 import { AppError } from '../server/files.mjs';
 import { replyPresets } from '../server/ai-presets.mjs';
-import { AIModelFixture, ChatFixture, modelConfig } from './ai-fixtures.mjs';
+import { AIModelFixture, ChatFixture, modelConfig, learnedStyle } from './ai-fixtures.mjs';
 import { temp, cleanup } from './fixtures.mjs';
 
 async function fixture(t) {
@@ -109,7 +109,7 @@ test('learning while enabled pauses generation without changing the master prefe
   const { a, provider, bridge } = await fixture(t);
   await a.settings({ enabled: true });
   const entered = Promise.withResolvers(), release = Promise.withResolvers();
-  provider.next = async () => { entered.resolve(); await release.promise; return { style: replyPresets[0].style }; };
+  provider.next = async () => { entered.resolve(); await release.promise; return { style: learnedStyle(), memory: { entries: [] } }; };
   const learning = a.learn({ contacts: [bridge.contacts[0].id] }); await entered.promise;
   await a.tick(); assert.equal(bridge.sent.length, 0); assert.equal(a.data.settings.enabled, true);
   release.resolve(); await learning; assert.equal(a.data.settings.enabled, true);

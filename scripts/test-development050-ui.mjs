@@ -9,7 +9,7 @@ import { createApplication } from '../server/index.mjs';
 import { FileChooser } from '../server/file-chooser.mjs';
 import { AppError } from '../server/files.mjs';
 import { root, playwrightPath } from './tooling.mjs';
-import { temp, cleanup, runtimeFactory, extractor, fetcher } from '../test/fixtures.mjs';
+import { temp, cleanup, runtimeFactory, extractor, fetcher, packageSha256 } from '../test/fixtures.mjs';
 import { ChatFixture, AIModelFixture, key, modelConfig } from '../test/ai-fixtures.mjs';
 import { rfbFixture } from '../test/rfb-fixture.mjs';
 const { chromium } = createRequire(import.meta.url)(playwrightPath);
@@ -17,14 +17,14 @@ const dataRoot = await temp(), bridge = new ChatFixture(), provider = new AIMode
 await mkdir(home);
 bridge.waitForIdle = async () => { if (bridge.manualInputBlocked) throw new AppError('draft', 409, 'ai_draft_check'); };
 bridge.releaseManualBlock = () => { bridge.manualInputBlocked = false; };
-const ranges = [];
+const ranges = [], analysisCalls = [];
 calendarFixture(bridge);
 bridge.readRange = async args => { ranges.push(args); return { account: args.account, contact: args.contact, rangeRevision: key(args.contact), messages: [{ id: key(args.contact), timestamp: args.from + 1, direction: 'self', text: args.contact }] }; };
 const peer = await rfbFixture(path.join(root, 'web/backgrounds/mist.jpg'));
 const chooser = new FileChooser({ dataRoot, home, send: async value => {
   if (value.watch) { await writeFile(fileURLToPath(value.uris[0]), 'NATIVE_FILE_BYTES_语音之外的附件'); chooser.receive({ type: 'saved', id: value.id }); }
 } }); await chooser.init();
-const app = await createApplication({ appRoot: root, dataRoot, dev: true, extract: extractor, fetcher, aiProvider: provider,
+const app = await createApplication({ appRoot: root, dataRoot, dev: true, extract: extractor, fetcher, trustedHashes: [packageSha256], aiProvider: provider,
   runtimeFactory: (...args) => ({ ...runtimeFactory(...args), fileChooser: chooser, port: peer.port, aiBridge: bridge, loginStatus: 'logged-in' }) });
 await new Promise(r => app.server.listen(0, '127.0.0.1', r));
 const space = await app.users.get('development'); await space.setConsent(true); app.library.download(); await app.library.working;
@@ -54,17 +54,22 @@ try {
   await page.locator('[data-ai-nav=analysis]').click();
   await page.locator('#ai-analysis-form [name=request]').fill('分别总结约定');
   for (const c of bridge.contacts.slice(0, 2)) await page.locator(`#ai-analysis-form [value="${c.id}"]`).check();
-  provider.complete = async (_config, _system, input) => ({ report: '独立报告 ' + bridge.contacts.find(c => c.id === input.messages[0].text).label });
+  provider.complete = async (_config, _system, input) => {
+    analysisCalls.push(input);
+    return { report: '独立报告 ' + input.contact, excerptIds: [] };
+  };
   await selectSeptemberRange(page);
   await page.getByRole('button', { name: '开始分析', exact: true }).click();
   await page.locator('[data-ai-copy-report="1"]').waitFor();
-  assert.equal(await page.locator('[data-analysis-report]').count(), 2); assert.equal(ranges.length, 4);
+  assert.equal(await page.locator('[data-analysis-report]').count(), 2); assert.equal(analysisCalls.length, 2);
+  assert.deepEqual(new Set(analysisCalls.map(c => c.contact)), new Set(bridge.contacts.slice(0, 2).map(c => c.label)));
+  assert.equal(ranges.length, 2);
   assert.ok(ranges.every(r => r.from === Date.parse('2026-09-01T00:00:00+08:00') / 1000 && r.to === Date.parse('2026-09-03T00:00:00+08:00') / 1000));
   await page.locator('[data-ai-copy-report="1"]').click();
   assert.equal(await page.evaluate(() => navigator.clipboard.readText()), '独立报告 测试对象乙');
   assert.equal(bridge.sent.length, 0); await page.screenshot({ path: path.join(output, 'analysis.png') });
   report.checks.push('Two independent reports use real request date bounds and full-text copy; no sends');
-  for (const [nav, file] of [['proactive','proactive.png'],['activity','activity.png'],['provider','provider.png']]) {
+  for (const [nav, file] of [['proactive','proactive.png'],['activity','activity.png'],['settings','settings.png']]) {
     await page.locator(`.ai-main-tabs [data-ai-nav=${nav}]`).click(); await page.screenshot({ path: path.join(output, file) });
   }
   await page.locator('#ai-close').click();

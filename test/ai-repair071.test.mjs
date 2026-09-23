@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { AIAssistant } from '../server/ai-service.mjs';
 import { AIProvider, modelResult } from '../server/ai-provider.mjs';
-import { analysisChunks } from '../server/ai-analysis.mjs';
+import { tailWithinLimit } from '../server/ai-analysis.mjs';
 import { AppError } from '../server/files.mjs';
 import { activityRows } from '../web/ai-activity-view.mjs';
 import { ChatFixture, AIModelFixture, modelConfig, key } from './ai-fixtures.mjs';
@@ -12,7 +12,7 @@ async function fixture(t) {
   const root = await temp(), bridge = new ChatFixture(), provider = new AIModelFixture(); let now = Date.parse('2026-09-17T02:00:00Z');
   const a = new AIAssistant({ dataRoot: root, bridge, provider, now: () => now }); await a.init();
   t.after(async () => { await a.close(); await cleanup(root); });
-  await a.verifyProvider(modelConfig); await a.scan(); await a.settings({ enabled: true });
+  await a.verifyProvider(modelConfig); await a.scan(); await a.settings({ enabled: true, replyScope: 'all' });
   return { a, bridge, provider, advance: ms => now += ms, p: a.profiles()[0] };
 }
 test('concurrent refreshes share one scan; transient failure keeps verified contacts and backs off', async t => {
@@ -50,7 +50,7 @@ test('legacy reply is recovered by ID from older history; unrelated or incoming 
   p.generatedIds = [id]; p.sentMessages = [{ id, at: a.now() - 86400000, source: 'reply' }];
   let ranges = 0;
   bridge.readRange = async args => { ranges++; return { account: args.account, contact: args.contact, messages: [{ id: key('manual'), text: 'same', direction: 'self', timestamp: args.from + 1 }, { id, text: 'old confirmed', direction: 'self', timestamp: args.from + 2 }] }; };
-  assert.deepEqual((await a.activityRecords([p.id])).records[0].messages.map(m => m.id), [id]); assert.equal(ranges, 2);
+  assert.deepEqual((await a.activityRecords([p.id])).records[0].messages.map(m => m.id), [id]); assert.equal(ranges, 1);
   bridge.read = async () => { throw new AppError('读取超时'); };
   const recovered = (await a.activityRecords([p.id])).records[0]; assert.equal(recovered.unavailable, false); assert.equal(recovered.messages[0].id, id);
   bridge.readRange = undefined;
@@ -58,7 +58,7 @@ test('legacy reply is recovered by ID from older history; unrelated or incoming 
   delete p.sentMessages[0].body;
   const failure = (await a.activityRecords([p.id])).records[0]; assert.equal(failure.unavailable, true); assert.match(failure.error, /读取超时/);
   const state = { activity: [{ id: p.id, label: '甲', hasSent: true, at: a.now() }] };
-  assert.doesNotMatch(activityRows(state, {}, [{ id: p.id, messages: [] }], false), /class="ai-contact-record"/);
+  assert.match(activityRows(state, {}, [{ id: p.id, messages: [] }], false), /当前可读取范围内暂无正文/);
   const html = activityRows(state, {}, [failure], false); assert.match(html, /data-ai-retry-records/); assert.doesNotMatch(html, /展开近期执行记录（0 条）/);
 });
 
@@ -88,8 +88,11 @@ test('analysis accepts provider text blocks, reasoning prefix and prose report b
   const provider = new AIProvider({ fetcher: async () => Response.json({ content: [{ type: 'thinking', thinking: 'private' }, { type: 'text', text: '完整报告' }] }) });
   assert.equal((await provider.complete({ ...modelConfig, protocol: 'anthropic' }, '', {}, undefined, { format: 'report' })).report, '完整报告');
 });
-test('analysis chunks preserve message timestamps and Beijing calendar dates without splitting messages', () => {
+test('analysis keeps complete in-limit messages in order with timestamps', () => {
   const messages = Array.from({ length: 5 }, (_, i) => ({ id: String(i), text: '字'.repeat(10000), direction: 'self', timestamp: 1789578000 + i }));
-  const chunks = analysisChunks([messages]); assert.equal(chunks.length, 5); assert.deepEqual(chunks.flat().map(m => m.timestamp), messages.map(m => m.timestamp));
-  assert.ok(chunks.flat().every(m => m.time.endsWith('+08:00'))); assert.equal(chunks[0][0].text.length, 10000);
+  const result = tailWithinLimit(messages);
+  assert.deepEqual(result.messages.map(m => m.id), messages.map(m => m.id));
+  assert.deepEqual(result.messages.map(m => m.timestamp), messages.map(m => m.timestamp));
+  assert.deepEqual(result.messages.map(m => m.text), messages.map(m => m.text));
+  assert.equal(result.coverage.truncated, false);
 });

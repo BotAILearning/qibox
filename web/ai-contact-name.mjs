@@ -16,5 +16,5 @@ export const contactName = (item, contact) => {
   return nickname ? `${esc(label)}<span class="ai-contact-nick">（${esc(nickname)}）</span>` : esc(label);
 };
 export const contactBook = state => new Map((state?.contacts || []).map(contact => [contact.id, contact]));
-export const contactSearch = (item, contact) => `${item?.label || ''} ${item?.nickname || ''} ${contact?.nickname || ''} ${item?.id || ''}`.normalize('NFKC').toLocaleLowerCase();
+export const contactSearch = (item, contact) => `${item?.label || contact?.label || ''} ${item?.nickname || ''} ${contact?.nickname || ''}`.normalize('NFKC').toLocaleLowerCase();
 export { esc };

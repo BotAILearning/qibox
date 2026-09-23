@@ -42,7 +42,7 @@ function editorCard(state, draft, presets) {
   const preset = presets.find(x => x.id === f.preset) || (f.baseUrl && presets.find(x => x.baseUrl === f.baseUrl && x.protocol === (f.protocol || 'openai')));
   const keyStored = !!f.keyStored;
   return `<form id="ai-model-form" class="ai-card ai-model-editor" data-model-id="${esc(draft.editing)}">
-  <div class="ai-card-heading"><h4>${draft.editing === 'new' ? '添加模型' : '编辑模型'}</h4><button type="button" class="quiet" data-ai-action="model-cancel">返回</button></div>
+  <div class="ai-card-heading"><h4>${draft.editing === 'new' ? '添加模型' : '编辑模型'}</h4><button type="button" class="quiet" data-ai-action="model-cancel">${icon('arrow-l')}返回模型列表</button></div>
   <div class="ai-form-grid"><label class="ai-field">模型服务<select id="ai-model-preset">${presets.map(x => option(x.id, x.label, x.id === f.preset)).join('')}${option('custom', '自定义服务', !f.preset)}</select></label><label class="ai-field">接口类型<select name="protocol">${option('openai', 'OpenAI 兼容', (f.protocol || 'openai') !== 'anthropic')}${option('anthropic', 'Anthropic Messages', f.protocol === 'anthropic')}</select></label></div>
   <label class="ai-field">服务地址<input name="baseUrl" type="url" required value="${esc(f.baseUrl || '')}" placeholder="https://你的服务地址/v1" autocomplete="off"></label>
   <div class="ai-field"><label for="ai-api-key">API Key</label><div class="ai-key-field"><input id="ai-api-key" name="apiKey" type="password" maxlength="2048" value="${keyStored ? '********' : esc(f.apiKey || '')}" data-key-stored="${keyStored}" placeholder="输入服务商提供的密钥" autocomplete="new-password" autocapitalize="none" spellcheck="false"><button type="button" class="ai-key-eye" data-ai-action="toggle-key" aria-label="展示 API Key" aria-controls="ai-api-key" aria-pressed="false">${keyIcon(false)}</button></div></div>
@@ -64,13 +64,13 @@ function assignmentCard(state, draft, models, assignments) {
   }).join('')}</div>
   <div class="ai-model-save"><p class="ai-help">${esc(draft?.status || '更改模型或分配后需点击“保存”才生效；修改模型配置后需重新测试连接。')}</p><button type="button" class="primary" data-ai-action="models-save">${icon('check')}保存</button></div></section>`;
 }
-export function providerPage(state, draft) {
+export function providerPage(state, draft, { back = '' } = {}) {
   const models = modelsFor(state, draft);
   const assignments = assignmentsFor(state, draft);
   const presets = state.schema?.providerPresets || [];
   const editing = draft?.editing;
   const badge = models.length ? `<span class="ai-badge ${models.some(m => m.tested) ? 'blue' : 'muted'}">${models.length} 个模型${models.some(m => m.tested) ? ' · 已配置' : ' · 待测试'}</span>` : '<span class="ai-badge muted">尚未配置</span>';
-  return `<div class="ai-page-heading"><div><h3>模型设置</h3><p>为聊天类和学习分析类分别选择模型；第一个添加的模型默认应用于全部功能。</p></div>${badge}</div>
+  return `<div class="ai-page-heading ai-provider-page-heading"><div>${back}<h3>模型设置</h3><p>为聊天类和学习分析类分别选择模型；第一个添加的模型默认应用于全部功能。</p></div>${badge}</div>
   <div class="ai-model-workspace">
     <aside class="ai-model-sidebar${editing ? ' ai-model-editing' : ''}">${editing ? editorCard(state, draft, presets) : `<button type="button" class="secondary ai-model-add" data-ai-action="model-add">${icon('plus')}添加模型</button>
       <div class="ai-model-list" role="list" aria-label="已配置模型">${models.length ? models.map(m => modelItem(m, assignments, draft?.editing === m.id)).join('') : '<p class="ai-help ai-model-empty">还没有模型，点击“添加模型”创建第一个。</p>'}</div>

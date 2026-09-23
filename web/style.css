@@ -26,7 +26,7 @@ html.mobile .workspace{display:block}html.mobile .content{max-width:620px}html.m
 .ai-review-dialog { width: min(560px, calc(100vw - 32px)); max-height: 85dvh; border: 1px solid #d8dee8; border-radius: 16px; padding: 24px; color: #172033; background: #fff; box-shadow: 0 24px 80px #0004; }
 .ai-review-dialog::backdrop { background: #15213d66; }
 .ai-review-dialog h3 { margin-top: 0; }
-.ai-review-dialog a, #ai-handoffs a, .ai-queue-list a { color: #2558c7; text-decoration: underline; }
+.ai-review-dialog a, .ai-queue-list a { color: #2558c7; text-decoration: underline; }
 .ai-review-messages { max-height: 45dvh; overflow: auto; background: #f4f6fa; padding: 12px; border-radius: 10px; margin: 16px 0; }
 .ai-review-messages p { margin: 0 0 12px; padding: 10px; background: white; border-radius: 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .ai-review-messages .self { margin-left: 24px; background: #e4f2ea; }

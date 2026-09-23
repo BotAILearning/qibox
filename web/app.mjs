@@ -204,11 +204,11 @@ function renderDesktop() {
   const entry = state?.instances.find(item => item.id === desktopId);
   const runtime = entry?.runtime;
   if (standaloneAI) { if (!aiAvailable(runtime, true)) { disconnect(); notify('请先在电脑端登录微信'); } return; }
-  // 入口常驻：只要打开的是微信实例就让入口显示，且与 assistant 挂载解耦——
-  // 即使挂载 / 接口异常也不会让入口消失；可用性延迟到操作开关、打开面板时判断。
+  // 登录确认且桌面已连接时显示入口；短暂未知状态沿用 aiEntryAvailable。
   const wechatEntry = !!(entry && (entry.appId || 'wechat') === 'wechat');
-  $('#ai-rail').hidden = !wechatEntry;
-  syncAssistant(wechatEntry ? desktopId : null);
+  const showAI = aiAvailable(runtime, desktopConnected);
+  $('#ai-rail').hidden = !showAI;
+  syncAssistant(showAI && wechatEntry ? desktopId : null);
   const action = desktopAction(runtime, desktopConnected);
   $('#desktop-reconnect').hidden = !action;
   $('#desktop-reconnect').textContent = action?.label || '显示微信';
@@ -247,7 +247,7 @@ function settings(item) {
     <label class="choice"><input type="radio" name="mode" value="continuous" ${item.schedule.mode === 'continuous' ? 'checked' : ''}><span><strong>持续备份</strong><small>登录后持续接收并保存记录。与电脑登录同一微信冲突，适合主要使用手机时开启。</small></span></label>
     <label id="idle-choice" class="choice"><input id="idle-mode" data-instance-id="${esc(item.id)}" type="radio" name="mode" value="idle" ${item.schedule.mode === 'idle' ? 'checked' : ''}><span><strong>闲时备份</strong><small>按时启动并退出，适合不使用电脑微信的时段。</small></span></label>
     <p class="field-help">因微信限制，前期使用需扫码登录。后续在微信勾选“自动登录该设备”后，才能在定时重启后自动登录；栖盒会自动点击启动页的“登录”按钮。</p>
-    <div id="idle-window" class="time-fields" ${item.schedule.mode === 'idle' ? '' : 'hidden'}><label>开始时间<input type="time" name="startTime" value="${esc(item.schedule.startTime)}" required></label><label>结束时间<input type="time" name="endTime" value="${esc(item.schedule.endTime)}" required></label><small>北京时间，支持跨夜时段。</small></div>
+    <div id="idle-window" class="time-fields" ${item.schedule.mode === 'idle' ? '' : 'hidden'}><label>开始时间<input type="time" name="startTime" value="${esc(item.schedule.startTime)}" required></label><label>结束时间<input type="time" name="endTime" value="${esc(item.schedule.endTime)}" required></label><small>支持跨夜时段。</small></div>
     <p class="field-help">关闭页面后微信继续运行；主动停止后，需再次打开或保存设置。</p>`, '<button type="button" data-close class="secondary">取消</button><button type="submit" class="primary">保存设置</button>', async form => {
       await api(`/instances/${item.id}/settings`, { mode: form.get('mode'), startTime: form.get('startTime'), endTime: form.get('endTime') });
       await refresh(); notify('启动设置已保存');

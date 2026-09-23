@@ -6,7 +6,7 @@ import { objectPage } from '../web/ai-object-view.mjs';
 import { styleChoice } from '../web/ai-style-view.mjs';
 import { migrateLearnedStyle } from '../server/ai-style.mjs';
 import { defaultStyle } from '../server/ai-schema.mjs';
-import { ChatFixture, AIModelFixture, modelConfig, key, strategy } from './ai-fixtures.mjs';
+import { ChatFixture, AIModelFixture, modelConfig, key, strategy, learnedStyle } from './ai-fixtures.mjs';
 import { temp, cleanup } from './fixtures.mjs';
 
 async function fixture(t) {
@@ -27,6 +27,8 @@ test('AI-01 default profile retains custom style after memory/reply-goal saves a
   assert.equal(p.source, 'manual'); assert.deepEqual(styleChoice(p), { summary: text, styleId: 'custom' });
   const html = objectPage(a.publicState(), { selected: contact, kind: 'person', search: '' });
   assert.match(html, /始终称呼对方王老师/); assert.match(html, /data-ai-style="custom" aria-pressed="true"/);
+  const draftHtml = objectPage(a.publicState(), { selected: contact, kind: 'person', search: '', draft: { styleId: 'custom', summary: '临时自定义' } });
+  assert.match(draftHtml, /data-ai-style="custom" aria-pressed="true"/);
   await a.editMemory(p.id, { summary: '对方周六有空。' });
   await a.saveReplyProfile({ contact, style: p.style, styleId: p.styleId, strategy: { replyGoal: '确认周六时间' }, preserveSwitches: true });
   const b = new AIAssistant(options); await b.init(); await b.scan();
@@ -41,7 +43,7 @@ test('AI-01 default profile retains custom style after memory/reply-goal saves a
 });
 test('AI-07 learned snapshot survives preset/custom/default selections and restart', async t => {
   const { a, bridge, provider, options } = await fixture(t), contact = bridge.contacts[0].id;
-  provider.next = async () => ({ style: { summary: '独特的学习结果。' } });
+  provider.next = async () => ({ style: learnedStyle('独特的学习结果。') });
   await a.learn({ contacts: [contact] });
   const p = a.profiles()[0], learned = structuredClone(p.learnedStyle), preset = a.publicState().schema.replyPresets[0];
   await a.saveReplyProfile({ contact, style: preset.style, styleId: `preset:${preset.id}`, strategy: {} });
@@ -97,33 +99,52 @@ for (const mention of ['self', 'all']) for (const otherSpeaker of [false, true])
   push('普通补充。', '', 'one'); await a.tick(); advance(4000); await a.tick();
   assert.equal(provider.calls.length, 1);
 });
-test('AI-03 skipped mentions and mentions before enabling are not replayed', async t => {
+test('AI-03 @all skip is not replayed, @me repeated skips are explicit errors, and old mentions stay unprocessed', async t => {
   const { a, bridge, provider, advance } = await fixture(t), c = bridge.contacts[0]; c.kind = 'group'; await a.scan();
-  const push = self => Object.assign(bridge.push(c.id, 'other', '测试'), { sender: key('one'), mentions: { verified: true, self, all: false, others: false } });
-  push(true); await a.setGroupOptions({ contact: c.id, atMe: true }); await a.settings({ enabled: true, replyScope: 'selected' });
-  push(false); await a.tick(); advance(4000); await a.tick(); assert.equal(provider.calls.length, 0);
-  push(true); await a.tick(); advance(4000); provider.next = async () => ({ action: 'skip' }); await a.tick();
-  push(false); await a.tick(); advance(4000); await a.tick(); assert.equal(provider.calls.length, 1);
-  await a.setGroupOptions({ contact: c.id, atMe: false, realtime: true, confirmRealtime: true });
-  push(true); await a.tick(); advance(4000); await a.tick(); assert.equal(provider.calls.length, 1);
+  const push = field => Object.assign(bridge.push(c.id, 'other', '测试'), { sender: key('one'), mentions: { verified: true, self: field === 'self', all: field === 'all', others: false } });
+  const complete = provider.complete.bind(provider);
+  push('self'); await a.setGroupOptions({ contact: c.id, atMe: true }); await a.settings({ enabled: true, replyScope: 'selected' });
+  push(''); await a.tick(); advance(4000); await a.tick(); assert.equal(provider.calls.length, 0);
+
+  const profile = a.profiles().find(value => value.contact === c.id);
+  provider.complete = async (config, system, input) => { provider.calls.push({ system, input }); return { action: 'skip' }; };
+  push('self'); await a.tick(); advance(4000); await a.tick();
+  assert.equal(provider.calls.length, 2);
+  assert.equal(bridge.sent.length, 0);
+  assert.match(a.notice, /@我触发未生成相关回复/);
+  assert.equal(profile.handledIncomingId, undefined);
+  push(''); await a.tick(); advance(4000); await a.tick(); assert.equal(provider.calls.length, 2);
+
+  provider.complete = complete;
+  await a.setGroupOptions({ contact: c.id, atMe: false, atAll: true });
+  await a.tick(); // Establish the all-mention boundary before generating new input.
+  provider.next = async () => ({ action: 'skip' });
+  push('all'); await a.tick(); advance(4000); await a.tick();
+  assert.equal(provider.calls.length, 3);
+  assert.equal(bridge.sent.length, 0);
+  assert.equal(a.data.events[0].code, 'skip');
+  push(''); await a.tick(); advance(4000); await a.tick(); assert.equal(provider.calls.length, 3);
 });
 test('AI-03 pending burst survives restart with its original unprocessed boundary', async t => {
   const { a, bridge, provider, advance, options } = await fixture(t), c = bridge.contacts[0]; bridge.stableMessageIds = true; c.kind = 'group'; await a.scan();
   await a.setGroupOptions({ contact: c.id, atMe: true }); await a.settings({ enabled: true, replyScope: 'selected' });
+  await a.tick(); // Establish the historical boundary before this fixture's timestamp-less incoming messages.
   Object.assign(bridge.push(c.id, 'other', '@你 周六见？'), { mentions: { verified: true, self: true }, sender: key('one') }); await a.tick();
   Object.assign(bridge.push(c.id, 'other', '在咖啡店。'), { mentions: { verified: true }, sender: key('one') }); await a.tick();
   const b = new AIAssistant(options); await b.init(); await b.scan(); advance(4000);
   try { await b.tick(); assert.equal(bridge.sent.length, 1); assert.equal(provider.calls.at(-1).input.groupState.trigger, 'atMe'); } finally { await b.close(); }
 });
-test('AI-04 dates filter each delivery and pending help independently at Beijing midnight', async t => {
+test('AI-04 date filters keep deliveries and manual-help entries independent at UTC+8 midnight', async t => {
   const { a, bridge } = await fixture(t); await a.settings({ enabled: true });
   await a.saveReplyProfile({ contact: bridge.contacts[0].id, style: defaultStyle, strategy: {}, preserveSwitches: true, replyEnabled: false });
   const p = a.profiles()[0], dates = ['2026-09-13T23:59:59+08:00', '2026-09-14T00:00:00+08:00', '2026-09-14T23:59:59+08:00', '2026-09-15T00:00:00+08:00'];
   p.sentMessages = dates.map((date, i) => ({ id: bridge.push(p.contact, 'self', `BODY_${i}`).id, at: Date.parse(date), source: 'reply' })); p.generatedIds = p.sentMessages.map(m => m.id);
-  a.pauseProfile(p, 'handoff'); p.handoffReason = 'file'; a.event('handoff', p.id);
+  a.pauseProfile(p, 'limit'); a.event('limit', p.id);
   const state = a.publicState(), filters = { from: '2026-09-14', to: '2026-09-14' };
   const entries = activityEntries(state, filters); assert.equal(entries.length, 1); assert.equal(entries[0].needsHelp, false);
   const { records } = await a.activityRecords([p.id], filters); assert.deepEqual(records[0].messages.map(m => m.text), ['BODY_1', 'BODY_2']);
+  assert.equal(activityEntries(state, { ...filters, query: 'BODY_1' }, records).length, 1);
+  assert.equal(activityEntries(state, { ...filters, query: 'no-match' }, records).length, 0);
   const html = activityRows(state, filters, records, false); assert.match(html, /BODY_1/); assert.doesNotMatch(html, /BODY_0|BODY_3|需要你发送/);
   assert.equal(activityEntries(state, { ...filters, code: 'help' }).length, 0);
   assert.equal(activityEntries(state, { from: '2026-09-15', to: '2026-09-15', code: 'help' }).length, 1);
@@ -142,12 +163,14 @@ for (const old of ['把文件发给我', '看一下图片', '[语音]']) test(`A
   await a.queueAction('start'); await a.tick();
   assert.equal(provider.calls.length, 1); assert.equal(bridge.sent.length, 1); assert.equal(a.profiles()[0].handoffReason, undefined);
 });
-for (const content of ['把文件发给我', '给对方打电话']) test(`AI-05 explicit model handoff for ${content} prevents sending`, async t => {
+for (const content of ['把文件发给我', '给对方打电话']) test(`AI-05 model skip for ${content} prevents sending and creates a skip ledger row`, async t => {
   const { a, bridge, provider } = await fixture(t);
-  provider.next = async () => ({action:'handoff',reason:'other'});
+  provider.next = async () => ({action:'skip'});
   await a.saveStrategy({ ...strategy, content }); await a.prepareTargets({ contacts: [bridge.contacts[0].id] });
   await a.settings({ enabled: true, proactive: true, reply: false }); await a.queueAction('start'); await a.tick();
-  assert.equal(provider.calls.length, 1); assert.equal(bridge.sent.length, 0); assert.ok(a.profiles()[0].handoffReason);
+  assert.equal(provider.calls.length, 1); assert.equal(bridge.sent.length, 0);
+  assert.equal(a.publicState().skipRecords[0].source, 'model-skip');
+  assert.equal(a.publicState().skipRecords[0].reasonCode, 'model-no-reply');
 });
 test('AI-05 stop-contact history remains in model input and stop response prevents sending', async t => {
   const { a, bridge, provider } = await fixture(t); const c = bridge.contacts[0]; bridge.push(c.id, 'other', '不要再联系我');

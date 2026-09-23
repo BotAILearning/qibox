@@ -26,15 +26,6 @@ export function reportMetrics(messages) {
   return { total: rows.length, self, other, unknown: Math.max(0, rows.length - self - other), activeDays: new Set(dates).size, hours };
 }
 
-export function reportExcerpts(messages, limit = 4) {
-  const rows = Array.isArray(messages) ? messages : [];
-  return rows.filter(message => (message?.direction === 'self' || message?.direction === 'other') && typeof message?.text === 'string' && message.text.trim()).slice(0, limit).map(message => ({
-    direction: message.direction,
-    date: dateText(message.timestamp),
-    text: message.text.trim().slice(0, 120),
-  }));
-}
-
 export function actualRange(messages) {
   const rows = (Array.isArray(messages) ? messages : []).filter(message => Number.isSafeInteger(message?.timestamp)).sort((a, b) => a.timestamp - b.timestamp);
   return rows.length ? { from: dateText(rows[0].timestamp), to: dateText(rows.at(-1).timestamp) } : null;
@@ -50,6 +41,16 @@ export function historySummary(report) {
     requestedRange: report.requestedRange,
     actualRange: report.actualRange,
     count: report.count,
+    readableCount: report.readableCount,
+    analyzedCount: report.analyzedCount,
+    analyzedChars: report.analyzedChars,
+    totalChars: report.totalChars,
+    omittedMessages: report.omittedMessages,
+    partialMessages: report.partialMessages,
+    sourceRange: report.sourceRange,
+    rangeCount: report.rangeCount,
+    sampledCount: report.sampledCount,
+    sampledRange: report.sampledRange,
     skipped: report.skipped,
     truncated: report.truncated === true,
     summary: typeof report.report === 'string' ? report.report.replace(/\s+/g, ' ').trim().slice(0, 140) : '',

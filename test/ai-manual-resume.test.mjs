@@ -27,40 +27,35 @@ async function fixture(t, kind = 'person') {
   };
 }
 
-for (const kind of ['person', 'group']) test(`${kind}: manual reply does not pause and AI keeps replying to new incoming`, async t => {
+for (const kind of ['person', 'group']) test(`${kind}: manual reply waits the configured interval before replying to new incoming`, async t => {
   const f = await fixture(t, kind);
   f.push('self', '我手动回一句'); await f.a.tick();
   assert.equal(f.profile().paused, false); assert.equal(f.profile().pauseReason, undefined);
   f.advance(1000); f.push('other', '那时间怎么安排？'); await f.a.tick();
   assert.equal(f.bridge.sent.length, 0); // 未到回复延迟
   f.advance(3000); await f.a.tick();
-  assert.equal(f.bridge.sent.length, 1); // AI 继续回复新消息
+  assert.equal(f.bridge.sent.length, 0);
+  f.advance(297000); await f.a.tick();
+  assert.equal(f.bridge.sent.length, 1);
   assert.equal(f.profile().paused, false);
 });
 
-test('model handoff pauses; manual reply resumes and only new messages are answered', async t => {
+test('model skip does not pause; later incoming messages are answered without review', async t => {
   const f = await fixture(t);
-  f.provider.next = async () => ({ action: 'handoff', reason: 'file' });
+  f.provider.next = async () => ({ action: 'skip' });
   f.push('other', '发个文件给我'); await f.a.tick(); f.advance(3000); await f.a.tick();
-  assert.equal(f.profile().paused, true); assert.equal(f.profile().pauseReason, 'handoff');
-  assert.equal(f.profile().handoffReason, 'file');
-  f.push('self', '文件我手动发了'); await f.a.tick();
-  assert.equal(f.profile().paused, false); assert.equal(f.profile().handoffReason, undefined);
+  assert.equal(f.profile().paused, false);
+  assert.equal(f.a.publicState().skipRecords[0].source, 'model-skip');
   f.advance(1000); f.push('other', '收到谢谢'); await f.a.tick(); f.advance(3000); await f.a.tick();
   assert.equal(f.bridge.sent.length, 1); // 只回恢复后的新消息
 });
 
-test('review endpoint exposes the reason and messages, and resolve clears the model pause', async t => {
+test('skip records are not review items or verification tasks', async t => {
   const f = await fixture(t);
-  f.provider.next = async () => ({ action: 'handoff', reason: 'file' });
+  f.provider.next = async () => ({ action: 'skip' });
   f.push('other', '发个文件'); await f.a.tick(); f.advance(3000); await f.a.tick();
-  assert.equal(f.profile().paused, true);
-  const info = await f.a.review(f.profile().id);
-  assert.equal(info.reason, '需要你发送或查看文件'); assert.ok(Array.isArray(info.messages));
-  await f.a.review(f.profile().id, { resolve: true, revision: info.revision });
-  assert.equal(f.profile().paused, false); assert.equal(f.profile().handoffReason, undefined);
-  f.advance(1000); f.push('other', '新消息'); await f.a.tick(); f.advance(3000); await f.a.tick();
-  assert.equal(f.bridge.sent.length, 1);
+  assert.equal(f.profile().paused, false);
+  assert.equal(f.a.publicState().skipRecords.length, 1);
 });
 
 test('manual reply does not resume an explicitly paused profile', async t => {
@@ -82,32 +77,32 @@ test('manual reply resumes limit and stop pauses but not an uncertain delivery',
   assert.equal(f.profile().paused, true); assert.equal(f.profile().pauseReason, 'uncertain');
 });
 
-test('a manual message older than the pause does not resume', async t => {
+test('a manual message older than an explicit pause does not resume', async t => {
   const f = await fixture(t);
-  f.a.pauseProfile(f.profile(), 'handoff');
+  f.a.pauseProfile(f.profile(), 'explicit');
   f.push('self', '老消息', f.bridge.contacts[0].id, Math.floor((f.a.now() - 100000) / 1000));
   await f.a.tick();
-  assert.equal(f.profile().paused, true); assert.equal(f.profile().pauseReason, 'handoff');
+  assert.equal(f.profile().paused, true); assert.equal(f.profile().pauseReason, 'explicit');
 });
 
 test('AI-generated messages are not treated as manual replies', async t => {
   const f = await fixture(t);
-  f.a.pauseProfile(f.profile(), 'handoff');
+  f.a.pauseProfile(f.profile(), 'explicit');
   const msg = f.push('self', 'AI 代发的消息');
   f.profile().generatedIds = [msg.id];
   await f.a.tick();
   assert.equal(f.profile().paused, true);
 });
 
-test('pause is triggered only by the model handoff field; normal replies never pause', async t => {
+test('normal replies and model skips do not pause or create a verification flow', async t => {
   const f = await fixture(t);
   f.push('other', '普通问题'); await f.a.tick(); f.advance(3000); await f.a.tick();
   assert.equal(f.bridge.sent.length, 1); assert.equal(f.profile().paused, false);
   f.advance(1000); f.push('other', '请务必发个文件'); await f.a.tick(); f.advance(3000); await f.a.tick();
   assert.equal(f.profile().paused, false); assert.equal(f.bridge.sent.length, 2); // 未返回 handoff 就不暂停
-  f.provider.next = async () => ({ action: 'handoff', reason: 'media' });
+  f.provider.next = async () => ({ action: 'skip' });
   f.push('other', '必须现在发视频'); await f.a.tick(); f.advance(3000); await f.a.tick();
-  assert.equal(f.profile().paused, true); assert.equal(f.profile().pauseReason, 'handoff'); assert.equal(f.profile().handoffReason, 'media');
+  assert.equal(f.profile().paused, false); assert.equal(f.a.publicState().skipRecords.length, 1);
 });
 
 test('group: manual reply resumes a model pause', async t => {

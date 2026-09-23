@@ -77,7 +77,7 @@ test('creation is account-scoped idempotent, persists taskType and version, only
 });
 
 test('save is allowed without model, prerequisites exposed, switches prevent dispatch', async t => {
-  const { a, bridge, provider } = await fixture(t);
+  const { a, bridge, provider, advance } = await fixture(t);
   a.config = null; const task = await create(a, bridge);
   assert.ok(a.publicState().proactiveRequirements.some(x => x.includes('模型'))); await ticks(a); assert.equal(provider.calls.length, 0);
   await a.configure(modelConfig); await a.settings({ proactive: false }); await ticks(a); assert.equal(bridge.sent.length, 0);
@@ -103,6 +103,56 @@ test('each recipient uses own learned style or natural default and persisted exa
   const disk = JSON.parse(await readFile(path.join(root, 'ai-assistant.json'), 'utf8'));
   assert.equal(disk.proactiveRecords.length, 3); assert.equal(disk.proactiveTasks[0].status, 'ended');
   assert.equal(JSON.stringify(disk).includes('GENERATED_PRIVATE_MARKER'), false);
+});
+
+test('an affection task respects confirmed plans, avoids invented body facts and sends one grounded message', async t => {
+  const { a, bridge, provider, advance } = await fixture(t);
+  const contact = bridge.contacts[0].id;
+  const filler = Array.from({ length: 43 }, (_, index) => ({ id: key(`older-${index}`), direction: index % 2 ? 'self' : 'other',
+    text: `较早的普通聊天记录 ${index}`, timestamp: Math.floor(at('2026-09-16T09:00:00') / 1000) + index }));
+  const recent = [
+    { id: key('dinner-plan'), direction: 'self', text: '我今晚约朋友吃饭', timestamp: Math.floor(at('2026-09-17T13:30:00') / 1000) },
+    { id: key('pickup-offer'), direction: 'other', text: '明天我来宿舍接你', timestamp: Math.floor(at('2026-09-17T13:31:00') / 1000) },
+    { id: key('pickup-confirmed'), direction: 'self', text: '好，明天你来接我', timestamp: Math.floor(at('2026-09-17T13:34:00') / 1000) },
+    { id: key('old-ai-1'), direction: 'self', text: '老公，我好喜欢你呀', timestamp: Math.floor(at('2026-09-17T14:13:00') / 1000) },
+    { id: key('old-ai-2'), direction: 'self', text: '明天见~晚安宝', timestamp: Math.floor(at('2026-09-17T14:14:00') / 1000) },
+    { id: key('runny-nose'), direction: 'other', text: '我有点流鼻涕', timestamp: Math.floor(at('2026-09-17T15:46:00') / 1000) },
+    { id: key('care-already-sent'), direction: 'self', text: '流鼻涕要注意哦，多喝热水', timestamp: Math.floor(at('2026-09-17T15:51:00') / 1000) },
+  ];
+  bridge.messages.set(contact, [...filler, ...recent]);
+  a.data.settings.enabled = true; a.data.settings.reply = true; a.data.settings.replyScope = 'all'; a.ensureDefaultProfiles();
+  const profile = a.profiles().find(row => row.contact === contact);
+  profile.generatedIds = recent.filter(message => message.id === key('old-ai-1') || message.id === key('old-ai-2')).map(message => message.id);
+  profile.replyStyleSet = true;
+  advance(4 * 3600000);
+  let generatedInput, generatedSystem;
+  provider.next = async input => {
+    generatedInput = input; generatedSystem = provider.calls.at(-1).system;
+    return { action: 'send', text: '想你了宝' };
+  };
+  await create(a, bridge, { goal: '表达爱意', requirements: '根据历史消息，日常关心', sendMode: 'segments' });
+  a.profiles().find(row => row.contact === contact).style.summary = '自然、简洁；没有依据时不添加称呼';
+  await ticks(a);
+  assert.equal(generatedInput.strategy.purpose, '表达爱意');
+  assert.equal(generatedInput.strategy.content, '表达爱意');
+  assert.equal(generatedInput.strategy.facts, '');
+  assert.equal(generatedInput.strategy.boundaries, '根据历史消息，日常关心');
+  assert.deepEqual(generatedInput.messages.slice(-7).map(message => message.text), recent.map(message => message.text));
+  assert.ok(generatedInput.messages.slice(-7).filter(message => message.id === key('old-ai-1') || message.id === key('old-ai-2')).every(message => message.aiGenerated));
+  assert.ok(generatedInput.conversation.recentSelfMessages.some(message => message.text.includes('今晚约朋友吃饭')));
+  assert.ok(generatedInput.conversation.recentSelfMessages.some(message => message.text.includes('多喝热水')));
+  assert.ok(generatedInput.conversation.recentSelfMessages.filter(message => message.text.includes('老公') || message.text.includes('晚安宝')).every(message => message.aiGenerated));
+  assert.equal(generatedInput.conversation.latestIncoming.text, '我有点流鼻涕');
+  assert.equal(generatedInput.timezone, 'Asia/Shanghai'); assert.match(generatedInput.currentTime, /^2026-09-17T16:/);
+  assert.match(generatedSystem, /最近明确安排优先于旧计划/);
+  assert.match(generatedSystem, /开车回去.*不能推断.*身体酸痛、需要按摩/);
+  assert.match(generatedSystem, /本人已经表达过的关心/);
+  assert.match(generatedSystem, /默认用一条自然连贯的 text/);
+  assert.match(generatedSystem, /已确认事项按已定事实处理/);
+  assert.equal(bridge.sent.length, 1);
+  assert.equal(bridge.sent[0].text, '想你了');
+  assert.doesNotMatch(bridge.sent[0].text, /腰酸|按摩|早点回来|今晚回来|明天来接|流鼻涕|多喝热水|宝/);
+  assert.equal(a.data.proactiveRecords[0].status, 'sent');
 });
 
 test('random draws persist across polling, pause/resume and restart; next draw only after occurrence completes', async t => {

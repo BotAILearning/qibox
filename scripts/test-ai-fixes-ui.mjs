@@ -5,7 +5,7 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 import { createApplication } from '../server/index.mjs';
 import { root, playwrightPath } from './tooling.mjs';
-import { temp, cleanup, runtimeFactory, extractor, fetcher } from '../test/fixtures.mjs';
+import { temp, cleanup, runtimeFactory, extractor, fetcher, packageSha256 } from '../test/fixtures.mjs';
 import { ChatFixture, AIModelFixture, key, modelConfig, strategy } from '../test/ai-fixtures.mjs';
 import { rfbFixture } from '../test/rfb-fixture.mjs';
 
@@ -18,7 +18,7 @@ for (let n = 4; n <= 85; n++) {
 let navigations = 0;
 bridge.openChat = async () => { navigations++; return { opened: true }; };
 const peer = await rfbFixture(path.join(root, 'web/backgrounds/mist.jpg'));
-const app = await createApplication({ appRoot: root, dataRoot, dev: true, extract: extractor, fetcher, aiProvider: provider,
+const app = await createApplication({ appRoot: root, dataRoot, dev: true, extract: extractor, fetcher, trustedHashes: [packageSha256], aiProvider: provider,
   runtimeFactory: (...args) => ({ ...runtimeFactory(...args), port: peer.port, aiBridge: bridge, loginStatus: 'logged-in' }) });
 await new Promise(r => app.server.listen(0, '127.0.0.1', r));
 const space = await app.users.get('development'); await space.setConsent(true); app.library.download(); await app.library.working;

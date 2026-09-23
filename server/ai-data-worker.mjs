@@ -104,7 +104,7 @@ export class DataWorker {
     // While draining, the only thing python can produce is the discarded answer
     // to the request we just cancelled. Anything else stays a hard failure.
     const acceptable = this.pending || this.draining;
-    if (!acceptable || Buffer.byteLength(this.output) > 12 * 1024 * 1024) { this.output = ''; this.stop(); return; }
+    if (!acceptable || Buffer.byteLength(this.output) > 50 * 1024 * 1024) { this.output = ''; this.stop(); return; }
     const end = this.output.indexOf('\n'); if (end < 0) return;
     const line = this.output.slice(0, end), extra = this.output.slice(end + 1); this.output = '';
     if (extra.trim()) { this.stop(); return; }

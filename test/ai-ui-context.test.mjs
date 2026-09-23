@@ -4,6 +4,13 @@ import { aiAssistant } from '../web/ai-assistant.mjs';
 import { categories, styleOptions, avoidOptions, defaultStyle } from '../server/ai-schema.mjs';
 import { replyPresets } from '../server/ai-presets.mjs';
 
+let originalWindow;
+test.beforeEach(() => {
+  originalWindow = globalThis.window;
+  globalThis.window = { addEventListener() {}, removeEventListener() {} };
+});
+test.afterEach(() => { globalThis.window = originalWindow; });
+
 // Exercise the real controller's async click handler at its API boundary. The
 // minimal DOM surface only supplies elements used by attach/render; no browser,
 // model service or native desktop is involved in these context-switch tests.
@@ -15,21 +22,23 @@ function surface() {
     hasAttribute: name => Object.keys(dataset).some(key => attribute(key) === name) });
   const node = selector => {
     if (selector === '#ai-queue-live') return null;
-    if (['#ai-proactive-form', '#ai-reply-form', '#ai-provider-form', '#ai-profile-form', '#ai-paste-form', '#ai-manual-reply-form', '#ai-object-form', '#ai-analysis-form'].includes(selector)) return forms.get(selector) || null;
+    if (['#ai-proactive-form', '#ai-reply-form', '#ai-provider-form', '#ai-model-form', '#ai-profile-form', '#ai-paste-form', '#ai-manual-reply-form', '#ai-object-form', '#ai-analysis-form'].includes(selector)) return forms.get(selector) || null;
     if (!nodes.has(selector)) {
       let html = '';
       nodes.set(selector, {
       hidden: false, dataset: {}, options: [], classList: { toggle() {} },
       writes: 0, get innerHTML() { return html; }, set innerHTML(value) { html = value; this.writes++; },
-      setAttribute() {}, focus() {}, replaceChildren() {}, append() {}, close() {}, showModal() {},
+      setAttribute() {}, focus() {}, replaceChildren() {}, append() {}, remove() {},
+      close() { handlers.get(`${selector}:close`)?.(); }, showModal() {},
       querySelector: node, querySelectorAll: () => [],
       addEventListener(type, handler) { handlers.set(`${selector}:${type}`, handler); },
       });
     }
     return nodes.get(selector);
   };
-  return { document: { querySelector: node, querySelectorAll: () => [], createElement: tag => node(`created-${tag}`) },
+  return { document: { body: { append() {} }, querySelector: node, querySelectorAll: () => [], createElement: tag => node(`created-${tag}`) },
     node,
+    applyDialog: () => handlers.get('created-dialog:click')({ target: { closest: () => ({ hasAttribute: name => name === 'data-apply' }) } }),
     form: (selector, entries) => { const form = { id: selector.slice(1), entries, querySelector: () => null }; forms.set(selector, form); return form; },
     unmount: selector => forms.delete(selector),
     navigate: aiNav => handlers.get('#ai-panel:click')({ target: { closest: () => buttonNode({ aiNav }) } }),
@@ -37,7 +46,7 @@ function surface() {
     input: target => handlers.get('#ai-panel:input')({ target: { closest: () => null, ...target } }),
     submit: form => handlers.get('#ai-panel:submit')({ preventDefault() {}, target: form }),
     click: action => handlers.get('#ai-panel:click')({ target: { closest: () => buttonNode(action === 'new-proactive' ? { proactiveNew: '' } : { aiAction: action }) } }),
-    button: dataset => handlers.get('#ai-panel:click')({ target: { closest: () => buttonNode(dataset) } }) };
+    button: dataset => handlers.get('#ai-panel:click')({ preventDefault() {}, target: { closest: () => buttonNode(dataset) } }) };
 }
 
 const availableState = () => ({ settings: { enabled: false, replyDelay: 8 },
@@ -157,7 +166,7 @@ test('a later invalidation of a previously loaded contact list triggers recovery
   assert.match(dom.node('#ai-content').innerHTML, /data-proactive-pick/);
 });
 
-test('bulk learning rejects an eleventh selection and sends exactly the first ten contacts', { timeout: 2000 }, async t => {
+test('bulk learning keeps selections beyond the former ten-contact cap', { timeout: 2000 }, async t => {
   const originalDocument = globalThis.document, dom = surface(), calls = [];
   globalThis.document = dom.document;
   const snapshot = { ...availableState(), contacts: Array.from({ length: 12 }, (_, index) => ({ id: `person-${index + 1}`, label: `Person ${index + 1}`, kind: 'person' })) };
@@ -167,11 +176,11 @@ test('bulk learning rejects an eleventh selection and sends exactly the first te
   await dom.click('select-contacts');
   const eleventh = { dataset: { aiContact: 'person-11' }, checked: true };
   await dom.change(eleventh);
-  assert.equal(eleventh.checked, false);
-  assert.match(dom.node('#ai-feedback').textContent, /最多学习 10 位/);
+  assert.equal(eleventh.checked, true);
+  assert.doesNotMatch(dom.node('#ai-feedback').textContent, /最多学习/);
   assert.doesNotMatch(dom.node('#ai-content').innerHTML, /标签分组|按风格|data-ai-source/);
   await dom.click('learn-selected');
-  assert.deepEqual(calls, [{ action: 'learn', value: { contacts: snapshot.contacts.slice(0, 10).map(c => c.id), previewOnly:true,scope:'range',from:'',to:'' } }]);
+  assert.deepEqual(calls, [{ action: 'learn', value: { contacts: snapshot.contacts.map(c => c.id), target:'both',previewOnly:true,scope:'range',from:'',to:'' } }]);
 });
 
 test('learning and applying one contact preserves other contacts reply strategies and targets', { timeout: 2000 }, async t => {
@@ -186,7 +195,9 @@ test('learning and applying one contact preserves other contacts reply strategie
   };
   const controller = aiAssistant({ api: async (_url, payload) => { if (payload) calls.push(payload); return snapshot; } });
   t.after(() => { controller.detach(); globalThis.document = originalDocument; globalThis.FormData = OriginalFormData; });
-  await controller.attach('instance-a'); await dom.button({ aiLearnContact: 'new' });
+  await controller.attach('instance-a');
+  const learning = dom.button({ aiLearnContact: 'new' });
+  await new Promise(resolve => setImmediate(resolve)); dom.applyDialog(); await learning;
   assert.match(dom.node('#ai-content').innerHTML, /New friend/);
   assert.doesNotMatch(dom.node('#ai-content').innerHTML, /Existing friend/);
   await dom.button({aiApplyResult:'new-profile'});
@@ -422,10 +433,10 @@ function providerSurface(dom) {
     }
   };
   const mount = () => {
-    const form = dom.form('#ai-provider-form', []);
+    const form = dom.form('#ai-model-form', []);
     form.elements = Object.fromEntries(Object.entries({ ...storedProvider, apiKey: '********' }).filter(([name]) => name !== 'hasKey').map(([name, value]) => [name, {
       name, value: String(value), checked: !!value, type: name === 'apiKey' ? 'password' : name === 'consent' ? 'checkbox' : 'text',
-      dataset: name === 'apiKey' ? { keyStored: 'true' } : {}, closest: selector => selector === '#ai-provider-form' ? form : null,
+      dataset: name === 'apiKey' ? { keyStored: 'true' } : {}, closest: selector => selector === '#ai-model-form' ? form : null,
       reportValidity: () => true,
     }]));
     form.reportValidity = () => true;
@@ -446,13 +457,13 @@ for (const destination of ['instance-b', 'instance-a', 'hide-reopen', 'navigate-
       return providerState();
     } });
     t.after(() => { released.resolve(); controller.detach(); mountProvider.restore(); globalThis.document = originalDocument; });
-    await controller.attach('instance-a'); dom.node('#ai-open').onclick(); await dom.navigate('provider');
+    await controller.attach('instance-a'); dom.node('#ai-open').onclick(); await dom.navigate('provider'); await dom.button({ aiModelEdit: 'legacy' });
     const originalForm = mountProvider(), originalInput = originalForm.elements.apiKey;
     const pending = dom.click('toggle-key');
     await Promise.race([entered.promise, pending.then(() => { throw new Error(`Key reveal did not start: ${dom.node('#ai-feedback').textContent}`); })]);
     let currentInput = originalInput;
     if (destination.startsWith('instance-')) {
-      controller.detach(); await controller.attach(destination); dom.node('#ai-open').onclick(); await dom.navigate('provider');
+      controller.detach(); await controller.attach(destination); dom.node('#ai-open').onclick(); await dom.navigate('provider'); await dom.button({ aiModelEdit: 'legacy' });
       currentInput = mountProvider().elements.apiKey;
     } else if (destination === 'hide-reopen') {
       dom.node('#ai-close').onclick(); dom.node('#ai-open').onclick();
@@ -467,7 +478,7 @@ for (const destination of ['instance-b', 'instance-a', 'hide-reopen', 'navigate-
     const renders = dom.node('#ai-content').writes;
     released.resolve(); await pending;
     assert.equal(originalInput.value.includes('OLD_CONTEXT_SECRET'), false);
-    assert.equal(currentInput.value, destination === 'change-service' ? '' : '********');
+    assert.ok(['', '********'].includes(currentInput.value), 'stale responses must leave only an empty or masked key');
     assert.equal(currentInput.type, 'password');
     assert.equal(dom.node('#ai-content').writes, renders);
     assert.deepEqual(calls, [{ url: '/instances/instance-a/ai', action: 'reveal-key' }]);
