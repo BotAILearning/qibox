@@ -45,13 +45,15 @@ test('range material is returned once, supports the raised bound, and rejects ma
   await assert.rejects(readStableRange({readRange:async()=>({account:'a',contact:'c',messages:[{id:'a',timestamp:2},{id:'b',timestamp:1}]})},args),/顺序完整性/);
   await assert.rejects(readStableRange({readRange:async()=>({account:'a',contact:'c',messages:[{id:'a',timestamp:40000}]})},args),/顺序完整性/);
 });
-test('manual reply waits; model skip is recorded without pausing the contact',async t=>{
+test('manual reply waits; repeated model skip reports an error without pausing the contact',async t=>{
   const f=await fixture(t);
   f.push('self','我手动回一句');await f.a.tick();f.advance(3000);
   assert.equal(f.p.paused,false);assert.equal(f.p.pauseReason,undefined);
+  let calls=0;f.provider.complete=async()=>{calls++;return {action:'skip'};};
   await f.receive('发个文件给我',{action:'skip'});
   f.advance(297000);await f.a.tick();
-  assert.equal(f.p.paused,false);assert.equal(f.a.publicState().skipRecords[0].source,'model-skip');
+  assert.equal(calls,2);assert.equal(f.p.paused,false);assert.equal(f.a.publicState().skipRecords.length,0);
+  assert.ok(f.a.publicState().events.some(e=>e.code==='error'));
   f.push('self','文件我发了');await f.a.tick();
   assert.equal(f.bridge.sent.length,0);
 });
@@ -61,9 +63,10 @@ test('identity setting only allows AI disclosure in response to an identity ques
   await f.receive('今天天气怎么样',{action:'send',text:'我是AI。'});assert.equal(f.bridge.sent.length,1);
   await f.a.settings({acknowledgeAI:false});await f.receive('你是AI吗',{action:'send',text:'我是AI。'});assert.equal(f.bridge.sent.length,1);
 });
-test('model skip has no review flow; later incoming messages remain eligible',async t=>{
-  const f=await fixture(t);await f.receive('给我发文件',{action:'skip'});assert.equal(f.p.paused,false);assert.equal(f.bridge.sent.length,0);
-  assert.equal(f.a.publicState().skipRecords[0].reasonCode,'model-no-reply');
+test('repeated model skip has no review flow; later incoming messages remain eligible',async t=>{
+  const f=await fixture(t);const complete=f.provider.complete.bind(f.provider);let calls=0;f.provider.complete=async()=>{calls++;return {action:'skip'};};await f.receive('给我发文件',{action:'skip'});assert.equal(f.p.paused,false);assert.equal(f.bridge.sent.length,0);
+  assert.equal(calls,2);assert.equal(f.a.publicState().skipRecords.length,0);assert.ok(f.a.publicState().events.some(e=>e.code==='error'));
+  f.provider.complete = complete;
   await f.receive('算了，今晚聊什么',{action:'send',text:'聊聊最近看的书吧。'});assert.equal(f.bridge.sent.length,1);
 });
 test('missing image is skipped even with judgment off; available image reaches only current chat model',async t=>{

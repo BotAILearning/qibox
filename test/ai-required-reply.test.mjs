@@ -33,16 +33,16 @@ test('two skipped answers become a visible error, do not silently consume the re
   let calls=0; provider.complete=async()=>{calls++;return {action:'skip'};};
   await receive();await a.tick();await a.tick();
   assert.equal(calls,2);assert.equal(bridge.sent.length,0);
-  assert.ok(a.data.events.some(e=>e.code==='error'&&/跳过/.test(e.message||e.detail||''))||/跳过/.test(a.notice));
+  assert.ok(a.data.events.some(e=>e.code==='error'&&/重试后仍未生成/.test(e.message||e.detail||''))||/重试后仍未生成/.test(a.notice));
   assert.equal(a.data.events.some(e=>e.code==='skip'),false);
   assert.equal(a.profiles()[0].handledIncomingId,undefined);
 });
 
-test('judgment on preserves legitimate skip with a single model call',async t=>{
+test('judgment on cannot skip an ordinary private reply',async t=>{
   const {a,bridge,provider,receive,contact}=await fixture(t);
-  await a.setReplyOptions({contact,judgeReply:true});provider.next=async()=>({action:'skip'});
-  await receive();assert.equal(provider.calls.length,1);assert.equal(bridge.sent.length,0);
-  assert.equal(a.data.events[0].code,'skip');
+  await a.setReplyOptions({contact,judgeReply:true});let calls=0;provider.complete=async()=>{calls++;return {action:'skip'};};
+  await receive();await a.tick();assert.equal(calls,2);assert.equal(bridge.sent.length,0);
+  assert.equal(a.data.events.some(e=>e.code==='skip'),false);assert.ok(a.data.events.some(e=>e.code==='error'));
 });
 
 test('explicit group @me retries a skipped model decision but never fabricates a canned answer', async t => {
@@ -79,25 +79,25 @@ test('repeated @me skips are visible errors and remain unsent', async t => {
   Object.assign(bridge.push(target.id, 'other', '@我 具体问题'), { timestamp: Math.floor(now / 1000), sender: 'a'.repeat(64), mentions: { verified: true, self: true, all: false, others: false } });
   await a.tick(); now += 3000; await a.tick(); await a.tick();
   assert.equal(calls, 2); assert.equal(bridge.sent.length, 0);
-  assert.match(a.notice, /@我触发未生成相关回复/);
+  assert.match(a.notice, /重试后仍未生成本轮来信/);
   assert.equal(a.data.events.some(e => e.code === 'skip'), false);
   await a.close(); await cleanup(root);
 });
 
-test('@all remains a model decision and may skip', async t => {
+test('@all cannot consume an incoming message through model skip', async t => {
   const root = await temp(), bridge = new ChatFixture(), provider = new AIModelFixture();
   let now = 1700000000000; bridge.stableMessageIds = true;
   const a = new AIAssistant({ dataRoot: root, bridge, provider, now: () => now, delay: async () => {} });
   await a.init(); await a.configure(modelConfig); await a.testProvider(); await a.scan();
   const target = bridge.contacts[0]; target.kind = 'group'; await a.scan();
   await a.setGroupOptions({ contact: target.id, atAll: true }); await a.settings({ enabled: true }); await a.tick();
-  provider.next = async () => ({ action: 'skip' });
+  let calls=0,lastCall;provider.complete=async(config,system,input)=>{calls++;lastCall={system,input};return { action: 'skip' };};
   Object.assign(bridge.push(target.id, 'other', '@所有人 通知'), { timestamp: Math.floor(now / 1000), sender: 'a'.repeat(64), mentions: { verified: true, self: false, all: true, others: false } });
   await a.tick(); now += 3000; await a.tick();
-  assert.equal(provider.calls.length, 1); assert.equal(bridge.sent.length, 0);
-  assert.equal(provider.calls[0].input.judgeReply, true);
-  assert.match(provider.calls[0].system, /skip/);
-  assert.equal(a.data.events[0].code, 'skip');
+  await a.tick();assert.equal(calls, 2); assert.equal(bridge.sent.length, 0);
+  assert.equal(lastCall.input.judgeReply, false);
+  assert.match(lastCall.system, /不能返回skip/);
+  assert.equal(a.data.events.some(e=>e.code==='skip'), false);assert.ok(a.data.events.some(e=>e.code==='error'));
   await a.close(); await cleanup(root);
 });
 

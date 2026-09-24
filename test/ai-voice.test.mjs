@@ -37,10 +37,10 @@ for (const failure of ['missing', 'empty', 'error', 'stale']) test(`voice ${fail
     if (failure === 'error') throw new Error('native unavailable');
     return failure === 'stale' ? { status: 'stale' } : { text: '', source: 'wechat' };
   };
-  provider.next = async input => { assert.equal(input.capabilityConcern,'voice'); return {action:'skip'}; };
-  await a.tick(); assert.equal(bridge.sent.length, 0); assert.equal(provider.calls.length, failure === 'stale' ? 0 : 1);
+  let calls=0;provider.complete=async(config,system,input)=>{calls++;assert.equal(input.capabilityConcern,'voice');return {action:'skip'};};
+  await a.tick(); assert.equal(bridge.sent.length, 0); assert.equal(calls, failure === 'stale' ? 0 : 2);
   if (failure === 'stale') assert.equal(!!p.paused, false);
-  else { assert.equal(p.paused, false); assert.equal(a.publicState().skipRecords[0].source, 'model-skip'); }
+  else { assert.equal(p.paused, false); assert.equal(a.publicState().skipRecords.length,0);assert.ok(a.publicState().events.some(e=>e.code==='error')); }
 });
 
 test('a manual reply during conversion cancels the older voice reply', async t => {

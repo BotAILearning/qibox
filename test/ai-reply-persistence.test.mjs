@@ -115,11 +115,11 @@ test('learning while enabled pauses generation without changing the master prefe
   release.resolve(); await learning; assert.equal(a.data.settings.enabled, true);
 });
 
-test('turning the master off and back on does not retry an already skipped incoming message', async t => {
+test('turning the master off and back on does not retry an incoming message after repeated model skip error', async t => {
   const { a, provider, bridge, incoming, advance } = await fixture(t);
   await a.settings({ enabled: true }); await a.tick(); incoming(); await a.tick(); advance(9000);
-  provider.next = async () => ({ action: 'skip' }); await a.tick();
-  assert.equal(provider.calls.length, 1);
+  let calls=0;provider.complete=async()=>{calls++;return {action:'skip'};}; await a.tick();
+  assert.equal(calls, 2);assert.equal(bridge.sent.length,0);assert.ok(a.data.events.some(e=>e.code==='error'));
   await a.settings({ enabled: false }); await a.settings({ enabled: true }); await a.tick();
-  assert.equal(provider.calls.length, 1); assert.equal(bridge.sent.length, 0);
+  assert.equal(calls, 2); assert.equal(bridge.sent.length, 0);
 });

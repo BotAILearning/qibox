@@ -45,9 +45,20 @@ test('realtime coalesces new group messages for 60 seconds, then evaluates once'
   Object.assign(bridge.push(profile.contact, 'other', '持续讨论到周期点'), { timestamp: Math.floor(a.now() / 1000), sender: key('member'), mentions: { verified: true, self: false, all: false, others: false } });
   await a.tick();
   assert.equal(provider.calls.length, 1); assert.equal(bridge.sent.length, 1);
-  assert.equal(provider.calls[0].input.judgeReply, true);
+  assert.equal(provider.calls[0].input.judgeReply, false);
   await a.tick(); assert.equal(provider.calls.length, 1); assert.equal(bridge.sent.length, 1);
   assert.ok(msg.id);
+});
+
+test('realtime model skip retries once and reports an error without consuming the message', async t => {
+  const { a, bridge, profile, advance } = await fixture(t);
+  let calls=0,lastInput;const systems=[];
+  a.provider.complete=async(config,system,input)=>{calls++;systems.push(system);lastInput=input;return {action:'skip'};};
+  const msg=Object.assign(bridge.push(profile.contact,'other','群里发来的消息'),{timestamp:Math.floor(a.now()/1000),sender:key('member'),mentions:{verified:true,self:false,all:false,others:false}});
+  await a.tick();advance(60000);await a.tick();
+  assert.equal(calls,2);assert.equal(lastInput.judgeReply,false);assert.match(systems[0],/不能返回skip/);
+  assert.equal(bridge.sent.length,0);assert.equal(a.data.events.some(e=>e.code==='skip'),false);
+  assert.ok(a.data.events.some(e=>e.code==='error'));assert.equal(profile.handledIncomingId,undefined);assert.ok(msg.id);
 });
 
 test('realtime interval survives restart and @me interrupts the batch wait', async t => {

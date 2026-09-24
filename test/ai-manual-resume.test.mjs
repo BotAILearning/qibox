@@ -40,22 +40,25 @@ for (const kind of ['person', 'group']) test(`${kind}: manual reply waits the co
   assert.equal(f.profile().paused, false);
 });
 
-test('model skip does not pause; later incoming messages are answered without review', async t => {
+test('repeated model skip does not pause; later incoming messages are answered without review', async t => {
   const f = await fixture(t);
-  f.provider.next = async () => ({ action: 'skip' });
+  const complete=f.provider.complete.bind(f.provider);let calls=0;f.provider.complete=async()=>{calls++;return {action:'skip'};};
   f.push('other', '发个文件给我'); await f.a.tick(); f.advance(3000); await f.a.tick();
   assert.equal(f.profile().paused, false);
-  assert.equal(f.a.publicState().skipRecords[0].source, 'model-skip');
+  assert.equal(calls,2);assert.equal(f.a.publicState().skipRecords.length,0);
+  assert.ok(f.a.publicState().events.some(e=>e.code==='error'));
+  f.provider.complete=complete;
   f.advance(1000); f.push('other', '收到谢谢'); await f.a.tick(); f.advance(3000); await f.a.tick();
   assert.equal(f.bridge.sent.length, 1); // 只回恢复后的新消息
 });
 
-test('skip records are not review items or verification tasks', async t => {
+test('unexpected model skip creates no review item or verification task', async t => {
   const f = await fixture(t);
-  f.provider.next = async () => ({ action: 'skip' });
+  let calls=0;f.provider.complete=async()=>{calls++;return {action:'skip'};};
   f.push('other', '发个文件'); await f.a.tick(); f.advance(3000); await f.a.tick();
   assert.equal(f.profile().paused, false);
-  assert.equal(f.a.publicState().skipRecords.length, 1);
+  assert.equal(calls,2);assert.equal(f.a.publicState().skipRecords.length, 0);
+  assert.ok(f.a.publicState().events.some(e=>e.code==='error'));
 });
 
 test('manual reply does not resume an explicitly paused profile', async t => {
@@ -94,15 +97,16 @@ test('AI-generated messages are not treated as manual replies', async t => {
   assert.equal(f.profile().paused, true);
 });
 
-test('normal replies and model skips do not pause or create a verification flow', async t => {
+test('normal replies and unexpected model skips do not pause or create a verification flow', async t => {
   const f = await fixture(t);
   f.push('other', '普通问题'); await f.a.tick(); f.advance(3000); await f.a.tick();
   assert.equal(f.bridge.sent.length, 1); assert.equal(f.profile().paused, false);
   f.advance(1000); f.push('other', '请务必发个文件'); await f.a.tick(); f.advance(3000); await f.a.tick();
   assert.equal(f.profile().paused, false); assert.equal(f.bridge.sent.length, 2); // 未返回 handoff 就不暂停
-  f.provider.next = async () => ({ action: 'skip' });
+  let calls=0;f.provider.complete=async()=>{calls++;return {action:'skip'};};
   f.push('other', '必须现在发视频'); await f.a.tick(); f.advance(3000); await f.a.tick();
-  assert.equal(f.profile().paused, false); assert.equal(f.a.publicState().skipRecords.length, 1);
+  assert.equal(f.profile().paused, false); assert.equal(calls,2);assert.equal(f.a.publicState().skipRecords.length, 0);
+  assert.ok(f.a.publicState().events.some(e=>e.code==='error'));
 });
 
 test('group: manual reply resumes a model pause', async t => {

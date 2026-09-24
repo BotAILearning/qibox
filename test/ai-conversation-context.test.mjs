@@ -30,7 +30,7 @@ test('replies retain both speakers and confirmed AI answers across turns, with e
   const first = bridge.push(contact, 'other', '公园吧');
   const second = bridge.push(contact, 'other', '下午三点可以吗？');
   await a.tick(); advance();
-  provider.next = async () => ({ action: 'skip' }); await a.tick();
+  provider.next = async () => ({ action: 'stop' }); await a.tick();
   const { input, system } = provider.calls.at(-1);
   assert.deepEqual(input.messages.map(m => [m.direction, m.text]), bridge.messages.get(contact).filter(m => m.text !== 'GENERATED_PRIVATE_MARKER').map(m => [m.direction, m.text]));
   assert.equal(input.messages.find(m => m.id === answer.id).aiGenerated, true);
@@ -52,7 +52,7 @@ test('late incoming context cancels the old draft and is included on regeneratio
     return { action: 'send', text: '周六没问题。' };
   };
   await a.tick(); assert.equal(bridge.sent.length, 0);
-  advance(); provider.next = async () => ({ action: 'skip' }); await a.tick();
+  advance(); provider.next = async () => ({ action: 'send', text: '周日可以' }); await a.tick();
   const { input } = provider.calls.at(-1);
   assert.equal(input.conversation.latestIncomingId, correction.id);
   assert.equal(input.messages.at(-1).text, '说错了，是周日。');
@@ -65,11 +65,11 @@ test('a handled stop or unavailable historical image stays outside the fresh inc
   bridge.messages.set(contact, []);
   await a.settings({ enabled: true }); await a.tick();
   const old = bridge.push(contact, 'other', '本轮结束，不需要回复');
-  await a.tick(); advance(); provider.next = async () => ({action:'skip'}); await a.tick();
+  await a.tick(); advance(); provider.next = async () => ({action:'send',text:'了解'}); await a.tick();
   const picture = Object.assign(bridge.push(contact,'other','[图片]'),{type:'image'});
   await a.tick(); advance(); await a.tick();
   const fresh = bridge.push(contact,'other','现在是 AI 在回复吗？');
-  await a.tick(); advance(); provider.next = async () => ({action:'skip'}); await a.tick();
+  await a.tick(); advance(); provider.next = async () => ({action:'send',text:'我看到了'}); await a.tick();
   const {input,system} = provider.calls.at(-1);
   assert.deepEqual(input.conversation.pendingIncomingIds,[fresh.id]);
   assert.ok(input.messages.some(m=>m.id===old.id));
@@ -87,7 +87,7 @@ test('group context keeps distinct senders and mention metadata', async t => {
   await a.settings({ enabled: true }); await a.tick();
   const earlier = push('member-a', '我选周六。');
   const latest = push('member-b', '我选周日，你呢？', true);
-  await a.tick(); advance(); provider.next = async () => ({ action: 'skip' }); await a.tick();
+  await a.tick(); advance(); provider.next = async () => ({ action: 'send', text: '我来回答' }); await a.tick();
   const { input } = provider.calls.at(-1);
   assert.equal(input.kind, 'group');
   assert.equal(input.conversation.latestIncomingId, latest.id);
@@ -106,7 +106,7 @@ test('ignored group mentions remain context but are not pending requests or imag
   await a.tick();advance();await a.tick();
   let imageReads=0;bridge.readImage=async()=>{imageReads++;return null;};
   const current=Object.assign(bridge.push(contact,'other','新问题'),{sender:key('member'),mentions:{verified:true,self:false,all:false,others:false}});
-  await a.tick();advance(60000);provider.next=async()=>({action:'skip'});await a.tick();
+  await a.tick();advance(60000);provider.next=async()=>({action:'send',text:'我来答复'});await a.tick();
   const input=provider.calls.at(-1).input;
   assert.deepEqual(input.conversation.pendingIncomingIds,[current.id]);
   assert.ok(input.messages.some(m=>m.id===ignored.id));

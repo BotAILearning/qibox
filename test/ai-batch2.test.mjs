@@ -50,7 +50,7 @@ test('learned memory is encrypted, used only for this contact, and never updates
   assert.match(a.publicState().profiles.find(x => x.id === p.id).memory.summary, /MEMORY_PRIVATE_MARKER/);
   const second = a.profiles().find(x => x.contact === bridge.contacts[1].id);
   bridge.push(second.contact, 'other', '其他对象'); await a.tick(); advance(10000);
-  provider.next = async input => { assert.equal(input.memory.summary, ''); return { action: 'skip' }; };
+  provider.next = async input => { assert.equal(input.memory.summary, ''); return { action: 'send', text: '收到' }; };
   await a.tick();
 });
 
