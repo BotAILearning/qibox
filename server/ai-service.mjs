@@ -2229,6 +2229,25 @@ export class AIAssistant {
         if (!mustReply || String(result?.action).trim().toLowerCase() !== 'skip') break;
         if (!this.canDeliver(profile, mode, revision, signal)) return;
       }
+    } catch (error) {
+      // A failed model request must not leave the same incoming message
+      // pending forever. The scheduler retries the service after its backoff;
+      // without advancing this cursor, every retry re-enters generation and
+      // keeps showing the same contact as "模型生成中". Mark only this
+      // observed incoming message as handled so a genuinely new message can
+      // start a fresh reply cycle.
+      if (mode === 'reply' && !signal.aborted && error?.code !== 'ai_account_changed') {
+        const failedIncoming = pendingMessages.findLast(message => message.direction === 'other');
+        const cursor = this.cursors.get(profile.id);
+        if (failedIncoming && cursor?.revision === snapshot.revision) {
+          cursor.pending = false;
+          cursor.changedAt = this.now();
+          cursor.pendingSince = cursor.changedAt;
+          profile.handledIncomingId = failedIncoming.id;
+          await this.save().catch(() => {});
+        }
+      }
+      throw error;
     } finally { if (this.generatingProfile?.id === profile.id) this.generatingProfile = null; }
     if (profile.kind === 'group' && mode === 'reply' && ['stop', 'pause', 'handoff', 'transfer'].includes(String(result?.action).trim().toLowerCase())) result = { ...result, action: 'skip' };
     if (mustReply && !result?.mediaSkipped && String(result?.action).trim().toLowerCase() === 'skip') {
