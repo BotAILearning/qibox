@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { AIAssistant } from '../server/ai-service.mjs';
-import { groupRateState } from '../server/ai-group.mjs';
+import { groupTimingState, groupPrompt } from '../server/ai-group.mjs';
 import { AIModelFixture, ChatFixture, modelConfig, key } from './ai-fixtures.mjs';
 import { temp, cleanup } from './fixtures.mjs';
 
@@ -22,11 +22,11 @@ async function fixture(t) {
   return { a, bridge, provider, profile, options, push, advance: ms => { now += ms; } };
 }
 
-test('group budget counts uncertain submissions and expires exactly at the rolling boundary', () => {
-  const p = { sentMessages: Array.from({ length: 5 }, (_, i) => ({ at: 100000 + i, source: 'reply', confirmed: false })) };
-  assert.equal(groupRateState(p, 699999).limited, true);
-  assert.equal(groupRateState(p, 700000).limited, false);
-  assert.equal(groupRateState(p, 700000).count, 4);
+test('group timing has no rolling message-count cap and keeps ordinary realtime spacing', () => {
+  const p = { sentMessages: Array.from({ length: 2001 }, (_, i) => ({ id: `reply-${i}`, at: 100000 + i, source: 'reply' })) };
+  assert.deepEqual(groupTimingState(p), { ordinaryDueAt: 132000 });
+  assert.deepEqual(groupTimingState({ sentMessages: [] }), { ordinaryDueAt: 0 });
+  for (const trigger of ['atMe', 'atAll', 'realtime']) assert.doesNotMatch(groupPrompt(trigger, true), /每群.{0,12}10分钟最多\d|同一话题最多3轮/);
 });
 
 test('realtime coalesces new group messages for 60 seconds, then evaluates once', async t => {
@@ -45,20 +45,44 @@ test('realtime coalesces new group messages for 60 seconds, then evaluates once'
   Object.assign(bridge.push(profile.contact, 'other', '持续讨论到周期点'), { timestamp: Math.floor(a.now() / 1000), sender: key('member'), mentions: { verified: true, self: false, all: false, others: false } });
   await a.tick();
   assert.equal(provider.calls.length, 1); assert.equal(bridge.sent.length, 1);
-  assert.equal(provider.calls[0].input.judgeReply, false);
+  assert.equal(provider.calls[0].input.judgeReply, true);
   await a.tick(); assert.equal(provider.calls.length, 1); assert.equal(bridge.sent.length, 1);
   assert.ok(msg.id);
 });
 
-test('realtime model skip retries once and reports an error without consuming the message', async t => {
+test('realtime model skip stays valid and consumes only that evaluated group message', async t => {
   const { a, bridge, profile, advance } = await fixture(t);
-  let calls=0,lastInput;const systems=[];
-  a.provider.complete=async(config,system,input)=>{calls++;systems.push(system);lastInput=input;return {action:'skip'};};
-  const msg=Object.assign(bridge.push(profile.contact,'other','群里发来的消息'),{timestamp:Math.floor(a.now()/1000),sender:key('member'),mentions:{verified:true,self:false,all:false,others:false}});
+  let calls=0,system='';a.provider.complete=async(config,prompt)=>{calls++;system=prompt;return {action:'skip'};};
+  const msg=Object.assign(bridge.push(profile.contact,'other','普通群聊内容'),{timestamp:Math.floor(a.now()/1000),sender:key('member'),mentions:{verified:true,self:false,all:false,others:false}});
   await a.tick();advance(60000);await a.tick();
-  assert.equal(calls,2);assert.equal(lastInput.judgeReply,false);assert.match(systems[0],/不能返回skip/);
-  assert.equal(bridge.sent.length,0);assert.equal(a.data.events.some(e=>e.code==='skip'),false);
-  assert.ok(a.data.events.some(e=>e.code==='error'));assert.equal(profile.handledIncomingId,undefined);assert.ok(msg.id);
+  assert.equal(calls,1);assert.match(system,/可以skip/);assert.equal(bridge.sent.length,0);
+  assert.equal(profile.handledIncomingId,msg.id);assert.ok(a.data.events.some(e=>e.code==='skip' && e.source==='model-skip'));
+  assert.equal(profile.paused,false);
+});
+
+test('legacy group pause and stop outputs become skip for only the current turn', async t => {
+  const { a, bridge, profile, advance } = await fixture(t);
+  let calls=0,system='';a.provider.complete=async(config,prompt)=>{system=prompt;return {action:calls++ ? 'stop' : 'pause',pauseSeconds:60};};
+  const incoming=Object.assign(bridge.push(profile.contact,'other','对方说停止后略过这一轮'),{timestamp:Math.floor(a.now()/1000),sender:key('member'),mentions:{verified:true,self:false,all:false,others:false}});
+  await a.tick();advance(60000);await a.tick();
+  assert.equal(calls,1);assert.equal(profile.paused,false);assert.equal(profile.groupPauseReason,undefined);assert.equal(profile.groupPausedUntil,undefined);
+  assert.equal(profile.handledIncomingId,incoming.id);assert.ok(a.data.events.some(e=>e.code==='skip' && e.source==='model-skip'));
+  assert.doesNotMatch(groupPrompt('realtime'), /action=pause|action=stop|action=handoff|action=transfer/);
+});
+
+test('uncertain group reply is audited, not retried or presented for review; later messages continue', async t => {
+  const { a, bridge, profile, advance } = await fixture(t);
+  bridge.delivery=async()=>({status:'uncertain'});
+  const first=Object.assign(bridge.push(profile.contact,'other','第一条群消息'),{timestamp:Math.floor(a.now()/1000),sender:key('member'),mentions:{verified:true,self:false,all:false,others:false}});
+  await a.tick();advance(60000);await a.tick();
+  assert.equal(profile.delivery.status,'uncertain');assert.equal(profile.paused,false);assert.equal(profile.handledIncomingId,first.id);
+  assert.equal(a.cursors.get(profile.id).pending,false);assert.equal(a.data.queue.status,'idle');
+  const summary=a.activitySummaries('reply').find(row=>row.id===profile.id);
+  assert.equal(summary.needsReview,false);assert.equal(summary.needsHelp,false);
+  bridge.delivery=null;
+  Object.assign(bridge.push(profile.contact,'other','第二条群消息继续处理'),{timestamp:Math.floor(a.now()/1000),sender:key('member'),mentions:{verified:true,self:false,all:false,others:false}});
+  await a.tick();advance(60000);await a.tick();
+  assert.equal(bridge.sent.length,1);assert.equal(profile.paused,false);
 });
 
 test('realtime interval survives restart and @me interrupts the batch wait', async t => {
@@ -94,16 +118,16 @@ test('a disabled explicit mention is not reintroduced by realtime', async t => {
   assert.equal(provider.calls.length, 0); assert.equal(bridge.sent.length, 0);
 });
 
-test('@all still asks the model when the rate limit is full and keeps a send pending', async t => {
+test('@all continues to ask the model after more than 20 recent replies', async t => {
   const { a, bridge, provider, profile, advance } = await fixture(t);
   profile.groupOptions = { atMe: true, atAll: true, realtime: false };
-  profile.sentMessages = Array.from({ length: 5 }, (_, i) => ({ id: `recent-${i}`, at: a.now() - 1000 + i, source: 'reply' }));
+  profile.sentMessages = Array.from({ length: 20 }, (_, i) => ({ id: `recent-${i}`, at: a.now() - 1000 + i, source: 'reply' }));
   Object.assign(bridge.push(profile.contact, 'other', '@所有人 看一下'), { timestamp: Math.floor(a.now() / 1000), sender: key('member'), mentions: { verified: true, self: false, all: true, others: false } });
   await a.tick(); advance(4000);
   provider.next = async () => ({ action: 'send', text: '我来确认一下' });
   await a.tick();
-  assert.equal(provider.calls.length, 1); assert.equal(bridge.sent.length, 0);
-  assert.equal(profile.groupWait.trigger, 'atAll'); assert.ok(profile.groupWait.dueAt > a.now());
+  assert.equal(provider.calls.length, 1); assert.equal(bridge.sent.length, 1);
+  assert.equal(profile.groupWait, undefined);
 });
 
 test('expired model waits re-read and rejudge instead of consuming the pending message', async t => {
@@ -119,35 +143,33 @@ test('expired model waits re-read and rejudge instead of consuming the pending m
   assert.equal(a.data.events.some(e => e.code === 'skip'), false);
 });
 
-test('fifth group message exhausts the budget across segments, restart and explicit mentions', async t => {
+test('group multi-segment sends are unrestricted across turns and restarts', async t => {
   const { a, bridge, provider, profile, options, push, advance } = await fixture(t);
-  profile.sentMessages = Array.from({ length: 4 }, (_, i) => ({ id: `old-${i}`, at: a.now() - 1000 + i, source: 'reply' }));
   profile.replyOptions = { multiTurn: true };
   push(true); await a.tick(); advance(4000);
-  provider.next = async () => ({ action: 'send', segments: ['fifth', 'must not send sixth'] });
-  await a.tick(); assert.deepEqual(bridge.sent.map(m => m.text), ['fifth']);
+  provider.next = async () => ({ action: 'send', segments: ['first-a', 'first-b'] });
+  await a.tick(); assert.deepEqual(bridge.sent.map(m => m.text), ['first-a', 'first-b']);
   const b = new AIAssistant(options); await b.init(); await b.scan(); await b.tick();
   try {
     push(true); await b.tick(); advance(4000); const before = provider.calls.length; await b.tick();
-    assert.equal(provider.calls.length, before + 1); assert.equal(bridge.sent.length, 1);
-    assert.equal(b.profiles().find(p => p.id === profile.id).groupWait.trigger, 'atMe');
+    assert.equal(provider.calls.length, before + 1); assert.equal(bridge.sent.length, 3);
     await b.close();
     const c = new AIAssistant(options); await c.init(); await c.scan();
     try {
-      advance(600000); await c.tick(); advance(4000); await c.tick();
-      assert.equal(bridge.sent.length, 2, 'pending verified @me is sent after the rolling limit expires');
-      push(true); await c.tick(); advance(4000); await c.tick(); assert.equal(bridge.sent.length, 3);
+      push(true); await c.tick(); advance(4000); await c.tick(); assert.equal(bridge.sent.length, 4);
     } finally { await c.close(); }
   } finally { await b.close(); }
 });
 
-test('group send is rechecked if budget changes while the model is running', async t => {
-  const { a, bridge, provider, profile, push, advance } = await fixture(t);
-  push(true); await a.tick(); advance(4000);
+test('realtime send is rechecked if the ordinary interval changes while the model is running', async t => {
+  const { a, bridge, provider, profile, advance } = await fixture(t);
+  const realtime = text => Object.assign(bridge.push(profile.contact, 'other', text), { timestamp: Math.floor(a.now()/1000), sender: key('member'), mentions: { verified:true,self:false,all:false,others:false } });
+  realtime('实时第一轮'); await a.tick(); advance(60000); await a.tick(); advance(4000);
   provider.next = async () => {
-    profile.sentMessages = Array.from({ length: 5 }, (_, i) => ({ id: `sent-${i}`, at: a.now(), source: 'reply' }));
+    profile.sentMessages = [{ id: 'recent-reply', at: a.now(), source: 'reply' }];
     return { action: 'send', text: 'must not send' };
   };
-  await a.tick(); assert.equal(bridge.sent.length, 0); assert.equal(a.cursors.get(profile.id).pending, true);
-  assert.equal(profile.groupWait.trigger, 'atMe');
+  realtime('实时第二轮'); await a.tick(); advance(60000); await a.tick();
+  assert.equal(bridge.sent.length, 1); assert.equal(a.cursors.get(profile.id).pending, true);
+  assert.equal(profile.groupWait.trigger, 'realtime');
 });

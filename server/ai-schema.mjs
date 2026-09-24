@@ -63,7 +63,7 @@ export function strategyValue(value) {
   result.styleProfileId = textField(value.styleProfileId || '', 64);
   if (result.styleProfileId && !/^[a-f0-9]{64}$/.test(result.styleProfileId)) throw new AppError('请选择已学习的风格');
   result.maxRounds = Number(value.maxRounds ?? 50);
-  if (!Number.isInteger(result.maxRounds) || result.maxRounds < 1 || result.maxRounds > 1000) throw new AppError('自动回复上限应为 1–1000 条');
+  if (!Number.isInteger(result.maxRounds) || result.maxRounds < 1 || result.maxRounds > 2000) throw new AppError('自动回复上限应为 1–2000 条');
   return result;
 }
 export function strategyReady(value, mode) {

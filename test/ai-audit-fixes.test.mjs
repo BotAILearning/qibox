@@ -99,30 +99,31 @@ for (const mention of ['self', 'all']) for (const otherSpeaker of [false, true])
   push('普通补充。', '', 'one'); await a.tick(); advance(4000); await a.tick();
   assert.equal(provider.calls.length, 1);
 });
-test('AI-03 @all and @me repeated skips are explicit errors, and old mentions stay unprocessed', async t => {
+test('AI-03 @all and @me skips are not replayed, and old mentions stay unprocessed', async t => {
   const { a, bridge, provider, advance } = await fixture(t), c = bridge.contacts[0]; c.kind = 'group'; await a.scan();
   const push = field => Object.assign(bridge.push(c.id, 'other', '测试'), { sender: key('one'), mentions: { verified: true, self: field === 'self', all: field === 'all', others: false } });
+  const complete = provider.complete.bind(provider);
   push('self'); await a.setGroupOptions({ contact: c.id, atMe: true }); await a.settings({ enabled: true, replyScope: 'selected' });
   push(''); await a.tick(); advance(4000); await a.tick(); assert.equal(provider.calls.length, 0);
 
   const profile = a.profiles().find(value => value.contact === c.id);
   provider.complete = async (config, system, input) => { provider.calls.push({ system, input }); return { action: 'skip' }; };
   push('self'); await a.tick(); advance(4000); await a.tick();
-  assert.equal(provider.calls.length, 2);
+  assert.equal(provider.calls.length, 1);
   assert.equal(bridge.sent.length, 0);
-  assert.match(a.notice, /重试后仍未生成本轮来信/);
-  assert.equal(profile.handledIncomingId, undefined);
-  push(''); await a.tick(); advance(4000); await a.tick(); assert.equal(provider.calls.length, 2);
+  assert.ok(profile.handledIncomingId);
+  assert.equal(profile.paused, false);
+  push(''); await a.tick(); advance(4000); await a.tick(); assert.equal(provider.calls.length, 1);
 
-  provider.complete = async (config, system, input) => { provider.calls.push({ system, input }); return { action: 'skip' }; };
+  provider.complete = complete;
   await a.setGroupOptions({ contact: c.id, atMe: false, atAll: true });
   await a.tick(); // Establish the all-mention boundary before generating new input.
+  provider.next = async () => ({ action: 'skip' });
   push('all'); await a.tick(); advance(4000); await a.tick();
-  assert.equal(provider.calls.length, 4);
+  assert.equal(provider.calls.length, 2);
   assert.equal(bridge.sent.length, 0);
-  assert.equal(a.data.events.some(event => event.code === 'skip' && event.source === 'model-skip'), false);
-  assert.ok(a.data.events.some(event => event.code === 'error'));
-  push(''); await a.tick(); advance(4000); await a.tick(); assert.equal(provider.calls.length, 4);
+  assert.equal(a.data.events[0].code, 'skip');
+  push(''); await a.tick(); advance(4000); await a.tick(); assert.equal(provider.calls.length, 2);
 });
 test('AI-03 pending burst survives restart with its original unprocessed boundary', async t => {
   const { a, bridge, provider, advance, options } = await fixture(t), c = bridge.contacts[0]; bridge.stableMessageIds = true; c.kind = 'group'; await a.scan();

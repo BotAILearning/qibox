@@ -46,6 +46,15 @@ test('解析仍然严格：动作无效、正文缺失或分段数量越界一�
   assert.throws(() => messageSegments({ action: 'skip' }, { allowSkip: false }), /必须发送消息/);
 });
 
+test('群聊模型动作限于 send、skip、wait；停止/暂停/转交都不能成为模型动作', () => {
+  const protocol = generationProtocol({ group: true, allowSkip: true, allowStop: false, multiTurn: false });
+  assert.match(protocol, /send、skip，群聊还允许 wait/);
+  assert.throws(() => messageSegments({ action: 'stop' }, { group: true, allowStop: false }), /动作无效/);
+  assert.throws(() => messageSegments({ action: 'pause' }, { group: true, allowStop: false }), /动作无效/);
+  assert.throws(() => messageSegments({ action: 'handoff' }, { group: true, allowStop: false }), /动作无效/);
+  assert.deepEqual(messageSegments({ action: 'wait', waitSeconds: 5 }, { group: true, allowStop: false }), []);
+});
+
 test('提示词对返回结构有明确约定，对正文写法不做格式化要求', () => {
   const protocol = generationProtocol({ multiTurn: true });
   assert.match(protocol, /只返回 JSON 本身/);

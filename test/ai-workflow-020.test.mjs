@@ -21,13 +21,12 @@ async function fixture(t) {
   return { a, bridge, provider, root, enable, receive, tick, setTime: value => { now = value; }, advance: value => { now += value; } };
 }
 
-test('step 2: explicitly enabling all personal contacts ignores old history and requires a model reply', async t => {
+test('step 2: explicitly enabling all personal contacts ignores old history and judges whether to reply', async t => {
   const { a, bridge, provider, enable, receive } = await fixture(t);
   await enable(); assert.equal(a.data.settings.enabled, true); assert.equal(a.data.settings.replyDelay, 3); assert.equal(a.configured(), false); assert.equal(bridge.sent.length, 0);
   await receive(bridge.contacts[0].id, '你觉得怎么样？', { action: 'send', text: '挺好的，你呢？' });
-  assert.equal(bridge.sent.length, 1); assert.equal(provider.calls[0].input.judgeReply, false);
-  await receive(bridge.contacts[0].id, '不用回了', { action: 'skip' }); assert.equal(bridge.sent.length, 2);
-  assert.equal(a.publicState().skipRecords.some(record => record.source === 'model-skip'), false);
+  assert.equal(bridge.sent.length, 1); assert.equal(provider.calls[0].input.judgeReply, true);
+  await receive(bridge.contacts[0].id, '不用回了', { action: 'skip' }); assert.equal(bridge.sent.length, 1);
 });
 
 test('step 3 and 6: simultaneous contacts retain separate custom styles, strategies and destination identities', async t => {

@@ -86,7 +86,7 @@ test('one launch sends once per target after random-range intervals without wait
   for (let i = 0; i < 100; i++) { const interval = new AIAssistant({ dataRoot: '.', bridge }).interval(); assert.ok(interval >= 120000 && interval <= 300000); }
 });
 
-test('reply rounds merge bursts, retry model skip, refresh only enum style and do not respond to old history', async t => {
+test('reply rounds merge bursts, can skip, refresh only enum style and do not respond to old history', async t => {
   const { assistant: a, bridge, provider, advance } = await fixture(t);
   await enabled(a, { reply: true }); await a.settings({ updateStyle: true, replyDelay: 8 }); await a.tick(); assert.equal(bridge.sent.length, 0);
   const contact = bridge.contacts[0].id;
@@ -94,8 +94,7 @@ test('reply rounds merge bursts, retry model skip, refresh only enum style and d
   advance(7999); await a.tick(); assert.equal(bridge.sent.length, 0); advance(1); await a.tick(); assert.equal(bridge.sent.length, 1);
   assert.equal(a.profiles()[0].style.warmth, '亲切');
   bridge.push(contact, 'other', '话题结束'); await a.tick(); advance(8000); provider.next = async () => ({ action: 'skip' }); await a.tick();
-  assert.equal(bridge.sent.length, 2); advance(20000); await a.tick(); assert.equal(bridge.sent.length, 2);
-  assert.equal(a.publicState().skipRecords.some(record => record.source === 'model-skip'), false);
+  assert.equal(bridge.sent.length, 1); advance(20000); await a.tick(); assert.equal(bridge.sent.length, 1);
 });
 
 test('manual outgoing messages take over even when a new incoming message arrives in the same poll', async t => {
@@ -397,14 +396,13 @@ test('proactive handoff skips only the affected contact and continues queue; gen
   advance(180000); await a.tick(); assert.equal(bridge.sent.length, 1); assert.equal(a.publicState().queue.status, 'completed');
 });
 
-test('text explanations remain available and repeated model skip becomes a visible error without pausing', async t => {
+test('text explanations remain available and a model skip is recorded without pausing', async t => {
   const { assistant: a, bridge, provider, advance } = await fixture(t);
   await enabled(a); await a.tick();
   bridge.push(bridge.contacts[0].id, 'other', '如何发送文件？'); await a.tick(); advance(8000); await a.tick();
   assert.equal(bridge.sent.length, 1);
   bridge.push(bridge.contacts[0].id, 'other', '帮我完成这笔转账'); await a.tick(); advance(8000);
-  let calls=0;provider.complete=async()=>{calls++;return {action:'skip'};};await a.tick();
-  assert.equal(calls,2);assert.equal(bridge.sent.length, 1); assert.equal(a.profiles()[0].paused, false);
-  assert.equal(a.publicState().skipRecords.some(record => record.source === 'model-skip'), false);
-  assert.ok(a.publicState().events.some(event => event.code === 'error'));
+  provider.next = async () => ({ action: 'skip' }); await a.tick();
+  assert.equal(bridge.sent.length, 1); assert.equal(a.profiles()[0].paused, false);
+  assert.equal(a.publicState().skipRecords[0].source, 'model-skip');
 });

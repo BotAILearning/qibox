@@ -33,19 +33,19 @@ test('two skipped answers become a visible error, do not silently consume the re
   let calls=0; provider.complete=async()=>{calls++;return {action:'skip'};};
   await receive();await a.tick();await a.tick();
   assert.equal(calls,2);assert.equal(bridge.sent.length,0);
-  assert.ok(a.data.events.some(e=>e.code==='error'&&/重试后仍未生成/.test(e.message||e.detail||''))||/重试后仍未生成/.test(a.notice));
+  assert.ok(a.data.events.some(e=>e.code==='error'&&/跳过/.test(e.message||e.detail||''))||/跳过/.test(a.notice));
   assert.equal(a.data.events.some(e=>e.code==='skip'),false);
   assert.equal(a.profiles()[0].handledIncomingId,undefined);
 });
 
-test('judgment on cannot skip an ordinary private reply',async t=>{
+test('judgment on preserves legitimate skip with a single model call',async t=>{
   const {a,bridge,provider,receive,contact}=await fixture(t);
-  await a.setReplyOptions({contact,judgeReply:true});let calls=0;provider.complete=async()=>{calls++;return {action:'skip'};};
-  await receive();await a.tick();assert.equal(calls,2);assert.equal(bridge.sent.length,0);
-  assert.equal(a.data.events.some(e=>e.code==='skip'),false);assert.ok(a.data.events.some(e=>e.code==='error'));
+  await a.setReplyOptions({contact,judgeReply:true});provider.next=async()=>({action:'skip'});
+  await receive();assert.equal(provider.calls.length,1);assert.equal(bridge.sent.length,0);
+  assert.equal(a.data.events[0].code,'skip');
 });
 
-test('explicit group @me retries a skipped model decision but never fabricates a canned answer', async t => {
+test('explicit group @me may skip only this turn without pausing later replies', async t => {
   const root = await temp(), bridge = new ChatFixture(), provider = new AIModelFixture();
   let now = 1700000000000; bridge.stableMessageIds = true;
   const a = new AIAssistant({ dataRoot: root, bridge, provider, now: () => now, delay: async () => {} });
@@ -53,22 +53,22 @@ test('explicit group @me retries a skipped model decision but never fabricates a
   const target = bridge.contacts[0]; target.kind = 'group'; await a.scan();
   await a.setGroupOptions({ contact: target.id, atMe: true }); await a.settings({ enabled: true }); await a.tick();
   let calls = 0;
-  provider.complete = async () => (++calls === 1 ? { action: 'skip' } : { action: 'send', text: '我看到了这个问题，正在核对相关内容' });
+  provider.complete = async () => { calls++; return { action: 'skip' }; };
   const incoming = Object.assign(bridge.push(target.id, 'other', '@我 请处理'), {
     timestamp: Math.floor(now / 1000), sender: 'a'.repeat(64),
     mentions: { verified: true, self: true, all: false, others: false },
   });
   await a.tick(); now += 3000; await a.tick();
-  assert.equal(bridge.sent.length, 1);
-  assert.equal(bridge.sent[0].contact, target.id);
-  assert.equal(bridge.sent[0].text, '我看到了这个问题，正在核对相关内容');
-  assert.equal(calls, 2);
-  assert.equal(a.data.events.some(e => e.code === 'skip' && e.target === a.profiles()[0].id), false);
+  assert.equal(bridge.sent.length, 0);
+  assert.equal(calls, 1);
+  assert.equal(a.data.events.some(e => e.code === 'skip' && e.target === a.profiles()[0].id), true);
+  assert.equal(a.profiles()[0].paused, false);
+  assert.equal(a.profiles()[0].handledIncomingId, incoming.id);
   assert.ok(incoming.id);
   await a.close(); await cleanup(root);
 });
 
-test('repeated @me skips are visible errors and remain unsent', async t => {
+test('@me skip is consumed once and does not create a manual-review error', async t => {
   const root = await temp(), bridge = new ChatFixture(), provider = new AIModelFixture();
   let now = 1700000000000; bridge.stableMessageIds = true;
   const a = new AIAssistant({ dataRoot: root, bridge, provider, now: () => now, delay: async () => {} });
@@ -76,28 +76,29 @@ test('repeated @me skips are visible errors and remain unsent', async t => {
   const target = bridge.contacts[0]; target.kind = 'group'; await a.scan();
   await a.setGroupOptions({ contact: target.id, atMe: true }); await a.settings({ enabled: true }); await a.tick();
   let calls = 0; provider.complete = async () => { calls++; return { action: 'skip' }; };
-  Object.assign(bridge.push(target.id, 'other', '@我 具体问题'), { timestamp: Math.floor(now / 1000), sender: 'a'.repeat(64), mentions: { verified: true, self: true, all: false, others: false } });
+  const incoming = Object.assign(bridge.push(target.id, 'other', '@我 具体问题'), { timestamp: Math.floor(now / 1000), sender: 'a'.repeat(64), mentions: { verified: true, self: true, all: false, others: false } });
   await a.tick(); now += 3000; await a.tick(); await a.tick();
-  assert.equal(calls, 2); assert.equal(bridge.sent.length, 0);
-  assert.match(a.notice, /重试后仍未生成本轮来信/);
-  assert.equal(a.data.events.some(e => e.code === 'skip'), false);
+  assert.equal(calls, 1); assert.equal(bridge.sent.length, 0);
+  assert.equal(a.data.events.some(e => e.code === 'skip' && e.target === a.profiles()[0].id), true);
+  assert.equal(a.profiles()[0].handledIncomingId, incoming.id);
+  assert.equal(a.profiles()[0].paused, false);
   await a.close(); await cleanup(root);
 });
 
-test('@all cannot consume an incoming message through model skip', async t => {
+test('@all remains a model decision and may skip', async t => {
   const root = await temp(), bridge = new ChatFixture(), provider = new AIModelFixture();
   let now = 1700000000000; bridge.stableMessageIds = true;
   const a = new AIAssistant({ dataRoot: root, bridge, provider, now: () => now, delay: async () => {} });
   await a.init(); await a.configure(modelConfig); await a.testProvider(); await a.scan();
   const target = bridge.contacts[0]; target.kind = 'group'; await a.scan();
   await a.setGroupOptions({ contact: target.id, atAll: true }); await a.settings({ enabled: true }); await a.tick();
-  let calls=0,lastCall;provider.complete=async(config,system,input)=>{calls++;lastCall={system,input};return { action: 'skip' };};
+  provider.next = async () => ({ action: 'skip' });
   Object.assign(bridge.push(target.id, 'other', '@所有人 通知'), { timestamp: Math.floor(now / 1000), sender: 'a'.repeat(64), mentions: { verified: true, self: false, all: true, others: false } });
   await a.tick(); now += 3000; await a.tick();
-  await a.tick();assert.equal(calls, 2); assert.equal(bridge.sent.length, 0);
-  assert.equal(lastCall.input.judgeReply, false);
-  assert.match(lastCall.system, /不能返回skip/);
-  assert.equal(a.data.events.some(e=>e.code==='skip'), false);assert.ok(a.data.events.some(e=>e.code==='error'));
+  assert.equal(provider.calls.length, 1); assert.equal(bridge.sent.length, 0);
+  assert.equal(provider.calls[0].input.judgeReply, true);
+  assert.match(provider.calls[0].system, /skip/);
+  assert.equal(a.data.events[0].code, 'skip');
   await a.close(); await cleanup(root);
 });
 
@@ -116,22 +117,24 @@ test('unreadable image on @me reaches the model and is not silently skipped', as
   await a.close(); await cleanup(root);
 });
 
-test('@me retries a model wait instead of scheduling or skipping it', async t => {
+test('@me does not schedule model wait or pause the group', async t => {
   const root = await temp(), bridge = new ChatFixture(), provider = new AIModelFixture();
   let now = 1700000000000; bridge.stableMessageIds = true;
   const a = new AIAssistant({ dataRoot: root, bridge, provider, now: () => now, delay: async () => {} });
   await a.init(); await a.configure(modelConfig); await a.testProvider(); await a.scan();
   const target = bridge.contacts[0]; target.kind = 'group'; await a.scan();
   await a.setGroupOptions({ contact: target.id, atMe: true }); await a.settings({ enabled: true }); await a.tick();
-  let calls = 0; provider.complete = async () => ++calls === 1 ? { action: 'wait', waitSeconds: 30 } : { action: 'send', text: '我来回答这个问题' };
+  let calls = 0; provider.complete = async () => { calls++; return { action: 'wait', waitSeconds: 30 }; };
   Object.assign(bridge.push(target.id, 'other', '@我 这个问题'), { timestamp: Math.floor(now / 1000), sender: 'a'.repeat(64), mentions: { verified: true, self: true, all: false, others: false } });
   await a.tick(); now += 3000; await a.tick();
-  assert.equal(calls, 2); assert.equal(bridge.sent.length, 1);
-  assert.equal(a.data.events.some(e => ['wait', 'pause', 'skip'].includes(e.code)), false);
+  assert.equal(calls, 1); assert.equal(bridge.sent.length, 0);
+  assert.equal(a.profiles()[0].paused, false);
+  assert.equal(a.profiles()[0].groupPauseReason, undefined);
+  assert.equal(a.data.events.some(e => e.code === 'wait' && e.source === 'model'), false);
   await a.close(); await cleanup(root);
 });
 
-test('@me post-generation identity rejection is visible and not silently consumed', async t => {
+test('@me unsafe identity text is skipped for the current group turn without handoff', async t => {
   const root = await temp(), bridge = new ChatFixture(), provider = new AIModelFixture();
   let now = 1700000000000; bridge.stableMessageIds = true;
   const a = new AIAssistant({ dataRoot: root, bridge, provider, now: () => now, delay: async () => {} });
@@ -141,13 +144,13 @@ test('@me post-generation identity rejection is visible and not silently consume
   provider.next = async () => ({ action: 'send', text: '我是AI，這個問題我來處理' });
   Object.assign(bridge.push(target.id, 'other', '@我 帮忙'), { timestamp: Math.floor(now / 1000), sender: 'a'.repeat(64), mentions: { verified: true, self: true, all: false, others: false } });
   await a.tick(); now += 3000; await a.tick();
-  assert.equal(bridge.sent.length, 0); assert.equal(a.profiles()[0].handledIncomingId, undefined);
-  assert.match(a.notice, /未能生成可安全发送/);
-  assert.ok(a.data.events.some(e => e.code === 'error' && e.source === 'atMe'));
+  assert.equal(bridge.sent.length, 0); assert.ok(a.profiles()[0].handledIncomingId);
+  assert.equal(a.profiles()[0].paused, false);
+  assert.ok(a.data.events.some(e => e.code === 'skip' && e.source === 'system-skip'));
   await a.close(); await cleanup(root);
 });
 
-test('@me post-generation unsupported media promise is visible and not silently consumed', async t => {
+test('@me unsupported media promises are skipped for this turn without handoff', async t => {
   const root = await temp(), bridge = new ChatFixture(), provider = new AIModelFixture();
   let now = 1700000000000; bridge.stableMessageIds = true;
   const a = new AIAssistant({ dataRoot: root, bridge, provider, now: () => now, delay: async () => {} });
@@ -157,8 +160,8 @@ test('@me post-generation unsupported media promise is visible and not silently 
   provider.next = async () => ({ action: 'send', text: '我马上给你发图片' });
   Object.assign(bridge.push(target.id, 'other', '@我 发我图片'), { timestamp: Math.floor(now / 1000), sender: 'a'.repeat(64), mentions: { verified: true, self: true, all: false, others: false } });
   await a.tick(); now += 3000; await a.tick();
-  assert.equal(bridge.sent.length, 0); assert.equal(a.profiles()[0].handledIncomingId, undefined);
-  assert.match(a.notice, /未能生成可安全发送/);
-  assert.ok(a.data.events.some(e => e.code === 'error' && e.source === 'atMe'));
+  assert.equal(bridge.sent.length, 0); assert.ok(a.profiles()[0].handledIncomingId);
+  assert.equal(a.profiles()[0].paused, false);
+  assert.ok(a.data.events.some(e => e.code === 'skip' && e.source === 'system-skip'));
   await a.close(); await cleanup(root);
 });

@@ -17,7 +17,7 @@ import { categories, styleOptions, avoidOptions, defaultStyle, styleSchema, styl
 import { providerPresets, goalPresets, replyPresets } from './ai-presets.mjs';
 import { unsupportedTextAction, promisesMedia } from './ai-capabilities.mjs';
 import { parseSchedule, advanceSchedule } from './ai-schedule.mjs';
-import { groupDefaults, groupOptions, groupBurst, groupPrompt, groupDecision, groupRateState, groupRealtimeIntervalMs } from './ai-group.mjs';
+import { groupDefaults, groupOptions, groupBurst, groupPrompt, groupDecision, groupTimingState, groupRealtimeIntervalMs } from './ai-group.mjs';
 import { ProactiveTasks } from './ai-proactive.mjs';
 import { historySummary, validReportId } from './ai-report-history.mjs';
 
@@ -1706,7 +1706,7 @@ export class AIAssistant {
     return this.profiles().filter(p => p.account === this.data.account).map(p => {
       const failed = source === 'proactive' && ['running', 'paused', 'failed'].includes(this.data.queue.status) && this.data.queue.items.find(x => x.id === p.id && x.status === 'failed');
       // 发送结果未确认只是【待核验】标记，不再阻断该对象的自动回复。
-      const pendingReview = ['sending', 'uncertain'].includes(p.delivery?.status);
+      const pendingReview = p.kind !== 'group' && ['sending', 'uncertain'].includes(p.delivery?.status);
       const needsHelp = failed || p.delivery?.source !== 'proactive' && source === 'reply' && (pendingReview || p.paused && ['limit'].includes(p.pauseReason));
       const metadata = new Map((p.sentMessages || []).map(m => [m.id, m]));
       const sent = (p.sentMessages || []).filter(accepts), ids = (p.generatedIds || []).filter(id => accepts(metadata.get(id)));
@@ -2006,13 +2006,7 @@ export class AIAssistant {
     }
   }
   async guardGroupRate(profile, snapshot, trigger) {
-    const rate = groupRateState(profile, this.now()), cursor = this.cursors.get(profile.id);
-    if (rate.limited && trigger === 'realtime') {
-      if (cursor) cursor.pending = true;
-      profile.groupWait = { kind: 'rate', context: snapshot.revision, trigger, dueAt: rate.nextAvailableAt, expires: Math.max(rate.nextAvailableAt + groupRealtimeIntervalMs, profile.groupWait?.expires || 0) };
-      this.event('wait', profile.id, trigger, '群聊回复达到十分钟上限，保留待处理消息');
-      await this.save(); return false;
-    }
+    const rate = groupTimingState(profile);
     if (trigger === 'realtime' && rate.ordinaryDueAt > this.now()) {
       profile.groupWait = { kind: 'rate', context: snapshot.revision, trigger, dueAt: rate.ordinaryDueAt, expires: profile.groupWait?.expires || this.now() + 60000 };
       this.event('wait', profile.id, trigger, '等待群聊普通回复间隔');
@@ -2105,47 +2099,46 @@ export class AIAssistant {
       : ` 本轮用户为当前联系人设置的风格如下：${JSON.stringify(style)}。这是本轮必须遵循的口吻要求。若总结后面有明确补充的称呼、表达或注意事项，优先执行这些补充；前面的历史样本描述或“样本不足”不撤销用户后来明确填写的要求。${addressingPrompt}`;
     const currentTask = mode === 'proactive' ? proactivePrompt(strategy) : this.replyBackgroundPrompt(profile);
     const explicitAsk = mode === 'reply' && !followUp && asksDirectQuestion(pendingText);
-    const mustReply = mode === 'reply' && (!followUp || explicitAsk);
-    const retryGroupSkip = profile.kind === 'group' && mode === 'reply' && trigger === 'atMe';
-    const groupTriggerInstruction = mustReply ? '本轮是普通来信自动回复；必须结合本轮来信给出相关的自然文字回复，不要返回skip；群聊触发仍须遵守wait/pause时间与限流规则。若图片等内容无法读取，应说明无法查看并请对方转成文字。只有对方明确要求停止联系时可stop；' : '';
+    const mustReply = mode === 'reply' && profile.kind !== 'group' && ((!followUp && !this.replyOptions(profile).judgeReply) || explicitAsk);
+    const retryGroupMedia = profile.kind === 'group' && mode === 'reply' && trigger === 'atMe';
+    const groupTriggerInstruction = explicitAsk && profile.kind !== 'group' ? '本轮来信包含明确问题，必须生成针对问题的文字回复；如引用的图片无法读取，应说明无法查看并请对方转成文字，不得返回skip。' : '';
     let result, textOnlyRetry = false;
     try {
       for (let attempt = 0; attempt < 2; attempt++) {
         result = onlyImages && !images.length && profile.kind !== 'group' ? { action: 'skip', mediaSkipped: true } : await this.provider.complete(
           this.modelFor('chat'),
-          `${generationPrompt}${chatMemoryPrompt}${identityPrompt(this.data.settings.acknowledgeAI)}${conversationPrompt} 当前只能发送纯文字，不能发送、读取或下载文件，不能拨打或接听电话，仅能理解实际附带的图片；未附带图片或图片无法读取时，应如实说明无法查看并请对方转成文字，不猜测图片内容。${groupTriggerInstruction}${currentTask}${currentStyle}${profile.kind === 'group' ? groupPrompt(trigger, multiTurn) : ''}${generationProtocol({ multiTurn, group: profile.kind === 'group' && trigger !== 'atMe', followUpAllowed: profile.kind !== 'group' && !followUp, updateStyle: this.data.settings.updateStyle, allowSkip: !mustReply && !retryGroupSkip })}`,
-          { images: textOnlyRetry ? [] : images, onlyImages: textOnlyRetry ? false : onlyImages, capabilityConcern: reason, mode, continuation, multiTurn, followUp, followUpAllowed: profile.kind !== 'group' && !followUp, kind: profile.kind, conversation, addressing, memory: readMemory(this.vault, profile), groupState, capabilities: { sendText: true, wechatVoiceText: true, files: false, calls: false, receiveImages: !textOnlyRetry && images.length > 0, sendMedia: false }, strategy, style, styleOwner: 'self', judgeReply: followUp || !mustReply && (profile.kind === 'group' || this.replyOptions(profile).judgeReply), updateStyle: this.data.settings.updateStyle, messages: modelMessages.map(message => ({ ...message, aiGenerated: (profile.generatedIds || []).includes(message.id) })) }, signal
+          `${generationPrompt}${chatMemoryPrompt}${identityPrompt(this.data.settings.acknowledgeAI)}${conversationPrompt} 当前只能发送纯文字，不能发送、读取或下载文件，不能拨打或接听电话，仅能理解实际附带的图片；未附带图片或图片无法读取时，应如实说明无法查看并请对方转成文字，不猜测图片内容。${groupTriggerInstruction}${currentTask}${currentStyle}${profile.kind === 'group' ? groupPrompt(trigger, multiTurn) : ''}${generationProtocol({ multiTurn, group: profile.kind === 'group' && trigger !== 'atMe', followUpAllowed: profile.kind !== 'group' && !followUp, updateStyle: this.data.settings.updateStyle, allowSkip: profile.kind === 'group' || !mustReply, allowStop: profile.kind !== 'group' })}`,
+          { images: textOnlyRetry ? [] : images, onlyImages: textOnlyRetry ? false : onlyImages, capabilityConcern: reason, mode, continuation, multiTurn, followUp, followUpAllowed: profile.kind !== 'group' && !followUp, kind: profile.kind, conversation, addressing, memory: readMemory(this.vault, profile), groupState, capabilities: { sendText: true, wechatVoiceText: true, files: false, calls: false, receiveImages: !textOnlyRetry && images.length > 0, sendMedia: false }, strategy, style, styleOwner: 'self', judgeReply: profile.kind === 'group' ? trigger === 'atMe' ? false : true : followUp || this.replyOptions(profile).judgeReply, updateStyle: this.data.settings.updateStyle, messages: modelMessages.map(message => ({ ...message, aiGenerated: (profile.generatedIds || []).includes(message.id) })) }, signal
         );
-        if (retryGroupSkip && result?.mediaSkipped && attempt === 0) { textOnlyRetry = true; continue; }
-        if (retryGroupSkip && !['send', 'stop'].includes(result?.action) && attempt === 0) continue;
-        if (result?.mediaSkipped && !retryGroupSkip) break;
+        if (retryGroupMedia && result?.mediaSkipped && attempt === 0) { textOnlyRetry = true; continue; }
+        if (result?.mediaSkipped && !retryGroupMedia) break;
         if (!mustReply || String(result?.action).trim().toLowerCase() !== 'skip') break;
         if (!this.canDeliver(profile, mode, revision, signal)) return;
       }
     } finally { if (this.generatingProfile?.id === profile.id) this.generatingProfile = null; }
-    if (mustReply && !result?.mediaSkipped && (String(result?.action).trim().toLowerCase() === 'skip' || retryGroupSkip && !['send', 'stop'].includes(result?.action))) {
+    if (profile.kind === 'group' && mode === 'reply' && ['stop', 'pause', 'handoff', 'transfer'].includes(String(result?.action).trim().toLowerCase())) result = { ...result, action: 'skip' };
+    if (mustReply && !result?.mediaSkipped && String(result?.action).trim().toLowerCase() === 'skip') {
       if (!this.canDeliver(profile, mode, revision, signal)) return;
       const cursor = this.cursors.get(profile.id);
       if (cursor && cursor.revision === snapshot.revision) cursor.pending = false;
-      this.notice = `${profile.label}：模型重试后仍未生成本轮来信的文字回复；本轮未发送，新消息仍可正常处理，请检查模型或上下文`;
+      this.notice = explicitAsk ? `${profile.label}：检测到明确问题，但模型重试后仍未生成文字回复；本轮未发送，新消息仍可正常处理，请检查模型或上下文` : trigger === 'atMe'
+        ? `${profile.label}：已验证的@我触发未生成相关回复，模型重试后仍未给出可执行决定；本轮未发送，请检查模型或上下文`
+        : `${profile.label}：智能判断已关闭，但模型连续返回跳过，本轮未发送；请调整回复要求或更换模型`;
+      const failedMessage = (profile.kind === 'group' && trigger ? snapshot.messages.find(m => m.id === burst?.messages.findLast(item => item.trigger === trigger)?.id) : null) || pendingMessages.findLast(m => m.direction === 'other') || snapshot.messages.findLast(m => m.direction === 'other');
+      if (explicitAsk) this.event('skip', profile.id, 'system-skip', '保护拦截：明确提问重试后仍未生成文字回复；新来信将继续正常处理', { reasonCode: 'explicit-question-no-response', messageId: failedMessage?.id, trigger: trigger || 'reply' });
       this.event('error', profile.id, trigger, this.notice);
       await this.save(); return;
     }
     const modelMs = this.now() - modelStartedAt;
     if (!this.canDeliver(profile, mode, revision, signal)) return;
     const decision = profile.kind === 'group' && mode === 'reply' ? groupDecision(result) : null;
-    if (!decision && !['send', 'skip', 'stop'].includes(result.action)) throw new AppError('模型返回不完整，已暂停');
-    let segments = messageSegments(result, { multiTurn, group: profile.kind === 'group' });
+    const groupReply = profile.kind === 'group' && mode === 'reply';
+    if (!decision && !(groupReply ? ['send', 'skip'].includes(result.action) : ['send', 'skip', 'stop'].includes(result.action))) throw new AppError('模型返回不完整，本轮未发送');
+    let segments = messageSegments(result, { multiTurn, group: groupReply && trigger !== 'atMe', allowSkip: true, allowStop: !groupReply });
     if (result.action === 'send') {
       if ((!this.data.settings.acknowledgeAI || !asksIdentity(modelMessages.slice(handledIndex + 1))) && segments.some(text => /(?:作为|我是|我是一[个名]?|作为一[个名]?)(?:AI|人工智能|语言模型|聊天机器人)|as an? (?:AI|language model)/i.test(text))) { result.action = 'skip'; result.identitySkipped = true; }
       const unsupported = segments.map(unsupportedTextAction).find(Boolean) || unsupportedTextAction(segments.join('\n')) || (segments.some(promisesMedia) ? 'media' : null);
       if (unsupported) { result.action = 'skip'; result.mediaSkipped = true; }
-    }
-    if (retryGroupSkip && result.action === 'skip' && (result.identitySkipped || result.mediaSkipped)) {
-      if (!this.canDeliver(profile, mode, revision, signal)) return;
-      const cursor = this.cursors.get(profile.id); if (cursor && cursor.revision === snapshot.revision) cursor.pending = false;
-      this.notice = `${profile.label}：已验证的@我触发未能生成可安全发送的相关回复，本轮未发送；请检查模型结果`;
-      this.event('error', profile.id, trigger, this.notice); await this.save(); return;
     }
     const fresh = await this.read(profile, signal);
     if (!this.canDeliver(profile, mode, revision, signal)) return;
@@ -2153,11 +2146,11 @@ export class AIAssistant {
     if (!this.canDeliver(profile, mode, revision, signal)) return;
     if (fresh.revision !== snapshot.revision) { if (item) this.data.queue.nextAt = this.now() + 10000; return; }
     if (result.action === 'send' && profile.kind === 'group' && mode === 'reply') {
-      const rate = groupRateState(profile, this.now());
-      if (rate.limited || trigger === 'realtime' && rate.ordinaryDueAt > this.now()) {
-        const dueAt = rate.limited ? rate.nextAvailableAt : rate.ordinaryDueAt;
+      const rate = groupTimingState(profile);
+      if (trigger === 'realtime' && rate.ordinaryDueAt > this.now()) {
+        const dueAt = rate.ordinaryDueAt;
         profile.groupWait = { kind: 'rate', context: fresh.revision, trigger, dueAt, expires: Math.max(dueAt + groupRealtimeIntervalMs, profile.groupWait?.expires || 0) };
-        this.event('wait', profile.id, trigger, '群聊回复限流，保留待处理消息并等待到期重新判断');
+        this.event('wait', profile.id, trigger, '等待群聊普通回复间隔，保留待处理消息并在到期后重新判断');
         await this.save(); return;
       }
     }
@@ -2166,7 +2159,7 @@ export class AIAssistant {
         const expires = profile.groupWait?.expires || this.now() + 60000;
         if (this.now() + decision.seconds * 1000 >= expires) { delete profile.groupWait; this.event('wait', profile.id, trigger, '模型等待到期，保留待处理消息并重新判断'); }
         else { profile.groupWait = { kind: 'model', context: fresh.revision, trigger, dueAt: this.now() + decision.seconds * 1000, expires }; this.event('wait', profile.id); }
-      } else { this.pauseProfile(profile, 'model'); profile.groupPauseReason = 'model'; profile.groupPausedUntil = this.now() + decision.seconds * 1000; this.cursors.get(profile.id).pending = false; this.event('pause', profile.id); }
+      }
       await this.save(); return;
     }
     delete profile.groupWait;
@@ -2211,7 +2204,17 @@ export class AIAssistant {
   }
   async deliver(profile, fresh, mode, revision, signal, item, segments, strategy, source = mode) {
     if (mode === 'reply') segments = segments.slice(0, Math.max(0, strategy.maxRounds - (profile.rounds || 0)));
-    if (mode === 'reply' && profile.kind === 'group') segments = segments.slice(0, Math.max(0, 5 - groupRateState(profile, this.now()).count));
+    const groupReply = mode === 'reply' && profile.kind === 'group';
+    if (groupReply) {
+      const rate = groupTimingState(profile);
+      if (source === 'realtime' && rate.ordinaryDueAt > this.now()) {
+        const dueAt = rate.ordinaryDueAt;
+        const cursor = this.cursors.get(profile.id); if (cursor) cursor.pending = true;
+        profile.groupWait = { kind: 'rate', context: fresh.revision, trigger: source, dueAt, expires: Math.max(dueAt + groupRealtimeIntervalMs, profile.groupWait?.expires || 0) };
+        this.event('wait', profile.id, source, '等待群聊普通回复间隔');
+        await this.save(); return 'pending';
+      }
+    }
     let sent = 0, expectedRevision = fresh.revision;
     const interrupted = async () => {
       if (sent) profile.delivery.interrupted = true;
@@ -2220,8 +2223,7 @@ export class AIAssistant {
     for (const text of segments) {
       if (!this.canDeliver(profile, mode, revision, signal)) return interrupted();
       if (sent) {
-        const groupDelay = mode === 'reply' && profile.kind === 'group' && source === 'realtime' ? Math.max(0, groupRateState(profile, this.now()).ordinaryDueAt - this.now()) : 0;
-        try { await this.delay(Math.max(this.randomDelay('segmentDelay'), groupDelay), signal); }
+        try { await this.delay(this.randomDelay('segmentDelay'), signal); }
         catch (error) { if (signal.aborted) return interrupted(); throw error; }
         if (!this.canDeliver(profile, mode, revision, signal)) return interrupted();
         // Re-read after every confirmed segment. A reply, account change or manual
@@ -2269,7 +2271,12 @@ export class AIAssistant {
           if (delivery.status === 'uncertain' && text.trim()) profile.sentMessages = [...(profile.sentMessages || []), { id: operationId, at: this.now(), body: this.vault.seal({ text }), source: mode === 'reply' ? 'reply' : 'proactive', confirmed: false }].slice(-300);
           // 发送结果未确认只进入【待核验】标记：不暂停该对象的自动回复，
           // 后续新消息照常处理，主动聊天队列仍需核对后再继续。
-          this.pauseQueue(); this.event('uncertain', profile.id);
+          if (groupReply) {
+            profile.handledIncomingId = fresh.messages.findLast(m => m.direction === 'other')?.id;
+            const cursor = this.cursors.get(profile.id); if (cursor?.revision === fresh.revision) cursor.pending = false;
+            delete profile.groupWait;
+          } else this.pauseQueue();
+          this.event('uncertain', profile.id);
         }
         await this.save(); return delivery.status === 'stale' && sent ? 'partial' : 'pending';
       }

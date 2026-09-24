@@ -60,7 +60,7 @@ test('group trigger matrix never guesses mentions or lets realtime bypass a disa
   assert.equal(groupTrigger(message({ self: true }), { ...realtime, atMe: true }), 'atMe');
   assert.equal(groupTrigger(message({ all: true }), { ...realtime, atAll: true }), 'atAll');
   assert.throws(() => groupDecision({ action: 'wait', waitSeconds: 31 }));
-  assert.deepEqual(groupDecision({ action: 'pause', pauseSeconds: 10 }), { action: 'pause', seconds: 10 });
+  assert.equal(groupDecision({ action: 'pause', pauseSeconds: 10 }), null);
   for (let bits = 0; bits < 8; bits++) {
     const options = { atMe: !!(bits & 1), atAll: !!(bits & 2), realtime: !!(bits & 4) };
     assert.equal(groupTrigger(message({ self: true }), options), options.atMe ? 'atMe' : null);
