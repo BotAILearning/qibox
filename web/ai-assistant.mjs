@@ -592,7 +592,7 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
   }
   function advancedSettings() {
     const rule = state.settings.takeover || {enabled:true,minutes:5};
-    return '<div class="ai-page-heading"><div><h3>系统设置</h3><p>管理模型配置与 AI 回复的通用行为。</p></div></div><section class="ai-card ai-settings-group"><button type="button" class="ai-settings-entry" data-ai-nav="provider"><span class="ai-settings-entry-icon">' + icon('sliders') + '</span><span class="ai-settings-entry-text"><strong>模型设置</strong><small>为聊天回复、主动聊天、风格学习、聊天分析分别选择模型</small></span><span class="ai-settings-entry-arrow">' + icon('chev-r') + '</span></button><button type="button" class="ai-settings-entry" data-ai-nav="default-style"><span class="ai-settings-entry-icon">' + icon('sparkle') + '</span><span class="ai-settings-entry-text"><strong>学习默认风格</strong><small>选择联系人的聊天记录学习，作为没有单独风格时的默认口吻</small></span><span class="ai-settings-entry-arrow">' + icon('chev-r') + '</span></button></section><section class="ai-card">' + switchRow('acknowledgeAI','被问及身份时承认 AI','开启后，仅被询问时说明由 AI 回复；关闭后按本人身份回答。') + '</section><form id="ai-takeover-form" class="ai-card"><h4>手动回复后的自动接续</h4><div class="ai-form-grid"><label class="ai-field">接续方式<select name="enabled"><option value="true" '+(rule.enabled?'selected':'')+'>超时后自动回复</option><option value="false" '+(!rule.enabled?'selected':'')+'>不再自动回复</option></select></label><label class="ai-field">AI辅助等待时长（分钟）<input name="minutes" type="number" min="1" max="10080" required value="'+rule.minutes+'"></label></div><p class="ai-help">你手动回复后，从对方下一条消息开始计时；对方继续发消息不延长等待。你再次回复后，等待下一轮来信。所有联系人和群聊统一使用此设置。</p><button class="primary" type="submit">保存接续设置</button></form>';
+    return '<div class="ai-page-heading"><div><h3>系统设置</h3><p>管理模型配置与 AI 回复的通用行为。</p></div></div><section class="ai-card ai-settings-group"><button type="button" class="ai-settings-entry" data-ai-nav="provider"><span class="ai-settings-entry-icon">' + icon('sliders') + '</span><span class="ai-settings-entry-text"><strong>模型设置</strong><small>为聊天回复、主动聊天、风格学习、聊天分析分别选择模型</small></span><span class="ai-settings-entry-arrow">' + icon('chev-r') + '</span></button><button type="button" class="ai-settings-entry" data-ai-nav="default-style"><span class="ai-settings-entry-icon">' + icon('sparkle') + '</span><span class="ai-settings-entry-text"><strong>学习默认风格</strong><small>选择联系人的聊天记录学习，作为没有单独风格时的默认口吻</small></span><span class="ai-settings-entry-arrow">' + icon('chev-r') + '</span></button></section><section class="ai-card">' + switchRow('acknowledgeAI','被问及身份时承认 AI','开启后，仅被询问时说明由 AI 回复；关闭后按本人身份回答。') + '</section><form id="ai-takeover-form" class="ai-card"><h4>AI 辅助等待</h4><label class="ai-switch-row"><span>开启 AI 辅助等待<small>开启后，每次手动回复后，从对方第一条新消息开始等待设定时长；同一轮后续消息不会延长等待。首次自动回复成功后恢复正常回复节奏；再次手动回复会重新开始等待。</small></span><input type="checkbox" name="enabled" role="switch" aria-label="开启 AI 辅助等待" '+(rule.enabled?'checked':'')+'></label><div data-takeover-minutes '+(rule.enabled?'':'hidden')+'><label class="ai-field">等待时长（分钟）<input name="minutes" type="number" min="1" max="10080" required value="'+rule.minutes+'" '+(rule.enabled?'':'disabled')+'></label></div><p class="ai-help">关闭后，手动回复会关闭对应联系人的自动回复开关；群聊会关闭该群的自动回复触发开关。其他联系人的设置不受影响。</p><button class="primary" type="submit">保存设置</button></form>';
   }
   function proactive() { return proactiveUI.page(); }
   function profileEditor(profile) {
@@ -787,6 +787,11 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
   panel.addEventListener('change', async event => {
     try {
       const input = event.target;
+      if (input.closest('#ai-takeover-form') && input.name === 'enabled') {
+        const minutes = input.closest('#ai-takeover-form').querySelector('[data-takeover-minutes]');
+        minutes.hidden = !input.checked;
+        minutes.querySelector('[name="minutes"]').disabled = !input.checked;
+      }
       if (proactiveUI.change(input)) return;
       if (input.name === 'default-perspective') { defaultStylePerspective = input.value; rememberDraft(); render(); return; }
       if (input.id === 'ai-learning-scope') { rememberDraft(); learnScope = input.value; render(); return; }
@@ -919,7 +924,7 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
     event.preventDefault(); const form = event.target, data = new FormData(form);
     try {
       if (form.id === 'ai-log-filter') { if (data.get('from') && data.get('to') && data.get('from') > data.get('to')) throw new Error('开始日期不能晚于结束日期'); logFilters = { ...logFilters, ...Object.fromEntries(data), page: 0 }; const refreshed = await call(); if (refreshed) { logLoading = logFilters.source === 'reply'; logRequestScope = ''; proactiveHistoryPage = null; proactiveRecordEpoch++; proactiveRecordLoading = false; render(); await Promise.all([loadActivity(), loadProactiveRecords()]); } return; }
-            if (form.id === 'ai-takeover-form') { await execute('settings', {value:{takeover:{enabled:data.get('enabled')==='true',minutes:Number(data.get('minutes'))}}}, '接续设置已保存'); return; }
+            if (form.id === 'ai-takeover-form') { await execute('settings', {value:{takeover:{enabled:data.get('enabled')==='on',minutes:Number(data.get('minutes') ?? form.elements.minutes.value ?? 5)}}}, 'AI 辅助等待设置已保存'); return; }
       if (form.id === 'ai-analysis-form') {
         rememberDraft();
         if (!analysisDraft.contacts.length) throw new Error('请至少选择一位联系人');

@@ -6,6 +6,7 @@ import { run } from './tooling.mjs';
 
 const output = process.argv[2] || 'reports/ai-ui-current';
 for (const [script, folder] of [
+  ['test-ai-takeover-ui.mjs', 'ai-assisted-wait'],
   ['test-ai-provider-ui.mjs', 'provider'],
   ['test-analysis-history-ui.mjs', 'analysis-history'],
   ['test-analysis-search-ui.mjs', 'analysis-search'],

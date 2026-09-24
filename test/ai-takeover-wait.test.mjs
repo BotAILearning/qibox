@@ -26,14 +26,37 @@ test('manual reply ends the pending round; next incoming begins a new full wait'
  const f=await fixture(t);await f.push('self');await f.push('other');f.advance(50000);await f.push('self','这轮我处理');f.advance(20000);await f.a.tick();assert.equal(f.bridge.sent.length,0);
  await f.push('other','新一轮');f.advance(59999);await f.a.tick();assert.equal(f.bridge.sent.length,0);f.advance(1);await f.a.tick();assert.equal(f.bridge.sent.length,1);
 });
-test('disabled takeover never sends on a timer; explicit saved reply can resume new messages',async t=>{
- const f=await fixture(t);await f.a.settings({takeover:{enabled:false,minutes:1}});await f.push('self');await f.push('other');f.advance(86400000);await f.a.tick();assert.equal(f.bridge.sent.length,0);
- await f.a.saveReplyProfile({contact:f.p.contact,style:f.p.style,strategy:f.a.data.replyStrategy,replyEnabled:true});
- f.advance(1000);await f.push('other','保存后新消息');f.advance(3000);await f.a.tick();assert.equal(f.bridge.sent.length,1);
+for(const kind of ['person','group'])test(`${kind}: disabled AI assisted wait turns off only this contact's automatic reply and manual re-enable works`,async t=>{
+ const f=await fixture(t,kind);
+ if(kind==='person'){
+  await f.a.saveReplyProfile({contact:f.bridge.contacts[1].id,style:f.p.style,strategy:f.a.data.replyStrategy});
+  await f.a.settings({takeover:{enabled:false,minutes:1},replyScope:'all'});
+  f.a.data.settings.proactive=true;f.a.data.proactiveTargets.push(f.p.id);f.p.continuation={startedAt:1700000000000};
+ }
+ else await f.a.settings({takeover:{enabled:false,minutes:1}});
+ await f.push('self');assert.equal(f.a.replySelected(f.p),false);
+ if(kind==='person'){
+  assert.equal(f.a.replySelected(f.a.profiles().find(p=>p.contact===f.bridge.contacts[1].id)),true,'replyScope=all remains active for other contacts');
+  assert.equal(f.a.continuing(f.p),false,'manual handover ends only this contact continuation');
+  assert.ok(f.a.data.proactiveTargets.includes(f.p.id),'manual handover preserves the separate proactive target selection');
+ }
+ else assert.deepEqual(f.p.groupOptions,{atMe:false,atAll:false,realtime:false});
+ await f.push('other');f.advance(86400000);await f.a.tick();assert.equal(f.bridge.sent.length,0);
+ if(kind==='person')await f.a.setReplyOptions({contact:f.p.contact,enabled:true});else await f.a.setGroupOptions({contact:f.p.contact,atMe:true});
+ f.advance(1000);await f.push('other','手动重新开启后的消息');f.advance(3000);await f.a.tick();assert.equal(f.bridge.sent.length,1);
+});
+test('the first successful automatic reply consumes the wait; later replies use the normal delay',async t=>{
+ const f=await fixture(t);await f.push('self');await f.push('other');f.advance(60000);await f.a.tick();assert.equal(f.bridge.sent.length,1);assert.equal(f.p.manualWait,undefined);
+ await f.push('other','下一条');f.advance(3000);await f.a.tick();assert.equal(f.bridge.sent.length,2);assert.equal(f.p.manualWait,undefined);
 });
 test('restart preserves elapsed wait and pending incoming without restarting the timer',async t=>{
  const f=await fixture(t);await f.push('self');await f.push('other');const started=f.p.manualWait?.startedAt;assert.ok(started);f.advance(40000);await f.restart();await f.a.tick();assert.equal(f.p.manualWait.startedAt,started);
  f.advance(19999);await f.a.tick();assert.equal(f.bridge.sent.length,0);f.advance(1);await f.a.tick();assert.equal(f.bridge.sent.length,1);
+});
+test('uncertain first delivery is not regenerated on the same incoming after restart',async t=>{
+ const f=await fixture(t);await f.push('self');const incoming=await f.push('other');const started=f.p.manualWait?.startedAt;assert.ok(started);f.advance(60000);f.bridge.delivery=async()=>({status:'uncertain'});await f.a.tick();
+ assert.equal(f.p.delivery.status,'uncertain');assert.equal(f.p.handledIncomingId,incoming.id);assert.equal(f.p.manualWait.startedAt,started);const calls=f.provider.calls.length;
+ await f.restart();await f.a.tick();assert.equal(f.provider.calls.length,calls);assert.equal(f.p.manualWait.startedAt,started);
 });
 test('AI generated self messages do not arm takeover, explicit stop remains stopped after expiry',async t=>{
  const f=await fixture(t);await f.push('other');f.advance(3000);await f.a.tick();assert.equal(f.bridge.sent.length,1);await f.a.tick();assert.equal(f.p.manualWait,undefined);

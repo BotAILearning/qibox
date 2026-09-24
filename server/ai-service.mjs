@@ -328,9 +328,20 @@ export class AIAssistant {
     if (!message || (profile.generatedIds || []).includes(message.id) || profile.lastManualId === message.id) return;
     profile.lastManualId = message.id;
     profile.lastManualAt = this.now();
-    profile.manualWait = { ownId: message.id, at: Number.isSafeInteger(message.timestamp) ? message.timestamp * 1000 : this.now() };
     this.followUps.delete(profile.id);
     this.event('manual', profile.id);
+    if (!effectiveTakeover(this.data.settings).enabled) {
+      delete profile.manualWait;
+      this.replyControllers.get(profile.id)?.abort(); this.replyControllers.delete(profile.id);
+      if (profile.kind === 'group') profile.groupOptions = { ...groupDefaults(), ...(profile.groupOptions || {}), atMe: false, atAll: false, realtime: false };
+      else profile.replyOptions = { ...this.replyOptions(profile), enabled: false };
+      this.data.replyTargets = this.data.replyTargets.filter(id => id !== profile.id);
+      delete profile.continuation;
+      this.syncTargets();
+      this.event('auto-reply-disabled', profile.id);
+      return;
+    }
+    profile.manualWait = { ownId: message.id, at: Number.isSafeInteger(message.timestamp) ? message.timestamp * 1000 : this.now() };
     if (!profile.paused || profile.pauseReason === 'explicit') return;
     if (['sending', 'uncertain'].includes(profile.delivery?.status) || ['sending', 'uncertain'].includes(profile.proactiveDelivery?.status)) return;
     if (Number.isSafeInteger(message.timestamp) && message.timestamp * 1000 < Math.floor((profile.pausedAt || 0) / 1000) * 1000) return;
@@ -357,7 +368,7 @@ export class AIAssistant {
     const wait = profile.manualWait;
     if (!wait) return 0;
     const policy = effectiveTakeover(this.data.settings);
-    return !policy.enabled || wait.startedAt === undefined ? Infinity : wait.startedAt + policy.minutes * 60000;
+    return !policy.enabled ? 0 : wait.startedAt === undefined ? Infinity : wait.startedAt + policy.minutes * 60000;
   }
 
   profiles() { return Object.values(this.data.profiles).filter(x => x.account === this.data.account || x.account === 'paste'); }
@@ -494,6 +505,7 @@ export class AIAssistant {
         // 重置 watch 与游标并清除该触发项的基线，让后续轮询只处理开启后的新消息。
         profile.replyWatchSince = this.now();
         this.cursors.delete(id);
+        delete profile.manualWait;
         if (profile.groupBaselines) for (const key of enabling) delete profile.groupBaselines[key];
       }
       for (const key of Object.keys(next)) if (next[key] !== before[key]) { this.replyControllers.get(`${id}:${key}`)?.abort(); this.replyControllers.delete(`${id}:${key}`); if (profile.groupWait?.trigger === key) delete profile.groupWait; }
@@ -527,7 +539,7 @@ export class AIAssistant {
       profile.replyOptions = { ...before, ...value };
       profile.replyVersion = (profile.replyVersion || 0) + 1;
       this.followUps.delete(id);
-      if (before.enabled !== profile.replyOptions.enabled) { profile.replyWatchSince = this.now(); this.cursors.delete(id); }
+      if (before.enabled !== profile.replyOptions.enabled) { profile.replyWatchSince = this.now(); this.cursors.delete(id); delete profile.manualWait; }
       if (profile.replyOptions.enabled) this.data.replyTargets = [...new Set([...this.data.replyTargets, id])];
       else this.data.replyTargets = this.data.replyTargets.filter(x => x !== id);
       this.syncTargets(); await this.save(); return this.publicState();
@@ -2373,17 +2385,18 @@ export class AIAssistant {
           if (delivery.status === 'uncertain' && text.trim()) profile.sentMessages = [...(profile.sentMessages || []), { id: operationId, at: this.now(), body: this.vault.seal({ text }), source: mode === 'reply' ? 'reply' : 'proactive', confirmed: false }].slice(-300);
           // 发送结果未确认只进入【待核验】标记：不暂停该对象的自动回复，
           // 后续新消息照常处理，主动聊天队列仍需核对后再继续。
-          if (groupReply) {
-            profile.handledIncomingId = fresh.messages.findLast(m => m.direction === 'other')?.id;
-            const cursor = this.cursors.get(profile.id); if (cursor?.revision === fresh.revision) cursor.pending = false;
-            delete profile.groupWait;
-          } else this.pauseQueue();
+        if (mode === 'reply') {
+          profile.handledIncomingId = fresh.messages.findLast(m => m.direction === 'other')?.id;
+          const cursor = this.cursors.get(profile.id); if (cursor?.revision === fresh.revision) cursor.pending = false;
+          if (groupReply) delete profile.groupWait;
+        } else this.pauseQueue();
           this.event('uncertain', profile.id);
         }
         await this.save(); return delivery.status === 'stale' && sent ? 'partial' : 'pending';
       }
       sent++; expectedRevision = delivery.revision;
       if (mode === 'reply') profile.rounds = (profile.rounds || 0) + 1;
+      if (mode === 'reply' && sent === 1) delete profile.manualWait;
       profile.generatedIds = [...(profile.generatedIds || []), delivery.messageId].slice(-300);
       profile.sentMessages = [...(profile.sentMessages || []), { id: delivery.messageId, at: this.now(), body: this.vault.seal({ text }), source: mode === 'reply' ? 'reply' : 'proactive', ...(source !== mode ? { trigger: source } : {}), ...(item?.taskId ? { taskId: item.taskId } : {}) }].slice(-300);
       profile.delivery.status = 'sent'; profile.delivery.segmentsSent = sent;
