@@ -43,6 +43,8 @@ for (const host of ['fnos', 'ugos']) test(`${host} desktop proxy waits for AI ha
     await call(`/instances/${info.id}/start`, {});
     const item = (await app.users.get('development')).get(info.id);
     item.runtime.port = peer.address().port;
+    let inputMethodCalls = 0;
+    item.runtime.setInputMethod = async () => { inputMethodCalls++; };
     const events = [], entered = Promise.withResolvers(), disconnected = Promise.withResolvers();
     release = Promise.withResolvers();
     item.ai.manualInput = async event => {
@@ -51,6 +53,7 @@ for (const host of ['fnos', 'ugos']) test(`${host} desktop proxy waits for AI ha
       if (event.type === 'disconnect') disconnected.resolve();
     };
     const connection = await call(`/instances/${info.id}/desktop`, {});
+    assert.equal(inputMethodCalls, 0, 'opening the desktop must not call a remote input-method service');
     let send, close;
     if (host === 'fnos') {
       ws = new WebSocket(`${origin.replace('http:', 'ws:')}${connection.path}`, { headers: { cookie } });

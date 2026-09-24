@@ -35,6 +35,23 @@ test('disconnect during composition retains the visible text without submitting 
   assert.deepEqual(recovered, ['尚未确认']); assert.deepEqual(fixture.keys, []);
 });
 
+test('dispose preserves a recovered draft when the default recovery callback uses the input itself', () => {
+  const input = new Element(), screen = new Element(), client = { sendKey() {} };
+  const bridge = nativeInput({ input, screen, client, paste: async () => {}, notify() {} });
+  fire(input, 'compositionstart'); input.value = '尚未确认'; bridge.dispose();
+  assert.equal(input.value, '尚未确认'); assert.equal(input.hidden, true);
+});
+
+test('cancelled composition is retained for review and never reaches the remote keyboard', async () => {
+  const recovered = [], fixture = setup({ recover: text => recovered.push(text) });
+  fire(fixture.input, 'compositionstart'); fixture.input.value = 'nihao';
+  fire(fixture.input, 'compositionend', { data: '' });
+  fire(fixture.input, 'input', { data: 'nihao', inputType: 'insertCompositionText' });
+  await fixture.bridge.flush();
+  assert.deepEqual(fixture.pasted, []); assert.deepEqual(fixture.keys, []);
+  assert.deepEqual(recovered, ['nihao']); fixture.bridge.dispose();
+});
+
 test('blur retains unfinished composition for recovery instead of clearing the recovered draft', () => {
   const { input, bridge, keys } = setup(); fire(input, 'compositionstart'); input.value = '尚未确认'; fire(input, 'blur');
   assert.equal(input.value, '尚未确认'); assert.ok(input.classes.has('composing')); assert.deepEqual(keys, []); bridge.dispose();
@@ -97,6 +114,19 @@ test('paste completes before later keys or clicks change the remote field', asyn
   await Promise.resolve(); assert.deepEqual(keys, []); release(); await bridge.flush();
   assert.deepEqual(received, ['第一行\n第二行']);
   assert.deepEqual(keys, [[0xffe3, 'ControlLeft', true], [0x76], [0xffe3, 'ControlLeft', false], [0xff0d]]);
+  bridge.dispose();
+});
+
+test('each clipboard owner becomes ready before its matching RFB paste chord and the next clipboard', async () => {
+  const order = [];
+  const input = new Element(), screen = new Element();
+  const client = { sendKey: key => { if (key === 0x76) order.push('rfb:paste'); } };
+  const bridge = nativeInput({ input, screen, client, paste: async text => { order.push(`ready:${text}`); }, notify() {} });
+  fire(input, 'compositionend', { data: '第一份🙂' });
+  await bridge.flush();
+  fire(input, 'compositionstart'); fire(input, 'compositionend', { data: '第二份🙂' });
+  await bridge.flush();
+  assert.deepEqual(order, ['ready:第一份🙂', 'rfb:paste', 'ready:第二份🙂', 'rfb:paste']);
   bridge.dispose();
 });
 

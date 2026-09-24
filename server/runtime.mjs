@@ -196,19 +196,14 @@ export class Runtime {
         LD_LIBRARY_PATH: runtimeLibraries(root),
         GCONV_PATH: `/lib/${triple}/gconv`, LOCPATH: '/lib/locale',
         LANG: 'zh_CN.UTF-8', QT_QPA_PLATFORM: 'xcb', QT_QPA_PLATFORMTHEME: 'xdgdesktopportal', QT_AUTO_SCREEN_SCALE_FACTOR: '0', QT_SCALE_FACTOR: '1',
-        XMODIFIERS: '@im=fcitx', QT_IM_MODULE: 'fcitx', GTK_IM_MODULE: 'fcitx',
-        FCITX_ADDON_DIRS: `${root}/usr/lib/${triple}/fcitx5`, FCITX_DATA_DIRS: `${root}/usr/share/fcitx5`,
-        LIBIME_MODEL_DIRS: `${root}/usr/lib/${triple}/libime`,
         IMLIB2_LOADER_PATH: `${root}/usr/lib/${triple}/imlib2/loaders`,
         FONTCONFIG_FILE: path.join(session, 'fonts.conf'),
-        GTK_IM_MODULE_FILE: path.join(session, 'gtk-immodules.cache'),
         DBUS_SESSION_BUS_ADDRESS: `unix:path=${encodeURIComponent(path.join(session, 'bus'))}`,
         AT_SPI_BUS_ADDRESS: `unix:path=${encodeURIComponent(path.join(session, 'bus'))}`,
       };
       Object.assign(env, await nativeIdentity({ session, home: profile.home, runtimeRoot: root }));
       for (const dir of [env.XDG_CONFIG_HOME, env.XDG_DATA_HOME, env.XDG_CACHE_HOME]) await mkdir(dir, { recursive: true, mode: 0o700 });
       await writeFile(env.FONTCONFIG_FILE, fontConfiguration(root, path.join(env.XDG_CACHE_HOME, 'fontconfig'), path.join(this.appRoot, 'fonts')), { mode: 0o600 });
-      await writeFile(env.GTK_IM_MODULE_FILE, await command(`${root}/usr/lib/${triple}/libgtk-3-0/gtk-query-immodules-3.0`, [`${root}/usr/lib/${triple}/gtk-3.0/3.0.0/immodules/im-fcitx5.so`], env), { mode: 0o600 });
       const cookie = randomBytes(16).toString('hex');
       // The server reads the cookie before exposing its listener; after it picks
       // a free display, add the matching client-side authority record.
@@ -237,13 +232,6 @@ export class Runtime {
       this.child(`${root}/usr/libexec/at-spi2-registryd`, [], env, 'accessibility');
       this.child(`${root}/usr/bin/python3.11`, [path.join(this.appRoot, 'server/accessibility-bus.py')],
         { ...env, PYTHONHOME: `${root}/usr`, PYTHONNOUSERSITE: '1' }, 'accessibility-bus');
-      const imeDir = path.join(env.XDG_CONFIG_HOME, 'fcitx5'); await mkdir(imeDir, { recursive: true, mode: 0o700 });
-      await mkdir(path.join(imeDir, 'conf'), { recursive: true, mode: 0o700 });
-      if (!await exists(path.join(imeDir, 'conf/pinyin.conf'))) await writeFile(path.join(imeDir, 'conf/pinyin.conf'), 'EmojiEnabled=False\nCloudPinyinEnabled=False\n', { mode: 0o600 });
-      if (!await exists(path.join(imeDir, 'profile'))) await writeFile(path.join(imeDir, 'profile'), '[Groups/0]\nName=Default\nDefault Layout=us\nDefaultIM=pinyin\n\n[Groups/0/Items/0]\nName=keyboard-us\nLayout=\n\n[Groups/0/Items/1]\nName=pinyin\nLayout=\n\n[GroupOrder]\n0=Default\n', { mode: 0o600 });
-      const ime = this.child(`${root}/usr/bin/fcitx5`, ['--disable=wayland'], env, 'input-method');
-      await delay(700);
-      if (ime.exitCode !== null) throw new Error('Chinese input method failed to start');
       const wmConfig = path.join(session, 'openbox.xml');
       await writeFile(wmConfig, '<openbox_config xmlns="http://openbox.org/3.4/rc"><focus><focusNew>yes</focusNew></focus><applications><application type="normal"><maximized>yes</maximized></application></applications></openbox_config>');
       this.child(`${root}/usr/bin/openbox`, ['--sm-disable', '--config-file', wmConfig], env, 'windows');
@@ -315,13 +303,6 @@ export class Runtime {
     const wallpaper = path.join(this.appRoot, 'public/backgrounds/mist.jpg');
     await command(setter, ['-fill', wallpaper], this.desktopEnv)
       .catch(() => command(setter, ['-solid', '#eaf0ec'], this.desktopEnv).catch(() => {}));
-  }
-  async setInputMethod(chinese) {
-    if (this.status !== 'running' || !this.desktopEnv) throw new AppError('请先打开应用', 409);
-    // The browser commits host IME text; the remote desktop must not compose it again.
-    if (!chinese) await command(`${this.runtimeRoot}/usr/bin/fcitx5-remote`, ['-s', 'keyboard-us'], this.desktopEnv);
-    await command(`${this.runtimeRoot}/usr/bin/fcitx5-remote`, [chinese ? '-o' : '-c'], this.desktopEnv);
-    return { chinese };
   }
   async setClipboard(text) {
     if (this.status !== 'running' || !this.desktopEnv) throw new AppError('请先打开应用', 409);

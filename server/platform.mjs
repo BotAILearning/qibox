@@ -13,7 +13,7 @@ export function architecture(value = process.arch) {
   return target;
 }
 export const officialWechatUrl = arch => `https://dldir1v6.qq.com/weixin/Universal/Linux/WeChatLinux_${architecture(arch).node === 'arm64' ? 'arm64' : 'x86_64'}.deb`;
-export const runtimeLibraries = (root, arch = process.arch) => `${root}/usr/lib/${architecture(arch).triple}:${root}/lib/${architecture(arch).triple}:${root}/usr/lib`;
+export const runtimeLibraries = (root, arch = process.arch) => `${root}/usr/lib/${architecture(arch).triple}:${root}/lib/${architecture(arch).triple}:${root}/usr/lib/${architecture(arch).triple}/pulseaudio:${root}/usr/lib`;
 export async function runtimePayload(appRoot, arch = process.arch) {
   const target = architecture(arch);
   const directory = path.join(appRoot, 'payload', target.node);

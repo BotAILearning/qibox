@@ -34,6 +34,7 @@ test('target architecture selects executable format, runtime libraries and offic
   assert.match(officialWechatUrl('arm64'), /WeChatLinux_arm64\.deb$/);
   assert.match(runtimeLibraries('/runtime', 'arm64'), /aarch64-linux-gnu/);
   assert.doesNotMatch(runtimeLibraries('/runtime', 'arm64'), /x86_64/);
+  assert.match(runtimeLibraries('/runtime', 'arm64'), /aarch64-linux-gnu\/pulseaudio/);
   assert.throws(() => architecture('arm'), /ARM64/);
 });
 

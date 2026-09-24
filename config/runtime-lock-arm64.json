@@ -156,78 +156,6 @@
       "sha256": "f0b45ff257dff48027919320c3f4834268f3f7eb8b6f119f0209d316d94359c2"
     },
     {
-      "name": "fcitx5",
-      "version": "5.0.21-3",
-      "architecture": "arm64",
-      "url": "https://deb.debian.org/debian/pool/main/f/fcitx5/fcitx5_5.0.21-3_arm64.deb",
-      "debSha256": "c256b0e336db3bb68777abd0b5da8ca86747e85fecd270a475ee5412078a3035",
-      "file": "fcitx5-data.tar.xz",
-      "sha256": "b8cee9d0e27214d924b2f8430aa6399ff4b21dc46b11256c99c063c0b1315db6"
-    },
-    {
-      "name": "fcitx5-chinese-addons-data",
-      "version": "5.0.16-1",
-      "architecture": "all",
-      "url": "https://deb.debian.org/debian/pool/main/f/fcitx5-chinese-addons/fcitx5-chinese-addons-data_5.0.16-1_all.deb",
-      "debSha256": "a700c69650490e74e9740f5078364a801a1244c1607d3e59ef1568fce56defbc",
-      "file": "fcitx5-chinese-addons-data-data.tar.xz",
-      "sha256": "369fbe96d7ed4f672ac365539025c6b8149a75bae4226f8cdb19442e80370542"
-    },
-    {
-      "name": "fcitx5-data",
-      "version": "5.0.21-3",
-      "architecture": "all",
-      "url": "https://deb.debian.org/debian/pool/main/f/fcitx5/fcitx5-data_5.0.21-3_all.deb",
-      "debSha256": "0706f58201fc7ee698f7cadc60e254d91dd54f353f1288cf837587d68eb9dcee",
-      "file": "fcitx5-data-data.tar.xz",
-      "sha256": "2f3778d0adfb3555790bf9b1b3eb57f9739ea8415950056f12b72a99ca2b0f2d"
-    },
-    {
-      "name": "fcitx5-frontend-gtk3",
-      "version": "5.0.21-1",
-      "architecture": "arm64",
-      "url": "https://deb.debian.org/debian/pool/main/f/fcitx5-gtk/fcitx5-frontend-gtk3_5.0.21-1_arm64.deb",
-      "debSha256": "ca7d6a421605ad884290bf9e03a492c255011f6c9b51fd9f6fef5dca4cf468a1",
-      "file": "fcitx5-frontend-gtk3-data.tar.xz",
-      "sha256": "1363977b05fe953648a7a4f913018e48f8c00aee6a58ed3267ecb241a0bb1d24"
-    },
-    {
-      "name": "fcitx5-frontend-qt5",
-      "version": "5.0.16-1+b3",
-      "architecture": "arm64",
-      "url": "https://deb.debian.org/debian/pool/main/f/fcitx5-qt/fcitx5-frontend-qt5_5.0.16-1+b3_arm64.deb",
-      "debSha256": "850236c8f25668236dd80c286679888115c9ff2e8044241fbbe86c662320007e",
-      "file": "fcitx5-frontend-qt5-data.tar.xz",
-      "sha256": "0e2090a850f50af6be5a8066942fddd3e90fbc135810206aeb594d57d6290894"
-    },
-    {
-      "name": "fcitx5-module-punctuation",
-      "version": "5.0.16-1",
-      "architecture": "arm64",
-      "url": "https://deb.debian.org/debian/pool/main/f/fcitx5-chinese-addons/fcitx5-module-punctuation_5.0.16-1_arm64.deb",
-      "debSha256": "7143920743b6a5238c9edc70cb097d69d362c9338453a5b4002aeea76e36ae8d",
-      "file": "fcitx5-module-punctuation-data.tar.xz",
-      "sha256": "cf1d180020529639266489e4c3701d11f0e9dd1ea394b008f68bea4a77c04d6a"
-    },
-    {
-      "name": "fcitx5-modules",
-      "version": "5.0.21-3",
-      "architecture": "arm64",
-      "url": "https://deb.debian.org/debian/pool/main/f/fcitx5/fcitx5-modules_5.0.21-3_arm64.deb",
-      "debSha256": "bcb1a378b37a7ede59af6399c696469418adb5e53fb13425205f38ac1c6cb4cf",
-      "file": "fcitx5-modules-data.tar.xz",
-      "sha256": "34224f22b4700e1a02ed496a5c956e9f8ba455da4929bea4631f929efa9adf32"
-    },
-    {
-      "name": "fcitx5-pinyin",
-      "version": "5.0.16-1",
-      "architecture": "arm64",
-      "url": "https://deb.debian.org/debian/pool/main/f/fcitx5-chinese-addons/fcitx5-pinyin_5.0.16-1_arm64.deb",
-      "debSha256": "c28dee2891721f32b6d38e913bfb9782466be37cba8389c2ea8ea05944dc26a3",
-      "file": "fcitx5-pinyin-data.tar.xz",
-      "sha256": "f6ad6f084686dd97d3da5936e41cb16be434adc7965f7aea3639ba4638f86799"
-    },
-    {
       "name": "fontconfig",
       "version": "2.14.1-4",
       "architecture": "arm64",
@@ -822,60 +750,6 @@
       "sha256": "670cf0aafa2291dff5f2c6446f42fea6e38dbca0e598ba5d380953b58349dd15"
     },
     {
-      "name": "libfcitx5-qt-data",
-      "version": "5.0.16-1",
-      "architecture": "all",
-      "url": "https://deb.debian.org/debian/pool/main/f/fcitx5-qt/libfcitx5-qt-data_5.0.16-1_all.deb",
-      "debSha256": "cccb75e96d32229a0685d0292daf0249b66d89717f82a8dae599006cd17168a1",
-      "file": "libfcitx5-qt-data-data.tar.xz",
-      "sha256": "8a1c3ee3918f56f8e177d8f4ff1eb6da513ca70ff764667866d17eed2df857dd"
-    },
-    {
-      "name": "libfcitx5-qt1",
-      "version": "5.0.16-1+b3",
-      "architecture": "arm64",
-      "url": "https://deb.debian.org/debian/pool/main/f/fcitx5-qt/libfcitx5-qt1_5.0.16-1+b3_arm64.deb",
-      "debSha256": "7b66501c42c1e22818af2a2ff3dd9d133d675323aa0157058f9d878840cc5352",
-      "file": "libfcitx5-qt1-data.tar.xz",
-      "sha256": "f52570a50594cc47fc0f00bdfd5600cb96f4bca97541e40039bf2e8e52a20312"
-    },
-    {
-      "name": "libfcitx5config6",
-      "version": "5.0.21-3",
-      "architecture": "arm64",
-      "url": "https://deb.debian.org/debian/pool/main/f/fcitx5/libfcitx5config6_5.0.21-3_arm64.deb",
-      "debSha256": "dadccafe6621e17fb9c2acb4c97f365fa86d5c510aa5ebd98318c668f61bacdb",
-      "file": "libfcitx5config6-data.tar.xz",
-      "sha256": "bc8a5434a4a0bb4fc8986d2be3c69dcec091e07298c76acd0ec13aa929470c49"
-    },
-    {
-      "name": "libfcitx5core7",
-      "version": "5.0.21-3",
-      "architecture": "arm64",
-      "url": "https://deb.debian.org/debian/pool/main/f/fcitx5/libfcitx5core7_5.0.21-3_arm64.deb",
-      "debSha256": "91371954e2343696a259f6190ca218c242c28448b28da0ea1e3ccc44f244a168",
-      "file": "libfcitx5core7-data.tar.xz",
-      "sha256": "669d63efa67262cc96639bd451dbdcb36c7741b8a64f799847beaba407cb9a5b"
-    },
-    {
-      "name": "libfcitx5gclient2",
-      "version": "5.0.21-1",
-      "architecture": "arm64",
-      "url": "https://deb.debian.org/debian/pool/main/f/fcitx5-gtk/libfcitx5gclient2_5.0.21-1_arm64.deb",
-      "debSha256": "720213c4c9e74cd5370c588bab5f396754bbe87336a6eddedc7fe3ad66bda21b",
-      "file": "libfcitx5gclient2-data.tar.xz",
-      "sha256": "15a5afa09019031414fd5343a4434fedadd87501a68b6a2b53f09d6bfda63284"
-    },
-    {
-      "name": "libfcitx5utils2",
-      "version": "5.0.21-3",
-      "architecture": "arm64",
-      "url": "https://deb.debian.org/debian/pool/main/f/fcitx5/libfcitx5utils2_5.0.21-3_arm64.deb",
-      "debSha256": "02ae1e3254500df162dda31562ddd2e62811e157b92c0a77ff5254c34b6b4cdd",
-      "file": "libfcitx5utils2-data.tar.xz",
-      "sha256": "ba755273901333bc3844ceee61d2cfe14bd9620d3734ff521e81e471ac3e5fc8"
-    },
-    {
       "name": "libffi8",
       "version": "3.4.4-1",
       "architecture": "arm64",
@@ -1288,42 +1162,6 @@
       "debSha256": "32b9653c4833af417fd8501e6f133a5784a73ae2010b2de9cf87276670317817",
       "file": "libijs-0.35-data.tar.xz",
       "sha256": "5ecb8bd85ddafdcf8e56373ab12c9abdba2982439723e134439298728843e267"
-    },
-    {
-      "name": "libime-data",
-      "version": "1.0.16-1",
-      "architecture": "all",
-      "url": "https://deb.debian.org/debian/pool/main/libi/libime/libime-data_1.0.16-1_all.deb",
-      "debSha256": "bf63d7dedfbb80e161dbdd8d47c39a57e5c51a7fbe02934eeb21807a93b5933d",
-      "file": "libime-data-data.tar.xz",
-      "sha256": "f86ce96fd75ae883f2eed9f1bc881f300bd7a3949deb6df7224c5ca2f4099e5a"
-    },
-    {
-      "name": "libime-data-language-model",
-      "version": "1.0.16-1",
-      "architecture": "arm64",
-      "url": "https://deb.debian.org/debian/pool/main/libi/libime/libime-data-language-model_1.0.16-1_arm64.deb",
-      "debSha256": "43db5ced3baa7584d62aa77f392cc8086a2f4446e7d1a935627d391cb6732300",
-      "file": "libime-data-language-model-data.tar.xz",
-      "sha256": "8e3fcafacee16530cfc397683ae54e9616a41688a65b6471dd45c5cba090f952"
-    },
-    {
-      "name": "libimecore0",
-      "version": "1.0.16-1",
-      "architecture": "arm64",
-      "url": "https://deb.debian.org/debian/pool/main/libi/libime/libimecore0_1.0.16-1_arm64.deb",
-      "debSha256": "7d9128749a6ca47d43c2dfe9dca88aefcef13dbfab4b2d9297e7d87c7bac7386",
-      "file": "libimecore0-data.tar.xz",
-      "sha256": "9f227422443d0c397e1297e323cab73f4d4eccaee86d28b7920a18ce123c1bcb"
-    },
-    {
-      "name": "libimepinyin0",
-      "version": "1.0.16-1",
-      "architecture": "arm64",
-      "url": "https://deb.debian.org/debian/pool/main/libi/libime/libimepinyin0_1.0.16-1_arm64.deb",
-      "debSha256": "7d4a9bc46332fab475991032c1498e1d9e629c64541ecf4ba2c541db9914fa3b",
-      "file": "libimepinyin0-data.tar.xz",
-      "sha256": "24efd4aa13e64315dcd54796044ac2d99dac6f04894ca6ba6b14eed7892bfe84"
     },
     {
       "name": "libimlib2",

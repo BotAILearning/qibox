@@ -24,6 +24,14 @@ with tarfile.open(fpk, 'r:*') as package:
         def read(name): return contents[name]
         backups = [name for name in members if re.search(r'\.(?:bak|before)(?:$|[.\-_])', pathlib.PurePosixPath(name).name, re.I)]
         assert not backups, backups
+        private_paths = [name for name in members if re.search(
+            r'(^|/)(?:local|reports|\.cache|\.git|test|tests|dist)/|'
+            r'(^|/)(?:账号\.txt|credentials?(?:\.[^/]*)?|secrets?(?:\.[^/]*)?|id_(?:rsa|ed25519)|known_hosts|\.env(?:\.[^/]*)?)$',
+            name, re.I)]
+        assert not private_paths, private_paths
+        private_keys = [name for name, data in contents.items()
+                        if b'-----BEGIN ' in data and b' PRIVATE KEY-----' in data]
+        assert not private_keys, private_keys
         config = json.loads(read('config/product.json'))
         assert config['appname'] == 'qibox' and config['gatewayPrefix'] == '/app/qibox'
         assert config['version'] == manifest['version'] == json.loads(read('package.json'))['version']
@@ -54,6 +62,11 @@ with tarfile.open(fpk, 'r:*') as package:
                 if filename not in verified_payloads:
                     assert hashes[filename] == expected
                     verified_payloads.add(filename)
+        actual_payloads = {name for name in hashes if name.startswith('payload/') and '-data.tar.' in name}
+        assert actual_payloads == verified_payloads, {
+            'unreferenced': sorted(actual_payloads - verified_payloads),
+            'missing': sorted(verified_payloads - actual_payloads),
+        }
         for name in ['server/index.mjs', 'server/install-deb.py', 'server/packages.mjs', 'server/progress.mjs', 'public/app.js', 'public/style.css', 'public/backgrounds/mist.jpg']:
             assert name in members
         for name in ['server/platform.mjs', 'server/desktop-stream.mjs', 'server/catalog.mjs', 'public/index.html', 'server/index.mjs', 'server/instances.mjs', 'server/packages.mjs', 'server/progress.mjs', 'server/files.mjs', 'server/install-deb.py', 'server/runtime.mjs', 'server/scheduler.mjs', 'server/auto-login.mjs', 'server/auto-login.py', 'server/accessibility-bus.py', 'public/app.js', 'public/style.css']:

@@ -18,6 +18,12 @@ export function nativeInput({ input, screen, client, paste, pasteFiles, notify, 
   const listeners = [];
   const listen = (target, type, handler, options) => { target.addEventListener(type, handler, options); listeners.push(() => target.removeEventListener(type, handler, options)); };
   const clear = () => { input.value = ''; input.classList.remove('composing'); };
+  const retain = text => {
+    if (!text) return;
+    retained += text;
+    recover(retained);
+    failed = true;
+  };
   const position = () => {
     const box = screen.getBoundingClientRect();
     // Reserve the same space before and during composition so native candidates
@@ -32,7 +38,7 @@ export function nativeInput({ input, screen, client, paste, pasteFiles, notify, 
       await action();
     }).catch(error => {
       failed = true;
-      if (text) { retained += text; recover(retained); }
+      if (text) retain(text);
       if (!disposed) notify(error.message || '输入未完成，请核对微信草稿');
     }).finally(() => { if (text) blocked--; settled(); });
   };
@@ -59,7 +65,14 @@ export function nativeInput({ input, screen, client, paste, pasteFiles, notify, 
   const commit = text => { if (text) { if (/[^\x20-\x7e]/.test(text)) pasteText(text); else enqueue(() => sendCommittedText(client, text), text); } };
   input.hidden = false; client.focusOnClick = false;
   listen(input, 'compositionstart', () => { composing = true; ended = null; position(); input.classList.add('composing'); });
-  listen(input, 'compositionend', event => { composing = false; ended = event.data || ''; commit(event.data); clear(); });
+  listen(input, 'compositionend', event => {
+    const committed = event.data || '';
+    const cancelledDraft = !committed && input.value;
+    composing = false; ended = committed;
+    clear();
+    if (committed) commit(committed);
+    else retain(cancelledDraft);
+  });
   listen(input, 'input', event => {
     if (composing || event.isComposing) return;
     // Browsers may emit the final input before or after compositionend.
@@ -105,7 +118,7 @@ export function nativeInput({ input, screen, client, paste, pasteFiles, notify, 
     if (!text) { notify('请粘贴文字内容'); return; }
     pasteText(text); clear();
   });
-  listen(input, 'blur', () => { const draft = composing ? input.value : ''; composing = false; ended = null; clear(); if (draft) { retained += draft; failed = true; recover(retained); } });
+  listen(input, 'blur', () => { const draft = composing ? input.value : ''; composing = false; ended = null; clear(); retain(draft); });
   const focus = event => {
     if (disposed || touch || event.button > 0) return;
     const box = screen.getBoundingClientRect();
@@ -131,5 +144,9 @@ export function nativeInput({ input, screen, client, paste, pasteFiles, notify, 
   return { focus: () => input.focus({ preventScroll: true }), flush: () => pending,
     pause() { failed = true; },
     resume() { retained = ''; failed = false; clear(); },
-    dispose() { if (composing && input.value) { retained += input.value; recover(retained); } disposed = true; observer?.disconnect(); listeners.forEach(remove => remove()); clear(); input.hidden = true; } };
+    dispose() {
+      const draft = composing ? input.value : '';
+      composing = false; disposed = true; observer?.disconnect(); listeners.forEach(remove => remove()); clear();
+      retain(draft); input.hidden = true;
+    } };
 }
