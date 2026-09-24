@@ -15,6 +15,7 @@ __pycache__/
 known_hosts
 *.pem
 *.key
+local/
 
 # 运行与诊断产物（噪音巨大，版本库不需要）
 reports/
