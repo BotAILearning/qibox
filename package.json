@@ -1,6 +1,6 @@
 {
   "name": "qibox",
-  "version": "0.8.14",
+  "version": "0.8.15",
   "private": true,
   "type": "module",
   "description": "栖盒：在 NAS 上安装和运行 Linux 应用",

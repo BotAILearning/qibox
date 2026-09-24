@@ -454,11 +454,14 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
     render(); message('已添加模型，请在功能分配中确认后点击“保存”');
   }
   async function saveModelsAction() {
+    const current = generation, target = id;
     const list = modelDraft?.models || state.models || [];
     const models = list.map(({ id, label, baseUrl, model, protocol, timeout, consent, apiKey }) => ({ id, label, baseUrl, model, protocol, timeout, consent, ...(apiKey ? { apiKey } : {}) }));
     const assignments = modelDraft?.assignments || state.assignments || {};
+    const result = await execute('models-save', { value: { models, assignments } }, '模型设置已保存并生效');
+    if (!result || current !== generation || target !== id) return;
     modelDraft = null;
-    await execute('models-save', { value: { models, assignments } }, '模型设置已保存并生效');
+    render();
   }
   async function probeProvider(action) {
     if (busy) throw new Error('请等待当前操作完成');
@@ -589,7 +592,7 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
   }
   function advancedSettings() {
     const rule = state.settings.takeover || {enabled:true,minutes:5};
-    return '<div class="ai-page-heading"><div><h3>系统设置</h3><p>管理模型配置与 AI 回复的通用行为。</p></div></div><section class="ai-card ai-settings-group"><button type="button" class="ai-settings-entry" data-ai-nav="provider"><span class="ai-settings-entry-icon">' + icon('sliders') + '</span><span class="ai-settings-entry-text"><strong>模型设置</strong><small>为聊天回复、主动聊天、风格学习、聊天分析分别选择模型</small></span><span class="ai-settings-entry-arrow">' + icon('chev-r') + '</span></button><button type="button" class="ai-settings-entry" data-ai-nav="default-style"><span class="ai-settings-entry-icon">' + icon('sparkle') + '</span><span class="ai-settings-entry-text"><strong>学习默认风格</strong><small>选择联系人的聊天记录学习，作为没有单独风格时的默认口吻</small></span><span class="ai-settings-entry-arrow">' + icon('chev-r') + '</span></button></section><section class="ai-card">' + switchRow('acknowledgeAI','被问及身份时承认 AI','开启后，仅被询问时说明由 AI 回复；关闭后按本人身份回答。') + '</section><form id="ai-takeover-form" class="ai-card"><h4>手动回复后的自动接续</h4><label class="ai-field">接续方式<select name="enabled"><option value="true" '+(rule.enabled?'selected':'')+'>超时后自动回复</option><option value="false" '+(!rule.enabled?'selected':'')+'>不再自动回复</option></select></label><label class="ai-field">AI辅助等待时长（分钟）<input name="minutes" type="number" min="1" max="10080" required value="'+rule.minutes+'"></label><p class="ai-help">你手动回复后，从对方下一条消息开始计时；对方继续发消息不延长等待。你再次回复后，等待下一轮来信。所有联系人和群聊统一使用此设置。</p><button class="primary" type="submit">保存接续设置</button></form>';
+    return '<div class="ai-page-heading"><div><h3>系统设置</h3><p>管理模型配置与 AI 回复的通用行为。</p></div></div><section class="ai-card ai-settings-group"><button type="button" class="ai-settings-entry" data-ai-nav="provider"><span class="ai-settings-entry-icon">' + icon('sliders') + '</span><span class="ai-settings-entry-text"><strong>模型设置</strong><small>为聊天回复、主动聊天、风格学习、聊天分析分别选择模型</small></span><span class="ai-settings-entry-arrow">' + icon('chev-r') + '</span></button><button type="button" class="ai-settings-entry" data-ai-nav="default-style"><span class="ai-settings-entry-icon">' + icon('sparkle') + '</span><span class="ai-settings-entry-text"><strong>学习默认风格</strong><small>选择联系人的聊天记录学习，作为没有单独风格时的默认口吻</small></span><span class="ai-settings-entry-arrow">' + icon('chev-r') + '</span></button></section><section class="ai-card">' + switchRow('acknowledgeAI','被问及身份时承认 AI','开启后，仅被询问时说明由 AI 回复；关闭后按本人身份回答。') + '</section><form id="ai-takeover-form" class="ai-card"><h4>手动回复后的自动接续</h4><div class="ai-form-grid"><label class="ai-field">接续方式<select name="enabled"><option value="true" '+(rule.enabled?'selected':'')+'>超时后自动回复</option><option value="false" '+(!rule.enabled?'selected':'')+'>不再自动回复</option></select></label><label class="ai-field">AI辅助等待时长（分钟）<input name="minutes" type="number" min="1" max="10080" required value="'+rule.minutes+'"></label></div><p class="ai-help">你手动回复后，从对方下一条消息开始计时；对方继续发消息不延长等待。你再次回复后，等待下一轮来信。所有联系人和群聊统一使用此设置。</p><button class="primary" type="submit">保存接续设置</button></form>';
   }
   function proactive() { return proactiveUI.page(); }
   function profileEditor(profile) {
@@ -1059,12 +1062,29 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
       const action = button.dataset.aiAction;
       if ('aiRetryRecords' in button.dataset) { await loadActivity(); return; }
       if ('aiLocateMessage' in button.dataset) { await openConversation(button.dataset.profileId, button.dataset.aiLocateMessage); return; }
+      if ('aiMarkReply' in button.dataset) {
+        await call('mark-reply-needed', { value: { profileId: button.dataset.aiMarkReply, eventId: button.dataset.eventId, messageId: button.dataset.messageId } });
+        message('已暂存；下一次自动回复前会先总结这条消息'); render(); return;
+      }
+      if ('aiSummaryProfile' in button.dataset) {
+        const profileId = button.dataset.aiSummaryProfile, row = button.closest('tr'), output = row?.querySelector(`[data-ai-summary-result="${CSS.escape(profileId)}"]`);
+        const range = row?.querySelector(`[data-ai-summary-range="${CSS.escape(profileId)}"]`)?.value || 'takeover';
+        if (!output) return;
+        output.hidden = false; output.textContent = '正在整理聊天…'; button.disabled = true;
+        try {
+          const result = await api(`/instances/${id}/ai`, { action: 'activity-summary', id: profileId, value: { range } }, 130000);
+          const start = beijingTime(result.from), end = beijingTime(result.to);
+          output.textContent = `${result.summary}\n\n证据范围：${start} 至 ${end}；共读取 ${result.count}/${result.total} 条双方消息，其中 AI 代回复 ${result.aiReplyCount} 条${result.truncated ? '（内容较多，使用最近部分）' : ''}。`;
+        } catch (error) { output.textContent = `总结失败：${error.message || '请重试'}`; }
+        finally { button.disabled = false; }
+        return;
+      }
       if ('aiDeleteRecord' in button.dataset) {
         if (!window.confirm('确认删除这条运行记录？不会删除微信中的聊天消息。')) return;
         const recordId = button.dataset.aiDeleteRecord, source = button.dataset.aiDeleteSource;
+        await call('delete-activity-record', { value: { source, id: recordId } });
         proactiveHistory = proactiveHistory.filter(record => !(source === 'proactive' && record.id === recordId));
         logRecords = logRecords.map(record => ({ ...record, messages: (record.messages || []).filter(message => !(message.id === recordId && (source === 'reply' || source === 'unknown'))) }));
-        await call('delete-activity-record', { value: { source, id: recordId } });
         rememberRecords(); render(); return;
       }
       if ('aiClearErrors' in button.dataset) {

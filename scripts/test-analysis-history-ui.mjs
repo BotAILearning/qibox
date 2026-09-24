@@ -98,7 +98,7 @@ try {
   const beforeFirst = await generate('总结具体约定');
   assert.equal(await page.locator('.ai-report-sections h4').first().textContent(), '数据开场');
   assert.equal(await page.locator('.ai-report-sections h4').nth(1).textContent(), '值得记住');
-  assert.equal(await page.locator('.ai-report-excerpts blockquote').count(), 2, '系统消息不得进入对话摘录');
+  assert.equal(await page.locator('.ai-report-excerpts blockquote').count(), 0, '分析报告不保留原始聊天摘录');
   await screenshot('01-generated');
   report.checks.push('Generated report renders model short-title sections and excludes system excerpts');
 

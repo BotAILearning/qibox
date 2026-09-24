@@ -98,11 +98,12 @@ try {
   await page.getByRole('button', { name: '保存模型', exact: true }).click();
   const firstItem = page.locator('.ai-model-item').filter({ hasText: 'MiniMax-M3' });
   await firstItem.waitFor();
-  assert.match(await firstItem.innerText(), /用于：聊天类、学习分析类/);
+  assert.match(await firstItem.innerText(), /未分配功能/, '模型列表只展示已保存的功能分配');
   const firstId = await page.locator('[data-ai-assignment=chat]').inputValue();
   for (const feature of ['chat', 'learningAnalysis']) assert.equal(await page.locator(`[data-ai-assignment=${feature}]`).inputValue(), firstId);
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('#ai-panel').getAttribute('aria-busy') === 'false' && document.querySelector('#ai-feedback').textContent.includes('保存'));
+  assert.match(await firstItem.innerText(), /用于：聊天类、学习分析类/);
   assert.match(await firstItem.locator('.ai-model-item-title').innerText(), /已验证/);
   assert.equal(ai.publicState().models.length, 1);
   assert.equal(ai.publicState().models[0].tested, true);

@@ -67,13 +67,14 @@ function assignmentCard(state, draft, models, assignments) {
 export function providerPage(state, draft, { back = '' } = {}) {
   const models = modelsFor(state, draft);
   const assignments = assignmentsFor(state, draft);
+  const savedAssignments = assignmentsFor(state, null);
   const presets = state.schema?.providerPresets || [];
   const editing = draft?.editing;
   const badge = models.length ? `<span class="ai-badge ${models.some(m => m.tested) ? 'blue' : 'muted'}">${models.length} 个模型${models.some(m => m.tested) ? ' · 已配置' : ' · 待测试'}</span>` : '<span class="ai-badge muted">尚未配置</span>';
   return `<div class="ai-page-heading ai-provider-page-heading"><div>${back}<h3>模型设置</h3><p>为聊天类和学习分析类分别选择模型；第一个添加的模型默认应用于全部功能。</p></div>${badge}</div>
   <div class="ai-model-workspace">
     <aside class="ai-model-sidebar${editing ? ' ai-model-editing' : ''}">${editing ? editorCard(state, draft, presets) : `<button type="button" class="secondary ai-model-add" data-ai-action="model-add">${icon('plus')}添加模型</button>
-      <div class="ai-model-list" role="list" aria-label="已配置模型">${models.length ? models.map(m => modelItem(m, assignments, draft?.editing === m.id)).join('') : '<p class="ai-help ai-model-empty">还没有模型，点击“添加模型”创建第一个。</p>'}</div>
+      <div class="ai-model-list" role="list" aria-label="已配置模型">${models.length ? models.map(m => modelItem(m, savedAssignments, draft?.editing === m.id)).join('') : '<p class="ai-help ai-model-empty">还没有模型，点击“添加模型”创建第一个。</p>'}</div>
       <p class="ai-help">API Key 加密保存；删除模型不影响其他已保存的模型。</p>`}</aside>
     ${assignmentCard(state, draft, models, assignments)}
   </div>`;

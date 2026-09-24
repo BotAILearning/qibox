@@ -72,6 +72,8 @@
 #ai-panel input:focus,#ai-panel select:focus,#ai-panel textarea:focus{border-color:var(--ai-primary);box-shadow:0 0 0 3px #4f6bfb1f}
 #ai-panel input::placeholder,#ai-panel textarea::placeholder{color:#9ba0b5}
 #ai-panel .ai-form-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 16px}
+#ai-panel .ai-summary-controls{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:8px}
+#ai-panel .ai-summary-controls p{white-space:pre-wrap;flex-basis:100%;margin:6px 0;padding:8px;border-radius:6px;background:#f5f8f4;line-height:1.6}
 #ai-panel .ai-short-field{max-width:240px}
 #ai-panel .ai-help{margin:8px 0 12px}
 #ai-panel .ai-check{color:var(--ai-muted);gap:9px;padding:0}

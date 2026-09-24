@@ -124,7 +124,7 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
             'cancel-default-style': () => ai.cancelDefaultStyle(), 'commit-default-style': () => ai.commitDefaultStyle(data.value || {}),
             schedule: () => ai.scheduleAction(data.value || {}), review: () => ai.review(data.id, data.value || {}),
             targets: () => ai.targets(data.ids, data.mode), 'prepare-targets': () => ai.prepareTargets(data.value || {}), queue: () => ai.queueAction(data.command), activity: () => ai.userActivity(),
-            'activity-records': () => ai.activityRecords(data.ids || [], data.filters || {}), 'delete-activity-record': () => ai.deleteActivityRecord(data.value || {}),
+            'activity-records': () => ai.activityRecords(data.ids || [], data.filters || {}), 'delete-activity-record': () => ai.deleteActivityRecord(data.value || {}), 'mark-reply-needed': () => ai.markReplyNeeded(data.value || {}), 'activity-summary': () => ai.summarizeActivity(data.id, data.value?.range),
             'clear-activity-errors': () => ai.clearActivityErrors(), 'error-records': () => ai.errorRecords(data.value || {}),
             'proactive-task': () => ai.proactiveTaskAction(data.value || {}),
             'proactive-records': () => ai.proactiveRecords(data.value || {}),
