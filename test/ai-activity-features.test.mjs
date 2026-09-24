@@ -26,9 +26,19 @@ test('record lists expose confirmed deletion, summary ranges, and reply-needed a
   assert.match(skips, /data-ai-delete-source="skip"/);
 });
 
+test('opening the exact chat is immediate and does not wait for history reads', async t => {
+  const { a, bridge } = await fixture(t), [profile] = a.profiles();
+  bridge.read = async () => { throw new Error('history unavailable'); };
+  bridge.readRange = async () => { throw new Error('history unavailable'); };
+  const result = await a.openConversationFast(profile.id);
+  assert.equal(result.opened, true); assert.equal(result.locating, true);
+});
+
 test('skip-trigger location is authorized by this account and profile, and targets the incoming trigger', async t => {
   const { a, bridge } = await fixture(t), [one, two] = a.profiles();
+  bridge.push(one.contact, 'self', '前序上下文');
   const incoming = bridge.push(one.contact, 'other', '定位测试问题');
+  bridge.push(one.contact, 'self', '后序上下文');
   a.event('skip', one.id, 'system-skip', '待回复', { messageId: incoming.id, reasonCode: 'model-no-reply' });
   const opened = await a.openConversation(one.id, { messageId: incoming.id });
   assert.equal(opened.located, true);
@@ -37,9 +47,47 @@ test('skip-trigger location is authorized by this account and profile, and targe
   await assert.rejects(a.openConversation(one.id, { messageId: foreign.id }), /该消息不属于当前联系人的执行记录/);
 });
 
+test('sparse old-message location expands the database window until it has a unique context', async t => {
+  const { a, bridge } = await fixture(t), [profile] = a.profiles();
+  const now = a.now(), before = bridge.push(profile.contact, 'other', 'older context');
+  before.timestamp = Math.floor(now / 1000) - 4200;
+  const incoming = bridge.push(profile.contact, 'other', 'old trigger');
+  incoming.timestamp = Math.floor(now / 1000) - 3600;
+  const after = bridge.push(profile.contact, 'self', 'later context');
+  after.timestamp = Math.floor(now / 1000) - 3000;
+  a.event('skip', profile.id, 'system-skip', '待回复', { messageId: incoming.id });
+  const ranges = [], originalReadRange = bridge.readRange.bind(bridge);
+  bridge.readRange = async request => { ranges.push([request.from, request.to]); return originalReadRange(request); };
+  let request;
+  bridge.openChat = async value => { request = value; return { opened: true, located: true, messageId: value.locate?.messageId }; };
+  const result = await a.openConversation(profile.id, { messageId: incoming.id });
+  assert.equal(result.located, true);
+  assert.deepEqual(ranges.map(([from, to]) => (to - from - 1) / 2), [900, 7200]);
+  assert.equal(request.locate.messageId, incoming.id);
+  const targetIndex = request.locate.messages.findIndex(message => message.id === incoming.id);
+  assert.deepEqual(request.locate.messages.slice(targetIndex - 1, targetIndex + 2).map(message => message.id), [before.id, incoming.id, after.id]);
+});
+
+test('a verified chat remains successful when native message location misses and carries a safe retry diagnostic', async t => {
+  const { a, bridge } = await fixture(t), [profile] = a.profiles();
+  bridge.push(profile.contact, 'self', 'before');
+  const incoming = bridge.push(profile.contact, 'other', 'target');
+  bridge.push(profile.contact, 'self', 'after');
+  a.event('skip', profile.id, 'system-skip', '待回复', { messageId: incoming.id });
+  bridge.openChat = async request => ({ opened: true, located: false, messageId: request.locate?.messageId,
+    diagnostic: { phase: 'native-locate', code: 'not-located' } });
+  const result = await a.openConversation(profile.id, { messageId: incoming.id });
+  assert.equal(result.opened, true);
+  assert.equal(result.located, false);
+  assert.equal(result.notice, '已打开聊天，暂时无法定位该消息');
+  assert.deepEqual(result.diagnostic, { phase: 'native-locate', code: 'not-located' });
+});
+
 test('skip events still authorize location when their compact skip-log copy is missing', async t => {
   const { a, bridge } = await fixture(t), [profile] = a.profiles();
+  bridge.push(profile.contact, 'self', '前序上下文');
   const incoming = bridge.push(profile.contact, 'other', '历史跳过事件');
+  bridge.push(profile.contact, 'self', '后序上下文');
   a.event('skip', profile.id, 'system-skip', '待回复', { messageId: incoming.id });
   a.data.skipLog = [];
   const opened = await a.openConversation(profile.id, { messageId: incoming.id });

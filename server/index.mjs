@@ -2,6 +2,7 @@ import http from 'node:http';
 import net from 'node:net';
 import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { randomBytes, createHmac, timingSafeEqual } from 'node:crypto';
 import { mkdir, readFile, chmod, rm, lstat } from 'node:fs/promises';
@@ -115,10 +116,10 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
           const ai = space.get(aiMatch[1]).ai;
           const handlers = { configure: () => ai.configure(data.value, data.scope), test: () => ai.testProvider(data.scope), models: () => ai.discoverModels(data.value, data.scope), 'model-test': () => ai.testModel(data.value), 'models-save': () => ai.saveModels(data.value), scan: () => ai.scan(),
             'verify-provider': () => ai.verifyProvider(data.value, data.scope), 'reply-options': () => ai.setReplyOptions(data.value || {}),
-            'analysis-use-chat': () => ai.useSharedAnalysis(), 'analysis-report-delete': () => ai.deleteAnalysisReport(data.id || data.value?.id),
+            'analysis-use-chat': () => ai.useSharedAnalysis(), 'analysis-report-delete': () => ai.deleteAnalysisReport(data.id || data.value?.id), 'contact-remark': () => ai.setContactRemark(data.id, data.value || {}),
             'group-options': () => ai.setGroupOptions(data.value || {}),
             calendar: () => ai.calendar(data.value || {}), learn: () => ai.learn(data.value || {}), analyze: () => ai.analyze(data.value || {}), cancel: () => ai.cancel(), settings: () => ai.settings(data.value || {}),
-            strategy: () => ai.saveStrategy(data.value, data.id, data.mode), profile: () => ai.editProfile(data.id, data.value || {}),
+            strategy: () => ai.saveStrategy(data.value, data.id, data.mode), 'apply-reply-limit': () => ai.applyReplyLimitToKind(data.value?.kind, data.value?.maxRounds), profile: () => ai.editProfile(data.id, data.value || {}),
             'reply-profile': () => ai.saveReplyProfile(data.value || {}),
             'save-default-style': () => ai.saveDefaultStyle(data.value || {}), 'clear-default-style': () => ai.clearDefaultStyle(), 'apply-default-style': () => ai.applyDefaultStyle(),
             'cancel-default-style': () => ai.cancelDefaultStyle(), 'commit-default-style': () => ai.commitDefaultStyle(data.value || {}),
@@ -128,8 +129,10 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
             'clear-activity-errors': () => ai.clearActivityErrors(), 'error-records': () => ai.errorRecords(data.value || {}),
             'proactive-task': () => ai.proactiveTaskAction(data.value || {}),
             'proactive-records': () => ai.proactiveRecords(data.value || {}),
-            'open-conversation': () => ai.openConversation(data.id, data.value || {}),
+            'open-conversation': () => data.value?.fast === true ? ai.openConversationFast(data.id) : ai.openConversation(data.id, data.value || {}),
+            'locate-conversation': () => ai.openConversation(data.id, data.value || {}),
             memory: () => ai.editMemory(data.id, data.value),
+            'contact-memory': () => ai.editContactMemory(data.value?.contact, data.value),
             'memory-apply': () => ai.applyPendingMemory(data.id), 'memory-merge': () => ai.mergePendingMemory(data.id), 'memory-discard': () => ai.discardPendingMemory(data.id),
             // Only this explicit, owner-scoped POST may reveal a saved key.
             // Ordinary settings responses and polling never contain it.
@@ -284,17 +287,18 @@ async function socketHasOwner(socketPath) {
 
 if (process.env.UGAPP_INSTALL_DIR && process.argv.includes('--ugos-entry') || process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const dev = process.argv.includes('--dev');
-  const platform = platformConfig(), appRoot = platform.appRoot || moduleRoot;
+  const platform = platformConfig(), appRoot = dev ? moduleRoot : platform.appRoot || moduleRoot;
   if (!dev && !platform.dataRoot) throw new Error('Application data directory is required');
   if (!dev && platform.host !== 'ugos' && await socketHasOwner(path.join(appRoot, 'app.sock'))) {
     console.log('栖盒已在运行（app.sock 有实例应答）；本次启动直接退出，避免两个主进程争抢同一套微信会话');
     process.exit(0);
   }
-  const app = await createApplication({ appRoot, dataRoot: platform.dataRoot || path.join(moduleRoot, '.dev-data'), dev, host: platform.host });
+  const devDataRoot = process.env.QIBOX_DEV_DATA_DIR ? path.resolve(process.env.QIBOX_DEV_DATA_DIR) : path.join(tmpdir(), `qibox-dev-${process.pid}`);
+  const app = await createApplication({ appRoot, dataRoot: dev ? devDataRoot : platform.dataRoot, dev, host: platform.host });
   if (dev) {
     const port = Number(process.env.QIBOX_PORT || 8790);
     await new Promise(resolve => app.server.listen(port, '127.0.0.1', resolve));
-    console.log(`栖盒预览：http://127.0.0.1:${port}${app.prefix}/?dev=${app.devKey}`);
+    console.log(`栖盒预览：http://127.0.0.1:${app.server.address().port}${app.prefix}/?dev=${app.devKey}`);
   } else if (platform.host === 'ugos') {
     await new Promise((resolve, reject) => { app.server.once('error', reject); app.server.listen(platform.port, '127.0.0.1', resolve); });
   } else {

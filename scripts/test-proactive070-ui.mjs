@@ -67,17 +67,26 @@ try {
   const immediate = ai.data.proactiveTasks.at(-1); await ai.tick();
   assert.equal(immediate.status, 'ended'); assert.equal(bridge.sent.length, 1);
   await nav('activity');
+  await page.locator('[data-ai-record-source="proactive"]').click(); await settled();
   await page.locator('[data-proactive-record]').waitFor();
   assert.match(await page.locator('#ai-proactive-records').textContent(), /确认周末安排/);
   assert.equal(await page.locator('#ai-activity-entries').count(), 0);
   await shot('records');
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `activity page overflows at ${width}px`);
+    const controls = await page.locator('#ai-proactive-records .ap-record-table button:not(.ai-record-message)').evaluateAll(nodes => nodes.map(node => Math.round(node.getBoundingClientRect().height)));
+    assert.ok(controls.every(height => height >= 36), `record action target below 36px at ${width}px: ${controls}`);
+    await shot(`records-${width}`);
+  }
+  await page.setViewportSize({ width: 1440, height: 960 });
   await page.locator('[data-proactive-record] [data-ai-open-conversation]').click();
   assert.equal(fixture.opened.at(-1), immediate.contacts[0].id);
   await page.locator('#ai-open').click(); await nav('proactive');
   await proactiveCommand(page, immediate.id, 'delete');
   await page.locator('[data-proactive-delete-confirm]').click(); await settled();
   assert.equal(await page.locator(`[data-proactive-task="${immediate.id}"]`).count(), 0);
-  await nav('activity'); assert.equal(await page.locator('[data-proactive-record]').count(), 1);
+  await nav('activity'); await page.locator('[data-ai-record-source="proactive"]').click(); await settled(); assert.equal(await page.locator('[data-proactive-record]').count(), 1);
   report.checks.push('Immediate send fixture confirmed once; actual body in separate records; correct conversation opened; deletion retains history');
 
   for (const width of [1024, 768, 390]) {

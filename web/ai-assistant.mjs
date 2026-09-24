@@ -2,9 +2,9 @@ import { dateRangeField, chooseDateRange } from './ai-date-range.mjs';
 import { providerPage } from './ai-provider-view.mjs';
 import { icon, iconSprite, logoIcon } from './ai-icons.mjs';
 import { keyIcon } from './ai-key-icon.mjs';
-import { memoryFields, pendingMemoryFields } from './ai-memory-view.mjs';
+import { memoryFields, pendingMemoryFields, wikiEntryMarkup, sameWikiEntries } from './ai-memory-view.mjs';
 import { objectPage, objectList } from './ai-object-view.mjs';
-import { styleSummary as styleSummaryText } from './ai-style-view.mjs';
+import { styleChoice, styleSummary as styleSummaryText } from './ai-style-view.mjs';
 import { learnedObjectDraft } from './ai-learning-draft.mjs';
 import { analysisPage, analysisContactList, copyReport, presetRequest, analysisRequestState, presetChips } from './ai-analysis-view.mjs';
 import { activityPage, activityEntries, activityRows, proactiveRecordRows, liveActivityBox, recentErrorsBox, skipRecordsView } from './ai-activity-view.mjs';
@@ -176,12 +176,21 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
   async function openConversation(profileId, messageId) {
     const current = generation, target = id;
     let result;
-    try { result = await api(`/instances/${target}/ai`, { action: 'open-conversation', id: profileId, ...(messageId ? { value: { messageId } } : {}) }, 130000); }
+    try { result = await api(`/instances/${target}/ai`, { action: 'open-conversation', id: profileId, value: messageId ? { fast: true } : {} }, 30000); }
     catch (error) { if (current !== generation || target !== id) return; throw error; }
     if (current !== generation || target !== id) return;
     if (!result.opened) throw new Error('尚未确认打开目标聊天');
     panel.hidden = true; reviewDialog.close();
     await onOpenChat?.(target);
+    if (messageId && result.locating) {
+      const notice = document.createElement('div'); notice.className = 'ai-message-location-notice'; notice.setAttribute('role', 'status'); notice.textContent = '聊天已打开，正在定位消息…'; document.body.append(notice);
+      try { result = await api(`/instances/${target}/ai`, { action: 'locate-conversation', id: profileId, value: { messageId } }, 165000); }
+      catch (error) { if (current !== generation || target !== id) { notice.remove(); return; } notice.textContent = `聊天已打开，定位失败：${error.message}`; const retry = document.createElement('button'); retry.type='button'; retry.textContent='重试定位'; retry.onclick=()=>void openConversation(profileId,messageId); notice.append(retry); return; }
+      if (current !== generation || target !== id) { notice.remove(); return; }
+      notice.textContent = result.located ? '已打开并定位到消息' : '已打开聊天，但暂时无法定位到消息';
+      if (!result.located) { const retry = document.createElement('button'); retry.type='button'; retry.textContent='重试定位'; retry.onclick=()=>void openConversation(profileId,messageId); notice.append(retry); }
+      setTimeout(() => notice.remove(), 10000); return;
+    }
     if (result.notice) {
       document.querySelector('.ai-message-location-notice')?.remove();
       const notice = document.createElement('div'); notice.className = 'ai-message-location-notice'; notice.setAttribute('role', 'status'); notice.textContent = result.notice;
@@ -535,6 +544,24 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
   function styleSummary(p) {
     return '<div class="ai-style-summary ai-style-text">' + esc(summaryText(p.style)) + (p.style.customAvoid ? '<p>注意：' + esc(p.style.customAvoid) + '</p>' : '') + '</div>';
   }
+  function resizeWikiTextarea(textarea) {
+    if (!textarea) return;
+    textarea.style.height = 'auto';
+    textarea.style.height = `${Math.max(textarea.scrollHeight, 42)}px`;
+  }
+  function wikiEntries(form) {
+    const list = form?.querySelector('[data-ai-wiki-entities]'); if (!list) return [];
+    return [...list.querySelectorAll('.ai-wiki-bubble')].map(row => {
+      const timestamp = (which, end = false) => {
+        const input=row.querySelector(`[aria-label="${which==='from'?'开始时间':'结束时间'}"]`), raw=row.querySelector(`[data-ai-wiki-${which}]`)?.value, old=Number(raw);
+        if (!input?.value) return undefined;
+        if (Number.isSafeInteger(old) && new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(old) === input.value) return old;
+        return Date.parse(input.value + (end ? 'T23:59:59+08:00' : 'T00:00:00+08:00'));
+      };
+      const field=row.querySelector('select[aria-label="信息类型"]').value, from=timestamp('from'), to=timestamp('to',true), temporal=['residence','workplace','employer','shipping'].includes(field), calendar=['birthday','date'].includes(field), rawRecorded=row.querySelector('[data-ai-wiki-recorded]')?.value, recordedAt=rawRecorded ? Number(rawRecorded) : undefined;
+      return { ...(row.querySelector('[data-ai-wiki-id]')?.value ? { id: row.querySelector('[data-ai-wiki-id]').value } : {}), field, text: row.querySelector('[aria-label="信息内容"]').value.trim(), ...(field==='school' && row.querySelector('[aria-label="学历"]')?.value ? { degree: row.querySelector('[aria-label="学历"]').value } : {}), ...(calendar && row.querySelector('select[aria-label="生日历法"]')?.value ? { calendar: row.querySelector('select[aria-label="生日历法"]').value } : {}), ...(temporal && from !== undefined ? { from } : {}), ...(temporal && to !== undefined ? { to } : {}), ...(temporal && Number.isSafeInteger(recordedAt) ? { recordedAt } : {}) };
+    }).filter(x => x.text);
+  }
   function styleResults(profiles, editable = true) {
     if (!profiles.length) return '';
     const edit = p => `<button type="button" class="quiet" data-ai-profile="${esc(p.id)}">${profileName(p)} · ${editable ? '调整' : '查看'}${p.paused ? ' · 待你处理' : ''}</button>`;
@@ -598,7 +625,7 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
   function profileEditor(profile) {
     if (profile.pendingStyle) profile={...profile,style:profile.pendingStyle};
     const draft = profileDrafts.get(profile.id), v = { ...profile.style, summary: summaryText(profile.style), ...draft }, reply = { ...replyStrategy(), ...profile.replyStrategy, ...draft };
-    return `<form id="ai-profile-form" data-id="${profile.id}"><button type="button" class="quiet" data-ai-action="back-learning">${icon('arrow-l')}返回学习结果</button><h3>${profileName(profile)}的聊天风格</h3>${field('summary', '风格总结（可修改）', v.summary, 6000, '例如：表达简洁，语气自然，不添加没有依据的称呼。')}${field('customAvoid', '注意事项（可选）', v.customAvoid, 1200)}${memoryFields(profile, draft?.memorySummary)}<details class="ai-paste"><summary>回复策略（可选）</summary>${field('replyGoal', '回复目的与立场', reply.replyGoal)}${field('facts', '允许使用的信息', reply.facts, 4000)}${field('boundaries', '注意事项', reply.boundaries)}<label class="ai-field">连续自动回复上限<input name="maxRounds" type="number" min="1" max="2000" value="${reply.maxRounds ?? 50}"></label></details><div class="ai-actions"><button type="submit" class="primary">保存风格</button>${profile.kind !== 'group' && profile.delivery?.status === 'uncertain' ? '<a href="#ai-review" data-ai-review="' + profile.id + '">核验发送结果</a>' : ''}<button type="button" class="quiet danger-link" data-ai-action="delete-profile">删除风格</button></div></form>`;
+    return `<form id="ai-profile-form" data-id="${profile.id}"><button type="button" class="quiet" data-ai-action="back-learning">${icon('arrow-l')}返回学习结果</button><h3>${profileName(profile)}的聊天风格</h3>${field('summary', '风格总结（可修改）', v.summary, 6000, '例如：表达简洁，语气自然，不添加没有依据的称呼。')}${field('customAvoid', '注意事项（可选）', v.customAvoid, 1200)}${memoryFields({ ...profile, capabilities: state.capabilities }, draft?.memorySummary)}<details class="ai-paste"><summary>回复策略（可选）</summary>${field('replyGoal', '回复目的与立场', reply.replyGoal)}${field('facts', '允许使用的信息', reply.facts, 4000)}${field('boundaries', '注意事项', reply.boundaries)}<label class="ai-field">连续自动回复上限<input name="maxRounds" type="number" min="1" max="2000" value="${reply.maxRounds ?? 50}"></label></details><div class="ai-actions"><button type="submit" class="primary">保存风格</button>${profile.kind !== 'group' && profile.delivery?.status === 'uncertain' ? '<a href="#ai-review" data-ai-review="' + profile.id + '">核验发送结果</a>' : ''}<button type="button" class="quiet danger-link" data-ai-action="delete-profile">删除风格</button></div></form>`;
   }
   function manualReplyEditor() {
     const contact = state.contacts.find(c => c.id === editingReplyContact && c.kind === 'person');
@@ -612,6 +639,7 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
     const object = $('#ai-object-form');
     if (object) {
       const draft = { ...Object.fromEntries(new FormData(object)), folds: [...object.querySelectorAll("details[data-ai-fold][open]")].map(x => x.dataset.aiFold) };
+      if (object.querySelector('[data-ai-wiki-entities]')) draft.memorySummary = JSON.stringify(wikiEntries(object));
       for (const input of object.querySelectorAll('[data-object-option]')) draft[input.dataset.objectOption] = input.checked;
       objectDrafts.set(selectedObject, draft);
     }
@@ -622,7 +650,7 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
     }
     proactiveUI.remember();
     const profile = $('#ai-profile-form');
-    if (profile) { const data = new FormData(profile); profileDrafts.set(profile.dataset.id, { ...profileDrafts.get(profile.dataset.id), ...Object.fromEntries(data) }); }
+    if (profile) { const data = new FormData(profile); profileDrafts.set(profile.dataset.id, { ...profileDrafts.get(profile.dataset.id), ...Object.fromEntries(data), ...(profile.querySelector('[data-ai-wiki-entities]') ? { memorySummary: JSON.stringify(wikiEntries(profile)) } : {}) }); }
     const manual = $('#ai-manual-reply-form');
     if (manual) { const data = new FormData(manual); manualReplyDrafts.set(manual.dataset.contact, { ...manualReplyDrafts.get(manual.dataset.contact), ...Object.fromEntries(data) }); }
     const paste = $('#ai-paste-form');
@@ -653,6 +681,7 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
     const content = tab === 'profile' && editingProfile ? profileEditor(state.profiles.find(p => p.id === editingProfile)) : ({ overview: objects, analysis: () => analysisPage(state, analysisDraft, analysisResult, analysisSearch, analysisHistoryReport), activity, provider, settings: advancedSettings, learning, 'default-style': defaultStyleLearning, results, proactive, 'manual-reply': manualReplyEditor }[tab] || objects)();
     const nav = `<nav class="ai-main-tabs" aria-label="AI 页面"><div class="ai-nav-brand"><span>${logoIcon}</span><div>AI 辅助<small>栖盒 · QIBOX</small></div></div><p class="ai-nav-caption">工作台</p>${[['overview', '自动回复', 'chat'], ['proactive', '主动聊天', 'send'], ['analysis', '聊天分析', 'file'], ['activity', '运行记录', 'clock'], ['settings', '系统设置', 'sliders']].map(([key, name, symbol]) => `<button type="button" data-ai-nav="${key}" title="${name}" aria-label="${name}" aria-current="${tab === key || key === 'overview' && ['learning','results','profile','manual-reply'].includes(tab) || key === 'settings' && tab === 'default-style' ? 'page' : 'false'}">${icon(symbol)}<span>${name}</span></button>`).join('')}<div class="ai-nav-footer">${icon('shield')}<span>设置按当前微信独立保存</span></div></nav>`;
     $('#ai-content').innerHTML = iconSprite + nav + (tab === 'overview' ? content : `<div class="ai-page-body">${content}</div>`);
+    for (const textarea of $('#ai-content').querySelectorAll('.ai-wiki-bubble textarea[aria-label="信息内容"]')) resizeWikiTextarea(textarea);
     if ($('#ai-object-list')) $('#ai-object-list').scrollTop = objectScroll;
     panel.classList.toggle('object-selected', !!selectedObject && tab === 'overview');
     for (const node of panel.querySelectorAll('#ai-content details')) {
@@ -787,6 +816,35 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
   panel.addEventListener('change', async event => {
     try {
       const input = event.target;
+      const wikiRow = input.closest('.ai-wiki-bubble');
+      if (wikiRow && input.matches('select[aria-label="信息类型"]')) {
+        const calendar = ['birthday', 'date'].includes(input.value);
+        const school = input.value === 'school';
+        const temporal = ['residence', 'workplace', 'employer', 'shipping'].includes(input.value);
+        let dateType = wikiRow.querySelector('.ai-wiki-date-type');
+        if (calendar && !dateType) { dateType = document.createElement('label'); dateType.className = 'ai-wiki-date-type'; dateType.innerHTML = '历法<select aria-label="生日历法"><option value="">未确定</option><option value="solar">公历</option><option value="lunar">农历</option></select>'; wikiRow.insertBefore(dateType, wikiRow.querySelector('[data-ai-wiki-remove]')); }
+        if (dateType) dateType.hidden = !calendar;
+        let degree = wikiRow.querySelector('[aria-label="学历"]');
+        if (school && !degree) { degree = document.createElement('input'); degree.className = 'ai-wiki-degree'; degree.setAttribute('aria-label', '学历'); degree.maxLength = 120; degree.placeholder = '学历'; wikiRow.insertBefore(degree, wikiRow.querySelector('[data-ai-wiki-remove]')); }
+        if (degree) degree.hidden = !school;
+        let range = wikiRow.querySelector('.ai-wiki-date-range');
+        if (temporal && !range) { range = document.createElement('span'); range.className = 'ai-wiki-date-range'; range.innerHTML = '<label>生效自<input type="hidden" data-ai-wiki-from><input type="date" aria-label="开始时间"></label><label>截至<input type="hidden" data-ai-wiki-to><input type="date" aria-label="结束时间"></label>'; wikiRow.insertBefore(range, wikiRow.querySelector('[data-ai-wiki-remove]')); }
+        if (temporal && !wikiRow.querySelector('[data-ai-wiki-recorded]')?.value) wikiRow.querySelector('[data-ai-wiki-recorded]').value = String(Date.now());
+        if (range) range.hidden = !temporal;
+        const remarkAction = wikiRow.querySelector('[data-ai-wiki-remark]');
+        if (remarkAction) remarkAction.hidden = !state.capabilities?.writeContactRemark || !['name'].includes(input.value);
+        const content = wikiRow.querySelector('[aria-label="信息内容"]'), isOther = input.value === 'other';
+        if (content && (content.tagName === 'TEXTAREA') !== isOther) {
+          const replacement = document.createElement(isOther ? 'textarea' : 'input');
+          replacement.setAttribute('aria-label', '信息内容'); replacement.maxLength = 2000; replacement.value = content.value;
+          replacement.placeholder = isOther ? '兴趣爱好、偏好或其他聊天记忆' : '填写已确认的信息';
+          if (isOther) { replacement.rows = 1; resizeWikiTextarea(replacement); }
+          content.replaceWith(replacement);
+        }
+        const target = wikiRow.closest('[data-ai-wiki-entities]')?.querySelector(`[data-ai-wiki-field="${input.value}"] .ai-wiki-field-values`);
+        if (target && wikiRow.parentElement !== target) target.append(wikiRow);
+        return;
+      }
       if (input.closest('#ai-takeover-form') && input.name === 'enabled') {
         const minutes = input.closest('#ai-takeover-form').querySelector('[data-takeover-minutes]');
         minutes.hidden = !input.checked;
@@ -861,6 +919,7 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
     } catch (e) { controls(); message(e.message, true); }
   });
   panel.addEventListener('input', event => {
+    if (event.target?.matches?.('.ai-wiki-bubble textarea[aria-label="信息内容"]')) resizeWikiTextarea(event.target);
     if (event.target.closest('#ai-object-form') && event.target.name === 'summary') {
       const form = event.target.form;
       form.elements.styleId.value = 'custom';
@@ -921,8 +980,16 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
   panel.addEventListener('focusin', event => { if (event.target.name === 'apiKey' && event.target.dataset.keyStored === 'true') event.target.select(); });
   panel.addEventListener('beforeinput', event => { if (event.target.name === 'apiKey' && event.target.dataset.keyStored === 'true' && event.target.value === KEY_MASK) event.target.select(); });
   panel.addEventListener('submit', async event => {
-    event.preventDefault(); const form = event.target, data = new FormData(form);
+    event.preventDefault(); const form = event.target;
+    const data = new FormData(form);
     try {
+      const wiki = form.querySelector('[data-ai-wiki-entities]');
+      if (wiki) {
+        const entries = wikiEntries(form);
+        if (entries.some(entry => entry.from !== undefined && entry.to !== undefined && entry.from > entry.to)) throw new Error('结束时间不能早于开始时间');
+        form.querySelector('[name=memorySummary]').value = JSON.stringify(entries);
+        data.set('memorySummary', JSON.stringify(entries));
+      }
       if (form.id === 'ai-log-filter') { if (data.get('from') && data.get('to') && data.get('from') > data.get('to')) throw new Error('开始日期不能晚于结束日期'); logFilters = { ...logFilters, ...Object.fromEntries(data), page: 0 }; const refreshed = await call(); if (refreshed) { logLoading = logFilters.source === 'reply'; logRequestScope = ''; proactiveHistoryPage = null; proactiveRecordEpoch++; proactiveRecordLoading = false; render(); await Promise.all([loadActivity(), loadProactiveRecords()]); } return; }
             if (form.id === 'ai-takeover-form') { await execute('settings', {value:{takeover:{enabled:data.get('enabled')==='on',minutes:Number(data.get('minutes') ?? form.elements.minutes.value ?? 5)}}}, 'AI 辅助等待设置已保存'); return; }
       if (form.id === 'ai-analysis-form') {
@@ -985,18 +1052,34 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
           realtimeConfirmed = await confirmRealtime();
           if (!realtimeConfirmed) { objectDrafts.set(contact, { ...(objectDrafts.get(contact) || {}), realtime: false }); render(); return; }
         }
+        const kind = profile?.kind || state.contacts.find(item => item.id === contact)?.kind;
+        const replyDefaults = {
+          enabled: profile?.replyOptions?.enabled ?? (kind === 'person' && (state.settings.replyScope === 'all' || (state.replyTargets || []).includes(profile?.id))),
+          multiTurn: profile?.replyOptions?.multiTurn ?? state.settings.multiTurn,
+          judgeReply: profile?.replyOptions?.judgeReply ?? state.settings.judgeReply,
+          atMe: profile?.groupOptions?.atMe ?? false, atAll: profile?.groupOptions?.atAll ?? false, realtime: profile?.groupOptions?.realtime ?? false,
+        };
+        const optionChecked = key => !!form.elements.namedItem(key)?.checked;
+        const switchKeys = kind === 'group' ? ['atMe','atAll','realtime'] : ['enabled','multiTurn','judgeReply'];
+        const changedSwitch = switchKeys.some(key => optionChecked(key) !== (replyDefaults[key] === true));
+        const currentStyle = styleChoice(profile);
+        const baselineStyleId = currentStyle.styleId || '';
+        const baselineSummary = currentStyle.styleId ? (currentStyle.summary || '') : styleSummaryText(state.learnedDefaultStyle?.style);
+        const changedStyle = String(data.get('styleId') || '') !== baselineStyleId || String(data.get('summary') || '') !== baselineSummary;
+        const hasReplySettings = !!profile?.replyStrategy || ['replyGoal','facts','boundaries'].some(key => String(data.get(key) || '').trim()) || changedSwitch || changedStyle || Number(data.get('maxRounds')) !== Number(profile?.replyStrategy?.maxRounds ?? state.replyRoundLimits?.[kind] ?? state.replyStrategy?.maxRounds ?? 50);
         await workflow(async step => {
-          if (profile?.kind === 'group') {
+          const memoryEntries = JSON.parse(String(data.get('memorySummary') || '[]'));
+          if (!sameWikiEntries(memoryEntries, profile?.memory?.entries || []) && !profile?.memory?.unavailable) await step('contact-memory', { value: { contact, entries: memoryEntries } });
+          if (!hasReplySettings) { objectDrafts.delete(contact); return; }
+          if (kind === 'group') {
             await step('group-options', { value: { contact, atMe: data.has('atMe'), atAll: data.has('atAll'), realtime: data.has('realtime'), ...(realtimeConfirmed ? { confirmRealtime: true } : {}) } });
             await step('reply-profile', { value: { contact, preserveSwitches: true, styleSet: !!summary, styleId, style, strategy } });
           } else {
             await step('reply-profile', { value: { contact, preserveSwitches: true, styleSet: !!summary, styleId, style, strategy, replyEnabled: data.has('enabled') } });
             await step('reply-options', { value: { contact, multiTurn: data.has('multiTurn'), judgeReply: data.has('judgeReply') } });
           }
-          const saved = state.profiles.find(p => p.contact === contact);
-          if (String(data.get('memorySummary') || '').trim() !== (profile?.memory?.summary || '') && !profile?.memory?.unavailable) await step('memory', { id: saved.id, value: { summary: String(data.get('memorySummary') || '') } });
           objectDrafts.delete(contact);
-        }, '设置已保存'); return;
+        }, hasReplySettings ? '设置已保存' : '个人信息 Wiki 已保存'); return;
       }
       if (form.id === 'ai-model-form') await stageModel();
       if (form.id === 'ai-manual-reply-form') {
@@ -1026,9 +1109,10 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
         const key = form.dataset.id, original = state.profiles.find(p => p.id === key), base = { ...(original.strategy || replyStrategy()), ...original.replyStrategy };
         const reply = { replyGoal: data.get('replyGoal') || '', facts: data.get('facts') || '', boundaries: data.get('boundaries') || '', maxRounds: Number(data.get('maxRounds') || 50) };
         await workflow(async step => {
-          await step('profile', { id: key, value: { style: { summary: data.get('summary'), customAvoid: data.get('customAvoid') || '' } } });
           const existing = state.profiles.find(p => p.id === key);
-          if (!existing.memory?.unavailable && String(data.get('memorySummary') || '').trim() !== (existing.memory?.summary || '')) await step('memory', { id: key, value: { summary: String(data.get('memorySummary') || '') } });
+          const memoryEntries = JSON.parse(String(data.get('memorySummary') || '[]'));
+          if (!existing.memory?.unavailable && !sameWikiEntries(memoryEntries, existing.memory?.entries || [])) await step('memory', { id: key, value: { entries: memoryEntries } });
+          await step('profile', { id: key, value: { style: { summary: data.get('summary'), customAvoid: data.get('customAvoid') || '' } } });
           if (Object.keys(reply).some(k => reply[k] !== (base[k] ?? ''))) await step('strategy', { id: key, mode: 'reply', value: { ...base, ...reply } });
           profileDrafts.delete(key); editingProfile = null; tab = profileReturn;
         }, '风格已保存');
@@ -1064,6 +1148,34 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
   panel.addEventListener('click', async event => {
     const button = event.target.closest('button'); if (!button) return;
     try {
+      if (button.hasAttribute('data-ai-apply-limit-kind')) {
+        const form = button.closest('form'), value = Number(form.elements.maxRounds.value), kind = button.dataset.aiApplyLimitKind;
+        if (!Number.isInteger(value) || value < 1 || value > 2000) throw new Error('连续自动回复上限须为 1–2000 的整数');
+        const result = await execute('apply-reply-limit', { value: { kind, maxRounds: value } }, `已应用到全部${kind === 'group' ? '群聊' : '联系人'}`);
+        if (result?.appliedReplyLimit) message(`已更新 ${result.appliedReplyLimit.count} 个${kind === 'group' ? '群聊' : '联系人'}的连续回复上限`);
+        return;
+      }
+      if (button.hasAttribute('data-ai-wiki-remark')) {
+        const form = button.closest('form'), row = button.closest('.ai-wiki-bubble');
+        const field = row?.querySelector('select[aria-label="信息类型"]')?.value;
+        const remark = row?.querySelector('input[aria-label="信息内容"]')?.value?.trim();
+        if (!state.capabilities?.writeContactRemark || !form?.dataset.id || field !== 'name' || !remark) throw new Error('当前微信连接没有可用的备注写入能力或姓名信息');
+        if (!window.confirm(`将“${remark}”写入当前联系人微信备注？`)) return;
+        await execute('contact-remark', { id: form.dataset.id, value: { remark } }, '已写入并核验微信备注');
+        return;
+      }
+      if (button.hasAttribute('data-ai-wiki-remove')) { button.closest('.ai-wiki-bubble')?.remove(); return; }
+      if (button.hasAttribute('data-ai-wiki-add')) {
+        const field = button.dataset.aiWikiAddField || 'other';
+        const entities=button.closest('form')?.querySelector('[data-ai-wiki-entities]');
+        const section=button.closest('[data-ai-wiki-field]') || entities?.querySelector(`[data-ai-wiki-field="${field}"]`);
+        const list = section?.querySelector('.ai-wiki-field-values');
+        if (!list) return;
+        list.insertAdjacentHTML('beforeend', wikiEntryMarkup({ field, text: '' }, state.capabilities?.writeContactRemark === true));
+        const added = list.lastElementChild; const content = added.querySelector('[aria-label="信息内容"]');
+        if (content?.tagName === 'TEXTAREA') resizeWikiTextarea(content);
+        content?.focus(); return;
+      }
       const action = button.dataset.aiAction;
       if ('aiRetryRecords' in button.dataset) { await loadActivity(); return; }
       if ('aiLocateMessage' in button.dataset) { await openConversation(button.dataset.profileId, button.dataset.aiLocateMessage); return; }
@@ -1163,14 +1275,18 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
       if (button.dataset.aiMemoryMerge) { const current=generation;const result=await execute('memory-merge', {id:button.dataset.aiMemoryMerge}, '正在与原有记忆合并，完成后请再确认一次'); if(!result || current!==generation)return;objectDrafts.delete(selectedObject); render(); return; }
       if (button.dataset.aiAdoptMemory) {
         const profile = state.profiles.find(p => p.id === button.dataset.aiAdoptMemory);
-        const input = button.closest('form').querySelector('[name=memorySummary]');
-        if (input.value.trim() !== (profile.memory?.summary || '')) throw new Error('请先保存正在编辑的记忆，再合并候选内容');
-        const entries = (profile.memory?.entries || []).map(e=>({...e}));
+        const form = button.closest('form'), entries = wikiEntries(form);
+        if (!sameWikiEntries(entries, profile.memory?.entries || [])) throw new Error('请先保存正在编辑的记忆，再合并候选内容');
         for(const entry of profile.memorySuggestion?.entries || []) {
           const index=entries.findIndex(e=>e.id===entry.id);
-          if(index>=0) entries[index]=entry;else if(!entries.some(e=>e.text===entry.text)) entries.push(entry);
+          if(index>=0) entries[index]=entry;else if(!entries.some(e=>e.text===entry.text && e.field===entry.field)) entries.push(entry);
         }
-        input.value=entries.map(e=>e.text).join('\n');rememberDraft();return;
+        const entities=form.querySelector('[data-ai-wiki-entities]');
+        for(const section of entities.querySelectorAll('[data-ai-wiki-field]')) {
+          const field=section.dataset.aiWikiField;
+          section.querySelector('.ai-wiki-field-values').innerHTML=entries.filter(entry=>(entry.field||'other')===field).map(entry=>wikiEntryMarkup({...entry,field},state.capabilities?.writeContactRemark===true)).join('');
+        }
+        rememberDraft();return;
       }
       if (button.dataset.aiLogDetail) { showLogDetail(button.dataset.aiLogDetail); return; }
       if (button.dataset.aiProfile) { rememberDraft(); profileReturn = tab === 'overview' ? 'overview' : 'results'; editingProfile = button.dataset.aiProfile; tab = 'profile'; render(); return; }

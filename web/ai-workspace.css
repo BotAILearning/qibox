@@ -640,3 +640,85 @@
 @media(max-width:600px){.ai-perspective-dialog .ai-perspective-options{grid-template-columns:1fr}}
 @media(max-width:900px){#ai-panel .ai-learning-hero{grid-template-columns:1fr;gap:16px}#ai-panel .ai-learning-run{justify-content:stretch}#ai-panel .ai-learning-run button{flex:1}}
 @media(max-width:680px){#ai-panel .ap-heading,#ai-panel .ap-card-head{flex-wrap:wrap}#ai-panel .ap-filters{margin-left:0;width:100%}#ai-panel .ap-time-options,#ai-panel .ap-time-range,#ai-panel .ap-picker-list{grid-template-columns:1fr}#ai-panel .ap-form-card{padding:14px}#ai-panel .ap-picker-tools input{flex-basis:100%}#ai-panel .ap-record-tabs{max-width:100%}#ai-panel .ai-proactive-dialog :is(input,select,textarea){font-size:16px}}
+.ai-wiki-entities{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;margin:10px 0;width:100%;box-sizing:border-box}
+#ai-panel .ai-wiki-field{min-width:0;width:100%;box-sizing:border-box;padding:12px;border:1px solid var(--ai-border);border-radius:12px;background:var(--ai-bg)}
+#ai-panel .ai-wiki-field>h5{margin:0 0 8px;font-size:13px;font-weight:650;color:var(--ai-text)}
+#ai-panel .ai-wiki-field-values{display:grid;gap:8px;min-width:0;width:100%}
+#ai-panel .ai-wiki-add-field{min-height:36px;margin-top:8px;padding:6px 10px}
+#ai-panel .ai-wiki-bubble{position:relative;display:grid;grid-template-columns:118px minmax(0,1fr);align-items:center;gap:8px;width:100%;min-width:0;max-width:100%;box-sizing:border-box;padding:10px 46px 10px 12px;border:1px solid var(--line,#dce0ea);border-radius:14px;background:var(--surface,#fff);box-shadow:0 2px 7px #20284a0a}
+#ai-panel .ai-wiki-bubble>select,#ai-panel .ai-wiki-bubble>[aria-label="信息内容"]{min-width:0;width:100%;max-width:100%;margin:0}
+#ai-panel .ai-wiki-bubble>textarea[aria-label="信息内容"]{grid-column:1/-1;box-sizing:border-box;width:calc(100% + 34px);max-width:none;margin-right:-34px;min-height:42px;max-height:360px;overflow-y:hidden;resize:none;line-height:1.55;padding:9px 11px}
+#ai-panel .ai-wiki-bubble>select{grid-column:1;padding:7px 8px}
+#ai-panel .ai-wiki-bubble>input[aria-label="信息内容"]{grid-column:2;padding:7px 9px}
+#ai-panel .ai-wiki-bubble>.ai-wiki-degree,#ai-panel .ai-wiki-bubble>.ai-wiki-date-type,#ai-panel .ai-wiki-bubble>.ai-wiki-date-range,#ai-panel .ai-wiki-bubble>.ai-wiki-recorded,#ai-panel .ai-wiki-bubble>[data-ai-wiki-remark]{grid-column:1/-1;min-width:0}
+#ai-panel .ai-wiki-bubble>.ai-wiki-degree{width:100%;margin:0}
+#ai-panel .ai-wiki-date-type{display:flex;align-items:center;gap:8px;font-size:12px}
+#ai-panel .ai-wiki-date-type select{width:110px;max-width:110px;min-height:36px;padding:5px 8px}
+#ai-panel .ai-wiki-remove{position:absolute;right:9px;top:11px;width:28px;height:28px;min-width:28px;border-radius:50%;font-size:20px;line-height:1;padding:0}
+#ai-panel .ai-wiki-remove:hover{color:#a32948;background:#fff0f2}
+.ai-contact-limit{display:inline-flex!important;align-self:flex-start;margin-top:3px;padding:2px 7px;border-radius:999px;background:#fff0e7;color:#ad4b24;font-size:11px;font-weight:600}.ai-limits-row{display:flex;align-items:flex-end;flex-wrap:wrap;gap:10px}.ai-limits-row>.ai-field{flex:0 1 230px}.ai-limits-row>button{min-height:40px}
+#ai-panel .ai-wiki-date-range{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+#ai-panel .ai-wiki-date-range label{display:grid;gap:3px;min-width:0;font-size:11px;color:var(--muted,#667085)}
+#ai-panel .ai-wiki-date-range input{width:100%;min-width:0;max-width:100%;box-sizing:border-box;padding:6px;font-size:12px}
+#ai-panel .ai-wiki-recorded{font-size:11px;color:var(--muted,#667085)}
+#ai-panel .ai-wiki-date-range[hidden],#ai-panel .ai-wiki-date-type[hidden],#ai-panel .ai-wiki-degree[hidden],#ai-panel [data-ai-wiki-remark][hidden]{display:none}
+@media(max-width:420px){#ai-panel .ai-wiki-field{padding:9px}#ai-panel .ai-wiki-bubble{grid-template-columns:minmax(0,1fr)}#ai-panel .ai-wiki-bubble>select,#ai-panel .ai-wiki-bubble>input[aria-label="信息内容"]{grid-column:1}#ai-panel .ai-wiki-bubble>.ai-wiki-degree,#ai-panel .ai-wiki-bubble>.ai-wiki-date-type,#ai-panel .ai-wiki-bubble>.ai-wiki-date-range,#ai-panel .ai-wiki-bubble>.ai-wiki-recorded{grid-column:1}#ai-panel .ai-wiki-date-range{grid-template-columns:minmax(0,1fr)}}
+#ai-panel .ap-task-table th{height:52px;padding:8px 12px;line-height:1.45;white-space:normal}
+#ai-panel .ap-task-table td{padding:14px 12px;min-height:88px;height:auto;line-height:1.65}
+#ai-panel .ap-filters button{min-height:40px;padding:8px 13px}
+#ai-panel .ap-more{width:44px;height:44px}
+#ai-panel .ap-action-menu button{min-height:40px;padding:9px 10px}
+#ai-panel .ap-task-table .ap-description p{-webkit-line-clamp:4}
+@media(max-width:700px){#ai-panel .ap-heading{align-items:flex-start;flex-wrap:wrap}#ai-panel .ap-filters{margin-left:0;width:100%}#ai-panel .ap-table-head{align-items:flex-start}#ai-panel .ap-table-scroll{-webkit-overflow-scrolling:touch}#ai-panel .ap-task-table{min-width:900px}#ai-panel .ap-task-table td{padding:12px 10px}}
+#ai-panel .ai-activity-page>.ai-page-heading{margin-bottom:14px}
+#ai-panel .ai-activity-page .ap-record-tabs{display:flex;width:max-content;max-width:100%;gap:4px;padding:4px;margin:0 0 14px;border:1px solid var(--ap-line);border-radius:12px;background:#f5f6fa;overflow-x:auto}
+#ai-panel .ai-activity-page .ap-record-tabs button{min-height:40px;padding:8px 16px;border-radius:9px;background:transparent;color:var(--ap-muted);white-space:nowrap}
+#ai-panel .ai-activity-page .ap-record-tabs button[aria-pressed=true]{background:#fff;color:var(--ap-primary);box-shadow:0 1px 4px #24284b1a}
+#ai-panel .ai-activity-page .ai-record-search{display:block;max-width:520px;margin:0 0 14px}
+#ai-panel .ai-activity-page .ai-record-search input{min-height:42px}
+#ai-panel #ai-log-filter{gap:12px 14px;padding:16px}
+#ai-panel #ai-log-filter .ai-field{min-width:155px}
+#ai-panel .ai-activity-page .ap-record-block{margin:18px 0 24px}
+#ai-panel .ai-activity-page .ap-record-block>header{gap:8px 12px;margin:0 0 10px;padding:0 2px}
+#ai-panel .ai-activity-page .ap-record-block>header .icon-button{width:40px;height:40px;min-width:40px}
+#ai-panel .ai-activity-page .ap-record-table{min-width:900px;font-size:13px}
+#ai-panel .ai-activity-page .ap-record-table th{height:48px;padding:12px 14px;line-height:1.4}
+#ai-panel .ai-activity-page .ap-record-table td{padding:14px;line-height:1.55;vertical-align:middle}
+#ai-panel .ai-activity-page .ap-reply-record-table th:nth-child(1){width:18%}#ai-panel .ai-activity-page .ap-reply-record-table th:nth-child(2){width:18%}#ai-panel .ai-activity-page .ap-reply-record-table th:nth-child(3){width:43%}#ai-panel .ai-activity-page .ap-reply-record-table th:nth-child(4){width:21%}
+#ai-panel .ai-activity-page .ap-proactive-record-table{min-width:1080px}
+#ai-panel .ai-activity-page .ap-proactive-record-table th:nth-child(1){width:16%}#ai-panel .ai-activity-page .ap-proactive-record-table th:nth-child(2){width:16%}#ai-panel .ai-activity-page .ap-proactive-record-table th:nth-child(3){width:16%}#ai-panel .ai-activity-page .ap-proactive-record-table th:nth-child(4){width:36%}#ai-panel .ai-activity-page .ap-proactive-record-table th:nth-child(5){width:16%}
+#ai-panel .ai-activity-page .ap-skip-record-table th:nth-child(1){width:16%}#ai-panel .ai-activity-page .ap-skip-record-table th:nth-child(2){width:16%}#ai-panel .ai-activity-page .ap-skip-record-table th:nth-child(3){width:30%}#ai-panel .ai-activity-page .ap-skip-record-table th:nth-child(4){width:38%}
+#ai-panel .ai-activity-page .ap-record-table button:not(.ai-record-message){min-height:38px;padding:8px 10px;margin:4px 4px 4px 0;white-space:normal;line-height:1.35}
+#ai-panel .ai-activity-page .ap-record-table details{max-width:none}
+#ai-panel .ai-activity-page .ap-record-table td:last-child>button{display:block;width:100%;margin:6px 0}
+@media(max-width:700px){#ai-panel .ai-activity-page>.ai-page-heading{align-items:flex-start}#ai-panel .ai-activity-page .ai-record-search{max-width:none}#ai-panel #ai-log-filter .ai-field{min-width:0}#ai-panel .ai-activity-page .ap-record-table{min-width:900px}#ai-panel .ai-activity-page .ap-proactive-record-table{min-width:1080px}#ai-panel .ai-activity-page .ap-record-table td{padding:12px 10px}}
+@media(max-width:600px){
+ #ai-panel .ai-activity-page .ap-table-scroll{overflow:visible;border:0;background:transparent;box-shadow:none}
+ #ai-panel .ai-activity-page .ap-record-table,#ai-panel .ai-activity-page .ap-proactive-record-table{display:block;min-width:0;width:100%;border-collapse:separate;border-spacing:0}
+ #ai-panel .ai-activity-page .ap-record-table thead{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+ #ai-panel .ai-activity-page .ap-record-table tbody{display:grid;gap:12px}
+ #ai-panel .ai-activity-page .ap-record-table tr{display:grid;grid-template-columns:minmax(0,1fr);padding:12px;border:1px solid var(--ap-line);border-radius:14px;background:#fff;box-shadow:0 2px 8px #2023370a}
+ #ai-panel .ai-activity-page .ap-record-table td{display:grid;grid-template-columns:minmax(78px,27%) minmax(0,1fr);gap:8px;padding:9px 2px;border:0;border-bottom:1px solid #eef0f5;min-width:0;overflow-wrap:anywhere}
+ #ai-panel .ai-activity-page .ap-record-table td:last-child{border-bottom:0}
+ #ai-panel .ai-activity-page .ap-record-table td:before{content:attr(data-label);font-size:12px;font-weight:700;color:var(--ap-muted)}
+ #ai-panel .ai-activity-page .ap-record-table td[colspan]:before{content:none}
+ #ai-panel .ai-activity-page .ap-record-table td[colspan]{display:block}
+ #ai-panel .ai-activity-page .ap-reply-record-table td[data-label="执行记录"]{display:block;padding-top:10px}
+ #ai-panel .ai-activity-page .ap-reply-record-table td[data-label="执行记录"]:before{display:block;margin:0 0 7px}
+ #ai-panel .ai-activity-page .ap-reply-record-table td[data-label="执行记录"] details{margin:0}
+ #ai-panel .ai-activity-page .ap-reply-record-table .ai-summary-controls{margin:10px 0 2px;gap:8px}
+ #ai-panel .ai-activity-page .ap-reply-record-table .ai-summary-controls select{min-height:42px;max-width:190px}
+ #ai-panel .ai-activity-page .ap-record-table td:last-child{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:stretch;gap:8px;padding-top:10px}
+ #ai-panel .ai-activity-page .ap-record-table td:last-child:before{grid-column:1/-1}
+ #ai-panel .ai-activity-page .ap-record-table td:last-child>button{width:100%;min-width:0;min-height:44px;margin:0;padding:9px 8px;white-space:normal;line-height:1.25;text-align:center}
+ #ai-panel .ai-activity-page .ap-record-table td:last-child>button:only-of-type{grid-column:1/-1}
+ #ai-panel .ai-activity-page .ap-record-table td:last-child>[data-ai-delete-record]{grid-column:1/-1}
+ #ai-panel .ai-activity-page .ap-skip-record-table td[data-label="触发消息"]{display:block}
+ #ai-panel .ai-activity-page .ap-skip-record-table td[data-label="触发消息"]:before{display:block;margin:0 0 7px}
+ #ai-panel .ai-activity-page .ap-skip-record-table td[data-label="触发消息"]>button{display:inline-flex;align-items:center;justify-content:center;min-width:120px;min-height:44px;margin:4px 6px 4px 0;padding:9px 12px;white-space:normal;line-height:1.25}
+ #ai-panel .ai-activity-page .ap-record-table button[data-ai-delete-record]{display:inline-flex;align-items:center;justify-content:center;min-width:120px;min-height:44px;padding:9px 12px}
+ #ai-panel .ai-activity-page .ap-reply-record-table ol button[data-ai-delete-record]{width:100%}
+ #ai-panel .ai-activity-page .ap-record-table button[data-ai-delete-record]{border:1px solid #efd2ce;border-radius:9px;background:#fff8f7;color:#aa4039}
+ #ai-panel .ai-activity-page .ap-skip-record-table td[data-label="触发消息"] button[data-ai-locate-message]{border:1px solid var(--ap-line);border-radius:9px;background:#fff}
+ #ai-panel .ai-activity-page .ap-record-table details,#ai-panel .ai-activity-page .ap-record-table ol{min-width:0}
+}

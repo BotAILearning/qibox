@@ -11,6 +11,13 @@ import re
 
 MEDIA_LABEL = re.compile(r'\[(?:图片|动画表情|视频|语音|文件|位置|链接|聊天记录|小程序|视频号|转账|红包)\].*', re.S)
 
+# Long conversations can have hundreds of virtualized viewports. Keep moving
+# while each scroll changes the visible rows; the stability check below stops
+# immediately at either end, so these are safety ceilings rather than delays.
+MAX_LATEST_PAGES = 60
+MAX_SEARCH_PAGES = 180
+FULL_VERIFY_EVERY_PAGES = 6
+
 
 def _media(message):
     return bool(MEDIA_LABEL.fullmatch((message.get('text') or '').strip()))
@@ -41,11 +48,16 @@ def align(rows, messages, target):
 
 def locate(adapter, request, label):
     ins = adapter.controls
+    adapter.locate_pages = 0
     messages, target = request.get('messages'), request.get('messageId')
     if not adapter.session_identity or not isinstance(messages, list) or not 3 <= len(messages) <= 61:
         return False
     clean_messages = [m for m in messages if m.get('direction') != 'system' and m.get('text')
                       and (m.get('id') == target or not _media(m))]
+    target_messages = [m for m in clean_messages if m.get('id') == target and m.get('direction') in ('self', 'other')]
+    if len(target_messages) != 1:
+        return False
+    target_text = target_messages[0]['text']
 
     def verified_layout():
         ins.check(); adapter.verify_session(); ins.require_foreground('微信')
@@ -55,11 +67,39 @@ def locate(adapter, request, label):
         return layout
 
     layout = verified_layout()
+    pages_since_full_verify = 0
+
+    def checked_page(current):
+        """Cheap per-scroll invariants, with a full identity/tree refresh periodically."""
+        nonlocal pages_since_full_verify
+        ins.check()
+        ins.require_foreground('微信')
+        for key in ('frame', 'header', 'message_list'):
+            obj = current[key]
+            ins.refresh(obj)
+            if not ins.visible(obj):
+                raise ValueError('chat controls changed')
+        if ins.string('get_name', current['header']) != label:
+            raise ValueError('chat header changed')
+        if ins._visible_roots(current['app'], current['frame']):
+            raise ValueError('chat popup changed')
+        frame = ins.bounds(current['frame'])
+        message_list = ins.bounds(current['message_list'])
+        if (not frame or not message_list or min(frame[2:]) <= 0 or min(message_list[2:]) <= 0
+                or message_list[0] < frame[0] or message_list[1] < frame[1]
+                or message_list[0] + message_list[2] > frame[0] + frame[2]
+                or message_list[1] + message_list[3] > frame[1] + frame[3]):
+            raise ValueError('message viewport changed')
+        pages_since_full_verify += 1
+        if pages_since_full_verify >= FULL_VERIFY_EVERY_PAGES:
+            pages_since_full_verify = 0
+            return verified_layout()
+        return current
     stable_at_latest = False
     previous = None
     # open-chat can leave a prior viewport at the oldest part of history. First
     # return the message list to its latest stable viewport, then search upward.
-    for _ in range(18):
+    for _ in range(MAX_LATEST_PAGES):
         native = adapter.rows(layout)
         before = [(name, bounds) for name, bounds in native]
         if previous is not None and before == previous:
@@ -67,7 +107,8 @@ def locate(adapter, request, label):
             break
         previous = before
         ins.scroll_directory('down', {**layout, 'contact_list': layout['message_list']})
-        layout = verified_layout()
+        adapter.locate_pages += 1
+        layout = checked_page(layout)
         after = [(name, bounds) for name, bounds in adapter.rows(layout)]
         if after == before:
             stable_at_latest = True
@@ -76,10 +117,22 @@ def locate(adapter, request, label):
         return False
 
     previous = None
-    for _ in range(18):
-        layout = verified_layout()
+    for _ in range(MAX_SEARCH_PAGES):
+        ins.check()
+        ins.require_foreground('微信')
         viewport = ins.bounds(layout['message_list'])
         native = adapter.rows(layout)
+        # Direction detection captures and inspects pixels for every visible
+        # bubble. It cannot make a viewport without the target's exact text a
+        # match, so skip that expensive work until the target is present.
+        if not any(name == target_text for name, _bounds in native):
+            signature = [(name, bounds) for name, bounds in native]
+            if signature == previous: return False
+            previous = signature
+            ins.scroll_directory('up', {**layout, 'contact_list': layout['message_list']})
+            adapter.locate_pages += 1
+            layout = checked_page(layout)
+            continue
         visible = []
         with adapter.render.DesktopFrame(viewport) as frame:
             for name, bounds in native:
@@ -113,4 +166,6 @@ def locate(adapter, request, label):
         if signature == previous: return False
         previous = signature
         ins.scroll_directory('up', {**layout, 'contact_list': layout['message_list']})
+        adapter.locate_pages += 1
+        layout = checked_page(layout)
     return False

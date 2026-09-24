@@ -69,7 +69,10 @@ test('analysis distinguishes empty history from existing unreadable messages', a
   assert.equal(result.reports[0].skipped, 1); assert.match(result.reports[0].report, /无法解析/);
 });
 test('message navigation validates recorded ID, forwards authentic context and reports precise fallback', async t => {
-  const { a, bridge, p } = await fixture(t), message = bridge.push(p.contact, 'self', 'recorded');
+  const { a, bridge, p } = await fixture(t);
+  bridge.push(p.contact, 'other', 'context before');
+  const message = bridge.push(p.contact, 'self', 'recorded');
+  bridge.push(p.contact, 'other', 'context after');
   p.generatedIds = [message.id]; p.sentMessages = [{ id: message.id, at: a.now(), source: 'reply' }];
   let requests = []; bridge.openChat = async args => { requests.push(args); return { opened: true, located: true, messageId: args.locate?.messageId }; };
   assert.equal((await a.openConversation(p.id, { messageId: message.id })).located, true);

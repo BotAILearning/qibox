@@ -63,6 +63,12 @@ const skipLogLimit = 10000;
 // 单条异常文案的长度上限，避免超长报错文本放大体积。
 const errorMessageLimit = 2000;
 const errorMessage = detail => typeof detail === 'string' && detail.trim() ? detail.trim().slice(0, errorMessageLimit) : errorFallbackMessage;
+const memoryMergeEntry = entry => ({
+  ...(entry.id ? { id: entry.id } : {}), field: entry.field || 'other', text: entry.text,
+  ...(entry.degree ? { degree: entry.degree } : {}), ...(entry.calendar ? { calendar: entry.calendar } : {}),
+  ...(Number.isSafeInteger(entry.from) ? { from: entry.from } : {}), ...(Number.isSafeInteger(entry.to) ? { to: entry.to } : {}),
+  ...(Number.isSafeInteger(entry.recordedAt) ? { recordedAt: entry.recordedAt } : {}),
+});
 const asksDirectQuestion = text => /[?？]|(?:吗|呢|么)[。！!…]*$|(?:怎么|如何|是否|要不要|该不该|能不能|可不可以|是不是|有没有|为什么|什么|哪一个|哪个|几时|什么时候)/u.test(String(text || '').trim());
 // Keep the most recent whole messages within a fair per-contact budget.
 function learningMaterial(messages, perspective = 'self') {
@@ -95,7 +101,7 @@ function tailMemoryMaterial(messages, budget = memoryMaterialChars) {
 }
 const validKey = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 const defaultSettings = () => ({ enabled: false, acknowledgeAI: false, takeover: defaultTakeover(), proactive: false, reply: true, replyScope: 'selected', judgeReply: true, updateStyle: false, replyDelay: 3, multiTurn: false, segmentDelayMin: 2, segmentDelayMax: 8, followUpDelayMin: 45, followUpDelayMax: 120 });
-const defaults = () => ({ version: 1, account: null, contacts: [], lastScanAt: null, settings: defaultSettings(), strategy: strategyValue({}), replyStrategy: replyStrategyValue({}), profiles: {}, targets: [], replyTargets: [], proactiveTargets: [], queue: { status: 'idle', items: [], nextAt: null }, events: [], skipLog: [], pendingReplySummaries: [], errorLog: [], deletedActivityRecords: [], analysisReports: [], modelList: [], modelAssignments: {}, modelTested: {}, learnedDefaultStyle: null, defaultStyleSnapshot: null });
+const defaults = () => ({ version: 1, account: null, contacts: [], lastScanAt: null, settings: defaultSettings(), strategy: strategyValue({}), replyStrategy: replyStrategyValue({}), replyRoundLimits: { person: null, group: null }, profiles: {}, targets: [], replyTargets: [], proactiveTargets: [], queue: { status: 'idle', items: [], nextAt: null }, events: [], skipLog: [], pendingReplySummaries: [], errorLog: [], deletedActivityRecords: [], analysisReports: [], modelList: [], modelAssignments: {}, modelTested: {}, learnedDefaultStyle: null, defaultStyleSnapshot: null });
 
 const modelFingerprint = value => { const { id, label, ...config } = value || {}; return providerFingerprint(config); };
 export class AIAssistant {
@@ -134,6 +140,8 @@ export class AIAssistant {
     this.data.replyTargets ??= [...this.data.targets]; this.data.proactiveTargets ??= [...this.data.targets]; this.syncTargets();
     this.data.strategy = strategyValue(this.data.strategy);
     this.data.replyStrategy = replyStrategyValue(this.data.replyStrategy || this.data.strategy);
+    this.data.replyRoundLimits = { person: null, group: null, ...(this.data.replyRoundLimits || {}) };
+    for (const kind of ['person', 'group']) if (!Number.isInteger(this.data.replyRoundLimits[kind]) || this.data.replyRoundLimits[kind] < 1 || this.data.replyRoundLimits[kind] > 2000) this.data.replyRoundLimits[kind] = null;
     for (const profile of Object.values(this.data.profiles)) {
       profile.source ||= profile.account === 'paste' ? 'paste' : profile.learnedAt ? 'learned' : 'manual';
       migrateLearnedStyle(profile);
@@ -453,12 +461,16 @@ export class AIAssistant {
     if (continuation) return { ...profile.continuation.strategy, ...(profile.replyStrategy ? {
       // Personal reply goals and limits still apply, but the ongoing proactive
       // conversation must retain the facts and boundaries the user launched it with.
-      replyGoal: profile.replyStrategy.replyGoal, maxRounds: profile.replyStrategy.maxRounds,
-    } : {}) };
+      replyGoal: profile.replyStrategy.replyGoal,
+    } : {}), maxRounds: Number.isInteger(profile.replyStrategy?.maxRounds)
+      ? profile.replyStrategy.maxRounds
+      : this.data.replyRoundLimits?.[profile.kind] || profile.continuation.strategy.maxRounds };
     // Independent replies receive only their reply configuration, never another
     // conversation's proactive purpose, opening content, persona or style source.
     const base = replyStrategyValue(profile?.strategy || this.data.replyStrategy);
-    return strategyValue({ ...base, ...profile?.replyStrategy });
+    const result = strategyValue({ ...base, ...profile?.replyStrategy });
+    if (!Number.isInteger(profile?.replyStrategy?.maxRounds)) result.maxRounds = this.data.replyRoundLimits?.[profile?.kind] || result.maxRounds;
+    return result;
   }
   styleProfile(strategy) {
     const profile = this.data.profiles[strategy.styleProfileId];
@@ -695,7 +707,7 @@ export class AIAssistant {
     const activeSkipRecords = this.data.skipLog.filter(e => e.account === this.data.account || !e.account && e.target && this.profiles().some(p => p.id === e.target));
     const knownSkipIds = new Set(activeSkipRecords.map(e => e.id));
     for (const entry of this.data.events) if (entry.code === 'skip' && !knownSkipIds.has(entry.id) && (entry.account === this.data.account || !entry.account && entry.target && this.profiles().some(p => p.id === entry.target))) activeSkipRecords.push(entry);
-    return { settings: this.data.settings, strategy: this.data.strategy, replyStrategy: this.data.replyStrategy, profiles: this.profiles().map(p => ({ ...p, sentMessages: (p.sentMessages || []).map(({ body, ...meta }) => meta), memoryHistory: (p.memoryHistory || []).map(h => ({id:h.id,at:h.at})), memory: readMemory(this.vault, p), pendingMemory: this.pendingMemoryOf(p), memoryMerge: p.memoryMerge || null, pendingMemoryAt: p.pendingMemoryAt || null, pendingMemorySource: p.pendingMemorySource || null, memorySuggestion: p.memorySuggestion ? readMemory(this.vault, p, 'memorySuggestion') : null })), targets: this.data.targets, replyTargets: this.data.replyTargets, proactiveTargets: this.data.proactiveTargets,
+    return { capabilities: { writeContactRemark: typeof this.bridge?.setContactRemark === 'function' }, settings: this.data.settings, strategy: this.data.strategy, replyStrategy: this.data.replyStrategy, replyRoundLimits: this.data.replyRoundLimits, profiles: this.profiles().map(p => ({ ...p, sentMessages: (p.sentMessages || []).map(({ body, ...meta }) => meta), memoryHistory: (p.memoryHistory || []).map(h => ({id:h.id,at:h.at})), memory: readMemory(this.vault, p), pendingMemory: this.pendingMemoryOf(p), memoryMerge: p.memoryMerge || null, pendingMemoryAt: p.pendingMemoryAt || null, pendingMemorySource: p.pendingMemorySource || null, memorySuggestion: p.memorySuggestion ? readMemory(this.vault, p, 'memorySuggestion') : null })), targets: this.data.targets, replyTargets: this.data.replyTargets, proactiveTargets: this.data.proactiveTargets,
       ...this.proactiveV2.state(), account: this.data.account,
       activity: this.activitySummaries(), activityHistory: this.activitySummaries('unknown'),
       provider: this.publicProvider('chat'), models: this.publicModels(), assignments: { chat: this.assignmentFor('chat'), learningAnalysis: this.assignmentFor('learning') },
@@ -1364,6 +1376,17 @@ export class AIAssistant {
       await this.save(); return this.publicState();
     });
   }
+  async applyReplyLimitToKind(kind, maxRounds) {
+    return this.exclusive(async () => {
+      if (!['person', 'group'].includes(kind) || !Number.isInteger(maxRounds) || maxRounds < 1 || maxRounds > 2000) throw new AppError('上限设置无效');
+      this.data.replyRoundLimits = { person: null, group: null, ...(this.data.replyRoundLimits || {}), [kind]: maxRounds };
+      let count = 0;
+      for (const profile of this.profiles()) if (profile.account === this.data.account && profile.kind === kind && profile.replyStrategy) {
+        profile.replyStrategy = replyStrategyValue({ ...profile.strategy, ...(profile.replyStrategy || {}), ...(profile.replyStrategy?.replyGoal ? {} : { replyGoal: this.data.replyStrategy.replyGoal }), ...(profile.replyStrategy?.facts ? {} : { facts: this.data.replyStrategy.facts }), ...(profile.replyStrategy?.boundaries ? {} : { boundaries: this.data.replyStrategy.boundaries }), maxRounds }); count++;
+      }
+      await this.save(); return { ...this.publicState(), appliedReplyLimit: { kind, maxRounds, count } };
+    });
+  }
   async saveReplyProfile({ contact, style: value, strategy: reply, preserveSwitches = false, replyEnabled, styleSet, styleId } = {}) {
     return this.exclusive(async () => {
       const target = this.contacts.get(contact);
@@ -1438,6 +1461,19 @@ export class AIAssistant {
       await this.save(); return this.publicState();
     });
   }
+  async editContactMemory(contactId, value) {
+    return this.exclusive(async () => {
+      const target = this.contacts.get(contactId);
+      if (!this.available || !this.data.account || !['person', 'group'].includes(target?.kind)) throw new AppError('请先获取并选择联系人或群聊');
+      const id = digest(`${this.data.account}\0${contactId}`);
+      const profile = this.data.profiles[id] || { id, account: this.data.account, contact: contactId, label: target.label, kind: target.kind };
+      if (profile.account !== this.data.account || profile.contact !== contactId) throw new AppError('联系人身份已变化，请刷新后重试');
+      this.invalidate();
+      Object.assign(profile, changeMemory(this.vault, profile, value, this.now()));
+      this.data.profiles[id] = profile;
+      await this.save(); return this.publicState();
+    });
+  }
   // 「替换」：直接采用待确认的那一份，旧记忆整体进历史版本，可回滚。
   async applyPendingMemory(id) {
     return this.exclusive(async () => {
@@ -1487,11 +1523,13 @@ export class AIAssistant {
       if (!incoming) throw new AppError('待确认的记忆已不存在');
       const result = await this.provider.complete(this.modelFor('learning'), memoryMergePrompt,
         { kind: profile.kind, label: profile.label, timezone: 'Asia/Shanghai',
-          current: { entries: current.entries.map(entry => ({ text: entry.text })) },
-          incoming: { entries: incoming.entries.map(entry => ({ text: entry.text })) } },
+          current: { entries: current.entries.map(memoryMergeEntry) },
+          incoming: { entries: incoming.entries.map(memoryMergeEntry) } },
         signal, { budget: 16384 });
       const merged = memoryValue(result?.memory);
       if (!merged) throw new AppError('模型返回的记忆格式不正确');
+      const recordedAtById = new Map([...current.entries, ...incoming.entries].filter(entry => Number.isSafeInteger(entry.recordedAt)).map(entry => [entry.id, entry.recordedAt]));
+      merged.entries = merged.entries.map(entry => Number.isSafeInteger(recordedAtById.get(entry.id)) ? { ...entry, recordedAt: recordedAtById.get(entry.id) } : entry);
       const stored = this.data.profiles[id];
       if (!stored || revision !== this.revision) return;
       // 合并结果不直接写入：它替换掉待确认内容，等用户再确认一次。
@@ -1895,22 +1933,34 @@ export class AIAssistant {
         };
         try {
           let messages = [];
-          try { messages = (await this.read(profile, signal)).messages; }
-          catch (error) { if (signal.aborted || account !== this.data.account || error.code === 'ai_account_changed') throw error; }
+          // Use the stored execution timestamp to read only the nearby indexed
+          // window. Loading the full conversation before opening the chat made
+          // this navigation slow and fragile for long histories.
+          if (Number.isFinite(meta?.at)) try {
+            const center = Math.floor(meta.at / 1000);
+            // A 15 minute window is usually enough to identify the message,
+            // but sparse conversations may not provide the neighboring rows
+            // the native locator needs for a unique sequence. Expand only
+            // when needed, and stop once we have a bounded context.
+            for (const radius of [900, 7200, 86400]) {
+              const range = (await readStableRange(this.bridge, {
+                account, contact: profile.contact, from: Math.max(0, center - radius),
+                to: center + radius + 1, signal, skipUnparsed: true,
+              })).messages;
+              messages = range;
+              const candidate = range.some(m => m.id === messageId) ? messageId : resolve(range);
+              const candidateIndex = range.findIndex(m => m.id === candidate && m.direction === direction);
+              if (candidateIndex >= 0 && range.length >= 3) break;
+            }
+          } catch (error) { if (signal.aborted || account !== this.data.account || error.code === 'ai_account_changed') throw error; }
           let target = messages.some(m => m.id === messageId) ? messageId : resolve(messages);
-          // 只有按真实消息 ID 或按正文都没匹配上时，才付出整段历史的读取代价。
-          if (target === messageId && !messages.some(m => m.id === messageId) && this.bridge.readRange && Number.isFinite(meta?.at)) {
-            const from = Math.max(0, Math.floor(meta.at / 1000) - 86400), to = Math.ceil(meta.at / 1000) + 86400;
-            messages = (await readStableRange(this.bridge, { account, contact: profile.contact, from, to, signal, skipUnparsed: true })).messages;
-            target = resolve(messages);
-          }
           const index = messages.findIndex(m => m.id === target && m.direction === direction);
           if (index >= 0) {
             let context = messages.slice(Math.max(0, index - 30), index + 31);
             while (context.length > 3 && Buffer.byteLength(JSON.stringify(context)) > 60000) {
               if (context.findIndex(m => m.id === target) > context.length / 2) context.shift(); else context.pop();
             }
-            if (Buffer.byteLength(JSON.stringify(context)) <= 60000) locate = { messageId: target, messages: context };
+            if (context.length >= 3 && Buffer.byteLength(JSON.stringify(context)) <= 60000) locate = { messageId: target, messages: context };
           }
         } catch (error) { if (signal.aborted || account !== this.data.account || error.code === 'ai_account_changed') throw error; }
       }
@@ -1918,7 +1968,42 @@ export class AIAssistant {
       if (signal.aborted || account !== this.data.account || result?.opened !== true) throw new AppError('尚未确认打开目标聊天，请重试');
       // 按正文匹配时定位的是解析出的真实消息 ID，不再等于记录里保存的 ID。
       const located = !!locate && result.located === true && result.messageId === locate.messageId;
-      return { opened: true, id, contact: profile.contact, account, ...(messageId ? { located, messageId, ...(!located ? { notice: '已打开聊天，暂时无法定位该消息' } : {}) } : {}) };
+      return { opened: true, id, contact: profile.contact, account, ...(messageId ? { located, messageId,
+        ...(result.diagnostic ? { diagnostic: result.diagnostic } : {}), ...(!located ? { notice: '已打开聊天，暂时无法定位该消息' } : {}) } : {}) };
+    });
+  }
+  async setContactRemark(id, value = {}) {
+    return this.exclusive(async () => {
+      const profile = this.profile(id), remark = typeof value?.remark === 'string' ? value.remark.trim() : '';
+      if (profile.kind !== 'person' || profile.account !== this.data.account
+          || !/^[a-f0-9]{64}$/.test(profile.account || '')
+          || !/^[a-f0-9]{64}$/.test(profile.contact || '')) {
+        throw new AppError('联系人或微信账号身份已变化，请先刷新联系人', 409);
+      }
+      if (!remark || remark.length > 120 || /[\x00-\x1f\x7f]/.test(remark)) throw new AppError('微信备注须为 1–120 个有效字符');
+      const writeRemark = this.bridge?.setContactRemark;
+      if (typeof writeRemark !== 'function') throw new AppError('当前微信连接没有受支持的备注写入接口', 409);
+      const account = this.data.account, contact = profile.contact;
+      this.invalidate(); this.userBusyUntil = this.now() + 15000;
+      const signal = this.controller.signal;
+      const result = await writeRemark.call(this.bridge, { account, contact, remark, signal });
+      if (signal.aborted || this.data.account !== account || result?.updated !== true
+          || result.account !== account || result.contact !== contact || result.remark !== remark || result.verified !== true) {
+        throw new AppError('微信未确认备注已更新，请勿重复操作', 409);
+      }
+      return this.publicState();
+    });
+  }
+  async openConversationFast(id) {
+    return this.exclusive(async () => {
+      const profile = this.profile(id);
+      if (!this.eligible(profile) || profile.account !== this.data.account) throw new AppError('请先刷新对应账号的联系人');
+      if (!this.bridge.openChat) throw new AppError('当前无法打开微信聊天，请稍后重试');
+      this.invalidate(); this.userBusyUntil = this.now() + 15000;
+      const account = this.data.account, signal = this.controller.signal;
+      const result = await this.bridge.openChat({ account, contact: profile.contact, signal });
+      if (signal.aborted || account !== this.data.account || result?.opened !== true) throw new AppError('尚未确认打开目标聊天，请重试');
+      return { opened: true, locating: true, id, contact: profile.contact, account };
     });
   }
   async observe(profile, snapshot) {

@@ -54,14 +54,14 @@ test('learned memory is encrypted, used only for this contact, and never updates
   await a.tick();
 });
 
-test('nonempty manual memory survives learning; explicitly empty memory is filled by the next learning', async t => {
+test('nonempty manual memory survives learning; explicitly deleted facts stay suppressed', async t => {
   const { a, provider, p } = await fixture(t);
   for (const summary of ['本人确认：周六再联系', '']) {
     await a.editMemory(p.id, { summary });
     provider.next = async input => { assert.equal(input.previousMemory.summary, summary); return { style: learningStyle, memory: { summary: '模型新整理' } }; };
     await a.learn({ contacts: [p.contact] });
     const result = a.publicState().profiles.find(x => x.id === p.id);
-    assert.equal(result.memory.summary, summary ? summary + '\n模型新整理' : '模型新整理');
+    assert.equal(result.memory.summary, summary ? summary + '\n模型新整理' : '');
     assert.ok(!result.memorySuggestion, 'non-conflicting facts append without replacing manual text');
   }
   provider.next = async () => ({ style: learningStyle }); await a.learn({ contacts: [p.contact] });
@@ -101,6 +101,7 @@ test('a record whose ID is a local send operation is located by its own encrypte
   const p = a.profiles().find(x => x.contact === contact);
   const real = bridge.push(contact, 'self', 'LOCAL_OPERATION_PRIVATE');
   real.timestamp = Math.floor(a.now() / 1000);
+  const afterReal = bridge.push(contact, 'other', '邻近上下文'); afterReal.timestamp = real.timestamp + 2;
   // 发送结果待核对时保存的是本机 operationId：微信历史里不存在这个 ID，只能按
   // 本条记录自己的加密正文和记录时间找到真实消息。
   p.generatedIds = [];
@@ -111,7 +112,7 @@ test('a record whose ID is a local send operation is located by its own encrypte
   assert.equal(located.located, true);
   assert.equal(requests[0].locate.messageId, real.id);
   // 正文相同且时间接近的消息不止一条时不做猜测，只打开聊天并给出提示。
-  const twin = bridge.push(contact, 'self', 'LOCAL_OPERATION_PRIVATE'); twin.timestamp = real.timestamp + 1;
+  const twin = bridge.push(contact, 'self', 'LOCAL_OPERATION_PRIVATE'); twin.timestamp = real.timestamp + 3;
   assert.match((await a.openConversation(p.id, { messageId: operationId })).notice, /暂时无法定位/);
   // 记录 ID 本身是真微信消息 ID 时仍按 ID 定位，不受正文匹配影响。
   p.generatedIds = [real.id];

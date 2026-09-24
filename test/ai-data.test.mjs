@@ -134,6 +134,37 @@ test('explicit review navigation checks the bound native identity without insert
   bridge.invoke = async () => ({ account: person.native.account, contact: key('wrong-person'), revision });
   await assert.rejects(bridge.openChat({ account, contact: second }));
 });
+test('verified native open survives locator miss and exposes only an allowlisted phase/code', async () => {
+  const { bridge, runtime } = fixture();
+  runtime.foregroundRequested = async () => {};
+  await bridge.scan();
+  const messageId = key('target-message');
+  bridge.invoke = async (action, args) => {
+    assert.equal(action, 'open-chat');
+    return { account: args.account, contact: args.contact, opened: true, located: false, messageId,
+      diagnostic: { phase: 'native-locate', code: 'not-located', message: 'PRIVATE_CHAT_TEXT' } };
+  };
+  const result = await bridge.openChat({ account, contact, locate: { messageId, messages: [
+    { id: key('before'), direction: 'other', text: 'PRIVATE_CHAT_TEXT' },
+    { id: messageId, direction: 'other', text: 'PRIVATE_CHAT_TEXT' },
+    { id: key('after'), direction: 'self', text: 'PRIVATE_CHAT_TEXT' },
+  ] } });
+  assert.deepEqual(result, { opened: true, located: false, messageId,
+    diagnostic: { phase: 'native-locate', code: 'not-located' } });
+  assert.doesNotMatch(JSON.stringify(result), /PRIVATE_CHAT_TEXT/);
+});
+test('native locator exception after a verified open is a retryable location miss, not an open failure', async () => {
+  const { bridge, runtime } = fixture();
+  runtime.foregroundRequested = async () => {};
+  await bridge.scan();
+  bridge.invoke = async (action, args) => {
+    assert.equal(action, 'open-chat');
+    return { available: false, error: 'unsupported', opened: false,
+      diagnostic: { phase: 'native-locate-recheck', code: 'controls-unavailable', detail: 'PRIVATE_CHAT_TEXT' } };
+  };
+  await assert.rejects(bridge.openChat({ account, contact, locate: { messageId: key('target') } }),
+    { code: 'ai_chat_state_unverified' });
+});
 test('cancel, process changes and account changes discard returned data', async () => {
   for (const change of ['cancel', 'process', 'account']) {
     const controller = new AbortController();
