@@ -197,7 +197,7 @@ fnOS x86_64/ARM64 双架构 FPK：`dist/releases/0.8.10/0.8.10-debug.001/qibox-0
 
 - 完成 AI 回复记录总结、未回复标记待总结、当前账号联系人定位授权、活动记录删除、模型分配保存边界及接续设置布局调整。UGOS 开发与打包仍暂停。
 - 本地 Node 回归 713 通过、0 失败、1 项 UGOS 专属检查跳过；AI 浏览器 UI 回归、`npm run check`、Python 定位测试 3 项通过。
-- fnOS x86_64 通用 FPK：`dist/releases/0.8.15/0.8.15-debug.002/qibox-0.8.15-debug.002-all.fpk`；大小与 SHA-256 待打包完成后填写。
+- fnOS x86_64 通用 FPK：`dist/releases/0.8.15/0.8.15-debug.002/qibox-0.8.15-debug.002-all.fpk`；491575270 字节，SHA-256 `7185b279cab0051aa1463544ed50eb581f380f567eb6793277c80ab28aaaa81d`。
 - `.002` 定位请求经授权并打开聊天，但 native 滚动未确认目标；随后定位器修复进入 `.003`。该候选被 supersede，不作为最终验收包。
 
 ## 开发测试回执：0.8.15-debug.003（2026-09-24）
