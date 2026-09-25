@@ -367,7 +367,7 @@
 
 | 触发类型 | 开关 | 必须条件 | 模型动作 |
 |---|---|---|---|
-| @我 | `groupOptions.atMe=true` | 对方消息、mentions 已验证、`mentions.self=true` | 只能 `send` 或 `skip`，不能 `wait` |
+| @我 | `groupOptions.atMe=true` | 对方消息、mentions 已验证、`mentions.self=true` | 普通回复必须 `send`；明确停止联系可 `stop=true` 并设置5分钟 `stopUntil`，不能 `wait` |
 | @所有人 | `groupOptions.atAll=true` | 对方消息、mentions 已验证、`mentions.all=true` | `send`、`skip` 或 `wait` |
 | 实时回复 | `groupOptions.realtime=true` | 对方消息、mentions 已验证、不是 @我/@所有人/仅 @他人 | `send`、`skip` 或 `wait` |
 | 仅 @其他成员 | 任意 | `mentions.others=true` | 不参与处理 |
@@ -393,7 +393,7 @@
 | 场景 | 处理结果 |
 |---|---|
 | @我且问题明确 | 优先生成针对问题的文字回复，不允许模型 wait |
-| @我但内容无关/无法安全处理 | `skip` 当前轮，群聊本身不暂停 |
+| @我但模型判断无需回复 | 重试一次；仍无相关文字则明确报错，不按普通 `skip` 消费本轮。安全拦截按对应规则处理 |
 | @所有人 | 模型判断是否参与；可发送、跳过或短暂等待 |
 | 群友互聊 | realtime 模式下通常 `skip` |
 | 只有表情、收到、刷屏 | 通常 `skip` |
