@@ -1,6 +1,6 @@
 import { learningPrompt, learningPromptFor, learningWithMemoryPrompt, defaultLearningSummaryPrompt, conversationPrompt, addressingPrompt, generationPrompt, generationProtocol, proactivePrompt, proactiveBackgroundPrompt, proactiveBackgroundTtl, messageSegments } from './ai-prompts.mjs';
 import path from 'node:path';
-import { chatMemoryPrompt, mergeMemory, editMemory as changeMemory } from './ai-wiki.mjs';
+import { chatMemoryPrompt, mergeMemory, editMemory as changeMemory, pointInTimeMemory } from './ai-wiki.mjs';
 import { defaultTakeover, takeoverValue, effectiveTakeover, identityPrompt, asksIdentity } from './ai-reply-rules.mjs';
 import { activityMessages, isDeletedActivityRecord, recordSource } from './ai-activity-records.mjs';
 import { memoryPrompt, memoryLearningPrompt, memoryMergePrompt, memoryValue, readMemory, learnedMemory, replaceMemory } from './ai-memory.mjs';
@@ -387,7 +387,7 @@ export class AIAssistant {
   // explicit step, and a new run simply replaces the unconfirmed candidate.
   setPendingMemory(profile, value, { source = 'learned', coverage = null } = {}) {
     const stored = this.data.profiles[profile.id] || profile;
-    this.data.profiles[profile.id] = { ...stored, pendingMemory: this.vault.seal(value), pendingMemoryAt: this.now(), pendingMemorySource: source, memoryMerge: null,
+    this.data.profiles[profile.id] = { ...stored, pendingMemory: this.vault.seal(pointInTimeMemory(value)), pendingMemoryAt: this.now(), pendingMemorySource: source, memoryMerge: null,
       ...(coverage ? { pendingMemoryCoverage: coverage } : {}),
       source: stored.source || source, paused: stored.paused || false, rounds: stored.rounds || 0 };
     return this.data.profiles[profile.id];
@@ -2318,7 +2318,16 @@ export class AIAssistant {
     delete profile.groupWait;
     if (this.data.settings.updateStyle && result.style) { const style = styleValue(result.style); for (const field of [...(profile.locked || []), 'customTone', 'customAvoid']) style[field] = profile.style[field]; profile.style = style; profile.styleId = selectedStyleId(profile, style, profile.styleId ?? '', true, this.data.learnedDefaultStyle?.style); profile.replyStyleSet = true; }
     if (Array.isArray(result.memoryUpdates)) {
-      try { Object.assign(profile, mergeMemory(this.vault, profile, {entries:result.memoryUpdates}, this.now(), { evidence: new Set(modelMessages.filter(m => m.id && !m.aiGenerated && !(profile.generatedIds || []).includes(m.id)).map(m => m.id)) })); }
+      try {
+        const evidenceMessages = modelMessages.filter(m => m.id && !m.aiGenerated && !(profile.generatedIds || []).includes(m.id));
+        const evidenceById = new Map(evidenceMessages.map(message => [message.id, message]));
+        const memoryUpdates = result.memoryUpdates.map(entry => {
+          if (!['residence','workplace','employer','shipping'].includes(entry.field) || Number.isSafeInteger(entry.recordedAt)) return entry;
+          const source = (Array.isArray(entry.evidence) ? entry.evidence : []).map(id => evidenceById.get(id)).find(message => Number.isSafeInteger(message?.timestamp));
+          return source ? { ...entry, recordedAt: source.timestamp * 1000 } : entry;
+        });
+        Object.assign(profile, mergeMemory(this.vault, profile, { entries: memoryUpdates }, this.now(), { evidence: new Set(evidenceMessages.map(m => m.id)) }));
+      }
       catch { profile.memoryNotice = '本轮记忆格式无效，已保留原记忆。'; }
     }
     if (result.action !== 'send') {

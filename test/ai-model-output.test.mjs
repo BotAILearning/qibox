@@ -81,6 +81,10 @@ test('记忆学习覆盖全部材料、筛掉寒暄占位并允许空 entries', 
     assert.match(prompt, /entries/);
   }
   assert.match(memoryLearningPrompt, /"entries":\[\]/);
+  assert.match(memoryLearningPrompt,/date 只记录两个人之间的重要纪念日/);
+  assert.match(memoryLearningPrompt,/不要输出 from\/to 时间段/);
+  assert.match(memoryLearningPrompt,/消息时间是 2026-09-25，当时说“去年”就换算为 2025-09-25/);
+  assert.match(memoryLearningPrompt,/不得使用本次学习时间/);
   for (const prompt of [learningWithMemoryPrompt, batchLearningWithMemoryPrompt]) {
     assert.doesNotMatch(prompt, /memoryMaterial/);
     assert.match(prompt, /entries 可以为空/);

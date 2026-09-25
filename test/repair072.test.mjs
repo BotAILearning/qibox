@@ -41,8 +41,8 @@ test('single and multi-contact learning request style plus independent memory pe
   let prompt = f.provider.calls.at(-1).system;
   // 风格按五个层次输出，memory 由追加的记忆规则在同一个 JSON 中返回。
   assert.match(prompt, /"style":\{"language":"语言层","rhythm":"节奏层","interaction":"互动层","emotion":"情感层","role":"角色层"\}/);
-  assert.match(prompt, /在同一个 JSON 中返回 memory:\{"entries":\[\{"id":"修改旧条目时原样引用其id，新增时省略","field":"可选的字段类型，无法分类时为other","calendar":"日期字段可选 solar 或 lunar","degree":"学历字段可选","text":"一条有事实依据的记忆"\}\]\}/);
-  assert.match(prompt, /其他日期明确区分 calendar=solar\/lunar/);
+  assert.match(prompt, /在同一个 JSON 中返回 memory:\{"entries":\[\{"id":"修改旧条目时原样引用其id，新增时省略","field":"可选的字段类型，无法分类时为other","calendar":"日期字段可选 solar 或 lunar","degree":"学历字段可选","text":"一条有事实依据的记忆","recordedAt":0\}\]\}/);
+  assert.match(prompt, /生日及纪念日明确区分 calendar=solar\/lunar/);
   const before = f.provider.calls.length;
   await f.a.learn({ contacts: f.bridge.contacts.slice(0, 2).map(c => c.id) });
   const calls = f.provider.calls.slice(before);

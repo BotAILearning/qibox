@@ -537,14 +537,8 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
   function wikiEntries(form) {
     const list = form?.querySelector('[data-ai-wiki-entities]'); if (!list) return [];
     return [...list.querySelectorAll('.ai-wiki-bubble')].map(row => {
-      const timestamp = (which, end = false) => {
-        const input=row.querySelector(`[aria-label="${which==='from'?'开始时间':'结束时间'}"]`), raw=row.querySelector(`[data-ai-wiki-${which}]`)?.value, old=Number(raw);
-        if (!input?.value) return undefined;
-        if (Number.isSafeInteger(old) && new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(old) === input.value) return old;
-        return Date.parse(input.value + (end ? 'T23:59:59+08:00' : 'T00:00:00+08:00'));
-      };
-      const field=row.querySelector('select[aria-label="信息类型"]').value, from=timestamp('from'), to=timestamp('to',true), temporal=['residence','workplace','employer','shipping'].includes(field), calendar=['birthday','date'].includes(field), rawRecorded=row.querySelector('[data-ai-wiki-recorded]')?.value, recordedAt=rawRecorded ? Number(rawRecorded) : undefined;
-      return { ...(row.querySelector('[data-ai-wiki-id]')?.value ? { id: row.querySelector('[data-ai-wiki-id]').value } : {}), field, text: row.querySelector('[aria-label="信息内容"]').value.trim(), ...(field==='school' && row.querySelector('[aria-label="学历"]')?.value ? { degree: row.querySelector('[aria-label="学历"]').value } : {}), ...(calendar && row.querySelector('select[aria-label="生日历法"]')?.value ? { calendar: row.querySelector('select[aria-label="生日历法"]').value } : {}), ...(temporal && from !== undefined ? { from } : {}), ...(temporal && to !== undefined ? { to } : {}), ...(temporal && Number.isSafeInteger(recordedAt) ? { recordedAt } : {}) };
+      const field=row.querySelector('select[aria-label="信息类型"]').value, temporal=['residence','workplace','employer','shipping'].includes(field), calendar=['birthday','date'].includes(field), rawRecorded=row.querySelector('[data-ai-wiki-recorded]')?.value, recordedAt=rawRecorded ? Number(rawRecorded) : undefined;
+      return { ...(row.querySelector('[data-ai-wiki-id]')?.value ? { id: row.querySelector('[data-ai-wiki-id]').value } : {}), field, text: row.querySelector('[aria-label="信息内容"]').value.trim(), ...(field==='school' && row.querySelector('[aria-label="学历"]')?.value ? { degree: row.querySelector('[aria-label="学历"]').value } : {}), ...(calendar && row.querySelector('select[aria-label="生日历法"]')?.value ? { calendar: row.querySelector('select[aria-label="生日历法"]').value } : {}), ...(temporal && Number.isSafeInteger(recordedAt) && recordedAt > 0 ? { recordedAt } : {}) };
     }).filter(x => x.text);
   }
   function styleResults(profiles, editable = true) {
@@ -610,7 +604,7 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
   function profileEditor(profile) {
     if (profile.pendingStyle) profile={...profile,style:profile.pendingStyle};
     const draft = profileDrafts.get(profile.id), v = { ...profile.style, summary: summaryText(profile.style), ...draft }, reply = { ...replyStrategy(), ...profile.replyStrategy, ...draft };
-    return `<form id="ai-profile-form" data-id="${profile.id}"><button type="button" class="quiet" data-ai-action="back-learning">${icon('arrow-l')}返回学习结果</button><h3>${profileName(profile)}的聊天风格</h3>${field('summary', '风格总结（可修改）', v.summary, 6000, '例如：表达简洁，语气自然，不添加没有依据的称呼。')}${field('customAvoid', '注意事项（可选）', v.customAvoid, 1200)}${memoryFields({ ...profile, capabilities: state.capabilities }, draft?.memorySummary)}<details class="ai-paste"><summary>回复策略（可选）</summary>${field('replyGoal', '回复目的与立场', reply.replyGoal)}${field('facts', '允许使用的信息', reply.facts, 4000)}${field('boundaries', '注意事项', reply.boundaries)}<label class="ai-field">连续自动回复上限<input name="maxRounds" type="number" min="1" max="2000" value="${reply.maxRounds ?? 50}"></label></details><div class="ai-actions"><button type="submit" class="primary">保存风格</button>${profile.kind !== 'group' && profile.delivery?.status === 'uncertain' ? '<a href="#ai-review" data-ai-review="' + profile.id + '">核验发送结果</a>' : ''}<button type="button" class="quiet danger-link" data-ai-action="delete-profile">删除风格</button></div></form>`;
+    return `<form id="ai-profile-form" data-id="${profile.id}"><button type="button" class="quiet" data-ai-action="back-learning">${icon('arrow-l')}返回学习结果</button><h3>${profileName(profile)}的聊天风格</h3>${field('summary', '风格总结（可修改）', v.summary, 6000, '例如：表达简洁，语气自然，不添加没有依据的称呼。')}${field('customAvoid', '注意事项（可选）', v.customAvoid, 1200)}${memoryFields({ ...profile, capabilities: state.capabilities }, draft?.memorySummary)}<details class="ai-paste"><summary>回复策略（可选）</summary>${field('replyGoal', '回复目的与立场', reply.replyGoal)}${field('facts', '允许使用的信息', reply.facts, 4000)}${field('boundaries', '注意事项', reply.boundaries)}<label class="ai-field">连续自动回复上限<input name="maxRounds" type="number" min="1" max="2000" value="${reply.maxRounds ?? 50}"></label></details><div class="ai-actions"><button type="submit" class="primary">保存设置</button>${profile.kind !== 'group' && profile.delivery?.status === 'uncertain' ? '<a href="#ai-review" data-ai-review="' + profile.id + '">核验发送结果</a>' : ''}<button type="button" class="quiet danger-link" data-ai-action="delete-profile">删除风格</button></div></form>`;
   }
   function manualReplyEditor() {
     const contact = state.contacts.find(c => c.id === editingReplyContact && c.kind === 'person');
@@ -812,9 +806,15 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
         let degree = wikiRow.querySelector('[aria-label="学历"]');
         if (school && !degree) { degree = document.createElement('input'); degree.className = 'ai-wiki-degree'; degree.setAttribute('aria-label', '学历'); degree.maxLength = 120; degree.placeholder = '学历'; wikiRow.insertBefore(degree, wikiRow.querySelector('[data-ai-wiki-remove]')); }
         if (degree) degree.hidden = !school;
-        let range = wikiRow.querySelector('.ai-wiki-date-range');
-        if (temporal && !range) { range = document.createElement('span'); range.className = 'ai-wiki-date-range'; range.innerHTML = '<label>生效自<input type="hidden" data-ai-wiki-from><input type="date" aria-label="开始时间"></label><label>截至<input type="hidden" data-ai-wiki-to><input type="date" aria-label="结束时间"></label>'; wikiRow.insertBefore(range, wikiRow.querySelector('[data-ai-wiki-remove]')); }
-        if (temporal && !wikiRow.querySelector('[data-ai-wiki-recorded]')?.value) wikiRow.querySelector('[data-ai-wiki-recorded]').value = String(Date.now());
+        let schoolName = wikiRow.querySelector('.ai-wiki-school-name');
+        if (school && !schoolName) { schoolName = document.createElement('small'); schoolName.className = 'ai-wiki-school-name'; wikiRow.insertBefore(schoolName, wikiRow.querySelector('[aria-label="信息内容"]')); }
+        if (schoolName) schoolName.hidden = !school;
+        if (school && !wikiRow.querySelector('[aria-label="信息内容"]').value) wikiRow.querySelector('[aria-label="信息内容"]').placeholder = '具体学校';
+        const range = wikiRow.querySelector('.ai-wiki-date-range');
+        if (range) range.remove();
+        let recorded = wikiRow.querySelector('.ai-wiki-recorded');
+        if (temporal && !recorded) { recorded = document.createElement('small'); recorded.className = 'ai-wiki-recorded'; wikiRow.insertBefore(recorded, wikiRow.querySelector('[data-ai-wiki-remove]')); }
+        if (recorded) { const rawTime = wikiRow.querySelector('[data-ai-wiki-recorded]')?.value, stamp = Number(rawTime); recorded.hidden = !temporal; if (temporal) recorded.textContent = `时间：${Number.isSafeInteger(stamp) && stamp ? new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', dateStyle: 'medium', timeStyle: 'short' }).format(stamp) : '未知'}`; }
         if (range) range.hidden = !temporal;
         const remarkAction = wikiRow.querySelector('[data-ai-wiki-remark]');
         if (remarkAction) remarkAction.hidden = !state.capabilities?.writeContactRemark || !['name'].includes(input.value);
@@ -826,7 +826,8 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
           if (isOther) { replacement.rows = 1; resizeWikiTextarea(replacement); }
           content.replaceWith(replacement);
         }
-        const target = wikiRow.closest('[data-ai-wiki-entities]')?.querySelector(`[data-ai-wiki-field="${input.value}"] .ai-wiki-field-values`);
+        const targetField = ['workplace', 'employer'].includes(input.value) ? 'work' : input.value;
+        const target = wikiRow.closest('[data-ai-wiki-entities]')?.querySelector(`[data-ai-wiki-field="${targetField}"] .ai-wiki-field-values`);
         if (target && wikiRow.parentElement !== target) target.append(wikiRow);
         return;
       }
@@ -905,6 +906,11 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
   });
   panel.addEventListener('input', event => {
     if (event.target?.matches?.('.ai-wiki-bubble textarea[aria-label="信息内容"]')) resizeWikiTextarea(event.target);
+    const wikiRow = event.target?.closest?.('.ai-wiki-bubble');
+    if (wikiRow && (event.target.matches('[aria-label="信息内容"]') || event.target.matches('[aria-label="学历"]'))) {
+      const label = wikiRow.querySelector('.ai-wiki-school-name');
+      if (label) label.textContent = `${wikiRow.querySelector('[aria-label="学历"]')?.value.trim() || '学历未注明'}：${wikiRow.querySelector('[aria-label="信息内容"]')?.value.trim() || '具体学校'}`;
+    }
     if (event.target.closest('#ai-object-form') && event.target.name === 'summary') {
       const form = event.target.form;
       form.elements.styleId.value = 'custom';
@@ -971,7 +977,6 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
       const wiki = form.querySelector('[data-ai-wiki-entities]');
       if (wiki) {
         const entries = wikiEntries(form);
-        if (entries.some(entry => entry.from !== undefined && entry.to !== undefined && entry.from > entry.to)) throw new Error('结束时间不能早于开始时间');
         form.querySelector('[name=memorySummary]').value = JSON.stringify(entries);
         data.set('memorySummary', JSON.stringify(entries));
       }
@@ -1100,7 +1105,7 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
           await step('profile', { id: key, value: { style: { summary: data.get('summary'), customAvoid: data.get('customAvoid') || '' } } });
           if (Object.keys(reply).some(k => reply[k] !== (base[k] ?? ''))) await step('strategy', { id: key, mode: 'reply', value: { ...base, ...reply } });
           profileDrafts.delete(key); editingProfile = null; tab = profileReturn;
-        }, '风格已保存');
+        }, '设置已保存');
       }
     } catch (e) { message(e.message, true); }
   });
@@ -1156,7 +1161,7 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
         const section=button.closest('[data-ai-wiki-field]') || entities?.querySelector(`[data-ai-wiki-field="${field}"]`);
         const list = section?.querySelector('.ai-wiki-field-values');
         if (!list) return;
-        list.insertAdjacentHTML('beforeend', wikiEntryMarkup({ field, text: '' }, state.capabilities?.writeContactRemark === true));
+        list.insertAdjacentHTML('beforeend', wikiEntryMarkup({ field, text: '', ...(field === 'school' ? { degree: '' } : {}) }, state.capabilities?.writeContactRemark === true));
         const added = list.lastElementChild; const content = added.querySelector('[aria-label="信息内容"]');
         if (content?.tagName === 'TEXTAREA') resizeWikiTextarea(content);
         content?.focus(); return;
