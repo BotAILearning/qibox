@@ -201,7 +201,7 @@ export class NativeChatBridge {
       });
       let output = '', killed = false, overflow = false, killTimer;
       const abort = () => { killed = true; child.kill('SIGTERM'); killTimer ??= setTimeout(() => child.kill('SIGKILL'), 2500); };
-      const timeoutMs = ['send', 'send-guard'].includes(action) ? 32000 : action === 'open-chat' && args.locate ? 155000 : 95000;
+      const timeoutMs = ['send', 'send-guard'].includes(action) ? 32000 : 95000;
       const timer = setTimeout(abort, timeoutMs); signal?.addEventListener('abort', abort, { once: true });
       const cleanup = () => { clearTimeout(timer); clearTimeout(killTimer); signal?.removeEventListener('abort', abort); };
       child.stdin.on('error', () => {});

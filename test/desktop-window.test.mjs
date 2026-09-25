@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { wechatWindowVisible, restoreWechatWindow, DesktopWindowState } from '../server/desktop.mjs';
+import { Runtime } from '../server/runtime.mjs';
 test('only the requested WeChat main window determines visibility and restoration', async () => {
   let state = 1; const mapped = [];
   const options = { root: '/runtime', env: {}, pid: 100, command: async (bin, args) => {
@@ -24,4 +25,9 @@ test('window observation is throttled, expires and rejects results from an old s
   state.probe = () => new Promise(r => { resolve = r; });
   const pending = state.refresh(true); await Promise.resolve(); state.reset(); resolve(true); await pending;
   assert.equal(state.state(true), null); assert.equal(state.state(false), false);
+});
+
+test('chat open reuses a recent verified visible window without another X scan', async () => {
+  const runtime = { isWechat: true, status: 'running', desktopEnv: {}, windowState: { state: () => true } };
+  assert.equal(await Runtime.prototype.showWindow.call(runtime), false);
 });

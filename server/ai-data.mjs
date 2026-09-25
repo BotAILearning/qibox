@@ -13,14 +13,14 @@ const label = value => typeof value === 'string' && !!value.trim() && value.leng
 const nicknameValue = value => value === undefined || value === null || (typeof value === 'string' && value.length <= 120 && !/[\x00-\x1f\x7f]/.test(value));
 const unavailable = () => new AppError('暂时无法读取微信数据，请检查当前微信会话后重试；此错误不代表微信一定未登录', 409, 'ai_data_unavailable');
 const loggedOut = () => new AppError('微信当前未登录，请在应用里登录后重试', 409, 'ai_wechat_logged_out');
-const nativeOpenPhases = new Set(['native-start', 'native-session', 'native-navigation', 'native-prepare', 'native-chat-opened', 'native-locate', 'native-locate-recheck']);
-const nativeOpenCodes = new Set(['timeout', 'cancelled', 'controls-unavailable', 'controls-budget-exhausted', 'history-changed', 'alignment-failed', 'native-locate-error', 'not-located']);
+const nativeOpenPhases = new Set(['native-start', 'native-session', 'native-navigation', 'native-prepare', 'native-chat-opened']);
+const nativeOpenCodes = new Set(['timeout', 'cancelled', 'controls-unavailable']);
 const nativeRequestCodes = new Set(['ai_account_changed', 'ai_chat_state_unverified', 'ai_data_unavailable', 'ai_wechat_logged_out']);
 function safeNativeOpenDiagnostic(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const { phase, code } = value;
   if (!nativeOpenPhases.has(phase) || !nativeOpenCodes.has(code)) return null;
-  return { phase, code, ...(Number.isInteger(value.pages) && value.pages >= 0 && value.pages <= 1000 ? { pages: value.pages } : {}) };
+  return { phase, code };
 }
 const readFailure = stage => {
   // Every stage the private reader can report is named here. An unmapped stage
@@ -223,7 +223,7 @@ export class DataChatBridge extends NativeChatBridge {
         throw unavailable();
       }
       const route = { ...target.native, label: target.label, kind: binding.kind, source: 'contacts',
-        background: { account: binding.account, contact: binding.id }, ...(binding.sessionHint ? { sessionHint: binding.sessionHint } : {}), ...(args.locate ? { locate: args.locate } : {}) };
+        background: { account: binding.account, contact: binding.id }, ...(binding.sessionHint ? { sessionHint: binding.sessionHint } : {}) };
       let result;
       try { result = await this.request('open-chat', route, context); }
       catch (error) {
@@ -236,15 +236,10 @@ export class DataChatBridge extends NativeChatBridge {
       const diagnostic = safeNativeOpenDiagnostic(result.diagnostic);
       if (!accountMatch || !contactMatch || !opened) {
         const phase = diagnostic?.phase || 'native-contract', code = diagnostic?.code || 'result-mismatch';
-        console.error('[ai-open-chat-native-result]', JSON.stringify({ phase, code, ...(diagnostic?.pages !== undefined ? { pages: diagnostic.pages } : {}) }));
-        if (['native-locate', 'native-locate-recheck'].includes(diagnostic?.phase)) {
-          throw new AppError('打开后的微信会话状态无法复核，请返回未回复记录重试', 409, 'ai_chat_state_unverified');
-        }
+        console.error('[ai-open-chat-native-result]', JSON.stringify({ phase, code }));
         throw unavailable();
       }
-      const located = result.located === true && result.messageId === args.locate?.messageId;
-      if (args.locate && !located) console.error('[ai-open-chat-locate]', JSON.stringify({ phase: diagnostic?.phase || 'native-locate', code: diagnostic?.code || 'not-located', ...(diagnostic?.pages !== undefined ? { pages: diagnostic.pages } : {}) }));
-      return { opened: true, ...(args.locate ? { located, messageId: args.locate.messageId, ...(diagnostic ? { diagnostic } : {}) } : {}) };
+      return { opened: true };
     }
     if (action === 'send') return this.sendData(args, context);
     throw unavailable();

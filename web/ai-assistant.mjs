@@ -173,30 +173,15 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
       if (valid()) { logLoading = false; drawRecords(); rememberRecords(); }
     }
   }
-  async function openConversation(profileId, messageId) {
+  async function openConversation(profileId) {
     const current = generation, target = id;
     let result;
-    try { result = await api(`/instances/${target}/ai`, { action: 'open-conversation', id: profileId, value: messageId ? { fast: true } : {} }, 30000); }
+    try { result = await api(`/instances/${target}/ai`, { action: 'open-conversation', id: profileId }, 30000); }
     catch (error) { if (current !== generation || target !== id) return; throw error; }
     if (current !== generation || target !== id) return;
     if (!result.opened) throw new Error('尚未确认打开目标聊天');
     panel.hidden = true; reviewDialog.close();
     await onOpenChat?.(target);
-    if (messageId && result.locating) {
-      const notice = document.createElement('div'); notice.className = 'ai-message-location-notice'; notice.setAttribute('role', 'status'); notice.textContent = '聊天已打开，正在定位消息…'; document.body.append(notice);
-      try { result = await api(`/instances/${target}/ai`, { action: 'locate-conversation', id: profileId, value: { messageId } }, 165000); }
-      catch (error) { if (current !== generation || target !== id) { notice.remove(); return; } notice.textContent = `聊天已打开，定位失败：${error.message}`; const retry = document.createElement('button'); retry.type='button'; retry.textContent='重试定位'; retry.onclick=()=>void openConversation(profileId,messageId); notice.append(retry); return; }
-      if (current !== generation || target !== id) { notice.remove(); return; }
-      notice.textContent = result.located ? '已打开并定位到消息' : '已打开聊天，但暂时无法定位到消息';
-      if (!result.located) { const retry = document.createElement('button'); retry.type='button'; retry.textContent='重试定位'; retry.onclick=()=>void openConversation(profileId,messageId); notice.append(retry); }
-      setTimeout(() => notice.remove(), 10000); return;
-    }
-    if (result.notice) {
-      document.querySelector('.ai-message-location-notice')?.remove();
-      const notice = document.createElement('div'); notice.className = 'ai-message-location-notice'; notice.setAttribute('role', 'status'); notice.textContent = result.notice;
-      const close = document.createElement('button'); close.type = 'button'; close.textContent = '关闭'; close.onclick = () => notice.remove(); notice.append(close);
-      document.body.append(notice); setTimeout(() => notice.remove(), 10000);
-    }
   }
   function confirmRealtime() {
     return new Promise(resolve => {
@@ -1178,7 +1163,6 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
       }
       const action = button.dataset.aiAction;
       if ('aiRetryRecords' in button.dataset) { await loadActivity(); return; }
-      if ('aiLocateMessage' in button.dataset) { await openConversation(button.dataset.profileId, button.dataset.aiLocateMessage); return; }
       if ('aiMarkReply' in button.dataset) {
         await call('mark-reply-needed', { value: { profileId: button.dataset.aiMarkReply, eventId: button.dataset.eventId, messageId: button.dataset.messageId } });
         message('已暂存；下一次自动回复前会先总结这条消息'); render(); return;

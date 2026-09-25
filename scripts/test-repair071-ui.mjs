@@ -65,10 +65,10 @@ try {
   emptyProfile.generatedIds = [key('empty-record')]; emptyProfile.sentMessages = [{ id: key('empty-record'), at: Date.now(), source: 'reply' }];
   await fixture.ai.save();
   const read = fixture.bridge.read.bind(fixture.bridge), range = fixture.bridge.readRange;
-  let unreadable = true, locatedRequest;
+  let unreadable = true, openedRequest;
   fixture.bridge.read = args => { if (unreadable && args.contact === recordProfile.contact) throw new AppError('记录读取回归失败'); return read(args); };
   fixture.bridge.readRange = args => { if (unreadable && args.contact === recordProfile.contact) throw new AppError('记录读取回归失败'); return range(args); };
-  fixture.bridge.openChat = async args => { locatedRequest = args; return { opened: true }; };
+  fixture.bridge.openChat = async args => { openedRequest = args; return { opened: true }; };
   await page.reload(); await page.locator('[data-action=open]').first().click(); await page.locator('#ai-open').click();
   await nav('activity'); await page.locator('[data-ai-record-source=reply]').click();
   await page.locator('[data-ai-retry-records]').waitFor();
@@ -78,12 +78,14 @@ try {
   await page.locator('[data-ai-retry-records]').click();
   await page.locator('.ai-contact-record').waitFor(); assert.equal(await page.locator('.ai-contact-record').count(), 1);
   await page.locator('[data-ai-record-expand] summary').click();
-  const body = page.locator('[data-ai-locate-message]'); assert.equal(await body.getAttribute('title'), '点击定位到聊天');
-  await shot('record-body'); await body.click();
-  await page.locator('.ai-message-location-notice').waitFor();
-  assert.match(await page.locator('.ai-message-location-notice').textContent(), /已打开聊天，暂时无法定位该消息/);
-  assert.equal(locatedRequest.contact, recordProfile.contact); assert.equal(locatedRequest.locate.messageId, sent.id);
-  report.checks.push('HTTP record failure is distinct and retry recovers; empty bodies are hidden; body click carries recorded ID and displays precise fallback');
+  const body = page.locator('.ai-contact-record .ai-record-message'); assert.equal(await body.count(), 1);
+  assert.equal(await body.evaluate(node => node.tagName), 'P', 'record body is static text');
+  assert.equal(await page.locator('[data-ai-locate-message]').count(), 0, 'no message-location controls remain');
+  await shot('record-body'); await page.locator('.ai-contact-record [data-ai-open-conversation]').click();
+  await page.locator('#desktop-view:not([hidden])').waitFor();
+  assert.equal(openedRequest.contact, recordProfile.contact); assert.equal(openedRequest.locate, undefined, 'opening a chat does not request message location');
+  assert.equal(await page.locator('.ai-message-location-notice').count(), 0);
+  report.checks.push('HTTP record failure is distinct and retry recovers; record body is static; open chat sends no message-location request or notice');
   assert.deepEqual(report.errors, []); report.passed = true;
 } catch (e) { report.failure = e.stack; throw e; }
 finally { await writeFile(path.join(output, 'report.json'), JSON.stringify(report, null, 2)); await browser?.close(); await fixture.close(); }

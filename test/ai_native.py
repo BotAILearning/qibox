@@ -3,7 +3,6 @@ import importlib.util
 import pathlib
 import unittest
 from unittest.mock import Mock, patch
-from types import SimpleNamespace
 
 spec = importlib.util.spec_from_file_location('native_ai', pathlib.Path(__file__).resolve().parents[1] / 'server/ai-native.py')
 native = importlib.util.module_from_spec(spec)
@@ -13,68 +12,18 @@ def msg(direction, text):
     return {'direction': direction, 'text': text}
 
 class DataGuard(unittest.TestCase):
-    def test_locator_failure_preserves_verified_chat_open_and_returns_only_safe_diagnostic(self):
+    def test_open_chat_requires_verified_session_and_matching_header(self):
         adapter = object.__new__(native.ChatAdapter)
         adapter.controls = Mock()
         adapter.controls.locate.return_value = {'label': '测试对象'}
-        adapter.controls.grant_readonly_recheck.return_value = None
         adapter.verify_session = Mock()
         adapter.phase = 'native-prepare'
-        target = {'messageId': 'opaque-id', 'messages': [{'text': 'PRIVATE_CHAT_TEXT'}]}
-        locator = SimpleNamespace(locate=Mock(side_effect=RuntimeError('PRIVATE_CHAT_TEXT')))
-        with patch.object(native, 'module', return_value=locator):
-            result = adapter.open_chat({'locate': target}, 'account-key', {'id': 'contact-key', 'label': '测试对象'})
-        self.assertEqual(result, {'account': 'account-key', 'contact': 'contact-key', 'opened': True,
-                                  'located': False, 'messageId': 'opaque-id',
-                                  'diagnostic': {'phase': 'native-locate', 'code': 'native-locate-error', 'pages': 0}})
-        self.assertNotIn('PRIVATE_CHAT_TEXT', repr(result))
-        self.assertEqual(adapter.controls.locate.call_count, 2)
-
-    def test_locator_timeout_gets_readonly_recheck_and_returns_open_only_when_identity_still_matches(self):
-        adapter = object.__new__(native.ChatAdapter)
-        adapter.controls = Mock()
-        adapter.controls.locate.return_value = {'label': '测试对象'}
-        adapter.controls.grant_readonly_recheck.return_value = 'timeout'
-        adapter.verify_session = Mock()
-        adapter.phase = 'native-prepare'
-        locator = SimpleNamespace(locate=Mock(side_effect=TimeoutError('PRIVATE_CHAT_TEXT')))
-        with patch.object(native, 'module', return_value=locator):
-            result = adapter.open_chat({'locate': {'messageId': 'opaque-id'}}, 'account-key',
-                                       {'id': 'contact-key', 'label': '测试对象'})
-        self.assertTrue(result['opened'])
-        self.assertFalse(result['located'])
-        self.assertEqual(result['diagnostic'], {'phase': 'native-locate', 'code': 'timeout', 'pages': 0})
-        adapter.controls.grant_readonly_recheck.assert_called_once_with()
-        self.assertEqual(adapter.verify_session.call_count, 2)
-
-    def test_locator_timeout_recheck_still_rejects_cancel_or_changed_session(self):
-        cancelled = object.__new__(native.ChatAdapter)
-        cancelled.controls = Mock()
-        cancelled.controls.locate.return_value = {'label': '测试对象'}
-        cancelled.controls.cancelled = True
-        cancelled.controls.grant_readonly_recheck.return_value = None
-        cancelled.controls.check.side_effect = [None, RuntimeError('cancelled')]
-        cancelled.verify_session = Mock()
-        cancelled.phase = 'native-prepare'
-        locator = SimpleNamespace(locate=Mock(side_effect=TimeoutError('PRIVATE_CHAT_TEXT')))
-        with patch.object(native, 'module', return_value=locator):
-            with self.assertRaises(RuntimeError):
-                cancelled.open_chat({'locate': {'messageId': 'opaque-id'}}, 'account-key',
-                                    {'id': 'contact-key', 'label': '测试对象'})
-        cancelled.controls.grant_readonly_recheck.assert_called_once_with()
-        self.assertNotEqual(cancelled.phase, 'native-chat-opened')
-
-        changed = object.__new__(native.ChatAdapter)
-        changed.controls = Mock()
-        changed.controls.locate.return_value = {'label': '测试对象'}
-        changed.controls.grant_readonly_recheck.return_value = 'timeout'
-        changed.verify_session = Mock(side_effect=[None, ValueError('identity changed')])
-        changed.phase = 'native-prepare'
-        with patch.object(native, 'module', return_value=locator):
-            with self.assertRaises(ValueError):
-                changed.open_chat({'locate': {'messageId': 'opaque-id'}}, 'account-key',
-                                  {'id': 'contact-key', 'label': '测试对象'})
-        self.assertNotEqual(changed.phase, 'native-chat-opened')
+        self.assertEqual(adapter.open_chat({}, 'account-key', {'id': 'contact-key', 'label': '测试对象'}),
+                         {'account': 'account-key', 'contact': 'contact-key', 'opened': True})
+        adapter.verify_session.assert_called_once_with()
+        adapter.controls.locate.return_value = {'label': '其他对象'}
+        with self.assertRaises(ValueError):
+            adapter.open_chat({}, 'account-key', {'id': 'contact-key', 'label': '测试对象'})
 
     def test_automatic_input_check_is_read_only_and_keeps_unverified_residue_protected(self):
         adapter = self.adapter()

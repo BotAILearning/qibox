@@ -282,6 +282,9 @@ export class Runtime {
   async showWindow() {
     if (!this.isWechat) return this.status === 'running';
     if (this.status !== 'running' || !this.desktopEnv) return false;
+    // A recent observation already proved this owned WeChat window is visible.
+    // Opening a chat must not repeat the full X window scan on every click.
+    if (this.windowState.state(true) === true) return false;
     if (this.showingWindow) return this.showingWindow;
     const operation = restoreWechatWindow({ root: this.runtimeRoot, env: this.desktopEnv, command,
       pid: this.processes.find(x => x.name === 'wechat')?.process.pid });

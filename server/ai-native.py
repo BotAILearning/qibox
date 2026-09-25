@@ -53,19 +53,9 @@ class SnapshotChanged(ValueError):
     """Rows changed inside an otherwise verified, unchanged native session."""
 
 
-def locate_diagnostic(error, controls):
-    """Return a short, non-content diagnostic for the native locator."""
-    deadline = getattr(controls, 'deadline', None)
-    if isinstance(error, TimeoutError) or isinstance(deadline, (int, float)) and time.monotonic() >= deadline: return 'timeout'
-    if isinstance(error, SnapshotChanged): return 'history-changed'
-    if error.__class__.__name__ == 'ControlsUnavailable': return 'controls-unavailable'
-    if isinstance(error, ValueError): return 'alignment-failed'
-    return 'native-locate-error'
-
-
 class ChatAdapter:
-    def __init__(self, pid, seconds=28, call_limit=80000):
-        self.controls = module('qibox_ai_controls', 'ai-native-controls.py').NativeControls(pid, seconds=seconds, call_limit=call_limit)
+    def __init__(self, pid, seconds=28):
+        self.controls = module('qibox_ai_controls', 'ai-native-controls.py').NativeControls(pid, seconds=seconds)
         self.render = module('qibox_ai_render', 'ai-native-render.py')
         self.possibly_written = False
         self.owned_draft = None
@@ -86,53 +76,7 @@ class ChatAdapter:
         if ins.locate()['label'] != contact['label']:
             raise ValueError('chat changed while navigating')
         self.phase = 'native-chat-opened'
-        result = {'account': account, 'contact': contact['id'], 'opened': True}
-        target = request.get('locate')
-        if not target:
-            return result
-
-        self.phase = 'native-locate'
-        diagnostic = None
-        try:
-            located = module('qibox_ai_locate', 'ai-message-locate.py').locate(self, target, contact['label']) is True
-            if not located: diagnostic = 'not-located'
-        except Exception as error:
-            # Keep a verified open chat available when only message alignment
-            # failed; the caller can offer a location retry without reopening.
-            located = False
-            diagnostic = locate_diagnostic(error, ins)
-            # A locator may consume the normal inspection deadline/call budget.
-            # Reuse the same controls for a tiny, read-only identity/header
-            # check; cancellation and identity changes still fail closed.
-            recheck_reason = ins.grant_readonly_recheck()
-            if recheck_reason:
-                diagnostic = recheck_reason
-
-        self.phase = 'native-locate-recheck'
-        def verify_open_chat():
-            ins.check(); self.verify_session()
-            if ins.locate()['label'] != contact['label']:
-                raise ValueError('chat changed during location')
-        try:
-            verify_open_chat()
-        except Exception:
-            # A successful locate can also consume the normal budget just
-            # before this verification. Grant at most one tiny read-only
-            # extension, and only if controls identify budget exhaustion.
-            if getattr(ins, 'cancelled', False):
-                raise
-            recheck_reason = ins.grant_readonly_recheck()
-            if not recheck_reason:
-                raise
-            if not diagnostic:
-                diagnostic = recheck_reason
-            verify_open_chat()
-        self.phase = 'native-chat-opened'
-        result.update({'located': located, 'messageId': target.get('messageId')})
-        if diagnostic:
-            result['diagnostic'] = {'phase': 'native-locate', 'code': diagnostic,
-                                    'pages': getattr(self, 'locate_pages', 0)}
-        return result
+        return {'account': account, 'contact': contact['id'], 'opened': True}
 
     def resolve_background(self, request):
         ins = self.controls
@@ -148,14 +92,15 @@ class ChatAdapter:
             ins.pid, os.environ['HOME'], fd=3, check=ins.check, hint=request.get('sessionHint'))
         self.background_target = dict(target)
         self.phase = 'native-navigation'
-        ins.ensure_conversations()
-        # A matching current session needs no navigation at all. Otherwise the
-        # visible row is only a navigation candidate, validated in the background.
+        # When the target is already selected, avoid scanning the virtualized
+        # conversation list. Live session identity and header are still checked.
         if not self.session_identity.matches(**target):
+            ins.ensure_conversations()
             ins.navigate_background(label, self.verify_session,
                                     expected_contact=request['contact'], account=request['account'], group=request.get('kind') == 'group')
         self.verify_session()
         self.phase = 'native-prepare'
+        ins.require_foreground('微信')
         actual_label = ins.locate()['label']
         group_header = request.get('kind') == 'group' and re.fullmatch(re.escape(label) + r'\s*[（(]\d+[）)]', actual_label)
         if actual_label != label and not group_header:
@@ -488,9 +433,8 @@ def main():
         prepared = '--prepare' in sys.argv[2:]
         request = json.loads(sys.stdin.buffer.readline(100000) if prepared else sys.stdin.buffer.read(100000))
         if prepared != (request.get('action') == 'prepare-send'): raise ValueError('invalid protocol')
-        locating = request.get('action') == 'open-chat' and request.get('locate')
-        seconds = 150 if locating else 90 if request.get('action') in ('list', 'resolve-batch', 'read', 'read-guard', 'resolve', 'prepare-send', 'open-chat') else 28
-        adapter = ChatAdapter(int(sys.argv[1]), seconds=seconds, call_limit=200000 if locating else 80000)
+        seconds = 90 if request.get('action') in ('list', 'resolve-batch', 'read', 'read-guard', 'resolve', 'prepare-send', 'open-chat') else 28
+        adapter = ChatAdapter(int(sys.argv[1]), seconds=seconds)
         signal.signal(signal.SIGTERM, lambda *_: setattr(adapter.controls, 'cancelled', True))
         def commit(before):
             print(json.dumps({'stage': 'prepared', **before}, ensure_ascii=False), flush=True)
@@ -514,8 +458,6 @@ def main():
             result = {'available': False, 'error': 'unsupported'}
         result['diagnostic'] = {'phase': getattr(adapter, 'phase', 'native-start'),
                                 'code': 'timeout' if isinstance(error, TimeoutError) else 'cancelled' if adapter and adapter.controls.cancelled else 'controls-unavailable'}
-        if adapter and request.get('action') == 'open-chat' and request.get('locate'):
-            result['diagnostic']['pages'] = getattr(adapter, 'locate_pages', 0)
     finally:
         if adapter:
             try:

@@ -28,7 +28,8 @@ try {
   assert.equal(await page.locator('.ap-reply-record-table td[data-label]').count(), 4);
   assert.equal(await page.locator('.ap-reply-record-table [data-ai-open-conversation]').count(), 1);
   assert.equal(await page.locator('.ap-skip-record-table td[data-label]').count(), 4);
-  assert.equal(await page.locator('.ap-skip-record-table [data-ai-locate-message]').count(), 1);
+  assert.equal(await page.locator('.ap-skip-record-table [data-ai-locate-message]').count(), 0);
+  assert.equal(await page.locator('.ap-skip-record-table [data-ai-open-conversation]').count(), 1);
   assert.equal(await page.locator('.ap-skip-record-table [data-ai-mark-reply]').count(), 1);
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), '390px viewport must not overflow horizontally');
   const labels = await page.locator('.ap-reply-record-table td[data-label]').evaluateAll(nodes => nodes.map(node => getComputedStyle(node, '::before').content));
@@ -40,7 +41,7 @@ try {
   const markBox = await page.locator('.ap-skip-record-table [data-ai-mark-reply]').boundingBox();
   assert.ok(markBox.height >= 44 && markBox.width >= 120, 'mark-reply action has a comfortable touch target');
   for (const [selector, label] of [
-    ['.ap-skip-record-table [data-ai-locate-message]', 'locate trigger'],
+    ['.ap-skip-record-table [data-ai-open-conversation]', 'skip-record open chat'],
     ['.ap-skip-record-table [data-ai-delete-record]', 'skip-record delete'],
     ['.ap-reply-record-table ol [data-ai-delete-record]', 'activity-record delete'],
   ]) {
@@ -48,5 +49,6 @@ try {
     assert.ok(box.height >= 44 && box.width >= 120, `${label} action has a comfortable touch target (got ${box.width}x${box.height})`);
   }
   await page.screenshot({ path: path.join(output, 'activity-mobile-390.png'), fullPage: true });
-  console.log('390px activity cards: all four columns labeled; open chat, locate, mark reply, and delete actions present; no horizontal page overflow.');
+  assert.equal(await page.locator('.ap-reply-record-table ol button.ai-record-message').count(), 0, 'record body is static text');
+  console.log('390px activity cards: all four columns labeled; record text is static; open chat, mark reply, and delete actions present; no horizontal page overflow.');
 } finally { await browser.close(); }

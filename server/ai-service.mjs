@@ -1907,69 +1907,16 @@ export class AIAssistant {
       return this.publicState();
     });
   }
-  async openConversation(id, { messageId } = {}) {
+  async openConversation(id) {
     return this.exclusive(async () => {
       const profile = this.profile(id);
       if (!this.eligible(profile) || profile.account !== this.data.account) throw new AppError('请先刷新对应账号的联系人');
-      if (!this.bridge.openChat) throw new AppError('当前无法定位微信聊天，请稍后重试');
+      if (!this.bridge.openChat) throw new AppError('当前无法打开微信聊天，请稍后重试');
       this.invalidate(); this.userBusyUntil = this.now() + 15000;
       const account = this.data.account, signal = this.controller.signal;
-      let locate;
-      if (messageId !== undefined) {
-        const sentMeta = (profile.sentMessages || []).find(m => m.id === messageId);
-        const proactiveMeta = (this.data.proactiveRecords || []).find(r => r.account === account && r.profileId === id && r.messageId === messageId);
-        const skipMeta = [...(this.data.skipLog || []).filter(e => e.account === account && e.target === id && e.messageId === messageId),
-          ...(this.data.events || []).filter(e => e.account === account && e.target === id && e.code === 'skip' && e.messageId === messageId)][0];
-        const meta = sentMeta || proactiveMeta || skipMeta;
-        if (typeof messageId !== 'string' || !meta || profile.account !== account) throw new AppError('该消息不属于当前联系人的执行记录', 409);
-        const direction = skipMeta ? 'other' : 'self';
-        // 发送结果待核对时记录保存的是本机 operationId，微信历史里永远找不到它。
-        // 这类记录只能按本条自己的加密正文 + 记录时间，在本人发出的消息里唯一匹配真实消息。
-        const sealed = (() => { try { return meta?.body ? this.vault.open(meta.body).text : null; } catch { return null; } })();
-        const resolve = messages => {
-          if (typeof sealed !== 'string' || !sealed.trim() || !Number.isFinite(meta?.at)) return messageId;
-          const hits = messages.filter(m => m.direction === direction && m.text === sealed && Number.isFinite(m.timestamp) && Math.abs(m.timestamp * 1000 - meta.at) <= 900000);
-          return hits.length === 1 ? hits[0].id : messageId;
-        };
-        try {
-          let messages = [];
-          // Use the stored execution timestamp to read only the nearby indexed
-          // window. Loading the full conversation before opening the chat made
-          // this navigation slow and fragile for long histories.
-          if (Number.isFinite(meta?.at)) try {
-            const center = Math.floor(meta.at / 1000);
-            // A 15 minute window is usually enough to identify the message,
-            // but sparse conversations may not provide the neighboring rows
-            // the native locator needs for a unique sequence. Expand only
-            // when needed, and stop once we have a bounded context.
-            for (const radius of [900, 7200, 86400]) {
-              const range = (await readStableRange(this.bridge, {
-                account, contact: profile.contact, from: Math.max(0, center - radius),
-                to: center + radius + 1, signal, skipUnparsed: true,
-              })).messages;
-              messages = range;
-              const candidate = range.some(m => m.id === messageId) ? messageId : resolve(range);
-              const candidateIndex = range.findIndex(m => m.id === candidate && m.direction === direction);
-              if (candidateIndex >= 0 && range.length >= 3) break;
-            }
-          } catch (error) { if (signal.aborted || account !== this.data.account || error.code === 'ai_account_changed') throw error; }
-          let target = messages.some(m => m.id === messageId) ? messageId : resolve(messages);
-          const index = messages.findIndex(m => m.id === target && m.direction === direction);
-          if (index >= 0) {
-            let context = messages.slice(Math.max(0, index - 30), index + 31);
-            while (context.length > 3 && Buffer.byteLength(JSON.stringify(context)) > 60000) {
-              if (context.findIndex(m => m.id === target) > context.length / 2) context.shift(); else context.pop();
-            }
-            if (context.length >= 3 && Buffer.byteLength(JSON.stringify(context)) <= 60000) locate = { messageId: target, messages: context };
-          }
-        } catch (error) { if (signal.aborted || account !== this.data.account || error.code === 'ai_account_changed') throw error; }
-      }
-      const result = await this.bridge.openChat({ account, contact: profile.contact, signal, ...(locate ? { locate } : {}) });
+      const result = await this.bridge.openChat({ account, contact: profile.contact, signal });
       if (signal.aborted || account !== this.data.account || result?.opened !== true) throw new AppError('尚未确认打开目标聊天，请重试');
-      // 按正文匹配时定位的是解析出的真实消息 ID，不再等于记录里保存的 ID。
-      const located = !!locate && result.located === true && result.messageId === locate.messageId;
-      return { opened: true, id, contact: profile.contact, account, ...(messageId ? { located, messageId,
-        ...(result.diagnostic ? { diagnostic: result.diagnostic } : {}), ...(!located ? { notice: '已打开聊天，暂时无法定位该消息' } : {}) } : {}) };
+      return { opened: true, id, contact: profile.contact, account };
     });
   }
   async setContactRemark(id, value = {}) {
@@ -1992,18 +1939,6 @@ export class AIAssistant {
         throw new AppError('微信未确认备注已更新，请勿重复操作', 409);
       }
       return this.publicState();
-    });
-  }
-  async openConversationFast(id) {
-    return this.exclusive(async () => {
-      const profile = this.profile(id);
-      if (!this.eligible(profile) || profile.account !== this.data.account) throw new AppError('请先刷新对应账号的联系人');
-      if (!this.bridge.openChat) throw new AppError('当前无法打开微信聊天，请稍后重试');
-      this.invalidate(); this.userBusyUntil = this.now() + 15000;
-      const account = this.data.account, signal = this.controller.signal;
-      const result = await this.bridge.openChat({ account, contact: profile.contact, signal });
-      if (signal.aborted || account !== this.data.account || result?.opened !== true) throw new AppError('尚未确认打开目标聊天，请重试');
-      return { opened: true, locating: true, id, contact: profile.contact, account };
     });
   }
   async observe(profile, snapshot) {

@@ -68,19 +68,14 @@ test('analysis distinguishes empty history from existing unreadable messages', a
   const result = await a.analyze({ contacts: [p.contact], request: '总结' });
   assert.equal(result.reports[0].skipped, 1); assert.match(result.reports[0].report, /无法解析/);
 });
-test('message navigation validates recorded ID, forwards authentic context and reports precise fallback', async t => {
+test('opening a recorded conversation reads no message body or message context', async t => {
   const { a, bridge, p } = await fixture(t);
-  bridge.push(p.contact, 'other', 'context before');
-  const message = bridge.push(p.contact, 'self', 'recorded');
-  bridge.push(p.contact, 'other', 'context after');
-  p.generatedIds = [message.id]; p.sentMessages = [{ id: message.id, at: a.now(), source: 'reply' }];
-  let requests = []; bridge.openChat = async args => { requests.push(args); return { opened: true, located: true, messageId: args.locate?.messageId }; };
-  assert.equal((await a.openConversation(p.id, { messageId: message.id })).located, true);
-  assert.equal(requests[0].locate.messages.find(m => m.id === message.id).text, 'recorded');
-  await assert.rejects(a.openConversation(p.id, { messageId: key('foreign') }), /不属于/); assert.equal(requests.length, 1);
-  bridge.openChat = async () => ({ opened: true });
-  assert.match((await a.openConversation(p.id, { messageId: message.id })).notice, /暂时无法定位/);
-  assert.equal((await a.openConversation(p.id)).located, undefined);
+  bridge.readRange = async () => { throw new Error('message history must not be read'); };
+  const requests = [];
+  bridge.openChat = async args => { requests.push(args); return { opened: true }; };
+  assert.equal((await a.openConversation(p.id)).opened, true);
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].locate, undefined);
 });
 test('analysis accepts provider text blocks, reasoning prefix and prose report but actions remain structured', async () => {
   assert.equal(modelResult('<think>internal</think>```json\n{"report":"正文{引用}"}\n```').report, '正文{引用}');

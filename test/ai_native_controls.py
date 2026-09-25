@@ -381,46 +381,11 @@ def owned_settings_inspector():
 
 
 class Boundaries(unittest.TestCase):
-    def test_readonly_recheck_budget_is_granted_only_after_uncancelled_exhaustion(self):
-        controls = object.__new__(native.NativeControls)
-        controls.calls = 11; controls.cancelled = False; controls.deadline = time.monotonic() + 30
-        controls.readonly_recheck_calls = 0; controls.readonly_recheck_used = False
-        with patch.object(native, 'MAX_CALLS', 10):
-            self.assertEqual(controls.grant_readonly_recheck(), 'controls-budget-exhausted')
-            self.assertEqual(controls.readonly_recheck_calls, native.READONLY_RECHECK_CALLS)
-            controls.check()
-            self.assertIsNone(controls.grant_readonly_recheck(), 'the extra budget is one-use')
-            no_exhaustion = object.__new__(native.NativeControls)
-            no_exhaustion.calls = 0; no_exhaustion.cancelled = False; no_exhaustion.deadline = time.monotonic() + 30
-            no_exhaustion.readonly_recheck_calls = 0; no_exhaustion.readonly_recheck_used = False
-            self.assertIsNone(no_exhaustion.grant_readonly_recheck())
-            cancelled = object.__new__(native.NativeControls)
-            cancelled.calls = 11; cancelled.cancelled = True; cancelled.deadline = time.monotonic() - 1
-            cancelled.readonly_recheck_calls = 0; cancelled.readonly_recheck_used = False
-            deadline = cancelled.deadline
-            self.assertIsNone(cancelled.grant_readonly_recheck())
-            self.assertEqual(cancelled.deadline, deadline)
-
-    def test_readonly_recheck_expired_deadline_gets_only_short_extension(self):
-        controls = object.__new__(native.NativeControls)
-        controls.calls = 0; controls.cancelled = False; controls.deadline = time.monotonic() - 1
-        controls.readonly_recheck_calls = 0; controls.readonly_recheck_used = False
-        before = time.monotonic()
-        self.assertEqual(controls.grant_readonly_recheck(), 'timeout')
-        self.assertGreaterEqual(controls.deadline, before + native.READONLY_RECHECK_SECONDS)
-        self.assertLessEqual(controls.deadline, before + native.READONLY_RECHECK_SECONDS + .05)
-
-    def test_custom_call_budget_is_instance_scoped_and_other_actions_keep_the_default(self):
+    def test_native_call_budget_is_bounded(self):
         standard = object.__new__(native.NativeControls)
         standard.calls = native.MAX_CALLS; standard.cancelled = False; standard.deadline = time.monotonic() + 5
         with self.assertRaises(native.ControlsUnavailable):
             standard.check()
-        locating = object.__new__(native.NativeControls)
-        locating.calls = native.MAX_CALLS; locating.cancelled = False; locating.deadline = time.monotonic() + 5
-        locating.call_limit = native.MAX_LOCATE_CALLS
-        locating.readonly_recheck_calls = 0
-        locating.check()
-        self.assertEqual(locating.calls, native.MAX_CALLS + 1)
 
     def test_foreground_requires_stable_current_pid_and_frees_property_storage(self):
         fake = FakeXlib()

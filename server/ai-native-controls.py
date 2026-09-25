@@ -31,8 +31,6 @@ x11_connection = base.windows.x11_connection
 
 FOCUSABLE, MULTILINE = 11, 17
 MAX_NODES, MAX_DEPTH, MAX_CALLS = 1000, 32, 80000
-MAX_LOCATE_CALLS = 200000
-READONLY_RECHECK_SECONDS, READONLY_RECHECK_CALLS = 4.0, 2500
 MAX_CONTACTS = 1000
 DIRECTORY_GROUP = re.compile(r'^(公众号、服务号|企业微信联系人|联系人)(\d+)$')
 WXID = re.compile(r'[a-zA-Z][a-zA-Z0-9_-]{5,63}')
@@ -285,14 +283,11 @@ def profile_target(nodes, controls, before_buttons):
 
 
 class NativeControls(base.Inspector):
-    def __init__(self, pid, seconds=10.0, call_limit=MAX_CALLS):
-        if not isinstance(pid, int) or pid <= 1 or not 1 <= seconds <= 150 or type(call_limit) is not int or call_limit not in (MAX_CALLS, MAX_LOCATE_CALLS):
+    def __init__(self, pid, seconds=10.0):
+        if not isinstance(pid, int) or pid <= 1 or not 1 <= seconds <= 150:
             raise ValueError('invalid inspection limits')
         super().__init__(pid)
         self.deadline = time.monotonic() + seconds
-        self.call_limit = call_limit
-        self.readonly_recheck_calls = 0
-        self.readonly_recheck_used = False
         self.bind('atspi_set_timeout', None, [c.c_int, c.c_int])(150, 150)
         # This short-lived helper has no GLib event loop to maintain AT-SPI's
         # child cache. Virtualized Qt rows are replaced on scroll; always ask
@@ -306,24 +301,8 @@ class NativeControls(base.Inspector):
 
     def check(self):
         self.calls += 1
-        if self.cancelled or self.calls > getattr(self, 'call_limit', MAX_CALLS) + getattr(self, 'readonly_recheck_calls', 0) or time.monotonic() >= self.deadline:
+        if self.cancelled or self.calls > MAX_CALLS or time.monotonic() >= self.deadline:
             raise ControlsUnavailable('inspection interrupted')
-
-    def grant_readonly_recheck(self):
-        """Grant one tiny read-only budget only after an uncancelled locate exhausts its budget."""
-        if self.cancelled or getattr(self, 'readonly_recheck_used', False):
-            return None
-        now = time.monotonic()
-        if now >= self.deadline:
-            reason = 'timeout'
-        elif self.calls > getattr(self, 'call_limit', MAX_CALLS):
-            reason = 'controls-budget-exhausted'
-        else:
-            return None
-        self.deadline = max(self.deadline, now + READONLY_RECHECK_SECONDS)
-        self.readonly_recheck_calls = READONLY_RECHECK_CALLS
-        self.readonly_recheck_used = True
-        return reason
 
     def children(self, obj):
         count = self.call('get_child_count', c.c_int, obj)

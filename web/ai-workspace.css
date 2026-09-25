@@ -300,11 +300,8 @@
 #ai-panel .ai-record-table details p{white-space:pre-wrap;overflow-wrap:anywhere}
 #ai-panel .ai-record-table button{min-height:30px;padding:4px 8px;font-size:12px}
 #ai-panel .ai-record-table .ai-help{margin:0}
-#ai-panel .ai-record-table .ai-record-message{display:block;max-width:100%;text-align:left;white-space:pre-wrap;overflow-wrap:anywhere;background:transparent;color:var(--ai-text);border:0;padding:6px 0;cursor:pointer}
-#ai-panel .ai-record-table .ai-record-message:hover,#ai-panel .ai-record-table .ai-record-message:focus-visible{color:var(--ai-primary);text-decoration:underline}
+#ai-panel .ai-record-table .ai-record-message{display:block;max-width:100%;text-align:left;white-space:pre-wrap;overflow-wrap:anywhere;background:transparent;color:var(--ai-text);border:0;padding:6px 0}
 #ai-panel .ai-record-error{padding:12px 16px;margin-bottom:12px;background:#fff6f4;border:1px solid #f0c9c1;border-radius:10px}
-.ai-message-location-notice{position:fixed;bottom:30px;left:50%;transform:translateX(-50%);z-index:10000;max-width:90vw;padding:14px 18px;border-radius:12px;background:#252638;color:#fff;box-shadow:0 4px 24px #0003;display:flex;align-items:center;gap:16px}
-.ai-message-location-notice button{color:#fff;border:1px solid #fff6;background:transparent;border-radius:6px;padding:4px 8px;white-space:nowrap}
 #ai-panel .ai-record-table ol{padding-left:18px;max-height:320px;overflow:auto}
 #ai-panel .ai-record-context-menu{position:fixed;z-index:10000;min-width:104px;background:#fff;border:1px solid var(--ai-border);border-radius:10px;box-shadow:0 8px 24px #00000024;padding:4px;display:none}
 #ai-panel .ai-record-context-menu.open{display:block}
@@ -713,12 +710,12 @@
  #ai-panel .ai-activity-page .ap-record-table td:last-child>button{width:100%;min-width:0;min-height:44px;margin:0;padding:9px 8px;white-space:normal;line-height:1.25;text-align:center}
  #ai-panel .ai-activity-page .ap-record-table td:last-child>button:only-of-type{grid-column:1/-1}
  #ai-panel .ai-activity-page .ap-record-table td:last-child>[data-ai-delete-record]{grid-column:1/-1}
- #ai-panel .ai-activity-page .ap-skip-record-table td[data-label="触发消息"]{display:block}
- #ai-panel .ai-activity-page .ap-skip-record-table td[data-label="触发消息"]:before{display:block;margin:0 0 7px}
- #ai-panel .ai-activity-page .ap-skip-record-table td[data-label="触发消息"]>button{display:inline-flex;align-items:center;justify-content:center;min-width:120px;min-height:44px;margin:4px 6px 4px 0;padding:9px 12px;white-space:normal;line-height:1.25}
+ #ai-panel .ai-activity-page .ap-skip-record-table td[data-label="操作"]{display:block}
+ #ai-panel .ai-activity-page .ap-skip-record-table td[data-label="操作"]:before{display:block;margin:0 0 7px}
+ #ai-panel .ai-activity-page .ap-skip-record-table td[data-label="操作"]>button{display:inline-flex;align-items:center;justify-content:center;min-width:120px;min-height:44px;margin:4px 6px 4px 0;padding:9px 12px;white-space:normal;line-height:1.25}
  #ai-panel .ai-activity-page .ap-record-table button[data-ai-delete-record]{display:inline-flex;align-items:center;justify-content:center;min-width:120px;min-height:44px;padding:9px 12px}
  #ai-panel .ai-activity-page .ap-reply-record-table ol button[data-ai-delete-record]{width:100%}
  #ai-panel .ai-activity-page .ap-record-table button[data-ai-delete-record]{border:1px solid #efd2ce;border-radius:9px;background:#fff8f7;color:#aa4039}
- #ai-panel .ai-activity-page .ap-skip-record-table td[data-label="触发消息"] button[data-ai-locate-message]{border:1px solid var(--ap-line);border-radius:9px;background:#fff}
+ #ai-panel .ai-activity-page .ap-skip-record-table td[data-label="操作"] button[data-ai-open-conversation]{border:1px solid var(--ap-line);border-radius:9px;background:#fff}
  #ai-panel .ai-activity-page .ap-record-table details,#ai-panel .ai-activity-page .ap-record-table ol{min-width:0}
 }

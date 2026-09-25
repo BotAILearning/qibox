@@ -94,30 +94,3 @@ test('contact activity includes only confirmed self message IDs; no plaintext pe
   assert.equal(a.publicState().activity.length, 0);
   await assert.rejects(a.activityRecords([p.id])); await assert.rejects(a.openConversation(p.id));
 });
-
-test('a record whose ID is a local send operation is located by its own encrypted body and time', async t => {
-  const { a, bridge } = await fixture(t), contact = bridge.contacts[0].id, operationId = 'b1f0c2de-1111-4222-8333-444455556666';
-  await a.saveReplyProfile({ contact, style: { summary: '本机记录定位' }, styleId: 'custom', strategy: {}, preserveSwitches: true, replyEnabled: true });
-  const p = a.profiles().find(x => x.contact === contact);
-  const real = bridge.push(contact, 'self', 'LOCAL_OPERATION_PRIVATE');
-  real.timestamp = Math.floor(a.now() / 1000);
-  const afterReal = bridge.push(contact, 'other', '邻近上下文'); afterReal.timestamp = real.timestamp + 2;
-  // 发送结果待核对时保存的是本机 operationId：微信历史里不存在这个 ID，只能按
-  // 本条记录自己的加密正文和记录时间找到真实消息。
-  p.generatedIds = [];
-  p.sentMessages = [{ id: operationId, at: a.now(), source: 'reply', confirmed: false, body: a.vault.seal({ text: 'LOCAL_OPERATION_PRIVATE' }) }];
-  await a.save();
-  const requests = []; bridge.openChat = async args => { requests.push(args); return { opened: true, located: true, messageId: args.locate?.messageId }; };
-  const located = await a.openConversation(p.id, { messageId: operationId });
-  assert.equal(located.located, true);
-  assert.equal(requests[0].locate.messageId, real.id);
-  // 正文相同且时间接近的消息不止一条时不做猜测，只打开聊天并给出提示。
-  const twin = bridge.push(contact, 'self', 'LOCAL_OPERATION_PRIVATE'); twin.timestamp = real.timestamp + 3;
-  assert.match((await a.openConversation(p.id, { messageId: operationId })).notice, /暂时无法定位/);
-  // 记录 ID 本身是真微信消息 ID 时仍按 ID 定位，不受正文匹配影响。
-  p.generatedIds = [real.id];
-  p.sentMessages = [{ id: real.id, at: a.now(), source: 'reply', body: a.vault.seal({ text: 'LOCAL_OPERATION_PRIVATE' }) }];
-  await a.save();
-  assert.equal((await a.openConversation(p.id, { messageId: real.id })).located, true);
-  assert.equal(requests.at(-1).locate.messageId, real.id);
-});
