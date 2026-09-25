@@ -426,6 +426,15 @@ textarea {
   font-family: inherit;
 }
 
+input[type="checkbox"]:not([role="switch"]),
+input[type="radio"] {
+  flex: 0 0 18px;
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+  min-height: 18px;
+}
+
 button:focus-visible,
 a:focus-visible,
 input:focus-visible,
@@ -711,6 +720,15 @@ dialog {
 }
 
 @media (max-width: 720px) {
+  input[type="checkbox"]:not([role="switch"]),
+  input[type="radio"] {
+    flex-basis: 20px;
+    width: 20px;
+    min-width: 20px;
+    height: 20px;
+    min-height: 20px;
+  }
+
   #ai-panel .ai-page-body {
     padding: 18px 16px 30px;
   }
@@ -819,5 +837,180 @@ dialog {
 
   #ai-panel .ai-object-save {
     bottom: calc(64px + env(safe-area-inset-bottom));
+  }
+}
+
+@media (min-width: 601px) and (max-width: 1199px) {
+  #ai-panel .ai-activity-page .ap-table-scroll {
+    overflow: visible;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  #ai-panel .ai-activity-page .ap-record-table,
+  #ai-panel .ai-activity-page .ap-proactive-record-table {
+    display: block;
+    width: 100%;
+    min-width: 0;
+  }
+
+  #ai-panel .ai-activity-page .ap-record-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  #ai-panel .ai-activity-page .ap-record-table tbody {
+    display: grid;
+    gap: 12px;
+  }
+
+  #ai-panel .ai-activity-page .ap-record-table tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0 18px;
+    padding: 14px 18px;
+    border: 1px solid var(--ui-line);
+    border-radius: 14px;
+    background: #fff;
+    box-shadow: var(--ui-shadow);
+  }
+
+  #ai-panel .ai-activity-page .ap-record-table td {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    padding: 9px 0;
+    border: 0;
+    overflow-wrap: anywhere;
+  }
+
+  #ai-panel .ai-activity-page .ap-record-table td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 5px;
+    color: var(--ui-muted);
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  #ai-panel .ai-activity-page .ap-record-table td[data-label="执行记录"],
+  #ai-panel .ai-activity-page .ap-record-table td[data-label="本次执行内容"],
+  #ai-panel .ai-activity-page .ap-record-table td[data-label="原因与来源"],
+  #ai-panel .ai-activity-page .ap-record-table td[data-label="操作"],
+  #ai-panel .ai-activity-page .ap-record-table td[colspan] {
+    grid-column: 1 / -1;
+  }
+
+  #ai-panel .ai-activity-page .ap-record-table td[colspan]::before {
+    display: none;
+  }
+
+  #ai-panel .ai-activity-page .ap-record-table td[data-label="操作"] > button {
+    display: inline-flex;
+    width: auto;
+    min-width: 116px;
+    margin: 0 8px 0 0;
+  }
+
+  #ai-panel .ai-activity-page .ap-record-table td[colspan] .ai-empty-state,
+  #ai-panel .ai-activity-page .ap-record-table td[colspan] .ap-empty {
+    min-height: 140px;
+    padding: 30px 16px;
+    text-align: center;
+  }
+}
+
+@media (max-width: 1199px) {
+  #ai-panel .ap-table-panel .ap-table-scroll {
+    overflow: visible;
+  }
+
+  #ai-panel .ap-table-panel .ap-task-table {
+    display: block;
+    width: 100%;
+    min-width: 0;
+  }
+
+  #ai-panel .ap-table-panel .ap-task-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  #ai-panel .ap-table-panel .ap-task-table tbody {
+    display: grid;
+    gap: 12px;
+    padding: 12px;
+  }
+
+  #ai-panel .ap-table-panel .ap-task-table tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0 16px;
+    padding: 12px 16px;
+    border: 1px solid var(--ui-line);
+    border-radius: 12px;
+    background: #fff;
+  }
+
+  #ai-panel .ap-table-panel .ap-task-table td,
+  #ai-panel .ap-table-panel .ap-task-table td:last-child {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    height: auto;
+    padding: 9px 0;
+    border: 0;
+    overflow-wrap: anywhere;
+  }
+
+  #ai-panel .ap-table-panel .ap-task-table td::before {
+    display: block;
+    margin-bottom: 5px;
+    color: var(--ui-muted);
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  #ai-panel .ap-table-panel .ap-task-table td:nth-child(1)::before { content: "任务名称"; }
+  #ai-panel .ap-table-panel .ap-task-table td:nth-child(2)::before { content: "聊天对象"; }
+  #ai-panel .ap-table-panel .ap-task-table td:nth-child(3)::before { content: "聊天目标与其他要求"; }
+  #ai-panel .ap-table-panel .ap-task-table td:nth-child(4)::before { content: "执行周期"; }
+  #ai-panel .ap-table-panel .ap-task-table td:nth-child(5)::before { content: "状态"; }
+  #ai-panel .ap-table-panel .ap-task-table td:nth-child(6)::before { content: "最近执行"; }
+  #ai-panel .ap-table-panel .ap-task-table td:nth-child(7)::before { content: "操作"; }
+
+  #ai-panel .ap-table-panel .ap-task-table td:nth-child(3),
+  #ai-panel .ap-table-panel .ap-task-table td:nth-child(7),
+  #ai-panel .ap-table-panel .ap-task-table td[colspan] {
+    grid-column: 1 / -1;
+  }
+
+  #ai-panel .ap-table-panel .ap-task-table td[colspan]::before {
+    display: none;
+  }
+
+  #ai-panel .ap-table-panel .ap-task-table:has(td[colspan]) tr {
+    display: block;
+    border: 0;
+  }
+
+  #ai-panel .ap-table-panel .ap-task-table:has(td[colspan]) td[colspan] {
+    text-align: center;
+  }
+}
+
+@media (max-width: 600px) {
+  #ai-panel .ap-table-panel .ap-task-table tr {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
