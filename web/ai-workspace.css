@@ -1054,4 +1054,5 @@
 #ai-panel .ai-page-body:has(>.ai-analysis-setup) .ai-analysis-request{grid-column:2;grid-row:1}
 #ai-panel .ai-page-body:has(>.ai-analysis-setup) .ai-analysis-reports{grid-column:2;grid-row:2}
 #ai-panel .ai-page-body:has(>.ai-analysis-setup) .ai-analysis-history{grid-column:2;grid-row:3}
+#ai-panel #ai-analysis-form.ai-analysis-setup{display:contents}
 @media(max-width:850px){#ai-panel .ai-page-body:has(>.ai-analysis-setup){grid-template-columns:1fr}#ai-panel .ai-page-body:has(>.ai-analysis-setup) .ai-analysis-selection,#ai-panel .ai-page-body:has(>.ai-analysis-setup) .ai-analysis-request,#ai-panel .ai-page-body:has(>.ai-analysis-setup) .ai-analysis-reports,#ai-panel .ai-page-body:has(>.ai-analysis-setup) .ai-analysis-history{grid-column:1;grid-row:auto;position:static}}

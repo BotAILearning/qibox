@@ -95,6 +95,22 @@ try {
   const historyCount = () => page.locator('.ai-analysis-history-list [data-ai-history-item]').count();
 
   await openAnalysis();
+  const desktopLayout = await page.evaluate(() => {
+    const form = document.querySelector('#ai-analysis-form');
+    const selection = document.querySelector('.ai-analysis-selection')?.getBoundingClientRect();
+    const request = document.querySelector('.ai-analysis-request')?.getBoundingClientRect();
+    return {
+      formDisplay: getComputedStyle(form).display,
+      selectionWidth: selection?.width || 0,
+      requestWidth: request?.width || 0,
+      requestStartsAfterSelection: (request?.x || 0) > (selection?.right || 0),
+    };
+  });
+  assert.equal(desktopLayout.formDisplay, 'contents', '分析表单应展开到外层工作区网格');
+  assert.ok(desktopLayout.selectionWidth >= 300, `联系人区宽度过窄: ${desktopLayout.selectionWidth}`);
+  assert.ok(desktopLayout.requestWidth >= 500, `分析要求区宽度过窄: ${desktopLayout.requestWidth}`);
+  assert.ok(desktopLayout.requestStartsAfterSelection, '分析要求区应位于联系人区右侧');
+  report.checks.push('Desktop analysis layout keeps contact selection left and gives the request area the main width');
   const beforeFirst = await generate('总结具体约定');
   assert.equal(await page.locator('.ai-report-sections h4').first().textContent(), '数据开场');
   assert.equal(await page.locator('.ai-report-sections h4').nth(1).textContent(), '值得记住');
