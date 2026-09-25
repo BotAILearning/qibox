@@ -7,6 +7,6 @@
   "gatewayPrefix": "/app/qibox",
   "publisher": "Bot",
   "email": "lbp240lbp@163.com",
-  "buildId": "0.9.10-debug.002",
+  "buildId": "0.9.10-debug.003",
   "channel": "debug"
 }
