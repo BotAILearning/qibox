@@ -67,6 +67,14 @@ test('contacts and history use data only, preserving duplicate labels and true m
   assert.deepEqual(calls.map(x => x.action), ['contacts', 'read', 'read']);
   bridge.clearContext(); assert.equal(bridge.snapshots.size, 0);
 });
+test('a partial contact scan reports unreadable identities while keeping verified contacts', async () => {
+  const { bridge } = fixture(action => action === 'contacts'
+    ? { available: true, account, contacts: [person], unreadableCount: 2 } : undefined);
+  const result = await bridge.scan();
+  assert.equal(result.contacts.length, 1);
+  assert.equal(result.unreadableCount, 2);
+  assert.equal(bridge.bindings.size, 1);
+});
 test('an interactive read overtakes background reads already waiting on the data pipe', async () => {
   const order = []; let release, calls = 0;
   const blocked = new Promise(resolve => { release = resolve; });

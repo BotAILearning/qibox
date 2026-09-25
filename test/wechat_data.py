@@ -112,6 +112,26 @@ class DataTest(unittest.TestCase):
             self.assertTrue(result['available'])
             self.assertEqual([p['label'] for p in result['contacts']], ['A'])
 
+    def test_contact_scan_keeps_valid_people_when_one_identity_or_label_is_bad(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory, 'xwechat_files/long262802_a36b/db_storage')
+            (root / 'contact').mkdir(parents=True)
+            make_database(root / 'contact/contact.db',
+                          "CREATE TABLE contact(username TEXT,nick_name TEXT,remark TEXT,alias TEXT,local_type INTEGER);"
+                          "INSERT INTO contact VALUES('long262802','本人','','',1),"
+                          "('wxid_good','正常联系人','','',1),"
+                          "('wxid_duplicate','甲','','',1),('wxid_duplicate','乙','','',1),"
+                          "('wxid_bad','异常' || char(10) || '名称','','',1);")
+            with patch.object(data, 'active_root', return_value=root), \
+                    patch.object(data, 'discover_keys', return_value={SALT: KEY}):
+                result = data.execute({'action': 'contacts'}, 42, directory, lambda: None)
+            self.assertTrue(result['available'])
+            self.assertEqual(result['account'], data.digest('wechat-data-account\0long262802'))
+            self.assertEqual([p['label'] for p in result['contacts']], ['正常联系人'])
+            self.assertEqual(result['unreadableCount'], 2)
+            with self.assertRaisesRegex(ValueError, 'ambiguous account'):
+                data.contacts([('long262802', '本人', '', ''), ('long262802', '另一个', '', '')], 'long262802')
+
     def test_date_inventory_and_image_pipe_bind_to_authenticated_contact(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory, 'wxid_self_abcd/db_storage')
@@ -695,8 +715,9 @@ class DataTest(unittest.TestCase):
             home, proc = base / 'home', base / 'proc'
             first = home / 'xwechat_files/wxid_self_abcd/db_storage/contact/contact.db'
             second = home / 'xwechat_files/wxid_other_abcd/db_storage/contact/contact.db'
+            backup = home / 'xwechat_files/Backup/long262802/db_storage/contact/contact.db'
             foreign = base / 'other-home/xwechat_files/wxid_self_abcd/db_storage/contact/contact.db'
-            for file in (first, second, foreign):
+            for file in (first, second, backup, foreign):
                 file.parent.mkdir(parents=True); file.touch()
             fds = proc / '42/fd'; fds.mkdir(parents=True); (fds / '10').touch()
             with patch.object(data.os, 'readlink', return_value=str(first)):
@@ -705,6 +726,8 @@ class DataTest(unittest.TestCase):
             # account currently logged in to the running WeChat process.
             second.unlink()
             with patch.object(data.os, 'readlink', return_value=str(foreign)), self.assertRaisesRegex(ValueError, 'active account unavailable'):
+                data.active_root(42, home, proc)
+            with patch.object(data.os, 'readlink', return_value=str(backup)), self.assertRaisesRegex(ValueError, 'active account unavailable'):
                 data.active_root(42, home, proc)
             second.touch()
             with patch.object(data.os, 'readlink', return_value=str(foreign)), self.assertRaises(ValueError):
@@ -863,8 +886,9 @@ class DataTest(unittest.TestCase):
             db = sql.Database(sql.Pages(file, KEY))
             try:
                 rows = db.query('SELECT username, nick_name, remark, alias FROM contact WHERE local_type != 3')
-                account, people = data.contacts(rows, 'wxid_self')
+                account, people, unreadable = data.contacts(rows, 'wxid_self')
                 self.assertEqual(len(people), 2)
+                self.assertEqual(unreadable, 0)
                 self.assertNotEqual(people[0]['id'], people[1]['id'])
                 self.assertEqual(people[0]['label'], people[1]['label'])
                 self.assertEqual(db.query('SELECT username FROM contact WHERE username=?', ('wxid_a',)), [['wxid_a']])
@@ -996,7 +1020,8 @@ class GroupMetadataTest(unittest.TestCase):
             self.assertEqual(len(messages), 1); message = messages[0]
             self.assertEqual(message['direction'], 'other'); self.assertEqual(message['text'], '@other正文不决定真实提及')
             self.assertEqual(len(message['sender']), 64); self.assertTrue(message['mentions']['self'])
-            _, contacts = data.contacts([('wxid_self', '本人', '', ''), (group, '讨论群', '', 'misleading-alias')], 'wxid_self')
+            _, contacts, unreadable = data.contacts([('wxid_self', '本人', '', ''), (group, '讨论群', '', 'misleading-alias')], 'wxid_self')
+            self.assertEqual(unreadable, 0)
             self.assertEqual(contacts[0]['kind'], 'group')
             self.assertEqual(contacts[0]['native'], data.native_route('wxid_self', group))
 
@@ -1007,7 +1032,8 @@ class GroupMetadataTest(unittest.TestCase):
                 ('12345@chatroom', '讨论群', '', ''),
                 ('67890@chatroom', '', '', ''),
                 ('wxid_a', 'A', '', '')]
-        account, contacts = data.contacts(rows, 'wxid_self')
+        account, contacts, unreadable = data.contacts(rows, 'wxid_self')
+        self.assertEqual(unreadable, 0)
         self.assertEqual([c['kind'] for c in contacts], ['group', 'person'])
         self.assertEqual(contacts[0]['label'], '讨论群')
         # A group whose nickname and remark are both empty (deleted or left

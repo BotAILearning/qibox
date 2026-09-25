@@ -289,6 +289,8 @@ export class DataChatBridge extends NativeChatBridge {
     // independently checks the active account and database versions every time.
     const result = await this.data('contacts', {}, context);
     if (result.available !== true || !Array.isArray(result.contacts) || result.contacts.length > 20000) throw unavailable();
+    const unreadableCount = result.unreadableCount === undefined ? 0 : result.unreadableCount;
+    if (!Number.isSafeInteger(unreadableCount) || unreadableCount < 0 || unreadableCount > 20000) throw unavailable();
     const bindings = new Map();
     for (const contact of result.contacts) {
       if (!key(contact.id) || !label(contact.label) || !nicknameValue(contact.nickname) || !['person', 'group'].includes(contact.kind) || bindings.has(contact.id) ||
@@ -302,6 +304,7 @@ export class DataChatBridge extends NativeChatBridge {
     await onProgress?.({ completed: contacts.length, total: contacts.length });
     this.check(context); super.clearContext(); this.account = result.account; this.bindings = bindings;
     return { available: true, account: result.account, contacts,
+      ...(unreadableCount ? { unreadableCount } : {}),
       identities: [...bindings.values()].map(binding => ({ id: binding.id, previous: binding.native })) };
   }
   async readData(args, context, range = false) {

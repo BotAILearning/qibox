@@ -9,7 +9,7 @@ No window, clipboard or network calls.
 """
 import ctypes as c
 import bisect
-from collections import OrderedDict
+from collections import Counter, OrderedDict
 import hashlib
 import hmac
 import importlib.util
@@ -489,13 +489,17 @@ def contacts(rows, username):
     if len(own) != 1:
         raise ValueError('ambiguous account')
     own_alias = own[0][3] or username
-    result, seen = [], set()
+    counts = Counter(row[0] for row in rows if isinstance(row[0], str))
+    result, skipped = [], set()
     for name, nickname, remark, alias in rows:
         if not isinstance(name, str) or not (USER.fullmatch(name) or GROUP.fullmatch(name)) or name == username or name in SYSTEM or name.startswith('gh_'):
             continue
-        if name in seen:
-            raise ValueError('duplicate contact identity')
-        seen.add(name)
+        # A malformed entry must not hide every healthy contact. A duplicated
+        # username has no trustworthy row to choose, so omit that identity in
+        # full rather than retaining whichever copy happened to sort first.
+        if counts[name] != 1:
+            skipped.add(name)
+            continue
         group = bool(GROUP.fullmatch(name))
         # A deleted or left group chat can keep a contact row whose nickname
         # and remark are both empty; the raw chatroom id is not a display
@@ -504,7 +508,8 @@ def contacts(rows, username):
             continue
         label = (remark or nickname or name).strip()
         if not label or len(label) > 120 or re.search(r'[\x00-\x1f\x7f]', label):
-            raise ValueError('unsupported contact label')
+            skipped.add(name)
+            continue
         # The WeChat nickname is carried alongside the label so the interface can
         # tell apart contacts sharing one remark. Anything unprintable or overly
         # long is dropped rather than surfaced, the label stays authoritative.
@@ -513,7 +518,7 @@ def contacts(rows, username):
             display_nickname = ''
         route = native_route(own_alias, name if GROUP.fullmatch(name) else alias or name)
         result.append({'id': contact_id(account, name), 'label': label, 'nickname': display_nickname, 'kind': 'group' if group else 'person', 'username': name, 'native': route})
-    return account, result
+    return account, result, len(skipped)
 
 
 def decode(content, compression):
@@ -1046,12 +1051,13 @@ def execute(request, pid, home, check, cache=None):
         order = "COALESCE(NULLIF(remark_quan_pin,''), NULLIF(quan_pin,''), NULLIF(remark,''), NULLIF(nick_name,''), username) COLLATE NOCASE, username" if {'remark_quan_pin', 'quan_pin'} <= columns else "COALESCE(NULLIF(remark,''), NULLIF(nick_name,''), username) COLLATE NOCASE, username"
         rows = db.query('SELECT username, nick_name, remark, alias FROM contact WHERE (local_type = 1' + groups + ')' + active + ' ORDER BY ' + order)
         self_name = self_username(root, rows)
-        account, people = contacts(rows, self_name)
+        account, people, unreadable_count = contacts(rows, self_name)
         if request.get('account') and request['account'] != account:
             if cache is not None: cache.clear()
             return {'error': 'account-changed'}
         if request['action'] in ('contacts', 'identity', 'keys'):
-            result = {'available': True, 'account': account, 'contacts': [{k: v for k, v in p.items() if k != 'username'} for p in people]}
+            result = {'available': True, 'account': account, 'contacts': [{k: v for k, v in p.items() if k != 'username'} for p in people],
+                      'unreadableCount': unreadable_count}
         elif request['action'] == 'sessions':
             result = {'available': True, 'account': account, 'sessions': session_activity(database, session_file, people)}
         else:
