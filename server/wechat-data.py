@@ -217,30 +217,22 @@ def native_route(self_name, username):
 
 def active_root(pid, home, proc=pathlib.Path('/proc')):
     home = pathlib.Path(home).resolve(strict=True)
-    # The worker is a sibling of WeChat, so Linux Yama may allow it to open
-    # the inherited memory descriptor but deny readlink(/proc/<wechat>/fd/*).
-    # Each qibox instance has one xwechat_files account directory; use that
-    # stable on-disk identity before falling back to the process-FD probe.
-    candidates = set()
-    for contact in (home / 'xwechat_files').glob('*/db_storage/contact/contact.db'):
-        try:
-            contact = contact.resolve(strict=True)
-            relative = contact.relative_to(home)
-            if len(relative.parts) >= 5 and relative.parts[-3:-1] == ('db_storage', 'contact'):
-                candidates.add(contact.parent.parent)
-        except (OSError, ValueError):
-            continue
-    if len(candidates) == 1:
-        return candidates.pop()
+    # A directory on disk only proves that an account was used here before.
+    # During an account switch the old contact.db can be the sole directory,
+    # so selecting it without checking the live WeChat process exposes stale
+    # contacts and messages as though they belonged to the new login.
     roots = set()
-    for fd in (proc / str(pid) / 'fd').iterdir():
+    descriptors = list((proc / str(pid) / 'fd').iterdir())
+    if len(descriptors) > 10000:
+        raise ValueError('active account unavailable')
+    for fd in descriptors:
         try:
             target = pathlib.Path(os.readlink(fd))
             if target.name not in ('contact.db', 'contact.db-wal'):
                 continue
             target = target.resolve(strict=True)
             relative = target.relative_to(home)
-            if len(relative.parts) < 5 or relative.parts[-3:-1] != ('db_storage', 'contact'):
+            if len(relative.parts) != 5 or relative.parts[0] != 'xwechat_files' or relative.parts[-3:-1] != ('db_storage', 'contact'):
                 continue
             roots.add(target.parent.parent)
         except (OSError, ValueError):

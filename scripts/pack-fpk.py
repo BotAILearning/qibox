@@ -39,7 +39,7 @@ def file_hash(filename, algorithm='sha256'):
     with filename.open('rb') as stream:
         return hashlib.file_digest(stream, algorithm).hexdigest()
 
-with tempfile.TemporaryDirectory(prefix='qibox-fpk-', dir=root / '.cache') as temporary:
+with tempfile.TemporaryDirectory(prefix='qibox-fpk-', dir=output.parent) as temporary:
     temporary = pathlib.Path(temporary)
     payload = temporary / 'app.tgz'
     print('Archiving staged application and both runtime architectures', flush=True)

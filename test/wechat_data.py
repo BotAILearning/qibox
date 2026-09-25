@@ -701,11 +701,50 @@ class DataTest(unittest.TestCase):
             fds = proc / '42/fd'; fds.mkdir(parents=True); (fds / '10').touch()
             with patch.object(data.os, 'readlink', return_value=str(first)):
                 self.assertEqual(data.active_root(42, home, proc), first.parent.parent)
+            # Even a single old account directory is not evidence of the
+            # account currently logged in to the running WeChat process.
+            second.unlink()
+            with patch.object(data.os, 'readlink', return_value=str(foreign)), self.assertRaisesRegex(ValueError, 'active account unavailable'):
+                data.active_root(42, home, proc)
+            second.touch()
             with patch.object(data.os, 'readlink', return_value=str(foreign)), self.assertRaises(ValueError):
                 data.active_root(42, home, proc)
             (fds / '11').touch()
             with patch.object(data.os, 'readlink', side_effect=lambda fd: str(first if fd.name == '10' else second)), self.assertRaises(ValueError):
                 data.active_root(42, home, proc)
+            (fds / '10').unlink()
+            with patch.object(data.os, 'readlink', return_value=str(second)):
+                self.assertEqual(data.active_root(42, home, proc), second.parent.parent)
+
+    def test_same_instance_account_switch_never_reads_the_previous_account(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = pathlib.Path(directory)
+            home, proc = base / 'home', base / 'proc'
+            roots = [home / 'xwechat_files' / (name + '_abcd') / 'db_storage' for name in ('wxid_one', 'wxid_two')]
+            for name, root in zip(('wxid_one', 'wxid_two'), roots):
+                (root / 'contact').mkdir(parents=True)
+                make_database(root / 'contact/contact.db',
+                              "CREATE TABLE contact(username TEXT,nick_name TEXT,remark TEXT,alias TEXT,local_type INTEGER);"
+                              f"INSERT INTO contact VALUES('{name}','我','','',1),('{name}_friend','{name} friend','','',1);")
+            fds = proc / '42' / 'fd'; fds.mkdir(parents=True); (fds / '10').touch()
+            selected = [roots[0] / 'contact' / 'contact.db']
+            original = data.active_root
+            with patch.object(data, 'active_root', side_effect=lambda pid, home: original(pid, home, proc)), \
+                    patch.object(data.os, 'readlink', side_effect=lambda _: str(selected[0]) if selected[0] else ''), \
+                    patch.object(data, 'discover_keys', side_effect=lambda *_: {SALT: KEY}):
+                first = data.execute({'action': 'contacts'}, 42, home, lambda: None)
+                self.assertEqual(first['account'], data.digest('wechat-data-account\0wxid_one'))
+                self.assertEqual(len(first['contacts']), 1)
+                selected[0] = roots[1] / 'contact' / 'contact.db'
+                self.assertEqual(data.execute({'action': 'contacts', 'account': first['account']}, 42, home, lambda: None),
+                                 {'error': 'account-changed'})
+                second = data.execute({'action': 'contacts'}, 42, home, lambda: None)
+                self.assertEqual(second['account'], data.digest('wechat-data-account\0wxid_two'))
+                self.assertEqual(len(second['contacts']), 1)
+                self.assertNotEqual(first['contacts'][0]['id'], second['contacts'][0]['id'])
+                selected[0] = None
+                with self.assertRaisesRegex(ValueError, 'active account unavailable'):
+                    data.execute({'action': 'contacts'}, 42, home, lambda: None)
 
     def test_complete_data_api_reads_contacts_and_multiple_shards(self):
         with tempfile.TemporaryDirectory() as directory:
