@@ -149,7 +149,7 @@ test('only actively contacted targets continue replies with the original purpose
   await launch(a); await a.tick(); const [first, pending] = a.profiles();
   assert.equal(a.data.settings.reply, false); assert.ok(first.continuation); assert.equal(pending.continuation, undefined);
   bridge.push(first.contact, 'other', '我有兴趣'); bridge.push(pending.contact, 'other', '你好');
-  await a.tick(); advance(8000); await a.tick();
+  await a.tick(); advance(20000); await a.tick();
   assert.equal(bridge.sent.length, 2); assert.equal(bridge.sent[1].contact, first.contact);
   const call = provider.calls.at(-1).input;
   assert.equal(call.mode, 'reply'); assert.equal(call.continuation, true); assert.equal(call.strategy.purpose, strategy.purpose);
@@ -162,7 +162,7 @@ test('ending the proactive queue revokes its continuation even with master enabl
   const { a, bridge, advance } = await fixture(t);
   await launch(a); await a.tick(); const target = a.profiles()[0];
   await a.queueAction('end'); assert.equal(target.continuation, undefined);
-  bridge.push(target.contact, 'other', '继续'); await a.tick(); advance(8000); await a.tick(); assert.equal(bridge.sent.length, 1);
+  bridge.push(target.contact, 'other', '继续'); await a.tick(); advance(20000); await a.tick(); assert.equal(bridge.sent.length, 1);
 });
 
 test('personal reply overrides cannot replace the new proactive purpose or its continuation', async t => {
@@ -172,7 +172,7 @@ test('personal reply overrides cannot replace the new proactive purpose or its c
   await a.saveStrategy({ ...strategy, purpose: '本次新的主动目的' });
   await launch(a); await a.tick();
   assert.equal(provider.calls.at(-1).input.strategy.purpose, '本次新的主动目的');
-  bridge.push(target.contact, 'other', '说来听听'); await a.tick(); advance(8000); await a.tick();
+  bridge.push(target.contact, 'other', '说来听听'); await a.tick(); advance(20000); await a.tick();
   assert.equal(provider.calls.at(-1).input.strategy.purpose, '本次新的主动目的');
   assert.equal(target.replyStrategy.replyGoal, '个人回复规则'); assert.equal(target.strategy, undefined);
   assert.equal(provider.calls.at(-1).input.strategy.replyGoal, '个人回复规则');
@@ -201,7 +201,7 @@ test('reply targets stay separate when proactive contacts have never been learne
   assert.deepEqual(a.data.queue.items.map(x => x.id), [proactive.id]);
   assert.equal(bridge.sent.length, 1); assert.equal(bridge.sent[0].contact, proactive.contact);
   bridge.push(reply.contact, 'other', '请介绍一下'); bridge.push(proactive.contact, 'other', '感兴趣'); bridge.push(bridge.contacts[2].id, 'other', '没有选中的对象');
-  await a.tick(); advance(8000); await a.tick();
+  await a.tick(); advance(20000); await a.tick();
   assert.equal(bridge.sent.length, 3);
   assert.deepEqual(new Set(bridge.sent.slice(1).map(x => x.contact)), new Set([reply.contact, proactive.contact]));
   assert.deepEqual(provider.calls.slice(-2).map(x => x.input.continuation), [false, true]);
@@ -247,7 +247,7 @@ test('global reply strategy is independent from proactive edits and never overri
   await a.saveStrategy({ ...strategy, purpose: '本轮主动目标', content: '本轮主动话术', persona: '本轮主动人设', facts: '本轮主动事实', boundaries: '本轮主动限制' });
   assert.equal(a.publicState().replyStrategy.replyGoal, '原回复目标');
   await a.settings({ reply: true }); await launch(a); await a.tick();
-  bridge.push(reply.contact, 'other', '请答复'); bridge.push(proactive.contact, 'other', '感兴趣'); await a.tick(); advance(8000); await a.tick();
+  bridge.push(reply.contact, 'other', '请答复'); bridge.push(proactive.contact, 'other', '感兴趣'); await a.tick(); advance(20000); await a.tick();
   const [independent, continuation] = provider.calls.slice(-2).map(x => x.input);
   assert.equal(independent.strategy.replyGoal, '原回复目标'); assert.equal(independent.strategy.facts, '原回复事实'); assert.equal(independent.strategy.boundaries, '原回复限制');
   for (const field of ['purpose', 'content', 'persona', 'styleProfileId']) assert.equal(independent.strategy[field], '');

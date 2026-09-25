@@ -12,7 +12,7 @@ async function fixture(t, kind = 'person') {
   await a.init(); t.after(async () => { await a.close(); await cleanup(root); });
   await a.configure(modelConfig); await a.scan();
   if (kind === 'person') await a.setReplyOptions({ contact: bridge.contacts[0].id, enabled: true });
-  return { a, bridge, provider, advance: (ms = 8000) => { now += ms; } };
+  return { a, bridge, provider, advance: (ms = 20000) => { now += ms; } };
 }
 
 test('replies retain both speakers and confirmed AI answers across turns, with each incoming burst identified', async t => {

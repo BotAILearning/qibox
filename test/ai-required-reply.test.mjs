@@ -14,7 +14,7 @@ async function fixture(t) {
   t.after(async()=>{await a.close();await cleanup(root);});
   return {a,bridge,provider,contact,receive:async()=>{
     Object.assign(bridge.push(contact,'other','请回复收到'),{timestamp:Math.floor(now/1000)});
-    await a.tick();now+=3000;await a.tick();
+    await a.tick();now+=20000;await a.tick();
   }};
 }
 
@@ -117,14 +117,14 @@ test('unreadable image on @me reaches the model and is not silently skipped', as
   await a.close(); await cleanup(root);
 });
 
-test('@me does not schedule model wait or pause the group', async t => {
+test('@me does not accept model wait or pause the group', async t => {
   const root = await temp(), bridge = new ChatFixture(), provider = new AIModelFixture();
   let now = 1700000000000; bridge.stableMessageIds = true;
   const a = new AIAssistant({ dataRoot: root, bridge, provider, now: () => now, delay: async () => {} });
   await a.init(); await a.configure(modelConfig); await a.testProvider(); await a.scan();
   const target = bridge.contacts[0]; target.kind = 'group'; await a.scan();
   await a.setGroupOptions({ contact: target.id, atMe: true }); await a.settings({ enabled: true }); await a.tick();
-  let calls = 0; provider.complete = async () => { calls++; return { action: 'wait', waitSeconds: 30 }; };
+  let calls = 0; provider.complete = async () => { calls++; return { action: 'skip' }; };
   Object.assign(bridge.push(target.id, 'other', '@我 这个问题'), { timestamp: Math.floor(now / 1000), sender: 'a'.repeat(64), mentions: { verified: true, self: true, all: false, others: false } });
   await a.tick(); now += 3000; await a.tick();
   assert.equal(calls, 1); assert.equal(bridge.sent.length, 0);

@@ -72,7 +72,7 @@ test('功能可按需分配不同模型，运行时按功能取模型', async t 
   await a.settings({ reply: true, enabled: true });
   await a.tick();
   bridge.push(bridge.contacts[0].id, 'other', '你好');
-  await a.tick(); now += 8000; await a.tick();
+  await a.tick(); now += 20000; await a.tick();
   assert.ok(provider.used.includes(K1));
   assert.ok(bridge.sent.length > 0);
 });

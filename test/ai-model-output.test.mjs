@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { messageSegments, generationProtocol, learningPrompt, batchLearningPrompt, learningWithMemoryPrompt, batchLearningWithMemoryPrompt } from '../server/ai-prompts.mjs';
+import { messageSegments, generationProtocol, conversationPrompt, learningPrompt, batchLearningPrompt, learningWithMemoryPrompt, batchLearningWithMemoryPrompt } from '../server/ai-prompts.mjs';
 import { memoryLearningPrompt, memoryPrompt } from '../server/ai-wiki.mjs';
 
 // 真机实测（2026-09-22，MiniMax-M3）：自动回复里模型把不需要的字段也写进 JSON，
@@ -46,13 +46,15 @@ test('解析仍然严格：动作无效、正文缺失或分段数量越界一�
   assert.throws(() => messageSegments({ action: 'skip' }, { allowSkip: false }), /必须发送消息/);
 });
 
-test('群聊模型动作限于 send、skip、wait；停止/暂停/转交都不能成为模型动作', () => {
+test('群聊仅返回 send/skip，模型不能控制等待或停止动作', () => {
   const protocol = generationProtocol({ group: true, allowSkip: true, allowStop: false, multiTurn: false });
-  assert.match(protocol, /send、skip，群聊还允许 wait/);
+  assert.match(protocol, /action只能为 send、skip/);
+  assert.match(protocol, /不允许 wait/);
   assert.throws(() => messageSegments({ action: 'stop' }, { group: true, allowStop: false }), /动作无效/);
   assert.throws(() => messageSegments({ action: 'pause' }, { group: true, allowStop: false }), /动作无效/);
   assert.throws(() => messageSegments({ action: 'handoff' }, { group: true, allowStop: false }), /动作无效/);
-  assert.deepEqual(messageSegments({ action: 'wait', waitSeconds: 5 }, { group: true, allowStop: false }), []);
+  assert.throws(() => messageSegments({ action: 'wait', waitSeconds: 5 }, { group: true, allowStop: false }), /动作无效/);
+  assert.match(generationProtocol({ multiTurn: false }), /必须只返回 \{"stop":true\}/);
 });
 
 test('提示词对返回结构有明确约定，对正文写法不做格式化要求', () => {
@@ -69,6 +71,12 @@ test('提示词对返回结构有明确约定，对正文写法不做格式化�
   assert.match(batchLearningPrompt, /profiles 的长度必须与输入 conversations 的长度完全一致/);
 });
 
+test('未转化语音只跳过，不生成无法识别或请转文字的回复', () => {
+  assert.match(conversationPrompt, /unresolved=true 表示该条语音未转化出文字，直接忽略该条语音/);
+  assert.match(conversationPrompt, /本轮只有这类语音时返回 action=skip/);
+  assert.match(conversationPrompt, /不回复“无法识别”“请转文字”等相关内容/);
+});
+
 test('记忆学习覆盖全部材料、筛掉寒暄占位并允许空 entries', () => {
   for (const prompt of [memoryLearningPrompt, memoryPrompt]) {
     assert.match(prompt, /全部聊天材料/);
@@ -81,6 +89,14 @@ test('记忆学习覆盖全部材料、筛掉寒暄占位并允许空 entries', 
     assert.match(prompt, /entries/);
   }
   assert.match(memoryLearningPrompt, /"entries":\[\]/);
+  assert.match(memoryLearningPrompt,/基础资料字段描述当前聊天对象（对方）本人/);
+  assert.match(memoryLearningPrompt,/direction=self 的发言属于用户本人，不能误填为对方资料/);
+  assert.match(memoryLearningPrompt,/双方共同经历、对方兴趣爱好及其他值得长期保留的聊天内容放入 other/);
+  assert.match(memoryLearningPrompt,/date 只记录两个人之间的重要纪念日/);
+  assert.match(memoryLearningPrompt,/不要输出 from\/to 时间段/);
+  assert.match(memoryLearningPrompt,/消息时间是 2026-09-25，当时说“去年”就换算为 2025-09-25/);
+  assert.match(memoryLearningPrompt,/不得使用本次学习时间/);
+  for(const field of ['name','phone','birthday','school','household','residence','workplace','employer','shipping','other']) assert.ok(memoryLearningPrompt.includes(field),`学习协议包含字段 ${field}`);
   for (const prompt of [learningWithMemoryPrompt, batchLearningWithMemoryPrompt]) {
     assert.doesNotMatch(prompt, /memoryMaterial/);
     assert.match(prompt, /entries 可以为空/);

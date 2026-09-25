@@ -24,11 +24,11 @@ test('first poll handles a message received after strategy configuration without
   const { a, bridge, incoming, advance } = await fixture(t);
   const profile = a.profiles()[0];
   const old = incoming(); old.timestamp -= 100;
-  await a.settings({ enabled: true }); await a.tick(); advance(9000); await a.tick();
+  await a.settings({ enabled: true }); await a.tick(); advance(20000); await a.tick();
   assert.equal(bridge.sent.length, 0);
   a.cursors.clear(); advance(1000); incoming();
   await a.tick(); assert.equal(bridge.sent.length, 0);
-  advance(9000); await a.tick();
+  advance(20000); await a.tick();
   assert.equal(bridge.sent.length, 1); assert.equal(profile.rounds, 1);
   await a.tick(); assert.equal(bridge.sent.length, 1);
 });
@@ -43,7 +43,7 @@ test('refresh and strategy edits preserve enabled state and a pending reply uses
   await a.saveStrategy({ ...profile.replyStrategy, replyGoal: '最新回复目标' }, profile.id, 'reply');
   await a.targets([profile.id], 'reply');
   assert.equal(a.data.settings.enabled, true); assert.equal(a.cursors.get(profile.id).pending, true);
-  advance(9000); await a.tick();
+  advance(20000); await a.tick();
   assert.equal(bridge.sent.length, 1); assert.equal(provider.calls.at(-1).input.strategy.replyGoal, '最新回复目标');
   await a.scan(); await a.tick(); assert.equal(bridge.sent.length, 1);
 });
@@ -57,7 +57,7 @@ test('service restart restores the switch and pending cursor, verifies contacts,
     assert.equal(restarted.data.settings.enabled, true); await restarted.tick();
     assert.equal(restarted.data.settings.enabled, true); assert.equal(restarted.publicState().waiting, true); assert.equal(bridge.sent.length, 0);
     ready(true); await restarted.tick(); assert.equal(restarted.available, true); assert.equal(bridge.sent.length, 0);
-    advance(9000); await restarted.tick(); assert.equal(bridge.sent.length, 1);
+    advance(20000); await restarted.tick(); assert.equal(bridge.sent.length, 1);
     await restarted.close();
     const again = new AIAssistant(options); await again.init();
     try { await again.tick(); await again.tick(); assert.equal(bridge.sent.length, 1); }
@@ -86,7 +86,7 @@ test('temporary data failure keeps the switch and pending reply while account ch
   await a.settings({ enabled: true }); await a.tick(); incoming(); await a.tick();
   const read = bridge.read.bind(bridge);
   bridge.read = async () => { throw new AppError('暂时无法读取微信数据'); };
-  advance(9000); await a.tick(); assert.equal(a.data.settings.enabled, true); assert.equal(a.available, true); assert.ok(a.profiles().some(p => p.readError));
+  advance(20000); await a.tick(); assert.equal(a.data.settings.enabled, true); assert.equal(a.available, true); assert.ok(a.profiles().some(p => p.readError));
   bridge.read = read; advance(30000); await a.tick(); await a.tick(); assert.equal(bridge.sent.length, 1);
   bridge.read = async () => { throw new AppError('微信账号已变化', 409, 'ai_account_changed'); };
   await a.tick(); assert.equal(a.data.settings.enabled, false); assert.equal(a.available, false);
@@ -94,7 +94,7 @@ test('temporary data failure keeps the switch and pending reply while account ch
 
 test('a failed read-only send preparation retries the pending reply without pausing the contact', async t => {
   const { a, bridge, incoming, advance } = await fixture(t);
-  await a.settings({ enabled: true }); await a.tick(); incoming(); await a.tick(); advance(9000);
+  await a.settings({ enabled: true }); await a.tick(); incoming(); await a.tick(); advance(20000);
   const send = bridge.send.bind(bridge); bridge.send = async () => ({ status: 'not-sent' });
   await a.tick(); const profile = a.profiles()[0];
   assert.equal(profile.paused, false); assert.equal(profile.delivery.status, 'cancelled');
@@ -117,7 +117,7 @@ test('learning while enabled pauses generation without changing the master prefe
 
 test('turning the master off and back on does not retry an already skipped incoming message', async t => {
   const { a, provider, bridge, incoming, advance } = await fixture(t);
-  await a.settings({ enabled: true }); await a.tick(); incoming(); await a.tick(); advance(9000);
+  await a.settings({ enabled: true }); await a.tick(); incoming(); await a.tick(); advance(20000);
   provider.next = async () => ({ action: 'skip' }); await a.tick();
   assert.equal(provider.calls.length, 1);
   await a.settings({ enabled: false }); await a.settings({ enabled: true }); await a.tick();

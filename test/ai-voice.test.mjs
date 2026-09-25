@@ -15,7 +15,7 @@ async function fixture(t, kind = 'person') {
   const contact = bridge.contacts[0].id, p = a.profiles().find(x => x.contact === contact);
   t.after(async () => { await a.close(); await cleanup(root); });
   const voice = Object.assign(bridge.push(contact, 'other', '[语音]'), { type: 'voice', mentions: { verified: true, self: true, all: false, others: false } });
-  await a.tick(); now += 10000;
+  await a.tick(); now += 20000;
   return { a, bridge, provider, contact, p, voice };
 }
 
@@ -83,7 +83,7 @@ test('two pending WeChat voice transcripts reach the model together beside expli
     assert.match(provider.calls.at(-1).system, /transcriptionSource=wechat/);
     return { action: 'send', text: '7624' };
   };
-  await a.tick(); now += 10000; await a.tick();
+  await a.tick(); now += 20000; await a.tick();
   assert.deepEqual(converted, [first.id, second.id]);
   assert.deepEqual(bridge.sent.map(message => message.text), ['7624']);
 });

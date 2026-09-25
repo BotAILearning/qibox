@@ -43,11 +43,11 @@ for(const kind of ['person','group'])test(`${kind}: disabled AI assisted wait tu
  else assert.deepEqual(f.p.groupOptions,{atMe:false,atAll:false,realtime:false});
  await f.push('other');f.advance(86400000);await f.a.tick();assert.equal(f.bridge.sent.length,0);
  if(kind==='person')await f.a.setReplyOptions({contact:f.p.contact,enabled:true});else await f.a.setGroupOptions({contact:f.p.contact,atMe:true});
- f.advance(1000);await f.push('other','手动重新开启后的消息');f.advance(3000);await f.a.tick();assert.equal(f.bridge.sent.length,1);
+ f.advance(1000);await f.push('other','手动重新开启后的消息');f.advance(20000);await f.a.tick();assert.equal(f.bridge.sent.length,1);
 });
 test('the first successful automatic reply consumes the wait; later replies use the normal delay',async t=>{
  const f=await fixture(t);await f.push('self');await f.push('other');f.advance(60000);await f.a.tick();assert.equal(f.bridge.sent.length,1);assert.equal(f.p.manualWait,undefined);
- await f.push('other','下一条');f.advance(3000);await f.a.tick();assert.equal(f.bridge.sent.length,2);assert.equal(f.p.manualWait,undefined);
+ await f.push('other','下一条');f.advance(20000);await f.a.tick();assert.equal(f.bridge.sent.length,2);assert.equal(f.p.manualWait,undefined);
 });
 test('restart preserves elapsed wait and pending incoming without restarting the timer',async t=>{
  const f=await fixture(t);await f.push('self');await f.push('other');const started=f.p.manualWait?.startedAt;assert.ok(started);f.advance(40000);await f.restart();await f.a.tick();assert.equal(f.p.manualWait.startedAt,started);
@@ -59,6 +59,6 @@ test('uncertain first delivery is not regenerated on the same incoming after res
  await f.restart();await f.a.tick();assert.equal(f.provider.calls.length,calls);assert.equal(f.p.manualWait.startedAt,started);
 });
 test('AI generated self messages do not arm takeover, explicit stop remains stopped after expiry',async t=>{
- const f=await fixture(t);await f.push('other');f.advance(3000);await f.a.tick();assert.equal(f.bridge.sent.length,1);await f.a.tick();assert.equal(f.p.manualWait,undefined);
+ const f=await fixture(t);await f.push('other');f.advance(20000);await f.a.tick();assert.equal(f.bridge.sent.length,1);await f.a.tick();assert.equal(f.p.manualWait,undefined);
  await f.push('self');await f.push('other');f.a.pauseProfile(f.p,'explicit');f.advance(60000);await f.a.tick();assert.equal(f.bridge.sent.length,1);assert.equal(f.p.paused,true);
 });

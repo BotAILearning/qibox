@@ -92,10 +92,14 @@ class ChatAdapter:
             ins.pid, os.environ['HOME'], fd=3, check=ins.check, hint=request.get('sessionHint'))
         self.background_target = dict(target)
         self.phase = 'native-navigation'
+        # SessionIdentity authenticates which chat is selected in WeChat's
+        # private session model, but the visible window may still be on another
+        # tab (for example Contacts). Always restore the chat tab before using
+        # conversation controls, even when the private identity already matches.
+        ins.ensure_conversations()
         # When the target is already selected, avoid scanning the virtualized
         # conversation list. Live session identity and header are still checked.
         if not self.session_identity.matches(**target):
-            ins.ensure_conversations()
             ins.navigate_background(label, self.verify_session,
                                     expected_contact=request['contact'], account=request['account'], group=request.get('kind') == 'group')
         self.verify_session()

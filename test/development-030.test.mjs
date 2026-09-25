@@ -59,7 +59,7 @@ test('group trigger matrix never guesses mentions or lets realtime bypass a disa
   for (const flags of [{ self: true }, { all: true }, { others: true }, { verified: false }]) assert.equal(groupTrigger(message(flags), realtime), null);
   assert.equal(groupTrigger(message({ self: true }), { ...realtime, atMe: true }), 'atMe');
   assert.equal(groupTrigger(message({ all: true }), { ...realtime, atAll: true }), 'atAll');
-  assert.throws(() => groupDecision({ action: 'wait', waitSeconds: 31 }));
+  assert.equal(groupDecision({ action: 'wait', waitSeconds: 31 }), null);
   assert.equal(groupDecision({ action: 'pause', pauseSeconds: 10 }), null);
   for (let bits = 0; bits < 8; bits++) {
     const options = { atMe: !!(bits & 1), atAll: !!(bits & 2), realtime: !!(bits & 4) };
@@ -71,7 +71,7 @@ test('group trigger matrix never guesses mentions or lets realtime bypass a disa
   }
 });
 
-test('group switches cancel only matching trigger work, persist wait and never replay expired work', async t => {
+test('group trigger decisions no longer accept model waits; internal rate controls remain separate', async t => {
   const { a, bridge, provider, advance } = await aiFixture(t), contact = bridge.contacts[0].id;
   bridge.contacts[0].kind = 'group'; await a.scan();
   await a.setGroupOptions({ contact, atMe: true, realtime: true, confirmRealtime: true });
@@ -80,9 +80,9 @@ test('group switches cancel only matching trigger work, persist wait and never r
   await a.setGroupOptions({ contact, atMe: false }); assert.equal(atMe.signal.aborted, true); assert.equal(live.signal.aborted, false);
   await a.settings({ enabled: true, replyScope: 'selected' }); await a.tick();
   Object.assign(bridge.push(contact, 'other'), { sender: key('group-member'), mentions: { verified: true, self: false, all: false, others: false } });
-  await a.tick(); provider.next = async () => ({ action: 'wait', waitSeconds: 5 }); advance(groupRealtimeIntervalMs); await a.tick();
-  assert.equal(profile.groupWait.trigger, 'realtime'); assert.equal(bridge.sent.length, 0);
-  advance(61000); await a.tick(); assert.equal(profile.groupWait, undefined); assert.equal(a.cursors.get(profile.id).pending, false);
+  await a.tick(); provider.next = async () => ({ action: 'send', text: '群聊正常回复' }); advance(groupRealtimeIntervalMs); await a.tick();
+  assert.equal(bridge.sent.length, 1); assert.equal(profile.groupWait, undefined);
+  assert.equal(a.cursors.get(profile.id).pending, false);
 });
 
 test('activity log survives restart and only exposes the current account', async t => {

@@ -17,7 +17,7 @@ async function fixture(t) {
   await a.configure(modelConfig);await a.scan();await a.setReplyOptions({contact:bridge.contacts[0].id,enabled:true});await a.settings({enabled:true});await a.tick();
   const p=a.profiles().find(p=>p.contact===bridge.contacts[0].id);
   const push=(direction,text='text',extra={})=>Object.assign(bridge.push(p.contact,direction,text),{timestamp:Math.floor(now/1000),...extra});
-  const receive=async(text,result,extra={})=>{push('other',text,extra);await a.tick();now+=3000;if(result)provider.next=async()=>result;await a.tick();};
+  const receive=async(text,result,extra={})=>{push('other',text,extra);await a.tick();now+=20000;if(result)provider.next=async()=>result;await a.tick();};
   return {a,bridge,provider,p,push,receive,advance:ms=>{now+=ms;a.lastScanAt=now;}};
 }
 test('selected material is read once, keeps the latest contents and still rejects a foreign account', async()=>{
@@ -47,7 +47,7 @@ test('range material is returned once, supports the raised bound, and rejects ma
 });
 test('manual reply waits; model skip is recorded without pausing the contact',async t=>{
   const f=await fixture(t);
-  f.push('self','我手动回一句');await f.a.tick();f.advance(3000);
+  f.push('self','我手动回一句');await f.a.tick();f.advance(20000);
   assert.equal(f.p.paused,false);assert.equal(f.p.pauseReason,undefined);
   await f.receive('发个文件给我',{action:'skip'});
   f.advance(297000);await f.a.tick();

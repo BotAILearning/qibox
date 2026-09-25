@@ -1,0 +1,823 @@
+/* Shared control and reflow rules. Loaded after the base and workspace styles. */
+:root {
+  --ui-control-height: 40px;
+  --ui-control-height-touch: 44px;
+  --ui-control-radius: 8px;
+  --ui-control-gap: 10px;
+  --ui-control-inline-padding: 14px;
+  --ui-control-line-height: 1.4;
+}
+
+*:not(#native-input),
+*:not(#native-input)::before,
+*:not(#native-input)::after {
+  box-sizing: border-box;
+}
+
+button {
+  min-width: 0;
+  max-width: 100%;
+  line-height: var(--ui-control-line-height);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+button:not(.icon-button):not(.ai-key-eye) {
+  min-height: var(--ui-control-height);
+  padding-block: 8px;
+  padding-inline: var(--ui-control-inline-padding);
+  border-radius: var(--ui-control-radius);
+  white-space: normal;
+}
+
+#ai-panel button:not(.icon-button):not(.ai-key-eye) {
+  min-height: var(--ui-control-height);
+  padding-block: 8px;
+  line-height: var(--ui-control-line-height);
+  white-space: normal;
+}
+
+.icon-button,
+#ai-panel .icon-button,
+#ai-panel .ai-wiki-remove,
+#ai-panel .ai-key-eye {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 var(--ui-control-height);
+  width: var(--ui-control-height);
+  min-width: var(--ui-control-height);
+  height: var(--ui-control-height);
+  min-height: var(--ui-control-height);
+  padding: 0;
+  line-height: 1;
+}
+
+:where(input:not(#native-input):not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="hidden"]), select, textarea:not(#native-input)) {
+  min-width: 0;
+  max-width: 100%;
+  min-height: var(--ui-control-height);
+  box-sizing: border-box;
+  line-height: 1.45;
+}
+
+#ai-panel :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="hidden"]), select, textarea),
+#modal :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="hidden"]), select, textarea) {
+  min-height: var(--ui-control-height);
+  border-radius: var(--ui-control-radius);
+}
+
+input[type="number"] {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 8ch;
+  min-width: 6.5ch;
+  max-width: 10ch;
+  padding-inline: 8px;
+  text-align: center;
+}
+
+#ai-panel input[type="number"] {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 8ch;
+  min-width: 6.5ch;
+  max-width: 10ch;
+}
+
+textarea:not(#native-input) {
+  min-height: 96px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  resize: vertical;
+}
+
+#ai-panel .ai-field {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+#ai-panel .ai-field input[type="number"] {
+  display: inline-block;
+  width: 8ch;
+  max-width: 10ch;
+  margin-top: 6px;
+}
+
+#ai-panel .ai-field textarea {
+  min-height: 96px;
+  width: 100%;
+}
+
+#ai-panel .ai-field input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="hidden"]),
+#ai-panel .ai-field select {
+  min-height: var(--ui-control-height);
+  border-radius: var(--ui-control-radius);
+}
+
+#ai-panel .ai-object-search input,
+#ai-panel .ai-analysis-search input {
+  min-height: var(--ui-control-height);
+}
+
+#ai-panel .ai-contact-info b,
+#ai-panel .ai-learning-title h3,
+#ai-panel .ai-model-item-title strong,
+#ai-panel .ai-model-item-main small,
+.desktop-icon h3 {
+  min-width: 0;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+#ai-panel .ai-limits-row {
+  align-items: flex-end;
+}
+
+#ai-panel .ai-limits-row > .ai-field {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+#ai-panel .ai-actions,
+#ai-panel .ai-wizard-actions,
+#ai-panel .ai-page-heading,
+#ai-panel .ai-contact-toolbar,
+#ai-panel .ai-learning-run,
+#ai-panel .ai-heading-actions {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+#ai-panel .ai-actions,
+#ai-panel .ai-wizard-actions {
+  gap: var(--ui-control-gap);
+}
+
+#ai-panel .ai-actions > *,
+#ai-panel .ai-wizard-actions > *,
+#ai-panel .ai-page-heading > *,
+#ai-panel .ai-contact-toolbar > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+#ai-panel .ai-key-eye {
+  flex: 0 0 var(--ui-control-height);
+  min-width: var(--ui-control-height);
+  padding: 0;
+}
+
+#ai-panel .ai-model-picker button {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+}
+
+#ai-panel .ai-model-save {
+  flex-wrap: wrap;
+}
+
+#ai-panel .ai-model-save p {
+  flex: 1 1 160px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+#ai-panel .ai-model-save button {
+  flex: 0 0 auto;
+  min-width: 78px;
+  white-space: nowrap;
+}
+
+#ai-panel .ai-assignment-row select,
+#ai-panel .ai-scope-field select,
+#ai-panel .ai-wiki-bubble > select,
+#ai-panel .ai-wiki-date-type select {
+  min-height: var(--ui-control-height);
+}
+
+#ai-panel .ai-wizard-actions button {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+#ai-panel .ai-form-grid,
+#ai-panel .ai-model-fields,
+#ai-panel .ai-delay-range > div {
+  min-width: 0;
+}
+
+#ai-panel .ai-form-grid > *,
+#ai-panel .ai-model-fields > *,
+#ai-panel .ai-delay-range > div > * {
+  min-width: 0;
+}
+
+#ai-panel .ai-wiki-remove {
+  right: 8px;
+  top: 8px;
+}
+
+#ai-panel .ap-action-menu button,
+#ai-panel .ai-message-location-notice button,
+.app-menu button {
+  white-space: normal;
+}
+
+#ai-panel .ap-filters button,
+#ai-panel .ai-style-pills button,
+#ai-panel .ai-analysis-presets button {
+  min-height: var(--ui-control-height);
+}
+
+#ai-panel .ai-activity-page .ap-record-tabs {
+  width: fit-content;
+  max-width: 100%;
+  flex-wrap: wrap;
+  overflow-x: visible;
+}
+
+#ai-panel .ai-activity-page .ap-record-tabs button {
+  min-height: 40px;
+  white-space: normal;
+}
+
+#ai-panel .ai-activity-page .ap-record-table td,
+#ai-panel .ai-activity-page .ap-record-table th,
+#ai-panel .ai-activity-page .ap-record-table td > *,
+#ai-panel .ai-activity-page .ap-record-table details,
+#ai-panel .ai-activity-page .ap-record-table ol {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+#ai-panel .ai-activity-page .ap-record-table td:last-child > button {
+  min-height: 40px;
+  white-space: normal;
+}
+
+#ai-panel .ai-activity-page .ap-record-table td[colspan]:last-child {
+  display: block;
+  width: 100%;
+}
+
+#ai-panel .ai-activity-page .ap-record-table td[colspan] .ai-empty-state,
+#ai-panel .ai-activity-page .ap-record-table td[colspan] .ap-empty {
+  width: 100%;
+  max-width: 100%;
+}
+
+@media (max-width: 720px) {
+  button:not(.icon-button):not(.ai-key-eye) {
+    min-height: var(--ui-control-height-touch);
+    padding-inline: 12px;
+  }
+
+  #ai-panel button:not(.icon-button):not(.ai-key-eye) {
+    min-height: var(--ui-control-height-touch);
+  }
+
+  .icon-button,
+  #ai-panel .icon-button,
+  #ai-panel .ai-wiki-remove,
+  #ai-panel .ai-key-eye {
+    flex-basis: var(--ui-control-height-touch);
+    width: var(--ui-control-height-touch);
+    min-width: var(--ui-control-height-touch);
+    height: var(--ui-control-height-touch);
+    min-height: var(--ui-control-height-touch);
+  }
+
+  #ai-panel :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="hidden"]), select, textarea) {
+    min-height: var(--ui-control-height-touch);
+    font-size: 16px;
+  }
+
+  #ai-panel .ai-field input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="hidden"]),
+  #ai-panel .ai-field select {
+    min-height: var(--ui-control-height-touch);
+    font-size: 16px;
+  }
+
+  #ai-panel .ai-object-search input,
+  #ai-panel .ai-analysis-search input {
+    min-height: var(--ui-control-height-touch);
+    font-size: 16px;
+  }
+
+  #ai-panel input[type="number"],
+  #ai-panel .ai-field input[type="number"] {
+    width: 8ch;
+    min-width: 6.5ch;
+    max-width: 10ch;
+  }
+
+  #ai-panel .ai-assignment-row select,
+  #ai-panel .ai-scope-field select,
+  #ai-panel .ai-wiki-bubble > select,
+  #ai-panel .ai-wiki-date-type select {
+    min-height: var(--ui-control-height-touch);
+  }
+
+  #ai-panel .ai-form-grid,
+  #ai-panel .ai-model-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #ai-panel .ai-delay-range > div {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  #ai-panel .ai-delay-range > div > span {
+    display: none;
+  }
+
+  #ai-panel .ai-wizard-actions {
+    justify-content: stretch;
+  }
+
+  #ai-panel .ai-wizard-actions button {
+    flex: 1 1 140px;
+  }
+
+  #ai-panel .ai-activity-page .ap-record-tabs {
+    width: 100%;
+  }
+
+  #ai-panel .ai-activity-page .ap-record-tabs button {
+    flex: 1 1 120px;
+  }
+
+  #ai-panel .ap-task-table:has(td[colspan]) {
+    display: block;
+    width: 100%;
+    min-width: 0;
+  }
+
+  #ai-panel .ap-task-table:has(td[colspan]) thead {
+    display: none;
+  }
+
+  #ai-panel .ap-task-table:has(td[colspan]) tbody,
+  #ai-panel .ap-task-table:has(td[colspan]) tr,
+  #ai-panel .ap-task-table:has(td[colspan]) td {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    height: auto;
+  }
+}
+
+@media (max-width: 380px) {
+  :root {
+    --ui-control-inline-padding: 10px;
+  }
+
+  #ai-panel .ai-activity-page .ap-record-table td {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  #ai-panel .ai-model-editor > .ai-card-heading,
+  #ai-panel .ai-learning-contacts .ai-card-heading {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  #ai-panel .ai-model-editor > .ai-card-heading > button {
+    align-self: flex-start;
+  }
+
+  #ai-panel .ai-learning-heading-tools {
+    width: 100%;
+    align-items: stretch;
+  }
+
+  #ai-panel .ai-learning-heading-tools > button {
+    width: 100%;
+  }
+}
+
+/* One visual rhythm for the home screen, dialogs, and AI workspace. */
+:root {
+  --ui-ink: #1d293d;
+  --ui-muted: #617087;
+  --ui-line: #e0e6f0;
+  --ui-surface: #fff;
+  --ui-canvas: #f6f8fc;
+  --ui-shadow: 0 10px 30px rgb(24 39 70 / 5%);
+}
+
+body {
+  color: var(--ui-ink);
+  background: var(--ui-canvas);
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible {
+  outline: 3px solid #899cff;
+  outline-offset: 2px;
+}
+
+.topbar {
+  border-bottom-color: var(--ui-line);
+}
+
+.content {
+  max-width: 1320px;
+}
+
+.market-panel,
+.store-card,
+.desktop-panel,
+dialog {
+  border-radius: 16px;
+  box-shadow: var(--ui-shadow);
+}
+
+.market-panel,
+.store-card,
+dialog {
+  background: var(--ui-surface);
+  border-color: var(--ui-line);
+}
+
+.store-card {
+  padding: 18px;
+  gap: 14px;
+}
+
+.store-card-main h3,
+.panel-heading h2 {
+  color: var(--ui-ink);
+}
+
+.store-card-main p,
+.app-description,
+.install-format {
+  color: var(--ui-muted);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.store-card .primary,
+.store-card .secondary,
+.primary,
+.secondary,
+.danger {
+  font-size: 13px;
+  font-weight: 600;
+  min-height: var(--ui-control-height);
+}
+
+.store-card .install-actions {
+  gap: 8px;
+}
+
+.desktop-icon h3 {
+  line-height: 1.45;
+  max-height: none;
+}
+
+dialog {
+  padding: 28px;
+}
+
+.modal-heading h2 {
+  color: var(--ui-ink);
+  font-size: 20px;
+}
+
+.field,
+.choice,
+.check-label {
+  color: var(--ui-ink);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.choice small,
+#modal-body p,
+#modal-body .field-help {
+  color: var(--ui-muted);
+  font-size: 12.5px;
+  line-height: 1.65;
+}
+
+#ai-panel {
+  --ai-primary: #5065e9;
+  --ai-bg: var(--ui-canvas);
+  --ai-border: var(--ui-line);
+  --ai-text: var(--ui-ink);
+  --ai-muted: var(--ui-muted);
+  --ai-hint: #77849a;
+}
+
+#ai-panel .ai-main-tabs {
+  background: #1d2639;
+}
+
+#ai-panel .ai-main-tabs button {
+  min-height: 44px;
+  border-radius: 10px;
+}
+
+#ai-panel .ai-main-tabs button[aria-current="page"] {
+  background: var(--ai-primary);
+}
+
+#ai-panel .ai-page-body {
+  max-width: 1280px;
+  padding: 28px 30px 40px;
+}
+
+#ai-panel[data-page="settings"] .ai-page-body {
+  max-width: 920px;
+}
+
+#ai-panel .ai-page-heading {
+  align-items: flex-start;
+  margin-bottom: 22px;
+}
+
+#ai-panel .ai-page-heading h3 {
+  font-size: 23px;
+  letter-spacing: -.02em;
+  line-height: 1.3;
+}
+
+#ai-panel .ai-page-heading p {
+  color: var(--ai-muted);
+  font-size: 13px;
+  line-height: 1.6;
+  max-width: 72ch;
+}
+
+#ai-panel .ai-card,
+#ai-panel .ai-page-body > form,
+#ai-panel .ai-task-card,
+#ai-panel .ai-object-sidebar {
+  border-color: var(--ai-border);
+  border-radius: 16px;
+  box-shadow: var(--ui-shadow);
+}
+
+#ai-panel .ai-card-heading {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+
+#ai-panel .ai-card-heading h4 {
+  font-size: 15px;
+}
+
+#ai-panel p,
+#ai-panel label,
+#ai-panel input,
+#ai-panel select,
+#ai-panel textarea,
+#ai-panel button {
+  line-height: 1.5;
+}
+
+#ai-panel .ai-help,
+#ai-panel small {
+  color: var(--ai-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+#ai-panel :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="hidden"]), select, textarea) {
+  border-color: #d7dfeb;
+  border-radius: var(--ui-control-radius);
+}
+
+#ai-panel .ai-field textarea {
+  min-height: 120px;
+}
+
+#ai-panel .ai-object-search {
+  background: #fff;
+  border-color: #d7dfeb;
+}
+
+#ai-panel .ai-object-search input {
+  min-height: 28px;
+}
+
+#ai-panel .ai-object-row {
+  min-height: 60px;
+}
+
+/* Records: compact actions and readable detail, with a card layout on phones. */
+#ai-panel .ai-activity-page {
+  max-width: 1200px;
+  margin-inline: auto;
+}
+
+#ai-panel .ai-activity-page .ap-table-scroll {
+  border: 1px solid var(--ui-line);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: var(--ui-shadow);
+}
+
+#ai-panel .ai-activity-page .ap-record-table {
+  font-size: 13px;
+}
+
+#ai-panel .ai-activity-page .ap-record-table th {
+  height: 48px;
+  color: var(--ui-muted);
+  font-weight: 600;
+  background: #f9faff;
+}
+
+#ai-panel .ai-activity-page .ap-record-table td {
+  vertical-align: top;
+  padding: 18px 16px;
+  line-height: 1.55;
+}
+
+#ai-panel .ai-activity-page .ap-record-table td[data-label="联系人"] strong {
+  display: block;
+  color: var(--ui-ink);
+  font-size: 14px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+#ai-panel .ai-activity-page .ap-record-table td[data-label="联系人"] small {
+  margin-top: 5px;
+}
+
+#ai-panel .ai-activity-page .ap-reply-record-table details summary {
+  width: fit-content;
+  max-width: 100%;
+  color: var(--ui-ink);
+  font-weight: 600;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+#ai-panel .ai-activity-page .ap-reply-record-table .ai-summary-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+#ai-panel .ai-activity-page .ap-reply-record-table .ai-summary-controls select {
+  flex: 0 1 190px;
+  width: 190px;
+  min-height: var(--ui-control-height);
+}
+
+#ai-panel .ai-activity-page .ap-reply-record-table .ai-summary-controls button {
+  flex: 0 0 auto;
+  min-width: 64px;
+  border: 1px solid var(--ui-line);
+  background: #fff;
+  padding-inline: 14px;
+}
+
+#ai-panel .ai-activity-page .ap-reply-record-table .ai-summary-controls p {
+  flex-basis: 100%;
+}
+
+#ai-panel .ai-activity-page .ap-reply-record-table td[data-label="操作"] > .ap-record-open {
+  display: inline-flex;
+  width: auto;
+  min-width: 116px;
+  margin: 0;
+}
+
+@media (max-width: 720px) {
+  #ai-panel .ai-page-body {
+    padding: 18px 16px 30px;
+  }
+
+  #ai-panel .ai-page-heading h3 {
+    font-size: 21px;
+  }
+
+  #ai-panel .ai-card,
+  #ai-panel .ai-page-body > form,
+  #ai-panel .ai-task-card {
+    padding: 16px;
+  }
+
+  #ai-panel .ai-activity-page .ap-table-scroll {
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  #ai-panel .ai-activity-page .ap-record-table td {
+    padding: 10px 2px;
+  }
+
+  #ai-panel .ai-activity-page .ap-reply-record-table .ai-summary-controls select {
+    flex: 1 1 125px;
+    max-width: none;
+  }
+
+  #ai-panel .ai-activity-page .ap-reply-record-table td[data-label="操作"] > .ap-record-open {
+    width: 100%;
+  }
+}
+
+@media (max-width: 600px) {
+  #ai-panel {
+    --ai-sidebar: 0px;
+  }
+
+  #ai-panel .ai-main-tabs {
+    inset: auto 0 0;
+    width: 100%;
+    height: calc(64px + env(safe-area-inset-bottom));
+    padding: 4px 6px env(safe-area-inset-bottom);
+    flex-direction: row;
+    align-items: stretch;
+    justify-content: space-around;
+    gap: 2px;
+    overflow: visible;
+    border-top: 1px solid #354058;
+    box-shadow: 0 -8px 24px rgb(24 32 52 / 16%);
+  }
+
+  #ai-panel .ai-nav-brand,
+  #ai-panel .ai-nav-caption,
+  #ai-panel .ai-nav-footer {
+    display: none;
+  }
+
+  #ai-panel .ai-main-tabs button {
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    width: auto;
+    min-width: 0;
+    min-height: 56px;
+    padding: 5px 2px;
+    gap: 2px;
+    font-size: 10px;
+    line-height: 1.1;
+  }
+
+  #ai-panel .ai-main-tabs button > span {
+    display: block;
+    color: inherit;
+    font-size: 10px;
+    line-height: 1.1;
+    white-space: nowrap;
+  }
+
+  #ai-panel .ai-main-tabs button .ai-icon {
+    width: 19px;
+    height: 19px;
+  }
+
+  #ai-panel .ai-panel-heading,
+  #ai-panel #ai-feedback,
+  #ai-panel #ai-operation,
+  #ai-panel #ai-manual-recovery,
+  #ai-panel #ai-content {
+    margin-left: 0;
+  }
+
+  #ai-panel #ai-content {
+    padding-bottom: calc(64px + env(safe-area-inset-bottom));
+  }
+
+  #ai-panel[data-page="overview"] #ai-content {
+    padding-bottom: 0;
+  }
+
+  #ai-panel[data-page="overview"] .ai-object-workspace {
+    padding-bottom: calc(78px + env(safe-area-inset-bottom));
+  }
+
+  #ai-panel .ai-object-save {
+    bottom: calc(64px + env(safe-area-inset-bottom));
+  }
+}

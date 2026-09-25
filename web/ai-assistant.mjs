@@ -12,7 +12,7 @@ import { createProactiveUI } from './ai-proactive-view.mjs';
 import { RecordCache, mergeRecordResults } from './ai-record-cache.mjs';
 import { contactName, contactSearch as searchableContact } from './ai-contact-name.mjs';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const eventLabels = { contacted: '已主动联系', replied: '已自动回复', manual: '已交由你回复', limit: '已达到回复上限', skip: '本轮无需回复', stop: '已停止自动联系', uncertain: '发送结果未确认', error: '任务已暂停', failed: '对象不可读取，本次未发送' };
+const eventLabels = { contacted: '已主动联系', replied: '已自动回复', manual: '已交由你回复', limit: '已达到回复上限', skip: '本轮无需回复', stop: '已收到停止联系要求', uncertain: '发送结果未确认', error: '任务已暂停', failed: '对象不可读取，本次未发送' };
 const names = { formality: '正式程度', warmth: '亲切程度', length: '回复长度', directness: '表达方式', emoji: '表情使用', humor: '幽默程度' };
 const option = (value, label, selected) => `<option value="${esc(value)}" ${selected ? 'selected' : ''}>${esc(label)}</option>`;
 const field = (name, label, value, max = 1200, placeholder = '') => `<label class="ai-field">${label}<textarea name="${name}" maxlength="${max}" rows="${name === 'summary' ? 6 : 2}" placeholder="${esc(placeholder)}">${esc(value)}</textarea></label>`;
@@ -23,7 +23,6 @@ const LEARN_TARGETS = [
   { id: 'style', label: '仅学习风格', hint: '只更新聊天风格，不改动已保存的聊天记忆。' },
   { id: 'memory', label: '仅学习记忆', hint: '读取聊天记录整理成一份记忆，学习后在对象页选择替换或与原有记忆合并。' },
 ];
-const timingDefaults = { segmentDelayMin: 2, segmentDelayMax: 8, followUpDelayMin: 45, followUpDelayMax: 120 };
 const serviceIdentity = value => `${String(value?.protocol || 'openai')}|${String(value?.baseUrl || '').trim().replace(/\/+$/, '')}`;
 
 export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
@@ -49,7 +48,7 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
   let contactsLoaded = false, contactsLoading = false, resultProfileIds = null;
   let lastAutoScanAt = 0;
   let editingReplyContact = null, replyContactSearch = '', contactSearch = '';
-  let modelDraft = null, providerRevision = 0, revealRevision = 0, timingDraft = null, learningDraft = null, renderedView = '';
+  let modelDraft = null, providerRevision = 0, revealRevision = 0, learningDraft = null, renderedView = '';
   const profileDrafts = new Map();
   const manualReplyDrafts = new Map();
   const objectDrafts = new Map();
@@ -218,22 +217,8 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
   const pickerKinds = () => tab === 'default-style' ? ['person'] : ['person', 'group'];
   const modeTargets = mode => state[`${mode}Targets`] || state.targets;
   const replyStrategy = () => state.replyStrategy || state.strategy;
-  const timingValues = () => ({ ...timingDefaults, ...state.settings, ...timingDraft });
-  const operationText = operation => operation?.phase?.startsWith('analysis-') ? `正在${operation.phase === 'analysis-model' ? '分析' : '读取'}聊天记录 ${operation.completed}/${operation.total}` : operation ? operation.phase === 'contacts' ? operation.total ? `正在获取联系人 ${operation.completed}/${operation.total}` : '正在读取通讯录…' : operation.phase === 'memory' ? `正在学习聊天记忆 ${operation.completed}/${operation.total} 批，请勿关闭页面` : operation.phase === 'model' ? `正在分析 ${operation.total} 位联系人的聊天风格…` : `正在读取聊天 ${operation.completed}/${operation.total}` : '';
   const needsContacts = () => !state.contacts?.length;
-  const timingFields = () => {
-    const value = timingValues();
-    const range = (label, prefix, min, max) => `<fieldset class="ai-delay-range"><legend>${label}（秒）</legend><div><label class="ai-field">最短<input name="${prefix}Min" data-ai-timing type="number" required min="${min}" max="${max}" step="1" value="${esc(value[`${prefix}Min`])}"></label><span>至</span><label class="ai-field">最长<input name="${prefix}Max" data-ai-timing type="number" required min="${min}" max="${max}" step="1" value="${esc(value[`${prefix}Max`])}"></label></div></fieldset>`;
-    return `${range('同轮消息随机间隔', 'segmentDelay', 1, 30)}${range('按需追问等待时间', 'followUpDelay', 15, 600)}<p class="ai-help">自动回复与主动聊天共用这些时间。对方发来新消息时，会先处理新消息。</p>`;
-  };
-  function checkedTiming() {
-    const value = Object.fromEntries(Object.keys(timingDefaults).map(key => [key, Number(timingValues()[key])]));
-    for (const [prefix, min, max] of [['segmentDelay', 1, 30], ['followUpDelay', 15, 600]]) {
-      const a = value[`${prefix}Min`], b = value[`${prefix}Max`];
-      if (!Number.isInteger(a) || !Number.isInteger(b) || a < min || b > max || a > b) throw new Error(`请填写 ${min}–${max} 秒的有效范围，最短不能超过最长`);
-    }
-    return value;
-  }
+  const operationText = operation => operation?.phase?.startsWith('analysis-') ? `正在${operation.phase === 'analysis-model' ? '分析' : '读取'}聊天记录 ${operation.completed}/${operation.total}` : operation ? operation.phase === 'contacts' ? operation.total ? `正在获取联系人 ${operation.completed}/${operation.total}` : '正在读取通讯录…' : operation.phase === 'memory' ? `正在学习聊天记忆 ${operation.completed}/${operation.total} 批，请勿关闭页面` : operation.phase === 'model' ? `正在分析 ${operation.total} 位联系人的聊天风格…` : `正在读取聊天 ${operation.completed}/${operation.total}` : '';
   const back = title => `<div class="ai-page-heading"><button type="button" class="quiet" data-ai-nav="overview">${icon('arrow-l')}返回自动回复</button><h3>${title}</h3></div>`;
   const steps = (labels, current) => `<ol class="ai-steps" aria-label="配置进度">${labels.map((label, i) => `<li ${i === current ? 'aria-current="step"' : ''} class="${i < current ? 'complete' : ''}"><span>${i + 1}</span>${label}</li>`).join('')}</ol>`;
   const noteActivity = () => {
@@ -537,14 +522,8 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
   function wikiEntries(form) {
     const list = form?.querySelector('[data-ai-wiki-entities]'); if (!list) return [];
     return [...list.querySelectorAll('.ai-wiki-bubble')].map(row => {
-      const timestamp = (which, end = false) => {
-        const input=row.querySelector(`[aria-label="${which==='from'?'开始时间':'结束时间'}"]`), raw=row.querySelector(`[data-ai-wiki-${which}]`)?.value, old=Number(raw);
-        if (!input?.value) return undefined;
-        if (Number.isSafeInteger(old) && new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(old) === input.value) return old;
-        return Date.parse(input.value + (end ? 'T23:59:59+08:00' : 'T00:00:00+08:00'));
-      };
-      const field=row.querySelector('select[aria-label="信息类型"]').value, from=timestamp('from'), to=timestamp('to',true), temporal=['residence','workplace','employer','shipping'].includes(field), calendar=['birthday','date'].includes(field), rawRecorded=row.querySelector('[data-ai-wiki-recorded]')?.value, recordedAt=rawRecorded ? Number(rawRecorded) : undefined;
-      return { ...(row.querySelector('[data-ai-wiki-id]')?.value ? { id: row.querySelector('[data-ai-wiki-id]').value } : {}), field, text: row.querySelector('[aria-label="信息内容"]').value.trim(), ...(field==='school' && row.querySelector('[aria-label="学历"]')?.value ? { degree: row.querySelector('[aria-label="学历"]').value } : {}), ...(calendar && row.querySelector('select[aria-label="生日历法"]')?.value ? { calendar: row.querySelector('select[aria-label="生日历法"]').value } : {}), ...(temporal && from !== undefined ? { from } : {}), ...(temporal && to !== undefined ? { to } : {}), ...(temporal && Number.isSafeInteger(recordedAt) ? { recordedAt } : {}) };
+      const field=row.querySelector('select[aria-label="信息类型"]').value, temporal=['residence','workplace','employer','shipping'].includes(field), calendar=['birthday','date'].includes(field), rawRecorded=row.querySelector('[data-ai-wiki-recorded]')?.value, recordedAt=rawRecorded ? Number(rawRecorded) : undefined;
+      return { ...(row.querySelector('[data-ai-wiki-id]')?.value ? { id: row.querySelector('[data-ai-wiki-id]').value } : {}), field, text: row.querySelector('[aria-label="信息内容"]').value.trim(), ...(field==='school' && row.querySelector('[aria-label="学历"]')?.value ? { degree: row.querySelector('[aria-label="学历"]').value } : {}), ...(calendar && row.querySelector('select[aria-label="生日历法"]')?.value ? { calendar: row.querySelector('select[aria-label="生日历法"]').value } : {}), ...(temporal && Number.isSafeInteger(recordedAt) && recordedAt > 0 ? { recordedAt } : {}) };
     }).filter(x => x.text);
   }
   function styleResults(profiles, editable = true) {
@@ -629,10 +608,6 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
       objectDrafts.set(selectedObject, draft);
     }
     rememberProvider();
-    for (const input of panel.querySelectorAll('[data-ai-timing], #ai-reply-delay')) {
-      timingDraft ||= {};
-      timingDraft[input.id === 'ai-reply-delay' ? 'replyDelay' : input.name] = input.value;
-    }
     proactiveUI.remember();
     const profile = $('#ai-profile-form');
     if (profile) { const data = new FormData(profile); profileDrafts.set(profile.dataset.id, { ...profileDrafts.get(profile.dataset.id), ...Object.fromEntries(data), ...(profile.querySelector('[data-ai-wiki-entities]') ? { memorySummary: JSON.stringify(wikiEntries(profile)) } : {}) }); }
@@ -812,10 +787,13 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
         let degree = wikiRow.querySelector('[aria-label="学历"]');
         if (school && !degree) { degree = document.createElement('input'); degree.className = 'ai-wiki-degree'; degree.setAttribute('aria-label', '学历'); degree.maxLength = 120; degree.placeholder = '学历'; wikiRow.insertBefore(degree, wikiRow.querySelector('[data-ai-wiki-remove]')); }
         if (degree) degree.hidden = !school;
-        let range = wikiRow.querySelector('.ai-wiki-date-range');
-        if (temporal && !range) { range = document.createElement('span'); range.className = 'ai-wiki-date-range'; range.innerHTML = '<label>生效自<input type="hidden" data-ai-wiki-from><input type="date" aria-label="开始时间"></label><label>截至<input type="hidden" data-ai-wiki-to><input type="date" aria-label="结束时间"></label>'; wikiRow.insertBefore(range, wikiRow.querySelector('[data-ai-wiki-remove]')); }
-        if (temporal && !wikiRow.querySelector('[data-ai-wiki-recorded]')?.value) wikiRow.querySelector('[data-ai-wiki-recorded]').value = String(Date.now());
-        if (range) range.hidden = !temporal;
+        let schoolName = wikiRow.querySelector('.ai-wiki-school-name');
+        if (school && !schoolName) { schoolName = document.createElement('small'); schoolName.className = 'ai-wiki-school-name'; wikiRow.insertBefore(schoolName, wikiRow.querySelector('[aria-label="信息内容"]')); }
+        if (schoolName) schoolName.hidden = !school;
+        if (school && !wikiRow.querySelector('[aria-label="信息内容"]').value) wikiRow.querySelector('[aria-label="信息内容"]').placeholder = '具体学校';
+        let recorded = wikiRow.querySelector('.ai-wiki-recorded');
+        if (temporal && !recorded) { recorded = document.createElement('small'); recorded.className = 'ai-wiki-recorded'; wikiRow.insertBefore(recorded, wikiRow.querySelector('[data-ai-wiki-remove]')); }
+        if (recorded) { const rawTime = wikiRow.querySelector('[data-ai-wiki-recorded]')?.value, stamp = Number(rawTime); recorded.hidden = !temporal; if (temporal) recorded.textContent = `时间：${Number.isSafeInteger(stamp) && stamp ? new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', dateStyle: 'medium', timeStyle: 'short' }).format(stamp) : '未知'}`; }
         const remarkAction = wikiRow.querySelector('[data-ai-wiki-remark]');
         if (remarkAction) remarkAction.hidden = !state.capabilities?.writeContactRemark || !['name'].includes(input.value);
         const content = wikiRow.querySelector('[aria-label="信息内容"]'), isOther = input.value === 'other';
@@ -826,7 +804,8 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
           if (isOther) { replacement.rows = 1; resizeWikiTextarea(replacement); }
           content.replaceWith(replacement);
         }
-        const target = wikiRow.closest('[data-ai-wiki-entities]')?.querySelector(`[data-ai-wiki-field="${input.value}"] .ai-wiki-field-values`);
+        const targetField = ['workplace', 'employer'].includes(input.value) ? 'work' : input.value;
+        const target = wikiRow.closest('[data-ai-wiki-entities]')?.querySelector(`[data-ai-wiki-field="${targetField}"] .ai-wiki-field-values`);
         if (target && wikiRow.parentElement !== target) target.append(wikiRow);
         return;
       }
@@ -905,6 +884,11 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
   });
   panel.addEventListener('input', event => {
     if (event.target?.matches?.('.ai-wiki-bubble textarea[aria-label="信息内容"]')) resizeWikiTextarea(event.target);
+    const wikiRow = event.target?.closest?.('.ai-wiki-bubble');
+    if (wikiRow && (event.target.matches('[aria-label="信息内容"]') || event.target.matches('[aria-label="学历"]'))) {
+      const label = wikiRow.querySelector('.ai-wiki-school-name');
+      if (label) label.textContent = `${wikiRow.querySelector('[aria-label="学历"]')?.value.trim() || '学历未注明'}：${wikiRow.querySelector('[aria-label="信息内容"]')?.value.trim() || '具体学校'}`;
+    }
     if (event.target.closest('#ai-object-form') && event.target.name === 'summary') {
       const form = event.target.form;
       form.elements.styleId.value = 'custom';
@@ -971,7 +955,6 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
       const wiki = form.querySelector('[data-ai-wiki-entities]');
       if (wiki) {
         const entries = wikiEntries(form);
-        if (entries.some(entry => entry.from !== undefined && entry.to !== undefined && entry.from > entry.to)) throw new Error('结束时间不能早于开始时间');
         form.querySelector('[name=memorySummary]').value = JSON.stringify(entries);
         data.set('memorySummary', JSON.stringify(entries));
       }
@@ -1156,7 +1139,7 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
         const section=button.closest('[data-ai-wiki-field]') || entities?.querySelector(`[data-ai-wiki-field="${field}"]`);
         const list = section?.querySelector('.ai-wiki-field-values');
         if (!list) return;
-        list.insertAdjacentHTML('beforeend', wikiEntryMarkup({ field, text: '' }, state.capabilities?.writeContactRemark === true));
+        list.insertAdjacentHTML('beforeend', wikiEntryMarkup({ field, text: '', ...(field === 'school' ? { degree: '' } : {}) }, state.capabilities?.writeContactRemark === true));
         const added = list.lastElementChild; const content = added.querySelector('[aria-label="信息内容"]');
         if (content?.tagName === 'TEXTAREA') resizeWikiTextarea(content);
         content?.focus(); return;
@@ -1353,11 +1336,6 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
         }
         await execute('cancel', {}, '已取消未完成的操作');
       }
-      if (action === 'delay') {
-        rememberDraft(); const replyDelay = Number($('#ai-reply-delay').value), timing = checkedTiming();
-        if (!Number.isInteger(replyDelay) || replyDelay < 3 || replyDelay > 60) throw new Error('合并消息的等待时间须为 3–60 秒的整数');
-        await execute('settings', { value: { replyDelay, ...timing } }, '沟通设置已保存');
-      }
       if (['select-contacts', 'clear-contacts'].includes(action)) {
         rememberDraft(); selectedContacts.clear();
         if (action === 'select-contacts') state.contacts.filter(c => pickerKinds().includes(c.kind) && !learnedProfiles().some(p => p.contact === c.id)).forEach(c => selectedContacts.add(c.id));
@@ -1387,7 +1365,7 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
       rememberRecords();
       analysisDraft = { request: '', from: '', to: '', contacts: [] }; analysisSearch = ''; analysisHistoryReport = null; analysisHistoryEpoch++; learnRange = {from:'',to:''}; learnScope='range'; learnTarget='both'; defaultStylePerspective = 'self'; analysisResult = null; proactiveUI.reset();
       reviewDialog.close(); reviewDialog.replaceChildren(); reviewData = null; reviewAlert.hidden = true;
-      concealKey(true); modelDraft = null; timingDraft = null; learningDraft = null; renderedView = ''; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); selectedObject = ''; objectSearch = ''; objectKind = 'person'; editingReplyContact = null; contactSearch = ''; providerRevision++;
+      concealKey(true); modelDraft = null; learningDraft = null; renderedView = ''; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); selectedObject = ''; objectSearch = ''; objectKind = 'person'; editingReplyContact = null; contactSearch = ''; providerRevision++;
       generation++; clearInterval(timer); id = instanceId; state = null; busy = false; polling = false; tab = 'overview'; replyDraft = null; editingProfile = null; contactsLoaded = false; contactsLoading = false; resultProfileIds = null;
       const attachedGeneration = generation;
       selectedContacts.clear(); replyProfiles.clear(); panel.hidden = true; rail.hidden = false; panel.setAttribute('aria-busy', 'false');
@@ -1406,6 +1384,6 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
         finally { if (current === generation) polling = false; }
       }, 2500);
     },
-    detach() { analysisQueueToken++; analysisQueueAccount = null; rememberRecords(); reviewToken++; proactiveRecordEpoch++; proactiveRecordLoading = false; proactiveHistory = []; proactiveHistoryPage = null; errorEpoch++; errorLoading = false; errorHistory = []; errorPage = null; logEpoch++; analysisDraft = { request: '', from: '', to: '', contacts: [] }; analysisSearch = ''; analysisHistoryReport = null; analysisHistoryEpoch++; analysisResult = null; reviewDialog.close(); reviewDialog.replaceChildren(); reviewData = null; reviewAlert.hidden = true; concealKey(true); modelDraft = null; timingDraft = null; learningDraft = null; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); selectedObject = ''; objectSearch = ''; objectKind = 'person'; editingReplyContact = null; providerRevision++; generation++; clearInterval(timer); id = null; state = null; rail.hidden = true; panel.hidden = true; $('#ai-content').replaceChildren(); selectedContacts.clear(); replyProfiles.clear(); proactiveUI.reset(); replyDraft = null; },
+    detach() { analysisQueueToken++; analysisQueueAccount = null; rememberRecords(); reviewToken++; proactiveRecordEpoch++; proactiveRecordLoading = false; proactiveHistory = []; proactiveHistoryPage = null; errorEpoch++; errorLoading = false; errorHistory = []; errorPage = null; logEpoch++; analysisDraft = { request: '', from: '', to: '', contacts: [] }; analysisSearch = ''; analysisHistoryReport = null; analysisHistoryEpoch++; analysisResult = null; reviewDialog.close(); reviewDialog.replaceChildren(); reviewData = null; reviewAlert.hidden = true; concealKey(true); modelDraft = null; learningDraft = null; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); selectedObject = ''; objectSearch = ''; objectKind = 'person'; editingReplyContact = null; providerRevision++; generation++; clearInterval(timer); id = null; state = null; rail.hidden = true; panel.hidden = true; $('#ai-content').replaceChildren(); selectedContacts.clear(); replyProfiles.clear(); proactiveUI.reset(); replyDraft = null; },
   };
 }

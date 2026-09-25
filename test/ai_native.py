@@ -212,12 +212,13 @@ class BackgroundIdentity(unittest.TestCase):
                    'label': '同名对象', 'background': {'account': 'c' * 64, 'contact': 'd' * 64}}
         return adapter, request
 
-    def test_matching_current_session_needs_no_profile_account_or_navigation(self):
+    def test_matching_current_session_restores_chat_tab_without_profile_or_contact_navigation(self):
         adapter, request = self.adapter()
         session = Mock(); session.matches.return_value = True
         with patch.object(native, 'module', return_value=Mock(SessionIdentity=Mock(return_value=session))), patch.dict(native.os.environ, {'HOME': '/owned'}):
             result = adapter.resolve(request)
         self.assertEqual(result['contact']['id'], request['contact'])
+        adapter.controls.ensure_conversations.assert_called_once_with()
         adapter.controls.account.assert_not_called()
         adapter.controls.contact.assert_not_called()
         adapter.controls.navigate_background.assert_not_called()
@@ -228,6 +229,7 @@ class BackgroundIdentity(unittest.TestCase):
         session = Mock(); session.matches.return_value = False
         with patch.object(native, 'module', return_value=Mock(SessionIdentity=Mock(return_value=session))), patch.dict(native.os.environ, {'HOME': '/owned'}):
             adapter.resolve(request)
+        adapter.controls.ensure_conversations.assert_called_once_with()
         adapter.controls.navigate_background.assert_called_once()
         session.verify.assert_called_once_with(**request['background'])
         adapter.controls.account.assert_not_called(); adapter.controls.contact.assert_not_called()

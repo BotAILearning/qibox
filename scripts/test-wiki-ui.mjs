@@ -33,12 +33,13 @@ try {
   const save = async () => { await page.getByRole('button', { name: '保存设置', exact: true }).click(); await settle(); };
   const expand = async () => { if (!(await page.locator('.ai-memory-fold').evaluate(node => node.open))) await page.locator('.ai-memory-fold > summary').click(); };
   const add = async field => {
-    const section = page.locator(`[data-ai-wiki-field="${field}"]`);
-    await section.locator('[data-ai-wiki-add-field]').click();
+    const section = page.locator(`[data-ai-wiki-field="${['workplace','employer'].includes(field) ? 'work' : field}"]`);
+    await section.locator(`[data-ai-wiki-add-field="${field}"]`).click();
     return section.locator('.ai-wiki-bubble').last();
   };
   await expand();
-  assert.equal(await page.locator('.ai-wiki-field').count(), 11, `固定模板显示全部基础信息字段和其他；页面文本：${(await page.locator('#ai-panel').innerText()).slice(0,1400)}`);
+  assert.equal(await page.locator('.ai-wiki-field').count(), 10, `固定模板显示全部基础信息字段和其他；工作地点与工作单位位于同一模块。页面文本：${(await page.locator('#ai-panel').innerText()).slice(0,1400)}`);
+  assert.equal(await page.locator('[data-ai-wiki-field="work"] .ai-wiki-bubble').count(), 0);
   assert.equal(await page.locator('.ai-memory-fold h4').first().textContent(), '聊天记忆');
   await page.locator('[data-ai-wiki-field="name"] h5').waitFor();
   assert.equal(await page.locator('[data-ai-wiki-field="other"] textarea[aria-label="信息内容"]').count(), 0, '空字段保持空白，不强制创建条目');
@@ -51,21 +52,30 @@ try {
   assert.deepEqual(readMemory(ai.vault, ai.data.profiles[profile.id]).entries.map(entry => entry.calendar), [undefined], '保存其他内容时未确认历法保持未知');
   assert.equal(ai.data.profiles[profile.id].replyStrategy, undefined, '首次建立 Wiki 不生成回复策略');
   assert.equal(ai.data.replyTargets.includes(profile.id), false, '首次建立 Wiki 不启用回复');
+  const savedBeforeDraft = readMemory(ai.vault, ai.data.profiles[profile.id]).entries;
+  const draftRow = await add('phone'); await draftRow.locator('[aria-label="信息内容"]').fill('13900000000');
+  assert.deepEqual(readMemory(ai.vault, ai.data.profiles[profile.id]).entries, savedBeforeDraft, '新增内容在点击保存设置前仅为草稿');
+  await draftRow.locator('[data-ai-wiki-remove]').click();
+  assert.deepEqual(readMemory(ai.vault, ai.data.profiles[profile.id]).entries, savedBeforeDraft, '删除草稿内容不会提前影响已保存记忆');
   row = page.locator('.ai-wiki-bubble').last(); await row.locator('[aria-label="生日历法"]').selectOption('lunar'); await save();
   profile = ai.profiles().find(item => item.contact === contact);
   assert.equal(readMemory(ai.vault, ai.data.profiles[profile.id]).entries[0].calendar, 'lunar');
 
   row = await add('residence'); await row.locator('[aria-label="信息内容"]').fill('测试地址');
-  await row.locator('[aria-label="开始时间"]').fill('2026-09-25'); await row.locator('[aria-label="结束时间"]').fill('2026-09-20');
-  const before = readMemory(ai.vault, ai.data.profiles[profile.id]).entries;
+  assert.equal(await row.locator('[aria-label="开始时间"]').count(), 0, '地址记忆不要求起止时间');
+  assert.equal(await row.locator('.ai-wiki-recorded').count(), 1, '地址展示单个时间');
   await save();
-  assert.match(await page.locator('#ai-feedback').textContent(), /结束时间不能早于开始时间/);
-  assert.deepEqual(readMemory(ai.vault, ai.data.profiles[profile.id]).entries, before, '倒序日期拒绝且原资料不变');
-  await row.locator('[aria-label="结束时间"]').fill('2026-09-28'); await save();
   profile = ai.profiles().find(item => item.contact === contact);
   const residence = readMemory(ai.vault, ai.data.profiles[profile.id]).entries.find(entry => entry.field === 'residence');
-  assert.equal(residence.text, '测试地址'); assert.ok(residence.recordedAt); assert.equal(residence.from, Date.parse('2026-09-25T00:00:00+08:00'));
-  assert.match(await page.locator('.ai-wiki-recorded').last().textContent(), /2026年/);
+  assert.equal(residence.text, '测试地址'); assert.equal(residence.recordedAt, undefined, '手动新建地址不冒用编辑时间'); assert.equal(residence.from, undefined); assert.equal(residence.to, undefined);
+  assert.match(await row.locator('.ai-wiki-recorded').textContent(), /时间：未知/);
+
+  row = await add('school'); await row.locator('[aria-label="学历"]').fill('本科'); await row.locator('[aria-label="信息内容"]').fill('示例大学');
+  assert.equal(await row.locator('.ai-wiki-school-name').textContent(), '本科：示例大学');
+  await save();
+  assert.ok(readMemory(ai.vault, ai.data.profiles[profile.id]).entries.some(entry => entry.field === 'school' && entry.degree === '本科' && entry.text === '示例大学'));
+  await add('employer'); await page.locator('[data-ai-wiki-field="work"] .ai-wiki-bubble').last().locator('[aria-label="信息内容"]').fill('示例公司'); await save();
+  assert.equal(await page.locator('[data-ai-wiki-field="work"] .ai-wiki-bubble').count(), 1, '工作地点与工作单位共用一个模块');
 
   for (const phone of ['13800000001','13800000002']) {
     row = await add('phone'); await row.locator('[aria-label="信息内容"]').fill(phone);
@@ -146,5 +156,5 @@ try {
   await save();
   assert.equal(ai.data.profiles[profile.id].replyStrategy.replyGoal, '原回复目标', 'Wiki 保存失败时后续回复策略没有写入');
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ passed: true, checks: ['未知历法往返', '农历保存', '倒序时间原子拒绝', '地址记录时间与有效期', '同字段多值保存与独立编辑', '删除抑制学习回填', '新联系人同表单 Wiki 与回复设置', 'Wiki 保存失败不写回复策略', '无浏览器运行时异常'] }));
+  console.log(JSON.stringify({ passed: true, checks: ['未保存的记忆编辑仅保留为草稿', '保存设置后写入与农历保存', '地址和工作信息只记录单个时间点', '学历学校显示为学历加学校', '工作地点与工作单位共用模块', '同字段多值保存与独立编辑', '删除抑制学习回填', '双方纪念日字段说明', '新联系人同表单 Wiki 与回复设置', 'Wiki 保存失败不写回复策略', '无浏览器运行时异常'] }));
 } finally { await browser?.close(); await app.close(); await peer.close(); await cleanup(dataRoot); }

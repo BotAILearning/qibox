@@ -91,9 +91,9 @@ test('reply rounds merge bursts, can skip, refresh only enum style and do not re
   await enabled(a, { reply: true }); await a.settings({ updateStyle: true, replyDelay: 8 }); await a.tick(); assert.equal(bridge.sent.length, 0);
   const contact = bridge.contacts[0].id;
   bridge.push(contact, 'other', '第一句'); await a.tick(); advance(5000); bridge.push(contact, 'other', '第二句'); await a.tick();
-  advance(7999); await a.tick(); assert.equal(bridge.sent.length, 0); advance(1); await a.tick(); assert.equal(bridge.sent.length, 1);
+  advance(19999); await a.tick(); assert.equal(bridge.sent.length, 0); advance(1); await a.tick(); assert.equal(bridge.sent.length, 1);
   assert.equal(a.profiles()[0].style.warmth, '亲切');
-  bridge.push(contact, 'other', '话题结束'); await a.tick(); advance(8000); provider.next = async () => ({ action: 'skip' }); await a.tick();
+  bridge.push(contact, 'other', '话题结束'); await a.tick(); advance(20000); provider.next = async () => ({ action: 'skip' }); await a.tick();
   assert.equal(bridge.sent.length, 1); advance(20000); await a.tick(); assert.equal(bridge.sent.length, 1);
 });
 
@@ -256,14 +256,14 @@ test('manual style corrections survive per-round model updates and repeated lear
   await a.editProfile(profile.id, { style: { ...profile.style, customTone: '保持克制', customAvoid: '不要使用叹号' } });
   await a.learn({ contacts: [profile.contact] }); assert.equal(a.profiles()[0].style.customTone, '保持克制');
   await enabled(a, { reply: true }); await a.settings({ updateStyle: true }); await a.tick();
-  bridge.push(profile.contact, 'other'); await a.tick(); advance(8000); await a.tick();
+  bridge.push(profile.contact, 'other'); await a.tick(); advance(20000); await a.tick();
   assert.equal(a.profiles()[0].style.customTone, '保持克制'); assert.equal(a.profiles()[0].style.customAvoid, '不要使用叹号');
 });
 
 test('judgment-disabled skip is retried without becoming an implicit handoff', async t => {
   const { assistant: a, bridge, provider, advance } = await fixture(t);
   await enabled(a, { reply: true }); await a.settings({ judgeReply: false }); await a.tick();
-  bridge.push(bridge.contacts[0].id, 'other'); await a.tick(); advance(8000);
+  bridge.push(bridge.contacts[0].id, 'other'); await a.tick(); advance(20000);
   provider.next = async () => ({ action: 'skip' }); await a.tick();
   assert.equal(a.profiles()[0].paused, false); assert.equal(a.publicState().events[0].code, 'replied');
   assert.equal(bridge.sent.length, 1); assert.equal(a.publicState().events.some(e=>e.code==='handoff'),false);
@@ -380,7 +380,7 @@ for (const [request, reply] of [['请把文件发给我', '我现在不能发送
     const { assistant: a, bridge, advance, root, provider } = await fixture(t);
     provider.next = async () => ({ action: 'send', text: reply });
     await enabled(a); await a.tick();
-    bridge.push(bridge.contacts[0].id, 'other', request); await a.tick(); advance(8000); await a.tick();
+    bridge.push(bridge.contacts[0].id, 'other', request); await a.tick(); advance(20000); await a.tick();
     const profile = a.profiles()[0]; assert.equal(profile.paused, false); assert.equal(profile.handoffReason, undefined);
     assert.equal(a.profiles()[1].paused, false); assert.equal(bridge.sent.length, 1); assert.equal(bridge.sent[0].text, reply);
     assert.equal((await readFile(path.join(root, 'ai-assistant.json'), 'utf8')).includes(request), false);
@@ -399,9 +399,9 @@ test('proactive handoff skips only the affected contact and continues queue; gen
 test('text explanations remain available and a model skip is recorded without pausing', async t => {
   const { assistant: a, bridge, provider, advance } = await fixture(t);
   await enabled(a); await a.tick();
-  bridge.push(bridge.contacts[0].id, 'other', '如何发送文件？'); await a.tick(); advance(8000); await a.tick();
+  bridge.push(bridge.contacts[0].id, 'other', '如何发送文件？'); await a.tick(); advance(20000); await a.tick();
   assert.equal(bridge.sent.length, 1);
-  bridge.push(bridge.contacts[0].id, 'other', '帮我完成这笔转账'); await a.tick(); advance(8000);
+  bridge.push(bridge.contacts[0].id, 'other', '帮我完成这笔转账'); await a.tick(); advance(20000);
   provider.next = async () => ({ action: 'skip' }); await a.tick();
   assert.equal(bridge.sent.length, 1); assert.equal(a.profiles()[0].paused, false);
   assert.equal(a.publicState().skipRecords[0].source, 'model-skip');

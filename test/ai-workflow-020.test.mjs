@@ -17,13 +17,13 @@ async function fixture(t) {
   t.after(async () => { await a.close(); await cleanup(root); });
   const tick = async () => { await a.tick(); if (!a.available) await a.tick(); };
   const enable = async () => { await a.settings({ enabled: true, replyScope: 'all' }); await tick(); await tick(); };
-  const receive = async (contact, text, answer) => { bridge.push(contact, 'other', text); await tick(); now += 8000; if (answer) provider.next = async () => answer; await tick(); };
+  const receive = async (contact, text, answer) => { bridge.push(contact, 'other', text); await tick(); now += 20000; if (answer) provider.next = async () => answer; await tick(); };
   return { a, bridge, provider, root, enable, receive, tick, setTime: value => { now = value; }, advance: value => { now += value; } };
 }
 
 test('step 2: explicitly enabling all personal contacts ignores old history and judges whether to reply', async t => {
   const { a, bridge, provider, enable, receive } = await fixture(t);
-  await enable(); assert.equal(a.data.settings.enabled, true); assert.equal(a.data.settings.replyDelay, 3); assert.equal(a.configured(), false); assert.equal(bridge.sent.length, 0);
+  await enable(); assert.equal(a.data.settings.enabled, true); assert.equal(a.data.settings.replyDelay, 20); assert.equal(a.configured(), false); assert.equal(bridge.sent.length, 0);
   await receive(bridge.contacts[0].id, '你觉得怎么样？', { action: 'send', text: '挺好的，你呢？' });
   assert.equal(bridge.sent.length, 1); assert.equal(provider.calls[0].input.judgeReply, true);
   await receive(bridge.contacts[0].id, '不用回了', { action: 'skip' }); assert.equal(bridge.sent.length, 1);
@@ -36,7 +36,7 @@ test('step 3 and 6: simultaneous contacts retain separate custom styles, strateg
   await a.saveReplyProfile({ contact: two.id, style: { summary: '正式清晰' }, strategy: { replyGoal: '解释', facts: '乙的事实' } });
   const complete = provider.complete.bind(provider);
   provider.complete = async (...args) => { const input = args[2]; provider.next = async () => ({ action: 'send', text: input.style.summary.includes('宝') ? '宝，明白啦。' : '收到，我说明一下。' }); return complete(...args); };
-  bridge.push(one.id, 'other', '甲的问题'); bridge.push(two.id, 'other', '乙的问题'); await tick(); advance(8000); await tick();
+  bridge.push(one.id, 'other', '甲的问题'); bridge.push(two.id, 'other', '乙的问题'); await tick(); advance(20000); await tick();
   assert.deepEqual(bridge.sent.map(x => [x.contact, x.text]), [[one.id, '宝，明白啦。'], [two.id, '收到，我说明一下。']]);
   for (const [index, call] of provider.calls.entries()) { assert.equal(call.input.strategy.facts, index ? '乙的事实' : '甲的事实'); assert.equal(JSON.stringify(call.input).includes(index ? '甲的问题' : '乙的问题'), false); }
 });
@@ -48,7 +48,7 @@ test('resuming a paused contact ignores earlier incoming messages, including mes
   await a.editProfile(profile.id, { style: profile.style, paused: true });
   bridge.push(profile.contact, 'other', '暂停期间的消息');
   await a.editProfile(profile.id, { style: profile.style, paused: false });
-  advance(8000); await tick(); assert.equal(provider.calls.length, 0); assert.equal(bridge.sent.length, 0);
+  advance(20000); await tick(); assert.equal(provider.calls.length, 0); assert.equal(bridge.sent.length, 0);
   await receive(profile.contact, '恢复后的新问题', { action: 'send', text: '新消息已收到。' });
   assert.equal(bridge.sent.length, 1); assert.equal(bridge.sent[0].contact, profile.contact);
 });
@@ -58,7 +58,7 @@ test('slow model responses overlap across contacts and out-of-order completion r
   const [one, two] = bridge.contacts;
   await a.saveReplyProfile({ contact: one.id, style: { summary: '第一位的简短风格' }, strategy: {} });
   await a.saveReplyProfile({ contact: two.id, style: { summary: '第二位的详细风格' }, strategy: {} });
-  bridge.push(one.id, 'other', '第一位的新问题'); bridge.push(two.id, 'other', '第二位的新问题'); await tick(); advance(4000);
+  bridge.push(one.id, 'other', '第一位的新问题'); bridge.push(two.id, 'other', '第二位的新问题'); await tick(); advance(20000);
   const started = Promise.withResolvers(), release = Promise.withResolvers(); let calls = 0;
   provider.complete = async (config, system, input) => {
     const first = input.style.summary.includes('第一位'); calls++;
@@ -84,10 +84,10 @@ test('background polling notices a second sender while the first reply is still 
     if (first) { entered.resolve(); await gate.promise; }
     return { action: 'send', text: first ? '第一位的回答。' : '第二位的回答。' };
   };
-  bridge.push(one.id, 'other', '先来的问题'); await a.tick({ background: true }); advance(4000); await a.tick({ background: true });
+  bridge.push(one.id, 'other', '先来的问题'); await a.tick({ background: true }); advance(20000); await a.tick({ background: true });
   await entered.promise;
   try {
-    bridge.push(two.id, 'other', '后来的问题'); await a.tick({ background: true }); advance(4000); await a.tick({ background: true });
+    bridge.push(two.id, 'other', '后来的问题'); await a.tick({ background: true }); advance(20000); await a.tick({ background: true });
     await new Promise(resolve => setImmediate(resolve));
     assert.deepEqual(seen, [one.id, two.id]);
     assert.equal(a.activeRuns.has(a.profiles().find(p => p.contact === one.id).id), true);
@@ -141,7 +141,7 @@ test('review reads the exact chat, rejects stale confirmation and resumes withou
   await assert.rejects(a.review(profile.id, { resolve: true, revision: first.revision }), /新变化/);
   const fresh = await a.review(profile.id); await a.review(profile.id, { resolve: true, revision: fresh.revision });
   assert.equal(profile.delivery.status, 'reviewed'); bridge.delivery = null;
-  advance(8000); await tick(); assert.equal(bridge.sent.length, 0);
+  advance(20000); await tick(); assert.equal(bridge.sent.length, 0);
   await receive(profile.contact, '下一个问题', { action: 'send', text: '好的。' }); assert.equal(bridge.sent.length, 1);
 });
 

@@ -31,7 +31,7 @@ async function fixture(t) {
   await a.init();
   t.after(async () => { await a.close(); await cleanup(root); });
   await a.configure(modelConfig); await a.scan();
-  return { a, bridge, provider, advance: () => { now += 8000; } };
+  return { a, bridge, provider, advance: () => { now += 20000; } };
 }
 
 for (const source of ['learned', 'paste']) test(`${source} reference stays distinct from recipient style for opening and continuation`, async t => {

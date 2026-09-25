@@ -41,8 +41,8 @@ test('single and multi-contact learning request style plus independent memory pe
   let prompt = f.provider.calls.at(-1).system;
   // 风格按五个层次输出，memory 由追加的记忆规则在同一个 JSON 中返回。
   assert.match(prompt, /"style":\{"language":"语言层","rhythm":"节奏层","interaction":"互动层","emotion":"情感层","role":"角色层"\}/);
-  assert.match(prompt, /在同一个 JSON 中返回 memory:\{"entries":\[\{"id":"修改旧条目时原样引用其id，新增时省略","field":"可选的字段类型，无法分类时为other","calendar":"日期字段可选 solar 或 lunar","degree":"学历字段可选","text":"一条有事实依据的记忆"\}\]\}/);
-  assert.match(prompt, /其他日期明确区分 calendar=solar\/lunar/);
+  assert.match(prompt, /在同一个 JSON 中返回 memory:\{"entries":\[\{"id":"修改旧条目时原样引用其id，新增时省略","field":"可选的字段类型，无法分类时为other","calendar":"日期字段可选 solar 或 lunar","degree":"学历字段可选","text":"一条有事实依据的记忆","recordedAt":0\}\]\}/);
+  assert.match(prompt, /生日及纪念日明确区分 calendar=solar\/lunar/);
   const before = f.provider.calls.length;
   await f.a.learn({ contacts: f.bridge.contacts.slice(0, 2).map(c => c.id) });
   const calls = f.provider.calls.slice(before);
@@ -55,7 +55,7 @@ test('independent proactive sends every segment with encrypted confirmed receipt
   f.provider.next = async () => ({ action: 'send', segments: ['首段秘密', '第二段秘密', '第三段秘密'], followUp: true });
   await f.a.tick();
   assert.deepEqual(f.bridge.sent.map(m => m.text), ['首段秘密', '第二段秘密', '第三段秘密']);
-  assert.deepEqual(delays, [2000, 2000]); assert.equal(task.status, 'ended');
+  assert.deepEqual(delays, [15000, 15000]); assert.equal(task.status, 'ended');
   const item = task.run.items[0], record = f.a.proactiveRecords({}).records[0];
   assert.equal(item.segmentsSent, 3); assert.equal(record.segmentsTotal, 3); assert.equal(record.segmentsSent, 3);
   assert.ok(record.segments.every(s => s.status === 'sent' && s.messageId));
@@ -76,18 +76,17 @@ for (const interruption of ['incoming', 'manual', 'pause', 'account', 'not-sent'
     if (interruption === 'account') { f.a.invalidate(); f.a.data.account = 'another-account'; }
     if (['not-sent', 'uncertain'].includes(interruption)) f.bridge.delivery = async () => ({ status: interruption });
   });
-  // 对方在段落之间回了话不算打断：本次发起还没完成，会结合这条回复重新生成剩余内容。
-  const regen = interruption === 'incoming' ? 1 : 0;
   task = await f.task(); f.provider.next = async () => ({ action: 'send', segments: ['已发前段', '待发后段'] });
-  await f.a.tick(); assert.equal(f.bridge.sent.length, 1 + regen);
+  await f.a.tick(); assert.equal(f.bridge.sent.length, 1);
   const item = task.run.items[0];
   assert.equal(item.status, interruption === 'uncertain' ? 'uncertain' : 'sent');
-  assert.equal(item.segmentsSent, 1 + regen);
+  assert.equal(item.segmentsSent, 1);
   if (interruption === 'uncertain') { assert.equal(f.p.proactiveDelivery.status, 'uncertain'); await assert.rejects(f.a.proactiveTaskAction({ command: 'retry', id: task.id })); }
+  if (interruption === 'incoming') assert.match(f.a.proactiveRecords({}).records[0].reason, /自动回复处理/);
   if (interruption === 'pause') await f.a.proactiveTaskAction({ command: 'resume', id: task.id });
-  f.advance(50000); await f.a.tick(); assert.equal(f.bridge.sent.length, 1 + regen);
+  f.advance(50000); await f.a.tick(); assert.equal(f.bridge.sent.length, 1);
   await f.a.close(); const restarted = new AIAssistant(f.options); await restarted.init(); await restarted.scan(); await restarted.tick(); await restarted.close();
-  assert.equal(f.bridge.sent.length, 1 + regen);
+  assert.equal(f.bridge.sent.length, 1);
 });
 test('review preview is read-only, explicit resolve consumes current history and preserves settings', async t => {
   const f = await fixture(t); const style = structuredClone(f.p.style), options = structuredClone(f.p.replyOptions);
@@ -98,8 +97,29 @@ test('review preview is read-only, explicit resolve consumes current history and
   f.bridge.push(f.p.contact, 'other', '变化'); await assert.rejects(f.a.review(f.p.id, { resolve: true, revision: view.revision }), /新变化/);
   const latest = await f.a.review(f.p.id); await f.a.review(f.p.id, { resolve: true, revision: latest.revision });
   assert.equal(f.p.paused, false); assert.deepEqual(f.p.style, style); assert.deepEqual(f.p.replyOptions, options);
-  await f.a.tick(); f.advance(6000); await f.a.tick(); assert.equal(f.bridge.sent.length, 0);
-  f.bridge.push(f.p.contact, 'other', '新问题'); await f.a.tick(); f.advance(6000); await f.a.tick(); assert.equal(f.bridge.sent.length, 1);
+  await f.a.tick(); f.advance(20000); await f.a.tick(); assert.equal(f.bridge.sent.length, 0);
+  f.bridge.push(f.p.contact, 'other', '新问题'); await f.a.tick(); f.advance(20000); await f.a.tick(); assert.equal(f.bridge.sent.length, 1);
+});
+test('uncertain proactive text is handed to auto-reply as assumed context without becoming a confirmed record', async t => {
+  const f = await fixture(t), task = await f.task('single');
+  f.bridge.delivery = async () => ({ status: 'uncertain' });
+  f.provider.next = async () => ({ action: 'send', text: '有歧义的主动消息正文' });
+  await f.a.tick();
+  const assumed = f.p.sentMessages.find(message => message.source === 'proactive' && message.assumedPresent);
+  assert.ok(assumed); assert.equal(assumed.confirmed, false); assert.equal(!!f.a.vault.open(assumed.body).text, true);
+  assert.ok(f.p.replyBackground);
+  f.bridge.delivery = null;
+  await f.a.settings({ reply: true });
+  await f.a.setReplyOptions({ contact: f.p.contact, enabled: true });
+  f.bridge.push(f.p.contact, 'other', '对方对此作出回复'); await f.a.tick(); f.advance(20000);
+  f.provider.next = async input => {
+    assert.ok(input.messages.some(message => message.assumedPresent === true && message.deliveryConfidence === 'uncertain' && message.aiGenerated === true && message.text === '有歧义的主动消息正文'));
+    return { action: 'send', text: '基于上下文承接' };
+  };
+  await f.a.tick();
+  assert.ok(f.provider.calls.some(call => call.input.mode === 'reply'));
+  assert.equal(f.bridge.sent.at(-1)?.text, '基于上下文承接');
+  assert.equal(f.p.sentMessages.find(message => message.id === assumed.id)?.confirmed, false);
 });
 test('explicit pauses survive manual messages and uncertain delivery stays protected', async t => {
   const f = await fixture(t); f.a.pauseProfile(f.p, 'explicit');
@@ -113,7 +133,7 @@ test('explicit pauses survive manual messages and uncertain delivery stays prote
 });
 test('ordinary paused contact resumes at latest baseline without changing saved style', async t => {
   const f = await fixture(t); f.a.pauseProfile(f.p, 'explicit'); f.bridge.push(f.p.contact, 'other', '暂停期间');
-  await f.a.editProfile(f.p.id, { style: f.p.style, paused: false }); await f.a.tick(); f.advance(6000); await f.a.tick();
+  await f.a.editProfile(f.p.id, { style: f.p.style, paused: false }); await f.a.tick(); f.advance(20000); await f.a.tick();
   assert.equal(f.p.paused, false); assert.equal(f.bridge.sent.length, 0);
 });
 test('clean app restart restores only previously running instances, preserving homes and login confirmation scope', async t => {

@@ -21,6 +21,7 @@ const mobile = () => phone || small.matches;
 let session, state, toastTimer, modalSubmit, requiredModal = false, polling = false, rfb, ime, fileBridge, desktopId, remoteGeneration = 0, lastInstancesMarkup = '';
 let desktopConnected = false, desktopBusy = false, desktopConnecting = false, pointer, connectionTimer, desktopOperation = 0;
 let sound, standaloneAI = false;
+let mobileLoginId = null;
 const busyIds = new Set();
 const inputDrafts = new Map();
 const reconnect = desktopReconnect({ notify, reconnect: async () => {
@@ -112,6 +113,36 @@ $('#modal-form').onsubmit = async event => {
 };
 function pcHint() {
   dialog('请用电脑端操作', '<p>微信已安装在 NAS 上。请在电脑上打开栖盒，登录并使用微信。</p>', '<button type="button" data-close class="primary">知道了</button>');
+}
+function mobileLoginComplete(id) {
+  if (mobileLoginId !== id) return;
+  mobileLoginId = null;
+  disconnect();
+  dialog('请在电脑端操作', '<p>微信已登录。请在电脑上打开栖盒，继续使用微信。</p>', '<button type="button" data-close class="primary">知道了</button>');
+}
+async function openMobileLogin(id) {
+  const entry = state.instances.find(item => item.id === id);
+  if (!entry || (entry.appId || 'wechat') !== 'wechat') return;
+  if (entry.runtime.loginStatus === 'logged-in') {
+    dialog('请在电脑端操作', '<p>微信已登录。请在电脑上打开栖盒，继续使用微信。</p>', '<button type="button" data-close class="primary">知道了</button>');
+    return;
+  }
+  mobileLoginId = id;
+  try { await openDesktop(id, true, true, true); }
+  catch (error) {
+    if (mobileLoginId === id) { mobileLoginId = null; disconnect(); }
+    throw error;
+  }
+}
+function openMobileWechat() {
+  const entries = state.instances.filter(item => (item.appId || 'wechat') === 'wechat');
+  if (!entries.length) {
+    dialog('请先在电脑端设置微信', '<p>请在电脑上打开栖盒，将微信添加到桌面后，再回来完成登录。</p>', '<button type="button" data-close class="primary">知道了</button>');
+    return;
+  }
+  if (entries.length === 1) return openMobileLogin(entries[0].id);
+  const choices = entries.map(item => `<button type="button" class="secondary mobile-instance-choice" data-mobile-login="${esc(item.id)}">${esc(item.name)}${item.runtime.loginStatus === 'logged-in' ? ' · 已登录' : ''}</button>`).join('');
+  dialog('选择要登录的微信', `<p>请选择一个微信实例。</p><div class="mobile-instance-choices">${choices}</div>`, '<button type="button" data-close class="secondary">取消</button>');
 }
 function consentDialog() {
   dialog('欢迎使用栖盒', '<p>在开始之前，请阅读我们的用户协议和隐私政策。</p><label class="check-label"><input type="checkbox" name="consent" required><span>我已阅读并同意<a href="./terms.html" target="_blank" rel="noopener">用户协议</a>与<a href="./privacy.html" target="_blank" rel="noopener">隐私政策</a></span></label>', '<button type="submit" class="primary">开始使用</button>', async form => {
@@ -222,7 +253,10 @@ function renderDesktop() {
 }
 async function refresh() {
   if (polling) return; polling = true;
-  try { state = await api('/state'); render(); renderDesktop(); $('#connection-error').hidden = true; }
+  try {
+    state = await api('/state'); render(); renderDesktop(); $('#connection-error').hidden = true;
+    if (mobileLoginId && state.instances.find(item => item.id === mobileLoginId)?.runtime.loginStatus === 'logged-in') mobileLoginComplete(mobileLoginId);
+  }
   catch (e) { $('#connection-error').textContent = e.message; $('#connection-error').hidden = false; }
   finally { polling = false; }
 }
@@ -363,7 +397,7 @@ async function openDesktop(id, start = true, login = false, allowMobile = false,
     }
     if (login) await api(`/instances/${id}/login`, {});
     if (operation !== desktopOperation) return;
-    if (mobile()) return pcHint();
+    if (mobile() && !allowMobile) return pcHint();
     const connection = await api(`/instances/${id}/desktop`, {});
     if (operation !== desktopOperation) return;
     const generation = remoteGeneration;
@@ -425,7 +459,7 @@ async function openDesktop(id, start = true, login = false, allowMobile = false,
     client.addEventListener('securityfailure', () => notify('连接失败，请点击连接微信重试'));
   } finally { if (operation === desktopOperation) desktopBusy = false; busyIds.delete(id); await refresh(); }
 }
-$('#desktop-back').onclick = () => disconnect();
+$('#desktop-back').onclick = () => { mobileLoginId = null; disconnect(); };
 $('#desktop-reconnect').onclick = async () => {
   if (desktopBusy || desktopConnecting) return;
   const runtime = state?.instances.find(item => item.id === desktopId)?.runtime;
@@ -446,7 +480,7 @@ $('#desktop-fullscreen').onclick = () => { (document.fullscreenElement === $('#d
 small.addEventListener('change', () => {
   if (mobile() && !$('#ai-panel').hidden && assistantId) {
     disconnect(false, true); standaloneAI = true; $('#desktop-view').classList.add('ai-only'); $('#desktop-view').hidden = false;
-  } else if (mobile()) disconnect();
+  } else if (mobile()) { mobileLoginId = null; disconnect(); }
   render();
 });
 document.addEventListener('change', e => {
@@ -459,12 +493,13 @@ document.addEventListener('click', async event => {
   try {
     if (button.hasAttribute('data-close')) return closeModal();
     if (button.dataset.mobileAi) { await openMobileAI(button.dataset.mobileAi); return; }
+    if (button.dataset.mobileLogin) { const id = button.dataset.mobileLogin; closeModal(); await openMobileLogin(id); return; }
     button.closest('details.app-menu')?.removeAttribute('open');
     if (button.dataset.marketAction) {
       marketAppId = button.closest('[data-market-app]').dataset.marketApp;
       const action = button.dataset.marketAction;
       if (action === 'add') newInstance();
-      if (action === 'open') pcHint();
+      if (action === 'open') { if (mobile()) await openMobileWechat(); else pcHint(); }
       if (action === 'import') importDialog();
       if (action === 'uninstall') uninstallDialog();
       if (action === 'retained') retainedDialog();

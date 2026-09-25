@@ -25,10 +25,10 @@ test('a failed reply request is not regenerated until a new incoming message arr
   await assistant.tick();
 
   const incoming = bridge.push(profile.contact, 'other', '第一条来信');
-  now += 3000;
+  now += 20000;
   provider.next = async () => { throw new Error('model unavailable'); };
   await assistant.tick();
-  now += 3000;
+  now += 20000;
   await assistant.tick();
   assert.equal(provider.calls.length, 1);
   assert.equal(assistant.cursors.get(profile.id).pending, false);
@@ -39,9 +39,9 @@ test('a failed reply request is not regenerated until a new incoming message arr
   assert.equal(provider.calls.length, 1, 'the same failed message must not trigger another generation');
 
   bridge.push(profile.contact, 'other', '第二条来信');
-  now += 3000;
+  now += 20000;
   await assistant.tick();
-  now += 3000;
+  now += 20000;
   await assistant.tick();
   assert.equal(provider.calls.length, 2, 'a new incoming message must resume normal generation');
   assert.equal(bridge.sent.length, 1);

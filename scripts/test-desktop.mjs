@@ -4,7 +4,7 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 import { createApplication } from '../server/index.mjs';
 import { root, playwrightPath } from './tooling.mjs';
-import { temp, cleanup, runtimeFactory, extractor, fetcher } from '../test/fixtures.mjs';
+import { temp, cleanup, runtimeFactory, extractor, fetcher, packageSha256 } from '../test/fixtures.mjs';
 import { rfbFixture } from '../test/rfb-fixture.mjs';
 import { ChatFixture } from '../test/ai-fixtures.mjs';
 
@@ -13,6 +13,9 @@ const dataRoot = await temp(), peer = await rfbFixture(path.join(root, 'web/back
 let runtime;
 const app = await createApplication({ appRoot: root, dataRoot, dev: true, extract: extractor, fetcher,
   runtimeFactory: (...args) => (runtime = { ...runtimeFactory(...args), port: peer.port, aiBridge: new ChatFixture() }) });
+// This test installs a deliberately fake archive to exercise the real UI flow.
+// Trust only its exact fixture bytes so package validation does not reject it.
+app.library.trustedHashes.push(packageSha256);
 await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve));
 const base = `http://127.0.0.1:${app.server.address().port}${app.prefix}`;
 const report = { startedAt: new Date().toISOString(), note: 'Real Edge + noVNC + application WebSocket proxy connected to an RFB protocol fixture. CDP composition exercises browser IME events; no OS candidate window or real Linux/WeChat process is tested.', checks: [] };
@@ -96,8 +99,10 @@ try {
     await page.locator('#ai-rail').waitFor({ state: 'visible' });
     await page.locator('#ai-open').click();
     await page.locator('#ai-panel').waitFor({ state: 'visible' });
-    await page.locator('.ai-main-tabs [data-ai-nav=provider]').click();
-    await page.locator('#ai-provider-form [name=model]').fill('unsaved-model-draft');
+    await page.locator('.ai-main-tabs [data-ai-nav=settings]').click();
+    await page.locator('.ai-settings-entry[data-ai-nav=provider]').click();
+    await page.locator('[data-ai-action=model-add]').click();
+    await page.locator('#ai-model-form [name=model]').fill('unsaved-model-draft');
     runtime.loginStatus = 'unknown'; runtime.aiEntryAvailable = true;
     await page.waitForResponse(response => response.url().endsWith('/state'));
     await page.waitForTimeout(100);
@@ -108,7 +113,7 @@ try {
     await until(() => interruptedState);
     await page.locator('#connection-error').waitFor({ state: 'visible' });
     assert.equal(await page.locator('#ai-panel').isVisible(), true);
-    assert.equal(await page.locator('#ai-provider-form [name=model]').inputValue(), 'unsaved-model-draft');
+    assert.equal(await page.locator('#ai-model-form [name=model]').inputValue(), 'unsaved-model-draft');
     report.checks.push('AI entry and open model draft survive unknown login observations and failed state requests');
     await page.unroute('**/state');
     runtime.aiEntryAvailable = false;

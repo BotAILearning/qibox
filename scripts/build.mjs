@@ -16,7 +16,7 @@ const product = { ...JSON.parse(await readFile(path.join(root, 'config/product.j
 const iconRevision = createHash('sha256').update(await readFile(path.join(root, 'web/icon.png'))).digest('hex').slice(0, 16);
 const out = path.join(root, host === 'ugos' ? 'public-ugos' : 'public'); await mkdir(out, { recursive: true });
 await rm(path.join(out, 'icon.svg'), { force: true });
-for (const file of ['index.html', 'style.css', 'ai-workspace.css', 'icon.png', 'auth-callback.html', 'privacy.html', 'terms.html']) await cp(path.join(root, 'web', file), path.join(out, file));
+for (const file of ['index.html', 'style.css', 'ai-workspace.css', 'ui-foundation.css', 'icon.png', 'auth-callback.html', 'privacy.html', 'terms.html']) await cp(path.join(root, 'web', file), path.join(out, file));
 for (const file of ['index.html', 'auth-callback.html']) {
   const html = await readFile(path.join(out, file), 'utf8');
   await writeFile(path.join(out, file), html.replaceAll('./icon.png', `./icon.png?v=${iconRevision}`));

@@ -464,7 +464,7 @@ test('a receipt followed by a new question keeps it pending and stops the old re
   await assistant.settings({ enabled: true, replyScope: 'selected', multiTurn: true });
   await assistant.tick();
   messages.push({ id: key('old-question'), direction: 'other', text: '旧问题：出门带水还是咖啡？', timestamp: Math.floor(now / 1000) });
-  await assistant.tick(); now += 3000;
+  await assistant.tick(); now += 20000;
   provider.next = async () => ({ action: 'send', segments: ['带水更合适。', '旧问题的第二段不应发送。'] });
   await assistant.tick();
   const profile = assistant.profiles().find(item => item.contact === contact);
@@ -476,7 +476,7 @@ test('a receipt followed by a new question keeps it pending and stops the old re
     assert.equal(input.messages.at(-2).text, '带水更合适。');
     return { action: 'send', text: '先炒鸡蛋盛出，再炒番茄合起来。' };
   };
-  now += 3000; await assistant.tick();
+  now += 20000; await assistant.tick();
   assert.deepEqual(sent, ['带水更合适。', '先炒鸡蛋盛出，再炒番茄合起来。']);
   assert.equal(provider.calls.length, 2); assert.equal(assistant.cursors.get(profile.id).pending, false);
   now += 10000; await assistant.tick(); assert.equal(provider.calls.length, 2);

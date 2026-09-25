@@ -172,11 +172,11 @@ for (const content of ['把文件发给我', '给对方打电话']) test(`AI-05 
   assert.equal(a.publicState().skipRecords[0].source, 'model-skip');
   assert.equal(a.publicState().skipRecords[0].reasonCode, 'model-no-reply');
 });
-test('AI-05 stop-contact history remains in model input and stop response prevents sending', async t => {
+test('AI-05 stop-contact feedback prevents proactive sending without pausing the contact', async t => {
   const { a, bridge, provider } = await fixture(t); const c = bridge.contacts[0]; bridge.push(c.id, 'other', '不要再联系我');
   await a.saveStrategy(strategy); await a.prepareTargets({ contacts: [c.id] }); await a.settings({ enabled: true, proactive: true, reply: false });
-  provider.next = async input => { assert.equal(input.messages.at(-1).text, '不要再联系我'); return { action: 'stop' }; };
-  await a.queueAction('start'); await a.tick(); assert.equal(bridge.sent.length, 0); assert.equal(a.profiles()[0].pauseReason, 'stop');
+  provider.next = async input => { assert.equal(input.messages.at(-1).text, '不要再联系我'); return { stop: true }; };
+  const until = a.now() + 300000; await a.queueAction('start'); await a.tick(); assert.equal(bridge.sent.length, 0); assert.equal(a.profiles()[0].stopUntil, until); assert.equal(a.profiles()[0].paused, false);
 });
 for (const partial of [false, true]) test(`AI-06 ${partial ? 'partial' : 'all'} missing schedule targets remain visible and retry only failed objects`, async t => {
   const { a, bridge, advance } = await fixture(t), missing = bridge.contacts[0], targets = bridge.contacts.slice(0, partial ? 2 : 1);

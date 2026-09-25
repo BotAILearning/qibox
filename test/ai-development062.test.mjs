@@ -67,7 +67,7 @@ test('a contact can create and edit a Wiki without creating or enabling a reply 
  await assert.rejects(a.editContactMemory(contact.id,{entries:[{field:'residence',text:'坏地址',from:20,to:10}]}),/结束时间不能早于开始时间/);
  assert.deepEqual(a.data.profiles[profile.id].memory,before);
 });
-test('same Wiki value in different periods keeps stable separate entries and merges idempotently',async t=>{
+test('address learning records one time point and merges repeated address text idempotently',async t=>{
  const {a}=await fixture(t), profile={}, entries=[
   {field:'residence',text:'杭州市',from:1000,to:2000},
   {field:'residence',text:'杭州市',from:3000,to:4000},
@@ -78,10 +78,13 @@ test('same Wiki value in different periods keeps stable separate entries and mer
  assert.equal(sameWikiEntries(parsed.entries,[{...parsed.entries[0],updatedAt:77,source:'learning'},parsed.entries[1]]),true);
  assert.equal(sameWikiEntries([parsed.entries[0]],[parsed.entries[1]]),false);
  Object.assign(profile,mergeMemory(a.vault,profile,{entries},100));
- assert.equal(readMemory(a.vault,profile).entries.length,2);
+ assert.equal(readMemory(a.vault,profile).entries.length,1);
+ assert.equal(readMemory(a.vault,profile).entries[0].from,undefined);
+ assert.equal(readMemory(a.vault,profile).entries[0].to,undefined);
+ assert.equal(readMemory(a.vault,profile).entries[0].recordedAt,undefined,'没有模型给出的消息时间时不使用学习执行时间');
  const historyBefore=profile.memoryHistory.length;
  Object.assign(profile,mergeMemory(a.vault,profile,{entries},101));
- assert.equal(readMemory(a.vault,profile).entries.length,2);
+ assert.equal(readMemory(a.vault,profile).entries.length,1);
  assert.equal(profile.memoryHistory.length,historyBefore);
 });
 test('Wiki merge persists same-text field and metadata changes and prompt preserves full entry schema',async t=>{
@@ -97,7 +100,8 @@ test('Wiki merge persists same-text field and metadata changes and prompt preser
  const dated=readMemory(a.vault,profile).entries[0];
  assert.equal(dated.field,'birthday');assert.equal(dated.calendar,'lunar');assert.equal(dated.from,1000);assert.equal(dated.to,2000);
  assert.equal(profile.memoryHistory.length,historyBefore+2);
- assert.match(memoryMergePrompt,/field、text、degree、calendar、from、to、recordedAt/);
+ assert.match(memoryMergePrompt,/field、text、degree、calendar、recordedAt/);
+ assert.match(memoryMergePrompt,/不保留或推断 from\/to 时间段/);
  assert.match(memoryMergePrompt,/不可把 entries 展平/);
 });
 test('candidate memory merge sends all Wiki fields to the model and retains them in its result',async t=>{
@@ -110,26 +114,29 @@ test('candidate memory merge sends all Wiki fields to the model and retains them
  provider.complete=async(_config,_prompt,input)=>{sent=input;return {memory:{entries:[...input.current.entries,...input.incoming.entries]}};};
  await a.finishMemoryMerge(profile.id);
  assert.deepEqual(sent.current.entries.map(({field,calendar,recordedAt})=>({field,calendar,recordedAt})),[{field:'birthday',calendar:'lunar',recordedAt:undefined},{field:'residence',calendar:undefined,recordedAt:2500}]);
- assert.deepEqual(sent.incoming.entries.map(({field,degree,from,to})=>({field,degree,from,to})),[{field:'school',degree:'本科',from:undefined,to:undefined},{field:'residence',degree:undefined,from:1000,to:2000}]);
- assert.deepEqual(a.pendingMemoryOf(a.profile(profile.id)).entries.map(e=>[e.field,e.calendar,e.degree,e.from,e.to]),[['birthday','lunar',undefined,undefined,undefined],['residence',undefined,undefined,undefined,undefined],['school',undefined,'本科',undefined,undefined],['residence',undefined,undefined,1000,2000]]);
+ assert.deepEqual(sent.incoming.entries.map(({field,degree,from,to})=>({field,degree,from,to})),[{field:'school',degree:'本科',from:undefined,to:undefined},{field:'residence',degree:undefined,from:undefined,to:undefined}]);
+ assert.deepEqual(a.pendingMemoryOf(a.profile(profile.id)).entries.map(e=>[e.field,e.calendar,e.degree,e.from,e.to]),[['birthday','lunar',undefined,undefined,undefined],['residence',undefined,undefined,undefined,undefined],['school',undefined,'本科',undefined,undefined],['residence',undefined,undefined,undefined,undefined]]);
  assert.equal(a.pendingMemoryOf(a.profile(profile.id)).entries.find(e=>e.field==='residence'&&e.text==='杭州').recordedAt,2500);
 });
-test('wiki date fields use Shanghai calendar days and unchanged edits ignore audit metadata',()=>{
+test('wiki address fields use one recorded time and unchanged edits ignore audit metadata',()=>{
  const markup=wikiEntryMarkup({field:'residence',text:'杭州市',from:Date.parse('2026-09-24T16:00:00Z'),to:Date.parse('2026-09-25T15:59:59Z')});
- assert.match(markup,/aria-label="开始时间" value="2026-09-25"/); assert.match(markup,/aria-label="结束时间" value="2026-09-25"/);
+ assert.doesNotMatch(markup,/aria-label="开始时间"|aria-label="结束时间"/);
+ assert.match(markup,/时间：/);
  const values=[{id:'wiki-one',field:'name',text:' 小王 '}];
  assert.equal(sameWikiEntries(values,[{...values[0],updatedAt:100,manual:true,source:'manual'}]),true);
  assert.equal(sameWikiEntries(values,[{...values[0],text:'小张'}]),false);
  assert.match(wikiEntryMarkup({field:'birthday',text:'正月初八'}),/option value="" selected>未确定/);
  assert.doesNotMatch(wikiEntryMarkup({field:'birthday',text:'正月初八'}),/option value="solar" selected/);
- assert.match(wikiEntryMarkup({field:'residence',text:'旧地址'}),/记录时间未知/);
+ assert.match(wikiEntryMarkup({field:'residence',text:'旧地址'}),/时间：未知/);
  assert.doesNotThrow(()=>wikiEntryMarkup({field:'residence',text:'坏时间',from:Number.MAX_SAFE_INTEGER}));
  assert.equal(sameWikiEntries(values,[{...values[0],recordedAt:1234}]),false);
 });
 test('chat memory renders a fixed empty field template, groups addresses and keeps legacy text under other',()=>{
  const markup=memoryFields({kind:'person',memory:{summary:'旧版自由文本'}});
  assert.match(markup,/<h4>聊天记忆<\/h4>/);
- for(const field of ['name','phone','birthday','date','school','household','residence','workplace','employer','shipping','other']) assert.match(markup,new RegExp(`data-ai-wiki-field="${field}"`));
+ for(const field of ['name','phone','birthday','date','school','household','residence','work','shipping','other']) assert.match(markup,new RegExp(`data-ai-wiki-field="${field}"`));
+ assert.doesNotMatch(markup,/data-ai-wiki-field="workplace"|data-ai-wiki-field="employer"/);
+ assert.match(markup,/相识、确定关系或结婚纪念日/);
  assert.match(markup,/data-ai-wiki-field="other"[\s\S]*旧版自由文本/);
  assert.match(markup,/兴趣爱好、稳定偏好，以及双方其他聊天中值得保留的内容/);
  assert.match(markup,/data-ai-wiki-add data-ai-wiki-add-field="other">添加信息/);
@@ -139,7 +146,7 @@ test('chat memory renders a fixed empty field template, groups addresses and kee
  assert.equal((names.match(/aria-label="信息内容"/g)||[]).length,2);
  assert.match(wikiEntryMarkup({field:'other',text:'喜欢徒步'}),/<textarea[^>]*aria-label="信息内容"/);
 });
-test('Wiki rejects reversed or unrenderable date ranges and retains recordedAt through edit and restore',async t=>{
+test('Wiki retains recordedAt through edit and restore while manual legacy ranges remain readable',async t=>{
  const {a}=await fixture(t),profile={};
  assert.throws(()=>memoryValue({entries:[{field:'residence',text:'住址',from:2000,to:1000}]}),/结束时间不能早于开始时间/);
  const invalid=memoryValue({entries:[{field:'residence',text:'坏时间',from:Number.MAX_SAFE_INTEGER,to:Number.MAX_SAFE_INTEGER}]});

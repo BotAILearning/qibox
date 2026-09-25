@@ -10,9 +10,6 @@ const terminal = new Set(['sent', 'skipped', 'failed', 'uncertain', 'cancelled',
 // The cap stops a recurring task from retrying forever against someone whose
 // chat can never be read, while a manual reply stays untouched.
 const maxAutoRetries = 3;
-// 分段发送中途对方回了话时，本次发起尚未完成，需要结合新消息重新生成剩余内容。
-// 设上限避免对方连续回话时不停重生成。
-const maxSegmentRegens = 2;
 // Kept equal to ai-service's concurrentRunLimit so a task is never turned away
 // before the shared run ceiling is actually reached.
 const concurrentRunCeiling = 6;
@@ -316,7 +313,7 @@ export class ProactiveTasks {
   // 主动聊天不再自造暂停状态：暂停只有自动回复那一套。这里只尊重「面向本人」的
   // 三类（本人显式关闭、转交本人、对方要求停止），回复侧的连续上限、群聊冷却与
   // 发送未确认都不冻结主动任务。
-  blocked(profile) { return !!profile?.paused && ['explicit', 'stop'].includes(profile.pauseReason); }
+  blocked(profile) { return Number.isFinite(profile?.stopUntil) && this.ai.now() < profile.stopUntil || !!profile?.paused && ['explicit', 'stop'].includes(profile.pauseReason); }
   // 段落之间聊天发生变化时判断是谁在说话：对方回话要重新生成剩余内容，
   // 本人自己发了话则按接管处理、停止剩余段落。
   interruption(snapshot, profile) {
@@ -331,6 +328,11 @@ export class ProactiveTasks {
   async draft(task, item, profile, context, signal, check, extra = '') {
     const a = this.ai;
     const result = await a.generateProactiveMessage(task, profile, context, signal, extra); check();
+    if (profile.kind === 'person' && result?.stop === true) {
+      profile.stopUntil = a.now() + 5 * 60 * 1000;
+      this.record(task, item, 'skipped', '联系人要求停止联系；主动任务已跳过，5分钟内暂停自动发送');
+      await a.save(); return null;
+    }
     let texts = messageSegments(result, { multiTurn: task.sendMode !== 'single', allowSkip: false });
     if (result.action !== 'send') {
       this.record(task, item, result.action === 'skip' ? 'skipped' : 'failed', result.action === 'skip' ? '模型判断本次无需发送' : result.action === 'stop' ? '对方要求停止联系，请人工核对' : '需要本人决定，请人工核对');
@@ -378,7 +380,7 @@ export class ProactiveTasks {
       let plan = prepared.texts;
       planned = plan.length; texts = plan;
       item.segmentsTotal = planned; item.segmentsSent = 0; item.segments = [];
-      let expectedRevision = fresh.revision, regens = 0;
+      let expectedRevision = fresh.revision;
       for (let index = 0; index < plan.length; index++) {
         const text = plan[index];
         if (sent) {
@@ -386,19 +388,9 @@ export class ProactiveTasks {
           fresh = await a.read(profile, signal); check(); await a.observe(profile, fresh); check();
           if (this.blocked(profile)) { partial('本人已接管或已要求停止联系，剩余段落已取消'); return; }
           if (fresh.revision !== expectedRevision) {
-            // 对方在段落之间回了话：本次发起还没完成，结合这条回复重新生成剩余内容，
-            // 而不是直接取消。本人自己发了话仍停止剩余段落，把对话交还给本人。
-            if (this.interruption(fresh, profile) !== 'other' || regens >= maxSegmentRegens || sent >= planned) { partial('聊天已变化，剩余段落已取消'); return; }
-            regens++;
-            const next = await this.draft(task, item, profile, fresh, signal, check, ` 补充：本次任务已经发出 ${sent} 条（见聊天记录末尾自己发出的内容），对方刚刚回了话。请结合对方这条回复继续完成这次发起，只输出接下来还要发送的内容，不要重复已经发过的话；围绕本次目标自然接续即可。`);
-            if (!next) return;
-            // 与已发内容完全相同的段落直接丢掉：模型若把原开场又写一遍，不应重复发送。
-            plan = next.texts.filter(t => !texts.slice(0, sent).includes(t)).slice(0, Math.max(0, planned - sent));
-            if (!plan.length) { partial('对方已回复，本次发起已完成'); return; }
-            texts = texts.slice(0, sent).concat(plan);
-            expectedRevision = fresh.revision; index = -1;
-            await a.save(); check();
-            continue;
+            // 第一段发出后已把本次任务背景交给自动回复。对方在分段
+            // 发送期间回话时，取消尚未发送的段落，不重新生成主动内容。
+            partial(this.interruption(fresh, profile) === 'other' ? '对方已回复，剩余段落已取消并交由自动回复处理' : '聊天已变化，剩余段落已取消'); return;
           }
         }
         item.operationId = randomUUID();
@@ -440,6 +432,7 @@ export class ProactiveTasks {
         } else {
           segment.status = 'uncertain';
           profile.proactiveDelivery.status = 'uncertain';
+          a.recordUncertainProactive(profile, task, text, item.operationId);
           this.record(task, item, 'uncertain', '未获得数据库发送确认，禁止自动重发');
           return;
         }

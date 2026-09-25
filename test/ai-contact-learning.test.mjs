@@ -231,7 +231,7 @@ test('manual reply profiles can auto reply without ever learning and preserve se
   const profile = a.profiles().find(p => p.contact === contacts[0]);
   assert.equal(a.prerequisites('reply'), '');
   await a.settings({ enabled: true }); await a.tick(); assert.equal(bridge.sent.length, 0);
-  bridge.push(contacts[0], 'other', '你好，请说明具体步骤'); await a.tick(); now += 9000; await a.tick();
+  bridge.push(contacts[0], 'other', '你好，请说明具体步骤'); await a.tick(); now += 20000; await a.tick();
   assert.equal(bridge.sent.length, 1); assert.equal(bridge.sent[0].contact, contacts[0]);
   assert.deepEqual(provider.calls[0].input.style, replyPresets[2].style);
   assert.equal(provider.calls[0].input.strategy.replyGoal, replyPresets[2].strategy.replyGoal);
