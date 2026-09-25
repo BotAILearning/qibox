@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { readdir, readlink, realpath } from 'node:fs/promises';
 import { AppError } from './files.mjs';
 
 const unavailable = () => new AppError('暂时无法读取微信数据，请稍后重试', 409, 'ai_data_unavailable');
@@ -17,11 +18,37 @@ const IDLE_KEEP_ALIVE_MS = 15 * 60 * 1000;
 // the warm key/session caches. Only an unresponsive worker is restarted.
 const CANCEL_GRACE_MS = 2500;
 
+// The Node runtime launched WeChat, so it can inspect that child process's
+// descriptors even where Linux Yama denies the sibling Python worker access.
+// A directory left on disk by an earlier login is never account evidence.
+export async function processAccountRoot(pid, home, proc = '/proc') {
+  const base = await realpath(home), directory = path.join(proc, String(pid), 'fd');
+  const descriptors = await readdir(directory);
+  if (descriptors.length > 10000) throw unavailable();
+  const roots = new Set();
+  for (const descriptor of descriptors) {
+    let target;
+    try { target = await readlink(path.join(directory, descriptor)); }
+    catch { continue; }
+    if (!['contact.db', 'contact.db-wal'].includes(path.basename(target))) continue;
+    try {
+      const relative = path.relative(base, await realpath(target)).split(path.sep);
+      if (relative.length === 5 && relative[0] === 'xwechat_files' && relative[2] === 'db_storage' &&
+          relative[3] === 'contact' && ['contact.db', 'contact.db-wal'].includes(relative[4])) {
+        roots.add(path.join(base, ...relative.slice(0, 3)));
+      }
+    } catch { /* A deleted or foreign descriptor is not account evidence. */ }
+  }
+  if (roots.size !== 1) throw unavailable();
+  return roots.values().next().value;
+}
+
 // One private pipe per owned WeChat process. No keys or chat bodies are logged
 // or written to disk. Aborting waits for process exit and descriptor cleanup.
 export class DataWorker {
-  constructor(runtime, context, { spawnProcess, openMemory }) {
+  constructor(runtime, context, { spawnProcess, openMemory, resolveAccountRoot = processAccountRoot }) {
     this.runtime = runtime; this.context = context; this.spawnProcess = spawnProcess; this.openMemory = openMemory;
+    this.resolveAccountRoot = resolveAccountRoot;
     this.closed = Promise.withResolvers(); this.output = ''; this.stopping = false;
     this.drained = Promise.resolve();
     this.started = this.start();
@@ -32,9 +59,12 @@ export class DataWorker {
       this.memory = await this.openMemory(`/proc/${pid}/mem`, 'r');
       if (this.stopping) return this.finish();
       const runtime = this.runtime;
+      this.accountRoot = await this.resolveAccountRoot(pid, runtime.desktopEnv.HOME);
+      if (this.stopping) return this.finish();
       this.child = this.spawnProcess(path.join(runtime.runtimeRoot, 'usr/bin/python3.11'),
         [path.join(runtime.appRoot, 'server/wechat-data.py'), String(pid), '--worker'], {
-          env: { ...runtime.desktopEnv, PYTHONHOME: path.join(runtime.runtimeRoot, 'usr'), PYTHONNOUSERSITE: '1', PYTHONDONTWRITEBYTECODE: '1' },
+          env: { ...runtime.desktopEnv, QIBOX_ACCOUNT_ROOT: this.accountRoot,
+            PYTHONHOME: path.join(runtime.runtimeRoot, 'usr'), PYTHONNOUSERSITE: '1', PYTHONDONTWRITEBYTECODE: '1' },
           windowsHide: true, stdio: ['pipe', 'pipe', 'ignore', this.memory.fd],
         });
       this.child.stdin.on('error', () => this.stop());
@@ -134,13 +164,24 @@ export class DataWorker {
       throw unavailable();
     }
     if (this.pending) throw unavailable(); // Caller serializes requests.
+    try {
+      if (await this.resolveAccountRoot(this.context.dataPid || this.context.pid, this.runtime.desktopEnv.HOME) !== this.accountRoot) {
+        this.stop(); return { error: 'account-changed' };
+      }
+    } catch { this.stop(); throw unavailable(); }
     clearTimeout(this.idleTimer);
-    return new Promise((resolve, reject) => {
+    const result = await new Promise((resolve, reject) => {
       const abort = () => this.softCancel(signal), timer = setTimeout(abort, 43000);
       this.pending = { resolve, reject, signal, abort, timer };
       signal?.addEventListener('abort', abort, { once: true });
       if (signal?.aborted) abort();
       else this.child.stdin.write(JSON.stringify(value) + '\n');
     });
+    try {
+      if (await this.resolveAccountRoot(this.context.dataPid || this.context.pid, this.runtime.desktopEnv.HOME) !== this.accountRoot) {
+        this.stop(); return { error: 'account-changed' };
+      }
+    } catch { this.stop(); throw unavailable(); }
+    return result;
   }
 }

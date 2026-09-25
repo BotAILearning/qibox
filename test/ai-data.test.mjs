@@ -232,6 +232,7 @@ test('data child inherits only a read-only descriptor and cancellation waits for
   let closed = false, child;
   const runtime = { status: 'running', desktopEnv: { HOME: '/private/profile' }, runtimeRoot: '/runtime', appRoot: '/app', processes: [{ name: 'wechat', process: { pid: 123 } }] };
   const bridge = new DataChatBridge(runtime, {
+    resolveAccountRoot: async () => '/private/profile/xwechat_files/wxid_fixture_abcd/db_storage',
     async openMemory(file, flags) { assert.equal(file, '/proc/123/mem'); assert.equal(flags, 'r'); return { fd: 55, async close() { closed = true; } }; },
     spawnProcess(bin, args, options) {
       assert.equal(options.stdio[3], 55); assert.equal(options.stdio[2], 'ignore');

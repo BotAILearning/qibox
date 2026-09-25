@@ -9,14 +9,17 @@ import { key } from './ai-fixtures.mjs';
 const account = key('account'), contact = key('contact');
 function fixture() {
   const runtime = { status: 'running', desktopEnv: { HOME: '/private/profile' }, runtimeRoot: '/runtime', appRoot: '/app', processes: [{ name: 'wechat', process: { pid: 123 } }] };
+  const root = '/private/profile/xwechat_files/wxid_first_abcd/db_storage';
   const children = [], requests = [], descriptors = [];
   const options = {
+    resolveAccountRoot: async () => root,
     async openMemory(file, flags) {
       assert.equal(flags, 'r');
       const descriptor = { fd: 55, file, closed: false, async close() { this.closed = true; } }; descriptors.push(descriptor); return descriptor;
     },
     spawnProcess(bin, args, options) {
       assert.equal(options.stdio[3], 55); assert.equal(options.stdio[2], 'ignore');
+      assert.equal(options.env.QIBOX_ACCOUNT_ROOT, root);
       const child = new EventEmitter(); child.stdin = new PassThrough(); child.stdout = new PassThrough();
       child.kill = () => { queueMicrotask(() => child.emit('close', 0)); return true; };
       child.stdin.on('data', chunk => {
@@ -44,6 +47,19 @@ test('a new process object even with the same PID never inherits the old worker'
   const { runtime, options, children, descriptors } = fixture(), bridge = new DataChatBridge(runtime, options);
   await bridge.scan(); runtime.processes[0].process = { pid: 123 }; await bridge.scan();
   assert.equal(children.length, 2); assert.equal(descriptors[0].closed, true);
+  await bridge.close();
+});
+
+test('a second login in the same process cannot reuse the previous account worker', async () => {
+  const { runtime, options, children, requests } = fixture();
+  let current = '/private/profile/xwechat_files/wxid_first_abcd/db_storage';
+  options.resolveAccountRoot = async () => current;
+  const bridge = new DataChatBridge(runtime, options);
+  await bridge.scan();
+  current = '/private/profile/xwechat_files/wxid_second_abcd/db_storage';
+  await assert.rejects(bridge.read({ account, contact }), { code: 'ai_account_changed' });
+  assert.equal(requests.filter(x => x.action === 'read').length, 0);
+  assert.equal(children.length, 1);
   await bridge.close();
 });
 
@@ -75,6 +91,22 @@ function gated() {
   const tick = () => new Promise(resolve => setTimeout(resolve, 5));
   return { ...base, reply, tick };
 }
+
+test('an account switch while reading discards the old account result', async () => {
+  const { runtime, options, requests, reply, tick } = gated();
+  let current = '/private/profile/xwechat_files/wxid_first_abcd/db_storage';
+  options.resolveAccountRoot = async () => current;
+  const bridge = new DataChatBridge(runtime, options);
+  const scanned = bridge.scan(); await tick();
+  reply({ available: true, account, contacts: [{ id: contact, label: '对象', kind: 'person', native: { account, contact } }] });
+  await scanned;
+  const reading = bridge.read({ account, contact }); await tick();
+  assert.equal(requests.filter(x => x.action === 'read').length, 1);
+  current = '/private/profile/xwechat_files/wxid_second_abcd/db_storage';
+  reply({ account, contact, revision: key('revision'), messages: [], label: '对象', native: { account, contact } });
+  await assert.rejects(reading, { code: 'ai_account_changed' });
+  await bridge.close();
+});
 
 test('malformed or extra output kills a worker before any response can be reused', async () => {
   for (const output of ['not-json\n', '{}\n{}\n']) {

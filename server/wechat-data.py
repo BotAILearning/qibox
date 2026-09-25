@@ -221,8 +221,19 @@ def active_root(pid, home, proc=pathlib.Path('/proc')):
     # During an account switch the old contact.db can be the sole directory,
     # so selecting it without checking the live WeChat process exposes stale
     # contacts and messages as though they belonged to the new login.
+    expected = os.environ.get('QIBOX_ACCOUNT_ROOT')
+    if expected:
+        expected = pathlib.Path(expected).resolve(strict=True)
+        relative = expected.relative_to(home)
+        if len(relative.parts) != 3 or relative.parts[0] != 'xwechat_files' or relative.parts[2] != 'db_storage' or \
+                not (expected / 'contact' / 'contact.db').is_file():
+            raise ValueError('active account unavailable')
     roots = set()
-    descriptors = list((proc / str(pid) / 'fd').iterdir())
+    try:
+        descriptors = list((proc / str(pid) / 'fd').iterdir())
+    except PermissionError:
+        if expected: return expected
+        raise ValueError('active account unavailable')
     if len(descriptors) > 10000:
         raise ValueError('active account unavailable')
     for fd in descriptors:
@@ -237,9 +248,13 @@ def active_root(pid, home, proc=pathlib.Path('/proc')):
             roots.add(target.parent.parent)
         except (OSError, ValueError):
             continue
-    if len(roots) != 1:
+    if len(roots) > 1 or roots and expected and expected not in roots:
         raise ValueError('active account unavailable')
-    return roots.pop()
+    if len(roots) == 1:
+        return roots.pop()
+    if expected:
+        return expected
+    raise ValueError('active account unavailable')
 
 
 def discover_keys(pid, memory, files, check, known=None):

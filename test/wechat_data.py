@@ -715,6 +715,14 @@ class DataTest(unittest.TestCase):
             (fds / '10').unlink()
             with patch.object(data.os, 'readlink', return_value=str(second)):
                 self.assertEqual(data.active_root(42, home, proc), second.parent.parent)
+            # The parent process can bind a live root for this private worker
+            # when Linux denies the worker access to WeChat's /proc/PID/fd.
+            with patch.dict(data.os.environ, {'QIBOX_ACCOUNT_ROOT': str(second.parent.parent)}), \
+                    patch.object(data.pathlib.Path, 'iterdir', side_effect=PermissionError):
+                self.assertEqual(data.active_root(42, home, proc), second.parent.parent)
+            with patch.dict(data.os.environ, {'QIBOX_ACCOUNT_ROOT': str(second.parent.parent)}), \
+                    patch.object(data.os, 'readlink', return_value=str(first)), self.assertRaisesRegex(ValueError, 'active account unavailable'):
+                data.active_root(42, home, proc)
 
     def test_same_instance_account_switch_never_reads_the_previous_account(self):
         with tempfile.TemporaryDirectory() as directory:

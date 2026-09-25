@@ -68,12 +68,13 @@ function privateSessionHint(value, pid) {
 // Contacts/history use the private data API exclusively. Native desktop access
 // is retained only for the existing text-send/owned-draft delivery safeguards.
 export class DataChatBridge extends NativeChatBridge {
-  constructor(runtime, { invokeData, invokePrepared, openMemory = open, ...options } = {}) {
+  constructor(runtime, { invokeData, invokePrepared, openMemory = open, resolveAccountRoot, ...options } = {}) {
     super(runtime, options);
     this.stableMessageIds = true;
     this.dataTail = Promise.resolve(); this.dataQueue = []; this.dataBusy = false;
     this.voiceTexts = new Map();
     this.openMemory = openMemory;
+    this.resolveAccountRoot = resolveAccountRoot;
     this.invokeData = invokeData || ((action, args, context) => this.invokeDataProcess(action, args, context));
     this.invokePrepared = invokePrepared || (options.invoke ? null : ((route, text, context, verify) => preparedSend(this, route, text, context, verify)));
   }
@@ -460,7 +461,8 @@ export class DataChatBridge extends NativeChatBridge {
   async invokeDataProcess(action, args, context) {
     this.check(context);
     if (!this.dataWorker || this.dataWorker.stopping) {
-      this.dataWorker = new DataWorker(this.runtime, context, { spawnProcess: this.spawnProcess, openMemory: this.openMemory });
+      this.dataWorker = new DataWorker(this.runtime, context, { spawnProcess: this.spawnProcess, openMemory: this.openMemory,
+        resolveAccountRoot: this.resolveAccountRoot });
     }
     const worker = this.dataWorker;
     try { return await worker.request({ action, ...args }, context.signal); }
