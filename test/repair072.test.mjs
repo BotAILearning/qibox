@@ -79,9 +79,9 @@ for (const interruption of ['incoming', 'manual', 'pause', 'account', 'not-sent'
   task = await f.task(); f.provider.next = async () => ({ action: 'send', segments: ['已发前段', '待发后段'] });
   await f.a.tick(); assert.equal(f.bridge.sent.length, 1);
   const item = task.run.items[0];
-  assert.equal(item.status, interruption === 'uncertain' ? 'uncertain' : 'sent');
+  assert.equal(item.status, interruption === 'uncertain' ? 'unknown' : 'sent');
   assert.equal(item.segmentsSent, 1);
-  if (interruption === 'uncertain') { assert.equal(f.p.proactiveDelivery.status, 'uncertain'); await assert.rejects(f.a.proactiveTaskAction({ command: 'retry', id: task.id })); }
+  if (interruption === 'uncertain') { assert.equal(f.p.proactiveDelivery.status, 'unknown'); await assert.rejects(f.a.proactiveTaskAction({ command: 'retry', id: task.id })); }
   if (interruption === 'incoming') assert.match(f.a.proactiveRecords({}).records[0].reason, /自动回复处理/);
   if (interruption === 'pause') await f.a.proactiveTaskAction({ command: 'resume', id: task.id });
   f.advance(50000); await f.a.tick(); assert.equal(f.bridge.sent.length, 1);
@@ -106,30 +106,30 @@ test('uncertain proactive text is handed to auto-reply as assumed context withou
   f.provider.next = async () => ({ action: 'send', text: '有歧义的主动消息正文' });
   await f.a.tick();
   const assumed = f.p.sentMessages.find(message => message.source === 'proactive' && message.assumedPresent);
-  assert.ok(assumed); assert.equal(assumed.confirmed, false); assert.equal(!!f.a.vault.open(assumed.body).text, true);
+  assert.ok(assumed); assert.equal(assumed.confirmed, undefined); assert.equal(assumed.deliveryConfidence, 'unknown'); assert.equal(!!f.a.vault.open(assumed.body).text, true);
   assert.ok(f.p.replyBackground);
   f.bridge.delivery = null;
   await f.a.settings({ reply: true });
   await f.a.setReplyOptions({ contact: f.p.contact, enabled: true });
   f.bridge.push(f.p.contact, 'other', '对方对此作出回复'); await f.a.tick(); f.advance(20000);
   f.provider.next = async input => {
-    assert.ok(input.messages.some(message => message.assumedPresent === true && message.deliveryConfidence === 'uncertain' && message.aiGenerated === true && message.text === '有歧义的主动消息正文'));
+    assert.ok(input.messages.some(message => message.assumedPresent === true && message.deliveryConfidence === 'unknown' && message.aiGenerated === true && message.text === '有歧义的主动消息正文'));
     return { action: 'send', text: '基于上下文承接' };
   };
   await f.a.tick();
   assert.ok(f.provider.calls.some(call => call.input.mode === 'reply'));
   assert.equal(f.bridge.sent.at(-1)?.text, '基于上下文承接');
-  assert.equal(f.p.sentMessages.find(message => message.id === assumed.id)?.confirmed, false);
+  assert.equal(f.p.sentMessages.find(message => message.id === assumed.id)?.confirmed, undefined);
 });
-test('explicit pauses survive manual messages and uncertain delivery stays protected', async t => {
+test('explicit pauses survive manual messages and unknown delivery creates no verification gate', async t => {
   const f = await fixture(t); f.a.pauseProfile(f.p, 'explicit');
   f.bridge.push(f.p.contact, 'other', '仍在等'); await f.a.tick(); assert.equal(f.p.pauseReason, 'explicit');
   const auto = f.bridge.push(f.p.contact, 'self', 'AI旧消息'); f.p.generatedIds = [auto.id]; await f.a.tick(); assert.equal(f.p.pauseReason, 'explicit');
   f.bridge.push(f.p.contact, 'self', '本人已提供'); await f.a.tick();
   assert.equal(f.p.paused, true); assert.equal(f.p.pauseReason, 'explicit');
-  f.a.pauseProfile(f.p, 'uncertain'); f.p.delivery = { status: 'uncertain' };
-  f.bridge.push(f.p.contact, 'self', '人工发送'); await f.a.tick(); assert.equal(f.p.pauseReason, 'uncertain');
-  await assert.rejects(f.a.editProfile(f.p.id, { style: f.p.style, paused: false }), /先核对/);
+  f.p.delivery = { status: 'unknown' };
+  f.bridge.push(f.p.contact, 'self', '人工发送'); await f.a.tick(); assert.equal(f.p.paused, true); assert.equal(f.p.pauseReason, 'explicit');
+  await f.a.editProfile(f.p.id, { style: f.p.style, paused: false }); assert.equal(f.p.paused, false);
 });
 test('ordinary paused contact resumes at latest baseline without changing saved style', async t => {
   const f = await fixture(t); f.a.pauseProfile(f.p, 'explicit'); f.bridge.push(f.p.contact, 'other', '暂停期间');

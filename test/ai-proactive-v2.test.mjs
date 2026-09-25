@@ -180,17 +180,17 @@ test('paused and failed tasks do not block unrelated tasks or remaining recipien
   assert.equal(bridge.sent.filter(s => s.contact === bridge.contacts[1].id).length, 1);
 });
 
-test('native not-sent is isolated/retryable; uncertain never retries or blocks other contacts', async t => {
+test('native not-sent is isolated/retryable; unknown is terminal and does not block other contacts', async t => {
   const { a, bridge } = await fixture(t);
   const task = await create(a, bridge, { contacts: bridge.contacts.map(c => c.id) });
   bridge.delivery = async r => r.contact === bridge.contacts[0].id ? { status: 'uncertain' } : r.contact === bridge.contacts[1].id ? { status: 'not-sent' } : { status: 'sent', messageId: key('confirmed'), revision: r.revision };
   await ticks(a);
-  assert.deepEqual(task.run.items.map(i => i.status), ['uncertain', 'failed', 'sent']); assert.equal(task.status, 'failed'); assert.equal(a.available, true);
+  assert.deepEqual(task.run.items.map(i => i.status), ['unknown', 'failed', 'sent']); assert.equal(task.status, 'failed'); assert.equal(a.available, true);
   const calls = [];
   bridge.delivery = async r => { calls.push(r.contact); return { status: 'sent', messageId: key('confirmed retry'), revision: r.revision }; };
   await a.proactiveTaskAction({ command: 'retry', id: task.id }); await ticks(a);
-  assert.deepEqual(calls, [bridge.contacts[1].id]); assert.equal(task.status, 'failed');
-  await assert.rejects(a.proactiveTaskAction({ command: 'retry', id: task.id }), /没有可以安全重试/);
+  assert.deepEqual(calls, [bridge.contacts[1].id]); assert.equal(task.status, 'ended');
+  await assert.rejects(a.proactiveTaskAction({ command: 'retry', id: task.id }), /任务已结束/);
 });
 
 test('pause/edit/end/delete during model generation cancel stale text without reviving task', async t => {
@@ -230,28 +230,52 @@ test('pause during native submission with confirmed receipt does not repeat once
   assert.equal(calls, 1); assert.equal(task.status, 'ended');
 });
 
-test('cancelled native submission: stale can resume, uncertain cannot repeat', async t => {
+test('cancelled native submission: stale can resume, unknown is consumed without verification', async t => {
   for (const status of ['stale', 'uncertain']) {
     const { a, bridge } = await fixture(t); const task = await create(a, bridge);
     const started = Promise.withResolvers(), release = Promise.withResolvers();
     bridge.delivery = async () => { started.resolve(); await release.promise; return { status }; };
     const running = a.tick(); await started.promise; await a.proactiveTaskAction({ command: 'pause', id: task.id }); release.resolve(); await running;
     if (status === 'stale') { bridge.delivery = null; await a.proactiveTaskAction({ command: 'resume', id: task.id }); await ticks(a); assert.equal(bridge.sent.length, 1); }
-    else { await assert.rejects(a.proactiveTaskAction({ command: 'resume', id: task.id }), /核对/); assert.equal(task.run.items[0].status, 'uncertain'); }
+    else { assert.equal(task.run.items[0].status, 'unknown'); assert.equal(task.status, 'paused'); assert.equal(bridge.sent.length, 0); await a.proactiveTaskAction({ command: 'resume', id: task.id }); assert.equal(task.status, 'ended'); }
   }
 });
 
-test('restart converts persisted send intent to uncertain and resumes pre-submit generation safely', async t => {
+test('restart clears legacy pending verification and resumes pre-submit generation safely', async t => {
   for (const phase of ['generating', 'sending']) {
     const { a, bridge, root, args } = await fixture(t); const task = await create(a, bridge);
     task.run = { id: 'crash-run', at: baseTime, occurrenceDate: 'once', items: [{ ...a.proactiveV2.item(task.contacts[0]), status: phase }] };
     await a.save(); await a.close();
     const b = new AIAssistant(args); t.after(() => b.close()); await b.init(); await b.scan(); await ticks(b);
     assert.equal(bridge.sent.length, phase === 'generating' ? 1 : 0);
-    if (phase === 'sending') { assert.equal(b.data.proactiveTasks[0].status, 'failed'); assert.equal(b.proactiveRecords({}).records[0].status, 'uncertain'); }
+    if (phase === 'sending') { assert.equal(b.data.proactiveTasks[0].status, 'ended'); assert.equal(b.proactiveRecords({}).records[0].status, 'unknown'); }
     const disk = JSON.parse(await readFile(path.join(root, 'ai-assistant.json'), 'utf8')); assert.equal(disk.proactiveVersion, 2);
     await b.close();
   }
+});
+
+test('startup migrates legacy pending verification data without resending', async t => {
+  const { a, bridge, root, args } = await fixture(t), task = await create(a, bridge);
+  const profile = a.data.profiles[task.contacts[0].profileId];
+  profile.delivery = { status: 'uncertain', source: 'reply' };
+  profile.proactiveDelivery = { status: 'uncertain', source: 'proactive' };
+  profile.paused = true; profile.pauseReason = 'uncertain';
+  profile.sentMessages = [{ id: 'legacy-pending', at: baseTime, body: a.vault.seal({ text: '旧待核验内容' }), source: 'reply', confirmed: false }];
+  task.status = 'failed'; task.reason = '发送结果待核对';
+  task.run = { id: 'legacy-run', at: baseTime, schedule: structuredClone(task.schedule), occurrenceDate: 'once', completedAt: baseTime,
+    items: [{ ...a.proactiveV2.item(task.contacts[0]), status: 'uncertain', recordId: 'legacy-record' }] };
+  a.data.proactiveRecords.push({ id: 'legacy-record', account: task.account, taskId: task.id, profileId: profile.id, contact: profile.contact, status: 'uncertain', body: a.vault.seal({ text: '旧待核验正文' }) });
+  a.data.queue = { status: 'paused', items: [{ id: profile.id, status: 'uncertain' }, { id: 'legacy-sending', status: 'sending' }], nextAt: null };
+  await a.save(); await a.close();
+  const b = new AIAssistant(args); t.after(() => b.close()); await b.init();
+  const migratedProfile = b.data.profiles[profile.id];
+  assert.equal(migratedProfile.delivery.status, 'unknown'); assert.equal(migratedProfile.proactiveDelivery.status, 'unknown');
+  assert.equal(migratedProfile.paused, false); assert.equal(migratedProfile.pauseReason, undefined); assert.deepEqual(migratedProfile.sentMessages, []);
+  assert.deepEqual(b.data.queue.items.map(item => item.status), ['skipped', 'skipped']); assert.equal(b.data.queue.status, 'completed');
+  assert.equal(b.data.proactiveTasks[0].run.items[0].status, 'unknown'); assert.equal(b.data.proactiveTasks[0].status, 'ended');
+  const record = b.data.proactiveRecords.find(row => row.id === 'legacy-record');
+  assert.equal(record.status, 'unknown'); assert.equal(record.body, undefined); assert.equal(record.text, undefined);
+  assert.equal(bridge.sent.length, 0);
 });
 
 test('account switch hides tasks/records, cannot mutate foreign task, in-flight account remains bound', async t => {
@@ -329,17 +353,13 @@ test('editing a learned contact keeps current style and identity/media safeguard
   assert.match(a.proactiveRecords({}).records[0].reason, /身份/);
 });
 
-test('reviewed uncertainty never resends and recurring tasks continue at next occurrence', async t => {
+test('unknown send receipt needs no review and recurring tasks continue at next occurrence', async t => {
   const { a, bridge, advance } = await fixture(t);
   const task = await create(a, bridge, { schedule: { cycle: 'daily', mode: 'fixed', time: '12:00' } });
-  bridge.delivery = async () => ({ status: 'uncertain' }); await ticks(a); assert.equal(task.status, 'failed');
-  const profileId = task.contacts[0].profileId, review = await a.review(profileId);
-  await assert.rejects(a.review(profileId, { resolve: true, revision: 'wrong' }), /新变化/);
-  await a.review(profileId, { resolve: true, revision: review.revision });
-  assert.equal(task.status, 'running'); assert.equal(task.nextAt, at('2026-09-18T12:00:00'));
-  assert.equal(a.proactiveRecords({}).records[0].status, 'reviewed');
-  bridge.delivery = null; await ticks(a); assert.equal(bridge.sent.length, 0);
-  advance(86400000); await ticks(a); assert.equal(bridge.sent.length, 1);
+  bridge.delivery = async () => ({ status: 'uncertain' }); await ticks(a); assert.equal(task.status, 'running');
+  assert.equal(task.nextAt, at('2026-09-18T12:00:00'));
+  assert.equal(a.proactiveRecords({}).records[0].status, 'unknown');
+  bridge.delivery = null; advance(86400000); await ticks(a); assert.equal(bridge.sent.length, 1);
 });
 
 test('encrypted records survive restart, public replies never expose ciphertext and deleted history remains readable', async t => {

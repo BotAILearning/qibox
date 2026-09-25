@@ -5,7 +5,7 @@ import { messageSegments } from './ai-prompts.mjs';
 import { stripUnauthorizedProactiveVocatives } from './ai-reply-rules.mjs';
 import { proactiveSchedule, nextProactiveOccurrence, proactiveOccurrenceDeadline } from './ai-proactive-schedule.mjs';
 
-const terminal = new Set(['sent', 'skipped', 'failed', 'uncertain', 'cancelled', 'reviewed']);
+const terminal = new Set(['sent', 'skipped', 'failed', 'unknown', 'cancelled', 'reviewed']);
 // Recipients who failed inside one occurrence are re-queued for the next one.
 // The cap stops a recurring task from retrying forever against someone whose
 // chat can never be read, while a manual reply stays untouched.
@@ -35,6 +35,10 @@ export class ProactiveTasks {
   init() {
     const a = this.ai, d = a.data;
     d.proactiveTasks ??= []; d.proactiveRecords ??= [];
+    for (const record of d.proactiveRecords) if (['sending', 'uncertain'].includes(record.status)) {
+      record.status = 'unknown'; record.reason = '旧版待核验记录已自动结清；为避免重复发送，本条不重发';
+      delete record.body; delete record.text;
+    }
     for (const record of d.proactiveRecords) if (Object.hasOwn(record, 'text')) {
       record.body = a.vault.seal({ text: record.text }); delete record.text;
     }
@@ -42,15 +46,17 @@ export class ProactiveTasks {
     // is selected. Persisted old work is always migrated paused on startup.
     if (d.proactiveVersion === 2 || d.queue.items.length || d.schedules.length) this.activate();
     for (const task of this.tasks) for (const item of task.run?.items || []) {
-      if (item.status === 'sending') {
-        for (const segment of item.segments || []) if (segment.status === 'sending') segment.status = 'uncertain';
-        item.status = 'uncertain'; item.reason = '服务重启，发送结果待核对，禁止自动重发';
-        this.record(task, item, 'uncertain', item.reason);
+      if (['sending', 'uncertain'].includes(item.status)) {
+        for (const segment of item.segments || []) if (['sending', 'uncertain'].includes(segment.status)) segment.status = 'unknown';
+        item.status = 'unknown'; item.reason = '旧版待核验状态已自动结清；为避免重复发送，本条不重发';
+        const record = this.record(task, item, 'unknown', item.reason);
+        delete record.body;
       } else if (item.status === 'generating') { item.status = 'pending'; delete item.recordId; }
     }
     for (const task of this.tasks) {
-      if (task.run?.items.some(i => i.status === 'uncertain') && !task.deletedAt && task.status !== 'ended') {
-        task.status = 'failed'; task.reason = '发送结果待核对'; task.nextAt = null;
+      if (task.run?.items.some(i => i.status === 'unknown') && !task.deletedAt && task.status !== 'ended') {
+        if (/待核验|待核对/.test(task.reason || '')) delete task.reason;
+        if (!task.run.items.some(i => ['pending', 'sending', 'generating', 'failed'].includes(i.status))) this.settle(task);
       }
     }
   }
@@ -66,7 +72,7 @@ export class ProactiveTasks {
       const schedule = migratedSchedule(row, a.now());
       const oldRequirements = [['旧内容要求', row.strategy?.content], ['已知信息', row.strategy?.facts], ['限制', row.strategy?.boundaries]].filter(([, text]) => text).map(([label, text]) => `${label}：${text}`).join('\n');
       const legacyScheduleText = row.text || (schedule ? `${row.repeat === 'daily' ? '每天' : `每周${row.weekday}`} ${schedule.mode === 'fixed' ? schedule.time : `${schedule.start}–${schedule.end} 随机`}` : row.legacyKind === 'queue' ? '旧单轮主动聊天队列' : '旧时间无法可靠转换，请重新选择执行周期');
-      this.tasks.push({ id: randomUUID(), account: row.account, name: row.name || '旧主动聊天任务（待核对）', taskType: 'custom', contacts,
+      this.tasks.push({ id: randomUUID(), account: row.account, name: row.name || '旧主动聊天任务', taskType: 'custom', contacts,
         goal: row.strategy?.purpose || '', requirements: oldRequirements, schedule: schedule || { cycle: 'once', mode: 'fixed', timezone: 'Asia/Shanghai' },
         status: 'paused', nextAt: null, lastRunAt: row.lastRunAt || null, createdAt: row.createdAt || a.now(), revision: 1,
         migrationScheduleMapped: !!schedule, legacyScheduleText,
@@ -148,7 +154,7 @@ export class ProactiveTasks {
         // retry. Preserve the slot and let tick revive it when it becomes due.
         const scheduledRetry = task.schedule.cycle !== 'once' && Number.isFinite(task.nextAt) &&
           failed.length > 0 && failed.every(i => (i.attempts || 0) < maxAutoRetries);
-        if (task.run.items.some(i => i.status === 'uncertain') || failed.length && !scheduledRetry) throw new AppError('请重试失败对象；不确定的发送结果需先核对');
+        if (failed.length && !scheduledRetry) throw new AppError('请重试失败对象');
       }
       if (command === 'retry' && !task.run?.items.some(i => i.status === 'failed')) throw new AppError('没有可以安全重试的失败对象；不确定的发送不会重发');
       this.activate();
@@ -273,7 +279,6 @@ export class ProactiveTasks {
   reviveRetryable(task) {
     const a = this.ai;
     if (!task.run?.completedAt || task.schedule.cycle === 'once' || task.deletedAt || task.status !== 'running') return;
-    if (task.run.items.some(i => i.status === 'uncertain')) return;
     let revived = false;
     for (const item of task.run.items) if (item.status === 'failed' && (item.attempts || 0) < maxAutoRetries) {
       item.status = 'pending'; delete item.reason; delete item.recordId; delete item.interrupted; delete item.segments; revived = true;
@@ -287,10 +292,9 @@ export class ProactiveTasks {
     task.run.completedAt = this.ai.now();
     if (task.deletedAt || task.status === 'ended') return;
     if (task.status === 'paused') { task.nextAt = null; return; }
-    const failed = task.run.items.filter(i => i.status === 'failed'), uncertain = task.run.items.some(i => i.status === 'uncertain');
-    const autoRetry = !uncertain && failed.length && failed.every(i => (i.attempts || 0) < maxAutoRetries);
-    if (uncertain) { task.status = 'failed'; task.nextAt = null; task.reason = '部分发送结果待核对，不会自动重发'; }
-    else if (failed.length && !(autoRetry && task.schedule.cycle !== 'once')) {
+    const failed = task.run.items.filter(i => i.status === 'failed');
+    const autoRetry = failed.length && failed.every(i => (i.attempts || 0) < maxAutoRetries);
+    if (failed.length && !(autoRetry && task.schedule.cycle !== 'once')) {
       task.status = 'failed'; task.nextAt = null;
       task.reason = task.schedule.cycle === 'once' ? '部分联系人执行失败，可重试失败对象' : `部分联系人已自动重试 ${maxAutoRetries} 次仍未成功，请手动重试失败对象`;
     }
@@ -359,7 +363,7 @@ export class ProactiveTasks {
     try {
       check(); item.status = 'generating'; item.attempts++; await a.save(); check();
       if (!a.contacts.has(item.contact) || !profile) throw new AppError('联系人暂不可读取，请刷新联系人后重试');
-      if (['sending', 'uncertain'].includes(profile.proactiveDelivery?.status)) throw new AppError('此联系人存在待核对的主动发送结果，请先核对');
+      if (profile.proactiveDelivery?.status === 'sending') throw new AppError('此联系人正在发送，请稍后重试');
       const snapshot = await a.read(profile, signal); check();
       await a.observe(profile, snapshot); check();
       await this.waitManualWindow(item.profileId, signal); check();
@@ -430,10 +434,10 @@ export class ProactiveTasks {
           else this.record(task, item, 'failed', delivery.status === 'stale' ? '聊天内容已变化，消息未发送' : notSentReason(delivery));
           return;
         } else {
-          segment.status = 'uncertain';
-          profile.proactiveDelivery.status = 'uncertain';
+          segment.status = 'unknown';
+          profile.proactiveDelivery.status = 'unknown';
           a.recordUncertainProactive(profile, task, text, item.operationId);
-          this.record(task, item, 'uncertain', '未获得数据库发送确认，禁止自动重发');
+          this.record(task, item, 'unknown', '发送结果未知；本次已结束，不会自动重发');
           return;
         }
       }
@@ -446,7 +450,7 @@ export class ProactiveTasks {
         if (profile?.proactiveDelivery && profile.proactiveDelivery.operationId === item.operationId) profile.proactiveDelivery.status = 'cancelled';
         this.record(task, item, 'skipped', '执行窗口已结束，本次未发送');
       } else if (enteredSend || item.status === 'sending' && !valid()) {
-        if (enteredSend) { if (profile?.proactiveDelivery) profile.proactiveDelivery.status = 'uncertain'; this.record(task, item, 'uncertain', '发送结果待核对，禁止自动重发'); }
+        if (enteredSend) { if (profile?.proactiveDelivery) profile.proactiveDelivery.status = 'unknown'; this.record(task, item, 'unknown', '发送结果未知；本次已结束，不会自动重发'); }
         else { if (profile?.proactiveDelivery && profile.proactiveDelivery.operationId === item.operationId) profile.proactiveDelivery.status = 'cancelled'; this.record(task, item, 'cancelled', '提交前取消，未发送'); item.status = task.status === 'ended' ? 'cancelled' : 'pending'; delete item.recordId; }
       } else if (!valid()) { item.status = task.status === 'ended' ? 'cancelled' : 'pending'; }
       else if (error.code === 'proactive_expired') { if (profile?.proactiveDelivery && profile.proactiveDelivery.operationId === item.operationId) profile.proactiveDelivery.status = 'cancelled'; this.record(task, item, 'skipped', error.message); }

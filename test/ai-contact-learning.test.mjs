@@ -266,20 +266,17 @@ test('manual configuration rejects stale contacts and malformed styles, and pres
   a.available = false; await assert.rejects(a.saveReplyProfile({ contact: contacts[0], ...replyPresets[0] }));
 });
 
-for (const reason of ['manual', 'uncertain']) test(`changing a manual reply strategy preserves existing ${reason} takeover until explicitly resumed`, async t => {
+for (const reason of ['manual', 'unknown']) test(`changing a manual reply strategy preserves existing ${reason} pause semantics`, async t => {
   const { a, contacts } = await fixture(t);
   await a.saveReplyProfile({ contact: contacts[0], ...replyPresets[0] });
   const profile = a.profiles()[0]; profile.paused = true; profile.rounds = 3;
-  if (reason === 'uncertain') profile.delivery = { status: 'uncertain' };
+  if (reason === 'unknown') profile.delivery = { status: 'unknown' };
   await a.saveReplyProfile({ contact: contacts[0], ...replyPresets[1] });
   const updated = a.profile(profile.id);
   assert.equal(updated.paused, true); assert.equal(updated.rounds, 3);
   assert.deepEqual(updated.delivery, profile.delivery);
-  if (reason !== 'manual') {
-    await assert.rejects(a.editProfile(updated.id, { style: updated.style, paused: false }), /先核对/);
-  }
-  if (reason === 'uncertain') { assert.equal(a.profile(profile.id).paused, true); assert.equal(a.profile(profile.id).rounds, 3); }
-  else { assert.equal(a.profile(profile.id).paused, true); assert.equal(a.profile(profile.id).rounds, 3); }
+  await a.editProfile(updated.id, { style: updated.style, paused: false });
+  assert.equal(a.profile(profile.id).paused, false); assert.equal(a.profile(profile.id).rounds, 0);
 });
 
 test('contact scan progress is observable, contains no chat data and disappears on cancellation', async t => {

@@ -87,11 +87,11 @@ test('ended editor is read-only, and unmapped migration cannot silently save as 
   assert.match(proactivePage(state({ proactiveTasks: [migration] }), { editing: true, draft }), /旧时间：每隔五天/);
 });
 
-test('uncertain is linked to existing review and open-chat actions', () => {
+test('unknown send outcomes never expose a manual verification action', () => {
   const t = task({ status: 'failed', run: { items: [{ profileId: 'p1', contact: 'c1', status: 'uncertain' }, { profileId: 'p2', status: 'sent' }] } });
-  assert.deepEqual(uncertainProfiles(t, state()), [{ id: 'p1', label: '联系人甲' }]);
+  assert.deepEqual(uncertainProfiles(t, state()), []);
   const html = proactiveTable(state({ proactiveTasks: [t] }), { menu: t.id });
-  assert.match(html, /data-ai-review="p1"/); assert.match(html, /data-ai-open-conversation="p1"/); assert.match(html, /仅重试失败项/);
+  assert.doesNotMatch(html, /data-ai-review|待核对|核对结果/); assert.match(html, /仅重试失败项/);
 });
 
 test('record filtering uses Beijing dates and preserves deleted task snapshots', () => {
@@ -99,7 +99,7 @@ test('record filtering uses Beijing dates and preserves deleted task snapshots',
   assert.equal(proactiveRecordEntries(s, { from: '2026-09-17', to: '2026-09-17' }).length, 1);
   assert.equal(proactiveRecordEntries(s, { to: '2026-09-16' }).length, 0);
   const html = proactiveRecordRows(s, { taskId: 'deleted' });
-  assert.match(html, /已删除的任务|待核对内容/); assert.match(html, /data-proactive-record-more/); assert.doesNotMatch(html, /全部执行记录/);
+  assert.match(html, /已删除的任务|待核对内容/); assert.doesNotMatch(html, /待核验|核对结果|核验发送结果/); assert.match(html, /data-proactive-record-more/); assert.doesNotMatch(html, /全部执行记录/);
 });
 
 test('auto and historical records do not display proactive text, latest execution is first', () => {

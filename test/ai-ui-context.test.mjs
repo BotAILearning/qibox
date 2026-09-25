@@ -294,15 +294,15 @@ test('a pending manual strategy save cannot paint an old contact after an instan
   assert.deepEqual(calls, [{ url: '/instances/instance-a/ai', action: 'reply-profile' }]);
 });
 
-test('an unlearned paused contact exposes a review hyperlink and preserves unsaved strategy drafts', async t => {
+test('an unlearned paused contact exposes no verification hyperlink and preserves unsaved strategy drafts', async t => {
   const originalDocument = globalThis.document, OriginalFormData = globalThis.FormData, dom = surface(), calls = [];
   globalThis.document = dom.document;
   globalThis.FormData = class extends OriginalFormData { constructor(form) { super(); for (const [key, value] of form?.entries || []) this.append(key, value); } };
-  const profile = { id: 'manual-profile', contact: 'contact', label: 'Fixture', style: defaultStyle, paused: true, delivery: { status: 'uncertain' } };
+  const profile = { id: 'manual-profile', contact: 'contact', label: 'Fixture', style: defaultStyle, paused: true, delivery: { status: 'unknown' } };
   const controller = aiAssistant({ api: async (_url, payload) => { if (payload) calls.push(payload); return { ...manualState(), profiles: [profile], replyTargets: [profile.id] }; } });
   t.after(() => { controller.detach(); globalThis.document = originalDocument; globalThis.FormData = OriginalFormData; });
   await controller.attach('instance-a'); await dom.button({ aiManualContact: 'contact' });
-  assert.match(dom.node('#ai-content').innerHTML, /href="#ai-review" data-ai-review="manual-profile"/);
+  assert.doesNotMatch(dom.node('#ai-content').innerHTML, /data-ai-review|核验发送结果|待核对/);
   const form = dom.form('#ai-manual-reply-form', manualEntries()); form.dataset = { contact: 'contact' };
   await dom.click('back-reply-contacts'); dom.unmount('#ai-manual-reply-form'); await dom.button({ aiManualContact: 'contact' });
   assert.match(dom.node('#ai-content').innerHTML, /Only discuss the planned event/); assert.deepEqual(calls, []);

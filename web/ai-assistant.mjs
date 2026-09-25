@@ -12,7 +12,7 @@ import { createProactiveUI } from './ai-proactive-view.mjs';
 import { RecordCache, mergeRecordResults } from './ai-record-cache.mjs';
 import { contactName, contactSearch as searchableContact } from './ai-contact-name.mjs';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const eventLabels = { contacted: '已主动联系', replied: '已自动回复', manual: '已交由你回复', limit: '已达到回复上限', skip: '本轮无需回复', stop: '已收到停止联系要求', uncertain: '发送结果未确认', error: '任务已暂停', failed: '对象不可读取，本次未发送' };
+const eventLabels = { contacted: '已主动联系', replied: '已自动回复', manual: '已交由你回复', limit: '已达到回复上限', skip: '本轮无需回复', stop: '已收到停止联系要求', uncertain: '发送结果未知，本次不重发', error: '任务已暂停', failed: '对象不可读取，本次未发送' };
 const names = { formality: '正式程度', warmth: '亲切程度', length: '回复长度', directness: '表达方式', emoji: '表情使用', humor: '幽默程度' };
 const option = (value, label, selected) => `<option value="${esc(value)}" ${selected ? 'selected' : ''}>${esc(label)}</option>`;
 const field = (name, label, value, max = 1200, placeholder = '') => `<label class="ai-field">${label}<textarea name="${name}" maxlength="${max}" rows="${name === 'summary' ? 6 : 2}" placeholder="${esc(placeholder)}">${esc(value)}</textarea></label>`;
@@ -179,7 +179,7 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
     catch (error) { if (current !== generation || target !== id) return; throw error; }
     if (current !== generation || target !== id) return;
     if (!result.opened) throw new Error('尚未确认打开目标聊天');
-    panel.hidden = true; reviewDialog.close();
+    panel.hidden = true;
     await onOpenChat?.(target);
   }
   function confirmRealtime() {
@@ -245,37 +245,8 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
       await navigate('activity');
     },
   });
-  let reviewData = null, reviewToken = 0;
-  const reviewDialog = document.createElement('dialog'); reviewDialog.className = 'ai-review-dialog'; reviewDialog.setAttribute('aria-label', '核对聊天'); panel.append(reviewDialog);
   const reviewAlert = document.createElement('a'); reviewAlert.href = '#ai-review'; reviewAlert.className = 'ai-review-alert'; reviewAlert.hidden = true; rail.append(reviewAlert);
   reviewAlert.addEventListener('click', event => { event.preventDefault(); show(); void navigate('activity').catch(e => message(e.message, true)); });
-  async function openReview(profileId, openChat = false) {
-    if (openChat) return openConversation(profileId);
-    const current = generation, target = id, token = ++reviewToken;
-    reviewData = null;
-    reviewDialog.innerHTML = `<h3>核验发送结果</h3><p role="status">正在读取当前聊天…</p><p id="ai-review-error" role="alert"></p><button type="button" class="secondary" data-ai-close-review>稍后处理</button>`;
-    if (!reviewDialog.open) reviewDialog.showModal();
-    let result;
-    try { result = await api(`/instances/${target}/ai`, { action: 'review', id: profileId, value: { openChat } }, 130000); }
-    catch (error) { if (current !== generation || target !== id || token !== reviewToken) return; reviewDialog.querySelector('#ai-review-error').textContent = error.message; return; }
-    if (current !== generation || target !== id || token !== reviewToken) return;
-    if (openChat) { reviewDialog.close(); hide(); return; }
-    reviewData = result;
-    reviewDialog.innerHTML = `<h3>${contactName(result)} · 核验发送结果</h3><p>${esc(result.reason)}</p><div class="ai-review-messages">${result.messages.map(m => `<p class="${m.direction === 'self' ? 'self' : ''}"><strong>${m.direction === 'self' ? '我' : m.direction === 'other' ? contactName(result) : '提示'}</strong><span>${esc(m.text)}</span></p>`).join('') || '<p>暂无可读取的文字消息</p>'}</div><p id="ai-review-error" role="alert"></p><div class="ai-actions"><a href="#wechat-chat" data-ai-open-chat>打开微信</a><button type="button" class="primary" data-ai-resolve-review>开启自动回复</button><button type="button" class="secondary" data-ai-close-review>稍后处理</button></div>`;
-    if (!reviewDialog.open) reviewDialog.showModal();
-  }
-  reviewDialog.addEventListener('close', () => { reviewToken++; reviewData = null; });
-  reviewDialog.addEventListener('cancel', () => { reviewToken++; reviewData = null; });
-  reviewDialog.addEventListener('click', async event => {
-    const node = event.target.closest('button,a'); if (!node) return; event.preventDefault(); event.stopPropagation();
-    const current = generation;
-    try {
-      if (node.hasAttribute('data-ai-close-review')) { reviewDialog.close(); return; }
-      if (!reviewData || busy) return;
-      if (node.hasAttribute('data-ai-open-chat')) await openReview(reviewData.id, true);
-      if (node.hasAttribute('data-ai-resolve-review')) { const result = await execute('review', { id: reviewData.id, value: { resolve: true, revision: reviewData.revision } }, '已核对，将处理后续新消息'); if (!result || current !== generation) return; reviewDialog.close(); reviewData = null; }
-    } catch (error) { if (current === generation && reviewDialog.querySelector('#ai-review-error')) reviewDialog.querySelector('#ai-review-error').textContent = error.message; }
-  });
   panel.addEventListener('click', event => {
     const resume = event.target.closest('[data-ai-resume-profile]');
     if (resume) {
@@ -285,8 +256,6 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
     }
     const open = event.target.closest('[data-ai-open-conversation]');
     if (open) { event.preventDefault(); void openConversation(open.dataset.aiOpenConversation).catch(error => message(error.message, true)); return; }
-    const link = event.target.closest('[data-ai-review]'); if (!link) return; event.preventDefault();
-    void openReview(link.dataset.aiReview).catch(error => message(error.message, true));
   });
   const message = (text, error = false) => { const node = $('#ai-feedback'); node.textContent = text; node.classList.toggle('error', error); node.hidden = !text; };
   function confirmAnalysisDelete() {
@@ -589,13 +558,13 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
   function profileEditor(profile) {
     if (profile.pendingStyle) profile={...profile,style:profile.pendingStyle};
     const draft = profileDrafts.get(profile.id), v = { ...profile.style, summary: summaryText(profile.style), ...draft }, reply = { ...replyStrategy(), ...profile.replyStrategy, ...draft };
-    return `<form id="ai-profile-form" data-id="${profile.id}"><button type="button" class="quiet" data-ai-action="back-learning">${icon('arrow-l')}返回学习结果</button><h3>${profileName(profile)}的聊天风格</h3>${field('summary', '风格总结（可修改）', v.summary, 6000, '例如：表达简洁，语气自然，不添加没有依据的称呼。')}${field('customAvoid', '注意事项（可选）', v.customAvoid, 1200)}${memoryFields({ ...profile, capabilities: state.capabilities }, draft?.memorySummary)}<details class="ai-paste"><summary>回复策略（可选）</summary>${field('replyGoal', '回复目的与立场', reply.replyGoal)}${field('facts', '允许使用的信息', reply.facts, 4000)}${field('boundaries', '注意事项', reply.boundaries)}<label class="ai-field">连续自动回复上限<input name="maxRounds" type="number" min="1" max="2000" value="${reply.maxRounds ?? 50}"></label></details><div class="ai-actions"><button type="submit" class="primary">保存风格</button>${profile.kind !== 'group' && profile.delivery?.status === 'uncertain' ? '<a href="#ai-review" data-ai-review="' + profile.id + '">核验发送结果</a>' : ''}<button type="button" class="quiet danger-link" data-ai-action="delete-profile">删除风格</button></div></form>`;
+    return `<form id="ai-profile-form" data-id="${profile.id}"><button type="button" class="quiet" data-ai-action="back-learning">${icon('arrow-l')}返回学习结果</button><h3>${profileName(profile)}的聊天风格</h3>${field('summary', '风格总结（可修改）', v.summary, 6000, '例如：表达简洁，语气自然，不添加没有依据的称呼。')}${field('customAvoid', '注意事项（可选）', v.customAvoid, 1200)}${memoryFields({ ...profile, capabilities: state.capabilities }, draft?.memorySummary)}<details class="ai-paste"><summary>回复策略（可选）</summary>${field('replyGoal', '回复目的与立场', reply.replyGoal)}${field('facts', '允许使用的信息', reply.facts, 4000)}${field('boundaries', '注意事项', reply.boundaries)}<label class="ai-field">连续自动回复上限<input name="maxRounds" type="number" min="1" max="2000" value="${reply.maxRounds ?? 50}"></label></details><div class="ai-actions"><button type="submit" class="primary">保存风格</button><button type="button" class="quiet danger-link" data-ai-action="delete-profile">删除风格</button></div></form>`;
   }
   function manualReplyEditor() {
     const contact = state.contacts.find(c => c.id === editingReplyContact && c.kind === 'person');
     if (!contact) return back('回复风格') + '<p class="ai-help">请刷新联系人后重试。</p>';
     const v = manualReplyDrafts.get(contact.id), presets = state.schema.replyPresets || [], profile = selectProfiles().find(p => p.contact === contact.id);
-    return `<form id="ai-manual-reply-form" data-contact="${esc(contact.id)}"><div class="ai-page-heading"><button type="button" class="quiet" data-ai-action="back-reply-contacts">${icon('arrow-l')}返回联系人列表</button><h3>${contactName(contact)}的回复风格</h3></div>${profile?.delivery?.status === 'uncertain' ? '<p class="ai-help">最近发送结果尚未确认。<a href="#ai-review" data-ai-review="' + profile.id + '">核验发送结果</a></p>' : ''}<label class="ai-field">选择风格<select id="ai-reply-preset" name="replyPreset">${presets.map(p => option(p.id, p.label, v.replyPreset === p.id)).join('')}${option('custom', '自定义', v.replyPreset === 'custom')}${learnedProfiles().length ? '<optgroup label="已学习的风格">' + learnedProfiles().map(p => option('learned:' + p.id, p.label, v.replyPreset === 'learned:' + p.id)).join('') + '</optgroup>' : ''}</select></label>${field('summary', '风格说明（可修改）', v.summary || summaryText(v), 6000)}<details class="ai-paste"><summary>注意事项与策略（可选）</summary>${field('customAvoid', '注意事项', v.customAvoid, 1200)}${field('replyGoal', '回复目的与立场', v.replyGoal)}${field('facts', '允许使用的信息', v.facts, 4000)}${field('boundaries', '不能擅自决定的事项', v.boundaries)}<label class="ai-field">连续自动回复上限<input name="maxRounds" type="number" min="1" max="2000" value="${v.maxRounds ?? 50}"></label></details><button type="submit" class="primary ai-wide">保存回复风格</button></form>`;
+    return `<form id="ai-manual-reply-form" data-contact="${esc(contact.id)}"><div class="ai-page-heading"><button type="button" class="quiet" data-ai-action="back-reply-contacts">${icon('arrow-l')}返回联系人列表</button><h3>${contactName(contact)}的回复风格</h3></div><label class="ai-field">选择风格<select id="ai-reply-preset" name="replyPreset">${presets.map(p => option(p.id, p.label, v.replyPreset === p.id)).join('')}${option('custom', '自定义', v.replyPreset === 'custom')}${learnedProfiles().length ? '<optgroup label="已学习的风格">' + learnedProfiles().map(p => option('learned:' + p.id, p.label, v.replyPreset === 'learned:' + p.id)).join('') + '</optgroup>' : ''}</select></label>${field('summary', '风格说明（可修改）', v.summary || summaryText(v), 6000)}<details class="ai-paste"><summary>注意事项与策略（可选）</summary>${field('customAvoid', '注意事项', v.customAvoid, 1200)}${field('replyGoal', '回复目的与立场', v.replyGoal)}${field('facts', '允许使用的信息', v.facts, 4000)}${field('boundaries', '不能擅自决定的事项', v.boundaries)}<label class="ai-field">连续自动回复上限<input name="maxRounds" type="number" min="1" max="2000" value="${v.maxRounds ?? 50}"></label></details><button type="submit" class="primary ai-wide">保存回复风格</button></form>`;
   }
   function rememberDraft() {
     const analysis = $('#ai-analysis-form');
@@ -758,7 +727,7 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
       void refreshContacts().catch(error => { if (current === generation) message(error.message, true); });
     }
   }
-  function hide() { rememberDraft(); rememberRecords(); reviewToken++; reviewDialog.close(); concealKey(true); proactiveUI.closeOverlay(); if (learningDraft) learningDraft.text = ''; panel.hidden = true; rail.querySelector('#ai-open').setAttribute('aria-expanded', 'false'); panel.querySelectorAll('[name=text], [name=styleText]').forEach(input => { input.value = ''; }); rail.querySelector('#ai-open').focus(); onClose?.(); }
+  function hide() { rememberDraft(); rememberRecords(); concealKey(true); proactiveUI.closeOverlay(); if (learningDraft) learningDraft.text = ''; panel.hidden = true; rail.querySelector('#ai-open').setAttribute('aria-expanded', 'false'); panel.querySelectorAll('[name=text], [name=styleText]').forEach(input => { input.value = ''; }); rail.querySelector('#ai-open').focus(); onClose?.(); }
   rail.querySelector('#ai-open').onclick = async () => {
     if (panel.hidden && !pass()) return;
     if (panel.hidden && !id && !(await ensureInstance())) { message('AI 辅助尚未就绪，请重新打开微信后再试', true); return; }
@@ -1364,7 +1333,7 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
     async attach(instanceId) {
       rememberRecords();
       analysisDraft = { request: '', from: '', to: '', contacts: [] }; analysisSearch = ''; analysisHistoryReport = null; analysisHistoryEpoch++; learnRange = {from:'',to:''}; learnScope='range'; learnTarget='both'; defaultStylePerspective = 'self'; analysisResult = null; proactiveUI.reset();
-      reviewDialog.close(); reviewDialog.replaceChildren(); reviewData = null; reviewAlert.hidden = true;
+      reviewAlert.hidden = true;
       concealKey(true); modelDraft = null; learningDraft = null; renderedView = ''; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); selectedObject = ''; objectSearch = ''; objectKind = 'person'; editingReplyContact = null; contactSearch = ''; providerRevision++;
       generation++; clearInterval(timer); id = instanceId; state = null; busy = false; polling = false; tab = 'overview'; replyDraft = null; editingProfile = null; contactsLoaded = false; contactsLoading = false; resultProfileIds = null;
       const attachedGeneration = generation;
@@ -1384,6 +1353,6 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
         finally { if (current === generation) polling = false; }
       }, 2500);
     },
-    detach() { analysisQueueToken++; analysisQueueAccount = null; rememberRecords(); reviewToken++; proactiveRecordEpoch++; proactiveRecordLoading = false; proactiveHistory = []; proactiveHistoryPage = null; errorEpoch++; errorLoading = false; errorHistory = []; errorPage = null; logEpoch++; analysisDraft = { request: '', from: '', to: '', contacts: [] }; analysisSearch = ''; analysisHistoryReport = null; analysisHistoryEpoch++; analysisResult = null; reviewDialog.close(); reviewDialog.replaceChildren(); reviewData = null; reviewAlert.hidden = true; concealKey(true); modelDraft = null; learningDraft = null; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); selectedObject = ''; objectSearch = ''; objectKind = 'person'; editingReplyContact = null; providerRevision++; generation++; clearInterval(timer); id = null; state = null; rail.hidden = true; panel.hidden = true; $('#ai-content').replaceChildren(); selectedContacts.clear(); replyProfiles.clear(); proactiveUI.reset(); replyDraft = null; },
+    detach() { analysisQueueToken++; analysisQueueAccount = null; rememberRecords(); proactiveRecordEpoch++; proactiveRecordLoading = false; proactiveHistory = []; proactiveHistoryPage = null; errorEpoch++; errorLoading = false; errorHistory = []; errorPage = null; logEpoch++; analysisDraft = { request: '', from: '', to: '', contacts: [] }; analysisSearch = ''; analysisHistoryReport = null; analysisHistoryEpoch++; analysisResult = null; reviewAlert.hidden = true; concealKey(true); modelDraft = null; learningDraft = null; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); selectedObject = ''; objectSearch = ''; objectKind = 'person'; editingReplyContact = null; providerRevision++; generation++; clearInterval(timer); id = null; state = null; rail.hidden = true; panel.hidden = true; $('#ai-content').replaceChildren(); selectedContacts.clear(); replyProfiles.clear(); proactiveUI.reset(); replyDraft = null; },
   };
 }

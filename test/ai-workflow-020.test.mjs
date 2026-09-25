@@ -130,17 +130,14 @@ test('reply format retains punctuation and skips model self introductions', asyn
   assert.ok(a.profiles()[0].generatedIds.length);
 });
 
-test('review reads the exact chat, rejects stale confirmation and resumes without repeating an uncertain send', async t => {
+test('unknown send is recorded without a review flow and later incoming messages continue', async t => {
   const { a, bridge, enable, receive, tick, advance } = await fixture(t); await enable();
   bridge.delivery = async () => ({ status: 'uncertain' });
   await receive(bridge.contacts[0].id, '收到吗？', { action: 'send', text: '收到了。' });
   const profile = a.profiles().find(p => p.contact === bridge.contacts[0].id);
-  assert.equal(profile.paused, false); assert.equal(profile.delivery.status, 'uncertain');
-  const first = await a.review(profile.id); assert.equal(first.messages.at(-1).text, '收到吗？');
-  bridge.push(profile.contact, 'self', '手动处理了。');
-  await assert.rejects(a.review(profile.id, { resolve: true, revision: first.revision }), /新变化/);
-  const fresh = await a.review(profile.id); await a.review(profile.id, { resolve: true, revision: fresh.revision });
-  assert.equal(profile.delivery.status, 'reviewed'); bridge.delivery = null;
+  assert.equal(profile.paused, false); assert.equal(profile.delivery.status, 'unknown');
+  assert.equal((profile.sentMessages || []).some(message => message.confirmed === false), false);
+  bridge.delivery = null;
   advance(20000); await tick(); assert.equal(bridge.sent.length, 0);
   await receive(profile.contact, '下一个问题', { action: 'send', text: '好的。' }); assert.equal(bridge.sent.length, 1);
 });

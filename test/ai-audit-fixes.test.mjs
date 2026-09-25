@@ -41,6 +41,18 @@ test('AI-01 default profile retains custom style after memory/reply-goal saves a
     assert.equal(provider.calls.at(-1).input.style.summary, text);
   } finally { await b.close(); }
 });
+test('object detail does not expose legacy pending-delivery review UI', () => {
+  const contact = 'legacy-contact', state = {
+    contacts: [{ id: contact, label: '旧联系人', kind: 'person' }],
+    profiles: [{ id: 'legacy-profile', contact, label: '旧联系人', paused: true, pauseReason: 'uncertain', delivery: { status: 'uncertain' }, replyOptions: { enabled: true } }],
+    settings: { enabled: true, replyScope: 'selected', multiTurn: false, judgeReply: true },
+    replyTargets: ['legacy-profile'], replyRoundLimits: { person: 50, group: 50 }, replyStrategy: { maxRounds: 50 }, strategy: {}, schema: { replyPresets: [] },
+  };
+  const html = objectPage(state, { selected: contact, kind: 'person', search: '' });
+  assert.match(html, /已暂停/);
+  assert.match(html, /data-ai-resume-profile=/);
+  assert.doesNotMatch(html, /待核验|核验发送结果|data-ai-review/);
+});
 test('AI-07 learned snapshot survives preset/custom/default selections and restart', async t => {
   const { a, bridge, provider, options } = await fixture(t), contact = bridge.contacts[0].id;
   provider.next = async () => ({ style: learnedStyle('独特的学习结果。') });
@@ -79,14 +91,13 @@ for (const pause of ['manual', 'restart', 'provider']) test(`AI-02 schedule-only
     assert.equal(runner.data.schedules[0].lastRun.items[0].status, 'done');
   } finally { if (runner !== a) await runner.close(); }
 });
-test('AI-02 unknown send receipt still blocks schedule resumption and retries', async t => {
+test('AI-02 unknown send receipt is audit-only and does not persist a verification gate', async t => {
   const { a, bridge, advance } = await fixture(t);
   await a.scheduleAction({ time: '1分钟后', strategy, contacts: [bridge.contacts[0].id] });
   await a.settings({ enabled: true, proactive: true, reply: false }); advance(61000);
   bridge.delivery = async () => ({ status: 'uncertain' }); await a.tick();
-  assert.equal(a.data.queue.items[0].status, 'uncertain');
-  await assert.rejects(a.queueAction('resume'), /待核对/);
-  await assert.rejects(a.queueAction('retry-failed'), /待核对/);
+  assert.equal(a.data.queue.items[0].status, 'skipped');
+  assert.doesNotMatch(JSON.stringify(a.data.queue), /uncertain|待核对|待核验/);
 });
 for (const mention of ['self', 'all']) for (const otherSpeaker of [false, true]) test(`AI-03 ${mention} followed by ${otherSpeaker ? 'other member' : 'same member'} retains trigger once`, async t => {
   const { a, bridge, provider, advance } = await fixture(t), c = bridge.contacts[0];

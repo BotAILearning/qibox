@@ -151,6 +151,19 @@ export class AIAssistant {
       migrateLearnedStyle(profile);
       if (profile.strategy) profile.strategy = strategyValue(profile.strategy);
       if (profile.replyStrategy) profile.replyStrategy = replyStrategyValue(profile.replyStrategy);
+      // Retire legacy human-verification gates while preserving an audit state.
+      for (const key of ['delivery', 'proactiveDelivery']) if (['sending', 'uncertain'].includes(profile[key]?.status)) profile[key].status = 'unknown';
+      if (profile.pauseReason === 'uncertain') {
+        profile.paused = false; profile.replyWatchSince = this.now();
+        delete profile.pauseReason; delete profile.pausedAt; delete profile.manualPause;
+      }
+      if (Array.isArray(profile.sentMessages)) profile.sentMessages = profile.sentMessages.flatMap(message => {
+        if (message?.confirmed !== false) return [message];
+        if (message.source === 'proactive' && message.assumedPresent === true) {
+          const migrated = { ...message, deliveryConfidence: 'unknown' }; delete migrated.confirmed; return [migrated];
+        }
+        return [];
+      });
     }
     if (this.data.learnedDefaultStyle) {
       try { this.data.learnedDefaultStyle.style = styleValue(this.data.learnedDefaultStyle.style); }
@@ -185,12 +198,11 @@ export class AIAssistant {
       const cursor = profile.replyCursor;
       if (cursor && validKey(cursor.revision) && (!cursor.last || validKey(cursor.last)) && (!cursor.own || validKey(cursor.own)) && (!cursor.sent || validKey(cursor.sent)) && Number.isFinite(cursor.changedAt)) this.cursors.set(profile.id, { ...cursor });
     }
-    if (['running', 'paused'].includes(this.data.queue.status)) this.data.queue.status = 'paused';
-    for (const item of this.data.queue.items) if (item.status === 'sending') { item.status = 'uncertain'; this.data.queue.status = 'paused'; }
+    if (['running', 'paused'].includes(this.data.queue.status)) this.data.queue.status = this.data.queue.items.some(item => ['pending', 'sending'].includes(item.status)) ? 'paused' : 'completed';
+    for (const item of this.data.queue.items) if (['sending', 'uncertain'].includes(item.status)) { item.status = 'skipped'; item.reason = '旧版待核验状态已自动结清；为避免重复发送，本条不重发'; }
+    if (this.data.queue.status === 'paused' && !this.data.queue.items.some(item => ['pending', 'sending'].includes(item.status))) this.data.queue.status = 'completed';
     const legacyPaused = [];
     for (const profile of Object.values(this.data.profiles)) {
-      if (profile.delivery?.status === 'sending') profile.delivery.status = 'uncertain';
-      if (profile.proactiveDelivery?.status === 'sending') profile.proactiveDelivery.status = 'uncertain';
       if (this.dropLegacyPause(profile)) legacyPaused.push(profile.label || profile.id);
     }
     if (legacyPaused.length) this.notice = `已解除 ${legacyPaused.length} 个对象遗留的无效暂停`;
@@ -293,18 +305,16 @@ export class AIAssistant {
   // 让后续消息照常自动回复，不再被上一条消息的暂停牵连。
   resumeForNewMessage(profile) {
     if (!profile.paused || profile.pauseReason === 'explicit' ||
-        ['sending', 'uncertain'].includes(profile.delivery?.status) || profile.proactiveDelivery?.status === 'sending') return false;
+        profile.delivery?.status === 'sending' || profile.proactiveDelivery?.status === 'sending') return false;
     profile.paused = false; profile.rounds = 0; profile.replyWatchSince = this.now();
     delete profile.pauseReason; delete profile.pausedAt; delete profile.manualPause;
     delete profile.groupPausedUntil; delete profile.groupPauseReason; delete profile.groupWait;
     this.event('resumed', profile.id);
     return true;
   }
-  // 保存设置且自动回复处于开启状态时解除普通暂停；发送结果待核验
-  // 必须先显式核验，不能因保存开关而静默清除。
+  // 保存设置且自动回复处于开启状态时只解除普通暂停；发送中的操作仍须自然结束。
   resumeForSavedReply(profile) {
-    if (profile.pauseReason === 'uncertain' ||
-        ['sending', 'uncertain'].includes(profile.delivery?.status) || profile.proactiveDelivery?.status === 'sending') return false;
+    if (profile.delivery?.status === 'sending' || profile.proactiveDelivery?.status === 'sending') return false;
     if (profile.paused && profile.pauseReason) return false;
     if (profile.paused && (profile.manualPause || profile.groupPauseReason === 'manual')) return false;
     if (profile.manualWait) {
@@ -322,16 +332,7 @@ export class AIAssistant {
   }
   // 仅清理旧版本的未知暂停原因；当前有效暂停必须原样保留。
   dropLegacyPause(profile) {
-    const proactiveOnlyUncertain = profile.proactiveDelivery?.status === 'uncertain' && !['sending', 'uncertain'].includes(profile.delivery?.status);
-    if (proactiveOnlyUncertain && profile.pauseReason === 'uncertain') {
-      // Proactive uncertainty is handed to auto-reply as explicitly marked
-      // context. It must never leave the contact in the old manual-review pause.
-      profile.paused = false; profile.replyWatchSince = this.now();
-      delete profile.pauseReason; delete profile.pausedAt; delete profile.manualPause;
-      delete profile.groupPausedUntil; delete profile.groupPauseReason;
-      return true;
-    }
-    const deliveryNeedsReview = profile.pauseReason === 'uncertain' || ['sending', 'uncertain'].includes(profile.delivery?.status);
+    const deliveryNeedsReview = profile.delivery?.status === 'sending';
     if (deliveryNeedsReview) {
       profile.paused = true; profile.pauseReason = 'uncertain';
       return false;
@@ -364,7 +365,7 @@ export class AIAssistant {
     }
     profile.manualWait = { ownId: message.id, at: Number.isSafeInteger(message.timestamp) ? message.timestamp * 1000 : this.now() };
     if (!profile.paused || profile.pauseReason === 'explicit') return;
-    if (['sending', 'uncertain'].includes(profile.delivery?.status) || profile.proactiveDelivery?.status === 'sending') return;
+    if (profile.delivery?.status === 'sending' || profile.proactiveDelivery?.status === 'sending') return;
     if (Number.isSafeInteger(message.timestamp) && message.timestamp * 1000 < Math.floor((profile.pausedAt || 0) / 1000) * 1000) return;
     profile.paused = false; profile.rounds = 0;
     delete profile.pauseReason; delete profile.manualPause;
@@ -1384,11 +1385,11 @@ export class AIAssistant {
   recordUncertainProactive(profile, task, text, operationId) {
     this.setReplyBackground(profile, task);
     profile.sentMessages = [...(profile.sentMessages || []).filter(message => message.id !== operationId),
-      { id: operationId, at: this.now(), body: this.vault.seal({ text }), source: 'proactive', taskId: task.id, confirmed: false, assumedPresent: true }].slice(-300);
+      { id: operationId, at: this.now(), body: this.vault.seal({ text }), source: 'proactive', taskId: task.id, assumedPresent: true, deliveryConfidence: 'unknown' }].slice(-300);
   }
   appendUncertainProactiveContext(profile, snapshot, modelMessages) {
     const used = [];
-    const rows = (profile.sentMessages || []).filter(message => message.source === 'proactive' && message.confirmed === false && message.assumedPresent === true && Number.isFinite(message.at) && this.now() - message.at <= proactiveBackgroundTtl);
+    const rows = (profile.sentMessages || []).filter(message => message.source === 'proactive' && message.assumedPresent === true && message.deliveryConfidence === 'unknown' && Number.isFinite(message.at) && this.now() - message.at <= proactiveBackgroundTtl);
     for (const row of rows) {
       let text;
       try { text = this.vault.open(row.body)?.text; } catch { continue; }
@@ -1399,7 +1400,7 @@ export class AIAssistant {
         profile.generatedIds = [...new Set([...(profile.generatedIds || []), matches[0].id])].slice(-300);
         continue;
       }
-      modelMessages.push({ id: `assumed-${row.id}`, direction: 'self', text, timestamp: Math.floor(row.at / 1000), aiGenerated: true, assumedPresent: true, deliveryConfidence: 'uncertain' });
+      modelMessages.push({ id: `assumed-${row.id}`, direction: 'self', text, timestamp: Math.floor(row.at / 1000), aiGenerated: true, assumedPresent: true, deliveryConfidence: 'unknown' });
       used.push(row);
     }
     return used;
@@ -1461,7 +1462,7 @@ export class AIAssistant {
         }
         // A resumed chat starts after the current history, including messages
         // received while paused. Never revive an old pending reply.
-        if (value.paused === false && (profile.pauseReason === 'uncertain' || ['sending', 'uncertain'].includes(profile.delivery?.status) || ['sending', 'uncertain'].includes(profile.proactiveDelivery?.status))) throw new AppError('请先核对发送结果，再恢复新消息回复');
+        if (value.paused === false && (profile.delivery?.status === 'sending' || profile.proactiveDelivery?.status === 'sending')) throw new AppError('发送仍在进行，请稍后重试');
         profile.locked = [...new Set([...(profile.locked || []), ...Object.keys(style).filter(key => JSON.stringify(style[key]) !== JSON.stringify(profile.style[key]))])];
         profile.style = style;
         profile.styleId = selectedStyleId(profile, style, profile.styleId ?? '', true, this.data.learnedDefaultStyle?.style); profile.replyStyleSet = true;
@@ -1743,6 +1744,7 @@ export class AIAssistant {
     // Commit the occurrence before generating or sending anything.
     await this.save();
   }
+  // Legacy endpoint retained for older clients. Current UI no longer offers send-result review.
   async review(id, { resolve = false, revision, openChat = false } = {}) {
     if (openChat && !resolve) return this.openConversation(id);
     const action = async () => {
@@ -1784,9 +1786,8 @@ export class AIAssistant {
     const accepts = message => source === 'unknown' ? !message?.source || message.source === 'unknown' : source === 'proactive' ? message?.source === 'proactive' : ['reply', 'atMe', 'atAll', 'realtime'].includes(message?.source);
     return this.profiles().filter(p => p.account === this.data.account).map(p => {
       const failed = source === 'proactive' && ['running', 'paused', 'failed'].includes(this.data.queue.status) && this.data.queue.items.find(x => x.id === p.id && x.status === 'failed');
-      // 发送结果未确认只是【待核验】标记，不再阻断该对象的自动回复。
-      const pendingReview = p.kind !== 'group' && ['sending', 'uncertain'].includes(p.delivery?.status);
-      const needsHelp = failed || p.delivery?.source !== 'proactive' && source === 'reply' && (pendingReview || p.paused && ['limit'].includes(p.pauseReason));
+      const needsHelp = failed || p.delivery?.source !== 'proactive' && source === 'reply' && (p.paused && ['limit'].includes(p.pauseReason));
+      const pendingReview = false;
       const metadata = new Map((p.sentMessages || []).map(m => [m.id, m]));
       const sent = (p.sentMessages || []).filter(accepts), ids = (p.generatedIds || []).filter(id => accepts(metadata.get(id)));
       const event = this.data.events.find(e => e.target === p.id && e.account === this.data.account && accepts(e) && ['replied', 'contacted', 'uncertain', 'limit', 'failed'].includes(e.code));
@@ -2470,23 +2471,18 @@ export class AIAssistant {
         await this.save(); return sent ? 'partial' : 'pending';
       }
       if (delivery.status !== 'sent' || !delivery.messageId) {
-        profile.delivery.status = delivery.status === 'stale' ? sent ? 'sent' : 'cancelled' : 'uncertain';
+        profile.delivery.status = delivery.status === 'stale' ? sent ? 'sent' : 'cancelled' : 'unknown';
         profile.delivery.interrupted = sent > 0;
-        if (item) item.status = delivery.status === 'stale' ? sent ? 'done' : 'pending' : 'uncertain';
+        if (item) item.status = delivery.status === 'stale' ? sent ? 'done' : 'pending' : 'skipped';
         if (delivery.status !== 'stale') {
-          // 发送结果未确认时消息可能已经发出。把发送意图作为待核对记录
-          // 加密保存，确保运行记录能展示这条已代发消息，而不是核对后即消失。
-        if (delivery.status === 'uncertain' && text.trim()) {
-          if (mode === 'proactive' && item?.taskId) this.recordUncertainProactive(profile, { id: item.taskId, name: item.taskName || '', taskType: item.taskType || 'custom', goal: item.goal || '', requirements: item.requirements || '' }, text, operationId);
-          else profile.sentMessages = [...(profile.sentMessages || []), { id: operationId, at: this.now(), body: this.vault.seal({ text }), source: mode === 'reply' ? 'reply' : 'proactive', confirmed: false }].slice(-300);
-        }
-          // 发送结果未确认只进入【待核验】标记：不暂停该对象的自动回复，
-          // 后续新消息照常处理，主动聊天队列仍需核对后再继续。
+          // Unknown receipts remain audit-only; do not create pending chat rows
+          // or a manual recovery gate.
         if (mode === 'reply') {
           profile.handledIncomingId = fresh.messages.findLast(m => m.direction === 'other')?.id;
           const cursor = this.cursors.get(profile.id); if (cursor?.revision === fresh.revision) cursor.pending = false;
           if (groupReply) delete profile.groupWait;
-        } else this.pauseQueue();
+        }
+        this.settleQueue();
           this.event('uncertain', profile.id);
         }
         await this.save(); return delivery.status === 'stale' && sent ? 'partial' : 'pending';

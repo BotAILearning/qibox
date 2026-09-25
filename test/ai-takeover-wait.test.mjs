@@ -55,7 +55,7 @@ test('restart preserves elapsed wait and pending incoming without restarting the
 });
 test('uncertain first delivery is not regenerated on the same incoming after restart',async t=>{
  const f=await fixture(t);await f.push('self');const incoming=await f.push('other');const started=f.p.manualWait?.startedAt;assert.ok(started);f.advance(60000);f.bridge.delivery=async()=>({status:'uncertain'});await f.a.tick();
- assert.equal(f.p.delivery.status,'uncertain');assert.equal(f.p.handledIncomingId,incoming.id);assert.equal(f.p.manualWait.startedAt,started);const calls=f.provider.calls.length;
+ assert.equal(f.p.delivery.status,'unknown');assert.equal(f.p.handledIncomingId,incoming.id);assert.equal(f.p.manualWait.startedAt,started);const calls=f.provider.calls.length;
  await f.restart();await f.a.tick();assert.equal(f.provider.calls.length,calls);assert.equal(f.p.manualWait.startedAt,started);
 });
 test('AI generated self messages do not arm takeover, explicit stop remains stopped after expiry',async t=>{

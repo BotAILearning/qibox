@@ -123,15 +123,15 @@ test('each segment checks cancellation after its persisted intent before native 
   assert.equal(target.delivery.interrupted, true); assert.equal(target.continuation, undefined);
 });
 
-test('an uncertain second segment pauses without retrying after restart', async t => {
+test('an unknown second segment is consumed without retry or manual verification after restart', async t => {
   const { a, bridge, provider, root } = await fixture(t, { segments: true });
   const send = bridge.send.bind(bridge); let attempts = 0;
   bridge.send = request => ++attempts === 2 ? Promise.resolve({ status: 'uncertain' }) : send(request);
   provider.next = async () => ({ action: 'send', segments: opening }); await launch(a); await a.tick();
-  assert.equal(bridge.sent.length, 1); assert.equal(a.data.queue.items[0].status, 'uncertain');
-  assert.equal(a.profiles()[0].delivery.segmentsSent, 1); await assert.rejects(a.queueAction('resume'), /核对/);
+  assert.equal(bridge.sent.length, 1); assert.equal(a.data.queue.items[0].status, 'skipped');
+  assert.equal(a.profiles()[0].delivery.segmentsSent, 1);
   const restarted = new AIAssistant({ dataRoot: root, bridge, provider }); await restarted.init();
-  assert.equal(restarted.data.queue.items[0].status, 'uncertain'); assert.equal(restarted.data.settings.enabled, true);
+  assert.equal(restarted.data.queue.items[0].status, 'skipped'); assert.equal(restarted.data.settings.enabled, true);
   await restarted.close(); assert.equal(attempts, 2);
 });
 

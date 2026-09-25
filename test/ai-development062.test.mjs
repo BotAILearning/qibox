@@ -273,7 +273,7 @@ test('scheduled task edits replace the paused occurrence and keep future schedul
  await a.scheduleAction({command:'resume',id:s.id});assert.equal(s.status,'active');
 });
 
-test('pre-submit failures stop after three attempts; uncertain is never automatically retried',async t=>{
+test('pre-submit failures stop after three attempts; unknown sends settle without retry',async t=>{
  const {a,bridge,advance}=await fixture(t);let sends=0;
  await a.saveStrategy(strategy);await a.prepareTargets({contacts:[bridge.contacts[0].id]});await a.settings({enabled:true,proactive:true,reply:false});await a.queueAction('start');
  bridge.send=async()=>{sends++;return {status:'not-sent',diagnostic:{phase:'native-navigation',code:'controls-unavailable'}};};
@@ -281,7 +281,7 @@ test('pre-submit failures stop after three attempts; uncertain is never automati
  assert.equal(sends,3);assert.equal(a.data.queue.status,'failed');assert.equal(a.data.queue.items[0].diagnostic.phase,'native-navigation');
  a.available=true;await a.queueAction({command:'resume',id:a.data.queue.items[0].id});
  bridge.send=async()=>{sends++;return {status:'uncertain'};};await a.proactiveTick(a.revision,a.controller.signal);
- await assert.rejects(a.queueAction({command:'resume',id:a.data.queue.items[0].id}),/核对/);advance(100000);await a.proactiveTick(a.revision,a.controller.signal);assert.equal(sends,4);
+ await assert.rejects(a.queueAction({command:'resume',id:a.data.queue.items[0].id})); assert.equal(a.data.queue.items[0].status,'skipped'); advance(100000);await a.proactiveTick(a.revision,a.controller.signal);assert.equal(sends,4);
 });
 
 test('WeChat remark capability is default-deny and requires a verified provider receipt',async t=>{

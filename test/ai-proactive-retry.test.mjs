@@ -76,17 +76,17 @@ test('an incoming message during generation regenerates the copy once instead of
   assert.equal(a.data.proactiveRecords[0].status, 'sent');
 });
 
-test('an unconfirmed send never auto-retries', async t => {
+test('an unknown send receipt is terminal and never auto-retries', async t => {
   const { a, bridge } = await fixture(t);
   const task = await create(a, bridge, { schedule: { cycle: 'daily', mode: 'fixed', time: '12:00' } });
   const tasks = a.proactiveV2;
-  const item = { ...tasks.item(task.contacts[0]), status: 'uncertain', attempts: 1 };
+  const item = { ...tasks.item(task.contacts[0]), status: 'unknown', attempts: 1 };
   task.run = { id: 'run-1', at: a.now(), occurrenceDate: '2026-09-17', schedule: structuredClone(task.schedule), items: [item] };
   tasks.settle(task);
-  assert.equal(task.status, 'failed'); assert.match(task.reason, /待核对/);
+  assert.equal(task.status, 'running'); assert.equal(task.reason, undefined);
   task.nextAt = a.now();
   tasks.reviveRetryable(task);
-  assert.equal(item.status, 'uncertain');
+  assert.equal(item.status, 'unknown');
 });
 
 test('pausing and resuming a retryable recurring task preserves its next occurrence without replaying the failed run', async t => {
@@ -106,14 +106,14 @@ test('pausing and resuming a retryable recurring task preserves its next occurre
   assert.equal(bridge.sent.length, 0);
 });
 
-test('pause does not let resume bypass uncertain receipts or exhausted retries', async t => {
+test('unknown receipts do not block resume; exhausted failures still require retry', async t => {
   const { a, bridge } = await fixture(t);
-  for (const [status, attempts] of [['uncertain', 1], ['failed', 3]]) {
+  for (const [status, attempts] of [['unknown', 1], ['failed', 3]]) {
     const task = await create(a, bridge, { schedule: { cycle: 'daily', mode: 'fixed', time: '12:00' } });
     task.run = { id: status, at: a.now(), occurrenceDate: '2026-09-17', schedule: structuredClone(task.schedule), items: [{ ...a.proactiveV2.item(task.contacts[0]), status, attempts }] };
     a.proactiveV2.settle(task);
     await a.proactiveTaskAction({ command: 'pause', id: task.id });
-    await assert.rejects(a.proactiveTaskAction({ command: 'resume', id: task.id }), /重试|核对/);
-    assert.equal(task.status, 'paused');
+    if (status === 'unknown') { await a.proactiveTaskAction({ command: 'resume', id: task.id }); assert.equal(task.status, 'running'); }
+    else { await assert.rejects(a.proactiveTaskAction({ command: 'resume', id: task.id }), /重试/); assert.equal(task.status, 'paused'); }
   }
 });

@@ -87,9 +87,9 @@ test('contact activity includes only confirmed self message IDs; no plaintext pe
   let opened = 0; bridge.openChat = async request => { assert.equal(request.contact, p.contact); opened++; return { opened: true }; };
   assert.equal((await a.openConversation(p.id)).opened, true);
   assert.equal(opened, 1); assert.equal(!!p.paused, false);
-  a.pauseProfile(p, 'uncertain'); p.delivery = { status: 'uncertain' };
-  await a.openConversation(p.id); assert.equal(p.pauseReason, 'uncertain');
-  assert.equal(a.publicState().activity[0].needsHelp, true);
+  p.paused = false; p.delivery = { status: 'unknown' };
+  await a.openConversation(p.id); assert.equal(p.pauseReason, undefined);
+  assert.equal(a.publicState().activity[0].needsHelp, false);
   p.account = key('foreign');
   assert.equal(a.publicState().activity.length, 0);
   await assert.rejects(a.activityRecords([p.id])); await assert.rejects(a.openConversation(p.id));

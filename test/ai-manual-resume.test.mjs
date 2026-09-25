@@ -65,19 +65,19 @@ test('manual reply does not resume an explicitly paused profile', async t => {
   assert.equal(f.profile().paused, true); assert.equal(f.profile().pauseReason, 'explicit');
 });
 
-test('manual reply resumes limit and stop pauses but not an uncertain delivery', async t => {
+test('manual reply resumes limit and stop, unknown delivery does not create a pause', async t => {
   const f = await fixture(t);
   for (const reason of ['limit', 'stop']) {
     f.a.pauseProfile(f.profile(), reason);
     f.push('self', reason); await f.a.tick();
     assert.equal(f.profile().paused, false, `${reason} 应被手动回复解除`);
   }
-  f.a.pauseProfile(f.profile(), 'uncertain'); f.profile().delivery = { status: 'uncertain' };
+  f.profile().delivery = { status: 'unknown' };
   f.push('self', 'uncertain'); await f.a.tick();
-  assert.equal(f.profile().paused, true); assert.equal(f.profile().pauseReason, 'uncertain');
+  assert.equal(f.profile().paused, false); assert.equal(f.profile().pauseReason, undefined);
 });
 
-test('uncertain proactive send hands marked context to auto-reply after restart without a review pause', async t => {
+test('unknown proactive send keeps safe context for auto-reply after restart without a review pause', async t => {
   const f = await fixture(t), profile = f.profile();
   const task = { id: 'proactive-test', name: '测试任务', taskType: 'custom', goal: '自然问候', requirements: '不重复已发内容' };
   f.a.recordUncertainProactive(profile, task, '可能已发出的问候', 'operation-uncertain');
@@ -87,13 +87,13 @@ test('uncertain proactive send hands marked context to auto-reply after restart 
 
   await f.restart();
   assert.equal(f.profile().paused, false);
-  assert.equal(f.profile().proactiveDelivery.status, 'uncertain');
+  assert.equal(f.profile().proactiveDelivery.status, 'unknown');
 
   f.push('other', '你刚才说的是什么？'); await f.a.tick(); f.advance(20000); await f.a.tick();
   assert.equal(f.bridge.sent.length, 1);
   const handedOff = f.provider.calls.at(-1).input.messages.find(message => message.assumedPresent === true);
   assert.equal(handedOff.text, '可能已发出的问候');
-  assert.equal(handedOff.deliveryConfidence, 'uncertain');
+  assert.equal(handedOff.deliveryConfidence, 'unknown');
   assert.equal(handedOff.aiGenerated, true);
 });
 

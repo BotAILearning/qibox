@@ -183,13 +183,13 @@ test('turning master off during generation cancels late delivery; pause and resu
   advance(180000); await a.tick(); assert.equal(bridge.sent.length, 1);
 });
 
-test('uncertain send is never retried, and restart preserves the switch while the uncertain contact stays paused', async t => {
+test('unknown send is never retried, and restart preserves settings with the queue settled', async t => {
   const { assistant: a, bridge, root, advance } = await fixture(t);
   bridge.delivery = async () => { throw new Error('connection lost after send'); };
-  await enabled(a); await a.queueAction('start'); await a.tick(); assert.equal(a.publicState().queue.items[0].status, 'uncertain');
-  await assert.rejects(a.queueAction('resume'), /核对/); advance(900000); await a.tick(); assert.equal(a.publicState().queue.status, 'paused');
+  await enabled(a); await a.queueAction('start'); await a.tick(); assert.equal(a.publicState().queue.items[0].status, 'skipped');
+  advance(900000); await a.tick(); assert.equal(a.publicState().queue.status, 'completed');
   const restarted = new AIAssistant({ dataRoot: root, bridge }); await restarted.init();
-  assert.equal(restarted.publicState().settings.enabled, true); assert.equal(restarted.publicState().queue.items[0].status, 'uncertain'); await restarted.close();
+  assert.equal(restarted.publicState().settings.enabled, true); assert.equal(restarted.publicState().queue.items[0].status, 'skipped'); await restarted.close();
 });
 
 test('chat content, generated messages and plain API secrets never reach persistent AI state', async t => {

@@ -10,7 +10,16 @@ export async function jsonFile(file, fallback) {
 export async function atomicJson(file, value) {
   await mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
   const temp = `${file}.${randomUUID()}.partial`;
-  try { await writeFile(temp, JSON.stringify(value, null, 2) + '\n', { mode: 0o600, flag: 'wx' }); await rename(temp, file); }
+  try {
+    await writeFile(temp, JSON.stringify(value, null, 2) + '\n', { mode: 0o600, flag: 'wx' });
+    for (let attempt = 0; ; attempt++) {
+      try { await rename(temp, file); break; }
+      catch (error) {
+        if (process.platform !== 'win32' || !['EPERM', 'EACCES', 'EBUSY'].includes(error.code) || attempt >= 4) throw error;
+        await new Promise(resolve => setTimeout(resolve, 25 * (attempt + 1)));
+      }
+    }
+  }
   finally { await rm(temp, { force: true }); }
 }
 export async function hashFile(file, onProgress) {
