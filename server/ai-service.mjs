@@ -13,11 +13,11 @@ import { createHash, randomInt, randomUUID } from 'node:crypto';
 import { setTimeout as wait } from 'node:timers/promises';
 import { AppError, atomicJson, jsonFile } from './files.mjs';
 import { AIProvider, SecretStore, providerValue, providerFingerprint } from './ai-provider.mjs';
-import { categories, styleOptions, avoidOptions, defaultStyle, styleSchema, styleValue, strategyValue, replyStrategyValue, strategyReady, textField } from './ai-schema.mjs';
+import { categories, styleOptions, avoidOptions, defaultStyle, styleSchema, styleValue, strategyValue, replyStrategyValue, replyLimitValue, strategyReady, textField } from './ai-schema.mjs';
 import { providerPresets, goalPresets, replyPresets } from './ai-presets.mjs';
 import { unsupportedTextAction, promisesMedia } from './ai-capabilities.mjs';
 import { parseSchedule, advanceSchedule } from './ai-schedule.mjs';
-import { groupDefaults, groupOptions, groupBurst, groupPrompt, groupTimingState, groupRealtimeIntervalMs } from './ai-group.mjs';
+import { groupDefaults, groupOptions, groupReplyEnabled, groupBurst, groupPrompt, groupTimingState, groupRealtimeIntervalMs } from './ai-group.mjs';
 import { ProactiveTasks } from './ai-proactive.mjs';
 import { historySummary, validReportId } from './ai-report-history.mjs';
 
@@ -142,7 +142,10 @@ export class AIAssistant {
     this.data.strategy = strategyValue(this.data.strategy);
     this.data.replyStrategy = replyStrategyValue(this.data.replyStrategy || this.data.strategy);
     this.data.replyRoundLimits = { person: null, group: null, ...(this.data.replyRoundLimits || {}) };
-    for (const kind of ['person', 'group']) if (!Number.isInteger(this.data.replyRoundLimits[kind]) || this.data.replyRoundLimits[kind] < 1 || this.data.replyRoundLimits[kind] > 2000) this.data.replyRoundLimits[kind] = null;
+    for (const kind of ['person', 'group']) if (this.data.replyRoundLimits[kind] !== null) {
+      try { this.data.replyRoundLimits[kind] = replyLimitValue(this.data.replyRoundLimits[kind]); }
+      catch { this.data.replyRoundLimits[kind] = null; }
+    }
     for (const profile of Object.values(this.data.profiles)) {
       // Older versions persisted model-selected group wait durations. They are
       // not user/system throttles and must not delay messages after upgrade.
@@ -151,6 +154,9 @@ export class AIAssistant {
       migrateLearnedStyle(profile);
       if (profile.strategy) profile.strategy = strategyValue(profile.strategy);
       if (profile.replyStrategy) profile.replyStrategy = replyStrategyValue(profile.replyStrategy);
+      // The former group counter included realtime replies. Start a separate
+      // mention counter so old realtime activity cannot exhaust the new cap.
+      if (profile.kind === 'group' && !Number.isSafeInteger(profile.mentionRounds)) profile.mentionRounds = 0;
       // Retire legacy human-verification gates while preserving an audit state.
       for (const key of ['delivery', 'proactiveDelivery']) if (['sending', 'uncertain'].includes(profile[key]?.status)) profile[key].status = 'unknown';
       if (profile.pauseReason === 'uncertain') {
@@ -306,7 +312,7 @@ export class AIAssistant {
   resumeForNewMessage(profile) {
     if (!profile.paused || profile.pauseReason === 'explicit' ||
         profile.delivery?.status === 'sending' || profile.proactiveDelivery?.status === 'sending') return false;
-    profile.paused = false; profile.rounds = 0; profile.replyWatchSince = this.now();
+    profile.paused = false; profile.rounds = 0; if (profile.kind === 'group') { profile.mentionRounds = 0; delete profile.mentionLimitBlocked; } profile.replyWatchSince = this.now();
     delete profile.pauseReason; delete profile.pausedAt; delete profile.manualPause;
     delete profile.groupPausedUntil; delete profile.groupPauseReason; delete profile.groupWait;
     this.event('resumed', profile.id);
@@ -323,7 +329,7 @@ export class AIAssistant {
       this.cursors.delete(profile.id);
     }
     if (!profile.paused) return false;
-    profile.paused = false; profile.rounds = 0; profile.replyWatchSince = this.now();
+    profile.paused = false; profile.rounds = 0; if (profile.kind === 'group') { profile.mentionRounds = 0; delete profile.mentionLimitBlocked; } profile.replyWatchSince = this.now();
     delete profile.pauseReason; delete profile.pausedAt; delete profile.manualPause;
     delete profile.groupPausedUntil; delete profile.groupPauseReason; delete profile.groupWait;
     this.cursors.delete(profile.id);
@@ -367,7 +373,7 @@ export class AIAssistant {
     if (!profile.paused || profile.pauseReason === 'explicit') return;
     if (profile.delivery?.status === 'sending' || profile.proactiveDelivery?.status === 'sending') return;
     if (Number.isSafeInteger(message.timestamp) && message.timestamp * 1000 < Math.floor((profile.pausedAt || 0) / 1000) * 1000) return;
-    profile.paused = false; profile.rounds = 0;
+    profile.paused = false; profile.rounds = 0; if (profile.kind === 'group') { profile.mentionRounds = 0; delete profile.mentionLimitBlocked; }
     delete profile.pauseReason; delete profile.manualPause;
     delete profile.groupPausedUntil; delete profile.groupPauseReason; delete profile.groupWait;
     profile.replyWatchSince = this.now();
@@ -476,14 +482,14 @@ export class AIAssistant {
       // Personal reply goals and limits still apply, but the ongoing proactive
       // conversation must retain the facts and boundaries the user launched it with.
       replyGoal: profile.replyStrategy.replyGoal,
-    } : {}), maxRounds: Number.isInteger(profile.replyStrategy?.maxRounds)
+    } : {}), maxRounds: profile.replyStrategy?.maxRounds === 'unlimited' || Number.isSafeInteger(profile.replyStrategy?.maxRounds)
       ? profile.replyStrategy.maxRounds
       : this.data.replyRoundLimits?.[profile.kind] || profile.continuation.strategy.maxRounds };
     // Independent replies receive only their reply configuration, never another
     // conversation's proactive purpose, opening content, persona or style source.
     const base = replyStrategyValue(profile?.strategy || this.data.replyStrategy);
     const result = strategyValue({ ...base, ...profile?.replyStrategy });
-    if (!Number.isInteger(profile?.replyStrategy?.maxRounds)) result.maxRounds = this.data.replyRoundLimits?.[profile?.kind] || result.maxRounds;
+    if (profile?.replyStrategy?.maxRounds !== 'unlimited' && !Number.isSafeInteger(profile?.replyStrategy?.maxRounds)) result.maxRounds = this.data.replyRoundLimits?.[profile?.kind] || result.maxRounds;
     return result;
   }
   styleProfile(strategy) {
@@ -516,7 +522,7 @@ export class AIAssistant {
       this.data.profiles[id] ||= { id, account: this.data.account, contact: target.id, label: target.label, kind: target.kind, source: 'default', preparedAt: this.now(), style: structuredClone(defaultStyle), paused: false, rounds: 0, replyWatchSince: this.data.replyWatchSince || this.now() };
     }
   }
-  replySelected(profile) { return profile?.kind === 'group' ? Object.values(profile.groupOptions || {}).some(Boolean) : profile?.replyOptions?.enabled ?? (this.data.settings.replyScope === 'all' && profile?.kind === 'person' || this.data.replyTargets.includes(profile?.id)); }
+  replySelected(profile) { return profile?.kind === 'group' ? groupReplyEnabled(profile.groupOptions) : profile?.replyOptions?.enabled ?? (this.data.settings.replyScope === 'all' && profile?.kind === 'person' || this.data.replyTargets.includes(profile?.id)); }
   async setGroupOptions({ contact, ...value }) {
     return this.exclusive(async () => {
       const target = this.contacts.get(contact);
@@ -524,8 +530,9 @@ export class AIAssistant {
       const id = digest(`${this.data.account}\0${contact}`), before = this.data.profiles[id]?.groupOptions || groupDefaults();
       const next = groupOptions(value, before);
       const profile = this.data.profiles[id] ||= { id, account: this.data.account, contact, label: target.label, kind: 'group',
-        source: 'default', preparedAt: this.now(), style: structuredClone(defaultStyle), paused: false, rounds: 0 };
-      const enabling = Object.keys(next).filter(key => next[key] && !before[key]);
+        source: 'default', preparedAt: this.now(), style: structuredClone(defaultStyle), paused: false, rounds: 0, mentionRounds: 0 };
+      const triggerKeys = ['atMe', 'atAll', 'realtime'];
+      const enabling = triggerKeys.filter(key => next[key] && !before[key]);
       if (enabling.length) {
         // 开启群聊回复：仅更新选项并把群聊同步到回复目标，不依赖读取聊天记录定位。
         // 重置 watch 与游标并清除该触发项的基线，让后续轮询只处理开启后的新消息。
@@ -534,9 +541,9 @@ export class AIAssistant {
         delete profile.manualWait;
         if (profile.groupBaselines) for (const key of enabling) delete profile.groupBaselines[key];
       }
-      for (const key of Object.keys(next)) if (next[key] !== before[key]) { this.replyControllers.get(`${id}:${key}`)?.abort(); this.replyControllers.delete(`${id}:${key}`); if (profile.groupWait?.trigger === key) delete profile.groupWait; }
+      for (const key of triggerKeys) if (next[key] !== before[key] || key === 'realtime' && next.realtimeMode !== (before.realtimeMode ?? 'normal')) { this.replyControllers.get(`${id}:${key}`)?.abort(); this.replyControllers.delete(`${id}:${key}`); if (profile.groupWait?.trigger === key) delete profile.groupWait; }
       profile.groupOptions = next;
-      if (Object.values(next).some(Boolean)) {
+      if (groupReplyEnabled(next)) {
         this.data.replyTargets = [...new Set([...this.data.replyTargets, id])];
         // 任一群聊回复方式处于开启状态即视为本人要求 AI 接管，清除此前的暂停。
         this.resumeForSavedReply(profile);
@@ -1407,7 +1414,8 @@ export class AIAssistant {
   }
   async applyReplyLimitToKind(kind, maxRounds) {
     return this.exclusive(async () => {
-      if (!['person', 'group'].includes(kind) || !Number.isInteger(maxRounds) || maxRounds < 1 || maxRounds > 2000) throw new AppError('上限设置无效');
+      if (!['person', 'group'].includes(kind) || maxRounds == null) throw new AppError('上限设置无效');
+      maxRounds = replyLimitValue(maxRounds);
       this.data.replyRoundLimits = { person: null, group: null, ...(this.data.replyRoundLimits || {}), [kind]: maxRounds };
       let count = 0;
       for (const profile of this.profiles()) if (profile.account === this.data.account && profile.kind === kind && profile.replyStrategy) {
@@ -1475,7 +1483,7 @@ export class AIAssistant {
             profile.replyWatchSince = this.now();
             this.data.replyTargets = [...new Set([...this.data.replyTargets, id])];
           }
-          profile.rounds = 0; this.cursors.delete(id);
+          profile.rounds = 0; if (profile.kind === 'group') { profile.mentionRounds = 0; delete profile.mentionLimitBlocked; } this.cursors.delete(id);
         }
         this.syncTargets();
         if (value.resetStrategy === true) { delete profile.strategy; delete profile.replyStrategy; }
@@ -1770,7 +1778,7 @@ export class AIAssistant {
         for (const m of profile.sentMessages || []) if (m.confirmed === false) m.confirmed = true;
         for (const item of this.data.queue.items) if (item.id === id && ['uncertain', 'sending'].includes(item.status)) item.status = 'skipped';
         this.pruneQueueTargets();
-        profile.paused = false; profile.rounds = 0; profile.replyWatchSince = this.now();
+        profile.paused = false; profile.rounds = 0; if (profile.kind === 'group') { profile.mentionRounds = 0; delete profile.mentionLimitBlocked; } profile.replyWatchSince = this.now();
         delete profile.pauseReason; delete profile.manualPause; delete profile.groupWait; delete profile.groupPausedUntil; delete profile.groupPauseReason;
         const last = snapshot.messages.filter(x => x.direction !== 'system').at(-1), own = snapshot.messages.filter(x => x.direction === 'self').at(-1);
         this.cursors.set(id, { revision: snapshot.revision, last: last?.id, own: own?.id, changedAt: this.now(), pending: false });
@@ -2009,6 +2017,10 @@ export class AIAssistant {
       this.followUps.delete(profile.id);
       const manual = own && own !== cursor.sent && own !== cursor.own && !(profile.generatedIds || []).includes(own);
       const previousLast = cursor.last;
+      if (profile.kind === 'group' && profile.mentionLimitBlocked && last?.direction === 'other' && last.id !== previousLast) {
+        profile.mentionRounds = 0;
+        delete profile.mentionLimitBlocked;
+      }
       if (!cursor.pending) cursor.pendingAfter = cursor.last;
       if (!cursor.pending || profile.kind !== 'group' && cursor.sender !== last?.sender) cursor.pendingSince = this.now();
       cursor.sender = last?.sender;
@@ -2098,7 +2110,10 @@ export class AIAssistant {
         const cursor = await this.observe(profile, snapshot);
         if (revision !== this.revision) return;
         if (!(this.data.settings.reply && this.replySelected(profile)) && !this.continuing(profile)) continue;
-        const groupTriggers = profile.kind === 'group' ? groupBurst(snapshot.messages, cursor, profile.groupOptions || groupDefaults(), profile.groupBaselines) : null;
+        const groupOptions = profile.kind === 'group' ? profile.groupOptions || groupDefaults() : null;
+        const mentionLimit = groupOptions ? this.strategy(profile, 'reply').maxRounds : null;
+        const mentionsExhausted = groupOptions && mentionLimit !== 'unlimited' && (profile.mentionRounds || 0) >= mentionLimit;
+        const groupTriggers = groupOptions ? groupBurst(snapshot.messages, cursor, mentionsExhausted ? { ...groupOptions, atMe: false, atAll: false } : groupOptions, profile.groupBaselines) : null;
         // Verified @me is urgent; realtime-only traffic is coalesced for the configured interval.
         if (profile.kind === 'group' && groupTriggers?.trigger === 'realtime' && this.now() - (cursor.pendingSince ?? cursor.changedAt) < groupRealtimeIntervalMs) continue;
         const mergeReady = profile.kind === 'group' ? this.now() - cursor.changedAt >= 3000 || this.now() - (cursor.pendingSince ?? cursor.changedAt) >= 8000 : this.now() - cursor.changedAt >= this.data.settings.replyDelay * 1000;
@@ -2195,9 +2210,22 @@ export class AIAssistant {
     let trigger = null, burst;
     if (profile.kind === 'group' && mode === 'reply') {
       if (followUp) return;
-      burst = groupBurst(snapshot.messages, this.cursors.get(profile.id), profile.groupOptions || groupDefaults(), profile.groupBaselines);
+      const options = profile.groupOptions || groupDefaults();
+      const mentionLimit = this.strategy(profile, 'reply').maxRounds;
+      const mentionsExhausted = mentionLimit !== 'unlimited' && (profile.mentionRounds || 0) >= mentionLimit;
+      burst = groupBurst(snapshot.messages, this.cursors.get(profile.id), mentionsExhausted ? { ...options, atMe: false, atAll: false } : options, profile.groupBaselines);
       trigger = burst.trigger;
-      if (!trigger) { const cursor = this.cursors.get(profile.id); if (cursor) cursor.pending = false; const incoming = snapshot.messages.findLast(m => m.direction === 'other'); this.event('skip', profile.id, 'system-skip', '系统判断：没有已启用的群聊触发方式', { reasonCode: 'group-trigger-missing', messageId: incoming?.id }); await this.save(); return; }
+      if (!trigger) {
+        const cursor = this.cursors.get(profile.id); if (cursor) cursor.pending = false;
+        const incoming = snapshot.messages.findLast(m => m.direction === 'other');
+        const cappedTrigger = mentionsExhausted ? groupBurst(snapshot.messages, cursor, options, profile.groupBaselines).trigger : null;
+        if (cappedTrigger === 'atMe' || cappedTrigger === 'atAll') {
+          profile.mentionLimitBlocked = true;
+          this.event('limit', profile.id, cappedTrigger, '提及回复已达到连续回复上限，实时回复保持可用', { messageId: incoming?.id, trigger: cappedTrigger });
+        }
+        else this.event('skip', profile.id, 'system-skip', '系统判断：没有已启用的群聊触发方式', { reasonCode: 'group-trigger-missing', messageId: incoming?.id });
+        await this.save(); return;
+      }
       const key = `${profile.id}:${trigger}`, controller = this.replyControllers.get(key) || new AbortController();
       this.replyControllers.set(key, controller); signal = AbortSignal.any([signal, controller.signal]);
     }
@@ -2211,8 +2239,11 @@ export class AIAssistant {
     const groupState = profile.kind === 'group' ? { trigger, triggerMessages: burst?.messages, now: this.now(), recentActions: this.data.events.filter(e => e.target === profile.id && this.now() - e.at <= 600000).map(({ code, at }) => ({ code, at })), lastManualAt: profile.groupPauseReason === 'manual' ? profile.groupPausedUntil - 600000 : null } : undefined;
     const multiTurn = this.multiTurn(profile, mode, strategy);
     if (followUp && !multiTurn) return;
-    if (mode === 'reply' && (profile.rounds || 0) >= strategy.maxRounds) {
-      this.pauseProfile(profile, 'limit'); this.event('limit', profile.id);
+    const cappedRounds = profile.kind === 'group' ? profile.mentionRounds || 0 : profile.rounds || 0;
+    if (mode === 'reply' && trigger !== 'realtime' && strategy.maxRounds !== 'unlimited' && cappedRounds >= strategy.maxRounds) {
+      if (profile.kind !== 'group') this.pauseProfile(profile, 'limit');
+      else profile.mentionLimitBlocked = true;
+      this.event('limit', profile.id, trigger || 'reply');
       const cursor = this.cursors.get(profile.id); if (cursor) cursor.pending = false;
       await this.save(); return;
     }
@@ -2305,7 +2336,7 @@ export class AIAssistant {
       for (let attempt = 0; attempt < 2; attempt++) {
         result = onlyImages && !images.length && profile.kind !== 'group' ? { action: 'skip', mediaSkipped: true } : await this.provider.complete(
           this.modelFor('chat'),
-          `${generationPrompt}${chatMemoryPrompt}${identityPrompt(this.data.settings.acknowledgeAI)}${conversationPrompt}${replySummaryContext} 当前只能发送纯文字，不能发送、读取或下载文件，不能拨打或接听电话，仅能理解实际附带的图片；未附带图片或图片无法读取时，应如实说明无法查看并请对方转成文字，不猜测图片内容。${groupTriggerInstruction}${currentTask}${currentStyle}${profile.kind === 'group' ? groupPrompt(trigger, multiTurn) : ''}${generationProtocol({ multiTurn, group: profile.kind === 'group', followUpAllowed: profile.kind !== 'group' && !followUp, updateStyle: this.data.settings.updateStyle, allowSkip: !mustReply, allowStop: profile.kind !== 'group' || requiredGroupReply })}`,
+          `${generationPrompt}${chatMemoryPrompt}${identityPrompt(this.data.settings.acknowledgeAI)}${conversationPrompt}${replySummaryContext} 当前只能发送纯文字，不能发送、读取或下载文件，不能拨打或接听电话，仅能理解实际附带的图片；未附带图片或图片无法读取时，应如实说明无法查看并请对方转成文字，不猜测图片内容。${groupTriggerInstruction}${currentTask}${currentStyle}${profile.kind === 'group' ? groupPrompt(trigger, multiTurn, profile.groupOptions?.realtimeMode) : ''}${generationProtocol({ multiTurn, group: profile.kind === 'group', followUpAllowed: profile.kind !== 'group' && !followUp, updateStyle: this.data.settings.updateStyle, allowSkip: !mustReply, allowStop: profile.kind !== 'group' || requiredGroupReply })}`,
           { images: textOnlyRetry ? [] : images, onlyImages: textOnlyRetry ? false : onlyImages, capabilityConcern: reason, mode, continuation, multiTurn, followUp, followUpAllowed: profile.kind !== 'group' && !followUp, kind: profile.kind, conversation, addressing, memory: readMemory(this.vault, profile), groupState, capabilities: { sendText: true, wechatVoiceText: true, files: false, calls: false, receiveImages: !textOnlyRetry && images.length > 0, sendMedia: false }, strategy, style, styleOwner: 'self', judgeReply: profile.kind === 'group' ? trigger === 'atMe' ? false : true : followUp || this.replyOptions(profile).judgeReply, updateStyle: this.data.settings.updateStyle, messages: modelMessages.map(message => ({ ...message, aiGenerated: message.aiGenerated === true || (profile.generatedIds || []).includes(message.id) })) }, signal
         );
         if (retryGroupMedia && result?.mediaSkipped && attempt === 0) { textOnlyRetry = true; continue; }
@@ -2434,7 +2465,7 @@ export class AIAssistant {
           ...(Number.isFinite(receivedAt) && receivedAt > 0 ? { receivedAt, totalMs: Math.max(0, this.now() - receivedAt) } : {}) };
       }
       if (!['complete', 'partial'].includes(outcome)) return;
-      if (profile.kind !== 'group' && outcome === 'complete' && !followUp && multiTurn && result.followUp === true && this.canDeliver(profile, 'reply', revision, signal) && (profile.rounds || 0) < this.strategy(profile, 'reply').maxRounds) {
+      if (profile.kind !== 'group' && outcome === 'complete' && !followUp && multiTurn && result.followUp === true && this.canDeliver(profile, 'reply', revision, signal) && (this.strategy(profile, 'reply').maxRounds === 'unlimited' || (profile.rounds || 0) < this.strategy(profile, 'reply').maxRounds)) {
         const contextRevision = this.cursors.get(profile.id)?.revision;
         if (contextRevision) this.followUps.set(profile.id, { revision, contextRevision, dueAt: this.now() + this.randomDelay('followUpDelay') });
       }
@@ -2451,7 +2482,10 @@ export class AIAssistant {
     return revision === this.revision && !signal.aborted && this.data.settings.enabled && this.modelReady() && strategyReady(this.strategy(profile, mode), mode) && active && this.selected(profile, mode) && !profile.paused && (!Number.isFinite(profile.stopUntil) || this.now() >= profile.stopUntil) && this.available && this.ready() && !this.manualHolds.size && this.now() >= (this.userBusyUntil || 0) && this.now() >= (this.sendBlockedUntil || 0);
   }
   async deliver(profile, fresh, mode, revision, signal, item, segments, strategy, source = mode) {
-    if (mode === 'reply') segments = segments.slice(0, Math.max(0, strategy.maxRounds - (profile.rounds || 0)));
+    if (mode === 'reply' && source !== 'realtime' && strategy.maxRounds !== 'unlimited') {
+      const cappedRounds = profile.kind === 'group' ? profile.mentionRounds || 0 : profile.rounds || 0;
+      segments = segments.slice(0, Math.max(0, strategy.maxRounds - cappedRounds));
+    }
     const groupReply = mode === 'reply' && profile.kind === 'group';
     if (groupReply) {
       const rate = groupTimingState(profile);
@@ -2528,6 +2562,7 @@ export class AIAssistant {
       }
       sent++; expectedRevision = delivery.revision;
       if (mode === 'reply') profile.rounds = (profile.rounds || 0) + 1;
+      if (groupReply && (source === 'atMe' || source === 'atAll')) profile.mentionRounds = (profile.mentionRounds || 0) + 1;
       if (mode === 'reply' && sent === 1) delete profile.manualWait;
       profile.generatedIds = [...(profile.generatedIds || []), delivery.messageId].slice(-300);
       profile.sentMessages = [...(profile.sentMessages || []), { id: delivery.messageId, at: this.now(), body: this.vault.seal({ text }), source: mode === 'reply' ? 'reply' : 'proactive', ...(source !== mode ? { trigger: source } : {}), ...(item?.taskId ? { taskId: item.taskId } : {}) }].slice(-300);
@@ -2536,7 +2571,7 @@ export class AIAssistant {
       if (item) { item.status = 'done'; item.segmentsSent = sent; }
       if (sent === 1) {
         this.event(mode === 'reply' ? 'replied' : 'contacted', profile.id, source);
-        if (mode !== 'reply' && revision === this.revision && this.data.settings.proactive) { profile.continuation = { startedAt: this.now(), strategy: structuredClone(strategy), ...(this.data.queue.scheduleId ? { scheduleId: this.data.queue.scheduleId } : {}) }; profile.rounds = 0; }
+        if (mode !== 'reply' && revision === this.revision && this.data.settings.proactive) { profile.continuation = { startedAt: this.now(), strategy: structuredClone(strategy), ...(this.data.queue.scheduleId ? { scheduleId: this.data.queue.scheduleId } : {}) }; profile.rounds = 0; if (profile.kind === 'group') { profile.mentionRounds = 0; delete profile.mentionLimitBlocked; } }
       }
       const cursor = this.cursors.get(profile.id) || {};
       Object.assign(cursor, { sent: delivery.messageId, own: delivery.messageId, last: delivery.messageId, pending: false, revision: delivery.revision || fresh.revision, changedAt: this.now() }); this.cursors.set(profile.id, cursor);

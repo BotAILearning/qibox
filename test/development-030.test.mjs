@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { AIAssistant } from '../server/ai-service.mjs';
-import { groupDefaults, groupOptions, groupTrigger, groupDecision, groupRealtimeIntervalMs } from '../server/ai-group.mjs';
+import { groupDefaults, groupOptions, groupReplyEnabled, groupTrigger, groupDecision, groupRealtimeIntervalMs } from '../server/ai-group.mjs';
 import { DockerRuntime } from '../server/docker-runtime.mjs';
 import { Instances } from '../server/instances.mjs';
 import { testDefinition as applicationDefinition, testCatalog } from './fixtures/app-catalog.mjs';
@@ -54,6 +54,8 @@ test('group trigger matrix never guesses mentions or lets realtime bypass a disa
   const message = flags => ({ direction: 'other', mentions: { verified: true, self: false, all: false, others: false, ...flags } });
   const realtime = { ...groupDefaults(), realtime: true };
   assert.throws(() => groupOptions({ realtime: true }));
+  assert.throws(() => groupOptions({ realtimeMode: 'invalid' }));
+  assert.equal(groupReplyEnabled(groupOptions({ realtimeMode: 'proactive' })), false);
   assert.deepEqual(groupOptions({ realtime: true, confirmRealtime: true }), realtime);
   assert.equal(groupTrigger(message({}), realtime), 'realtime');
   for (const flags of [{ self: true }, { all: true }, { others: true }, { verified: false }]) assert.equal(groupTrigger(message(flags), realtime), null);

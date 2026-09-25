@@ -12,8 +12,9 @@ export function objectList(state, view) {
     const currentStyleId = draftStyleId !== undefined ? draftStyleId : style.styleId;
     const styleLabel = currentStyleId === 'custom' ? '自定义' : currentStyleId === 'learned' ? '已学习风格' : currentStyleId?.startsWith('preset:') ? '已设置风格' : currentStyleId ? '已设置风格' : '使用默认风格';
     const maxRounds = profile?.replyStrategy?.maxRounds ?? state.replyRoundLimits?.[c.kind] ?? profile?.strategy?.maxRounds ?? state.replyStrategy?.maxRounds ?? state.strategy?.maxRounds ?? 50;
-    const limited = (profile?.rounds || 0) >= maxRounds;
-    return `<button type="button" class="ai-object-row ${c.id === view.selected ? 'selected' : ''}" data-ai-object="${esc(c.id)}" aria-pressed="${c.id === view.selected}">${avatar(c, i)}<span class="ai-contact-info"><b>${contactName(c)}</b>${on ? `<small>${styleLabel}</small>` : ''}${limited ? `<small class="ai-contact-limit" role="status">已达自动回复上限 ${profile.rounds}/${maxRounds}</small>` : ''}</span>${profile?.paused ? '<span class="ai-contact-status">已暂停</span>' : ''}</button>`;
+    const rounds = c.kind === 'group' ? profile?.mentionRounds || 0 : profile?.rounds || 0;
+    const limited = maxRounds !== 'unlimited' && rounds >= maxRounds && (c.kind !== 'group' || profile?.groupOptions?.atMe || profile?.groupOptions?.atAll);
+    return `<button type="button" class="ai-object-row ${c.id === view.selected ? 'selected' : ''}" data-ai-object="${esc(c.id)}" aria-pressed="${c.id === view.selected}">${avatar(c, i)}<span class="ai-contact-info"><b>${contactName(c)}</b>${on ? `<small>${styleLabel}</small>` : ''}${limited ? `<small class="ai-contact-limit" role="status">${c.kind === 'group' ? '提及回复已达上限' : '已达自动回复上限'} ${rounds}/${maxRounds}</small>` : ''}</span>${profile?.paused ? '<span class="ai-contact-status">已暂停</span>' : ''}</button>`;
   }).join('') || '<p class="ai-empty">暂无匹配对象，请刷新列表。</p>';
 }
 export { objectPage } from './ai-object-page-new.mjs';

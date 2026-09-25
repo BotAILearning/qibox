@@ -62,9 +62,14 @@ export function strategyValue(value) {
   if (!['manual', 'learned', 'paste'].includes(result.styleSource)) throw new AppError('请选择风格来源');
   result.styleProfileId = textField(value.styleProfileId || '', 64);
   if (result.styleProfileId && !/^[a-f0-9]{64}$/.test(result.styleProfileId)) throw new AppError('请选择已学习的风格');
-  result.maxRounds = Number(value.maxRounds ?? 50);
-  if (!Number.isInteger(result.maxRounds) || result.maxRounds < 1 || result.maxRounds > 2000) throw new AppError('自动回复上限应为 1–2000 条');
+  result.maxRounds = replyLimitValue(value.maxRounds);
   return result;
+}
+export function replyLimitValue(value) {
+  if (value === 'unlimited') return 'unlimited';
+  const number = Number(value ?? 50);
+  if (!Number.isSafeInteger(number) || number < 1) throw new AppError('自动回复上限应为正整数或不限');
+  return number;
 }
 export function strategyReady(value, mode) {
   return mode === 'proactive' ? !!value?.purpose && !!value?.content : true;

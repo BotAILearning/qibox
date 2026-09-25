@@ -40,7 +40,7 @@ for(const kind of ['person','group'])test(`${kind}: disabled AI assisted wait tu
   assert.equal(f.a.continuing(f.p),false,'manual handover ends only this contact continuation');
   assert.ok(f.a.data.proactiveTargets.includes(f.p.id),'manual handover preserves the separate proactive target selection');
  }
- else assert.deepEqual(f.p.groupOptions,{atMe:false,atAll:false,realtime:false});
+ else assert.deepEqual(f.p.groupOptions,{atMe:false,atAll:false,realtime:false,realtimeMode:'normal'});
  await f.push('other');f.advance(86400000);await f.a.tick();assert.equal(f.bridge.sent.length,0);
  if(kind==='person')await f.a.setReplyOptions({contact:f.p.contact,enabled:true});else await f.a.setGroupOptions({contact:f.p.contact,atMe:true});
  f.advance(1000);await f.push('other','手动重新开启后的消息');f.advance(20000);await f.a.tick();assert.equal(f.bridge.sent.length,1);

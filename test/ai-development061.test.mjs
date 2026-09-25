@@ -92,8 +92,8 @@ test('audio recovery shares one restart and never restarts a stopped instance',a
   const one=ensureAudio(runtime,start),two=ensureAudio(runtime,start);assert.equal(starts,1);done.resolve();await Promise.all([one,two]);
   await ensureAudio(runtime,start);assert.equal(starts,1);runtime.status='stopped';await assert.rejects(ensureAudio(runtime,start));assert.equal(starts,1);
 });
-test('reply limit defaults to 50, permits 2000, preserves existing values and rejects overflow',()=>{
-  assert.equal(strategyValue({}).maxRounds,50);assert.equal(strategyValue({maxRounds:2000}).maxRounds,2000);assert.equal(strategyValue({maxRounds:7}).maxRounds,7);assert.throws(()=>strategyValue({maxRounds:2001}));
+test('reply limit defaults to 50, accepts manual positive integers and unlimited',()=>{
+  assert.equal(strategyValue({}).maxRounds,50);assert.equal(strategyValue({maxRounds:2001}).maxRounds,2001);assert.equal(strategyValue({maxRounds:7}).maxRounds,7);assert.equal(strategyValue({maxRounds:'unlimited'}).maxRounds,'unlimited');assert.throws(()=>strategyValue({maxRounds:0}));assert.throws(()=>strategyValue({maxRounds:1.5}));
 });
 test('media send promises are held while truthful text alternatives remain available',()=>{
   assert.equal(promisesMedia('我马上发照片给你。'),true);assert.equal(promisesMedia('图片已经发给你了。'),true);
@@ -114,4 +114,10 @@ test('multi-segment reply cannot exceed remaining confirmed-message allowance',a
   await f.receive('详细说说',{action:'send',segments:['第一条。','第二条。','第三条。']});
   assert.equal(f.bridge.sent.length,2);assert.equal(f.p.rounds,2);
   await f.receive('还有呢');assert.equal(f.bridge.sent.length,2);assert.equal(f.p.pauseReason,'limit');
+});
+test('unlimited reply setting does not stop or truncate replies after large round counts',async t=>{
+  const f=await fixture(t);await f.a.saveStrategy({maxRounds:'unlimited'},undefined,'reply');await f.a.setReplyOptions({contact:f.p.contact,multiTurn:true});
+  f.p.rounds=5000;
+  await f.receive('继续交流',{action:'send',segments:['第一条。','第二条。']});
+  assert.equal(f.bridge.sent.length,2);assert.equal(f.p.paused,false);assert.equal(f.p.rounds,5002);
 });

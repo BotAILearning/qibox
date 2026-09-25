@@ -250,7 +250,7 @@ test('choosing another contacts learned style never copies their facts, boundari
   const html = dom.node('#ai-content').innerHTML;
   assert.match(html, /正式，适度/);
   assert.match(html, /Only discuss the planned event/);
-  assert.match(html, /Saturday afternoon/);
+  assert.doesNotMatch(html, /Saturday afternoon/, '已移除的允许使用的信息不应重新出现');
   assert.match(html, /Confirm timing with me/);
   assert.doesNotMatch(html, /Other private goal|Other private appointment|Other private agreement/);
   assert.deepEqual(calls, []);

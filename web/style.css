@@ -43,12 +43,13 @@ html.mobile .workspace{display:block}html.mobile .content{max-width:620px}html.m
 #desktop-body{position:relative}
 #desktop-volume{width:80px}
 @media(max-width:760px){#desktop-volume{width:55px}}
-.ai-confirm-dialog{max-width:520px;padding:24px;border:1px solid #e5e7f0;border-radius:14px}.ai-confirm-dialog p{line-height:1.7}
+.ai-confirm-dialog{max-width:520px;padding:24px;border:1px solid #e5e7f0;border-radius:14px}.ai-confirm-dialog p{line-height:1.7}.ai-reply-limit-warning{width:min(420px,calc(100vw - 32px));box-sizing:border-box;padding:24px 26px 22px}.ai-reply-limit-warning h3{margin:0 0 11px;font-size:18px;line-height:1.4}.ai-reply-limit-warning p{margin:0 0 20px;font-size:14px;line-height:1.6}.ai-reply-limit-warning .ai-actions{gap:10px}.ai-reply-limit-warning .ai-actions button{min-height:38px;padding:8px 15px;font-size:13px}
 #mobile-ai{flex-direction:column;gap:12px;margin-top:24px}#mobile-ai h2,#mobile-ai p{margin:0}#mobile-ai-list{display:grid;gap:10px}.ai-only #desktop-screen,.ai-only .desktop-bar{display:none!important}
 
 /* Shared readable type and independent object-list scrolling. */
 html,body{font-size:16px}
 button,input,select,textarea{font:inherit}
+.ai-switch-row{cursor:default}.ai-switch-row input[role=switch],.ai-outer-master input[role=switch],.ai-header-master input[role=switch]{cursor:pointer}
 .content p,.field,.choice,.check-label,.time-fields,.import-options strong,.retained-row strong,#modal-body p,#modal-error,#toast{font-size:16px;line-height:1.6}
 .status,.app-description,.install-format,.install-progress,.field-help,.choice small,.time-fields small,.import-options span,footer,.desktop-bar strong{font-size:14px;line-height:1.5}
 .secondary,.primary,.quiet{font-size:16px;line-height:1.5}

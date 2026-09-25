@@ -29,6 +29,49 @@ test('group timing has no rolling message-count cap and keeps ordinary realtime 
   for (const trigger of ['atMe', 'atAll', 'realtime']) assert.doesNotMatch(groupPrompt(trigger, true), /每群.{0,12}10分钟最多\d|同一话题最多3轮/);
 });
 
+test('mention reply cap counts only @me and @all while realtime remains available', async t => {
+  const { a, bridge, profile, push, advance } = await fixture(t);
+  await a.setGroupOptions({ contact: profile.contact, atAll: true });
+  await a.saveStrategy({ maxRounds: 1 }, profile.id, 'reply');
+  push(true); await a.tick(); advance(3000); await a.tick();
+  assert.equal(bridge.sent.length, 1);
+  assert.equal(profile.mentionRounds, 1);
+  assert.equal(profile.rounds, 1);
+
+  const secondMention = push(false);
+  secondMention.mentions.all = true;
+  await a.tick(); advance(3000); await a.tick();
+  assert.equal(bridge.sent.length, 1, '@所有人回复已被提及上限阻止');
+  assert.equal(profile.paused, false, '提及上限不暂停整个群聊');
+  assert.ok(a.data.events.some(entry => entry.code === 'limit' && entry.source === 'atAll'));
+
+  push(false); await a.tick(); advance(60000); await a.tick();
+  assert.equal(bridge.sent.length, 2, '实时回复不受提及上限截断');
+  assert.equal(profile.mentionRounds, 0, '新消息开启下一轮，实时回复不计入提及次数');
+  assert.equal(profile.rounds, 2);
+  push(true); await a.tick(); advance(3000); await a.tick();
+  assert.equal(bridge.sent.length, 3, '下一轮的提及回复恢复可用');
+  assert.equal(profile.mentionRounds, 1);
+});
+
+test('realtime mode is saved and changes only the realtime prompt', async t => {
+  const { a, bridge, profile, advance } = await fixture(t);
+  assert.match(groupPrompt('realtime'), /模式为正常回复/);
+  assert.match(groupPrompt('realtime', false, 'proactive'), /模式为积极主动/);
+  assert.doesNotMatch(groupPrompt('atMe', false, 'proactive'), /模式为积极主动/);
+  await a.setGroupOptions({ contact: profile.contact, realtimeMode: 'proactive' });
+  assert.equal(profile.groupOptions.realtimeMode, 'proactive');
+  assert.equal(a.replySelected(profile), true);
+  let system = '';
+  a.provider.complete = async (_config, prompt) => { system = prompt; return { action: 'skip' }; };
+  Object.assign(bridge.push(profile.contact, 'other', '大家讨论一个新问题'), { timestamp: Math.floor(a.now() / 1000), sender: key('member'), mentions: { verified: true, self: false, all: false, others: false } });
+  await a.tick(); advance(60000); await a.tick();
+  assert.match(system, /模式为积极主动/);
+  await a.setGroupOptions({ contact: profile.contact, atMe: false, realtime: false });
+  assert.equal(profile.groupOptions.realtimeMode, 'proactive');
+  assert.equal(a.replySelected(profile), false, '已保存的模式不能单独开启群聊回复');
+});
+
 test('realtime coalesces new group messages for 60 seconds, then evaluates once', async t => {
   const { a, bridge, provider, profile, advance } = await fixture(t);
   await a.settings({ judgeReply: false });

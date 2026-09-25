@@ -227,11 +227,22 @@ test('applying a reply limit updates only the selected object type and preserves
  assert.equal(a.strategy(continuingGroup,'reply').maxRounds,8);
  const state=a.publicState();
  assert.deepEqual(state.replyRoundLimits,{person:12,group:8});
- const listState={...state,contacts:[{id:'new-person',kind:'person',label:'新联系人'},{id:'new-group',kind:'group',label:'新群聊'}],profiles:[{contact:'new-person',rounds:12},{contact:'new-group',rounds:8}],replyRoundLimits:{person:12,group:8}};
+ const listState={...state,contacts:[{id:'new-person',kind:'person',label:'新联系人'},{id:'new-group',kind:'group',label:'新群聊'}],profiles:[{contact:'new-person',rounds:12},{contact:'new-group',rounds:100,mentionRounds:8,groupOptions:{atMe:true}}],replyRoundLimits:{person:12,group:8}};
  const personList=objectList(listState,{search:'',kind:'person'}),groupList=objectList(listState,{search:'',kind:'group'});
  assert.match(personList,/12\/12/);assert.match(groupList,/8\/8/);
  const personDetail=objectPage(listState,{selected:'new-person',kind:'person',search:''}),groupDetail=objectPage(listState,{selected:'new-group',kind:'group',search:''});
- assert.match(personDetail,/<input name="maxRounds"[^>]*value="12"/);assert.match(groupDetail,/<input name="maxRounds"[^>]*value="8"/);
+ assert.match(personDetail,/<input\b[^>]*name="maxRounds"[^>]*value="12"/);assert.match(groupDetail,/<input\b[^>]*name="maxRounds"[^>]*value="8"/);
+});
+test('unlimited bulk setting reaches the selected type without showing a limit badge',async t=>{
+ const {a,bridge}=await fixture(t),contact=bridge.contacts[0];
+ await a.saveReplyProfile({contact:contact.id,style:a.publicState().schema.defaultStyle,strategy:{maxRounds:50}});
+ const result=await a.applyReplyLimitToKind('person','unlimited');
+ assert.equal(result.replyRoundLimits.person,'unlimited');assert.equal(result.appliedReplyLimit.count,1);
+ const profile=a.profiles().find(p=>p.contact===contact.id);profile.rounds=10000;
+ assert.equal(a.strategy(profile,'reply').maxRounds,'unlimited');
+ const row=objectList({...a.publicState(),profiles:[profile],contacts:[contact]},{search:'',kind:'person'});
+ assert.doesNotMatch(row,/已达自动回复上限/);
+ assert.equal(a.data.replyRoundLimits.group,null);
 });
 test('analysis omits unreadable bodies but keeps database errors visible',async t=>{
  const {a,bridge,provider}=await fixture(t);let fail=false;
