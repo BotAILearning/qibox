@@ -1,4 +1,5 @@
 import { contactName, contactSearch } from './ai-contact-name.mjs';
+import { renderProactiveTable } from './ai-proactive-table-new.mjs';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const option = (value, label, selected) => `<option value="${esc(value)}" ${selected ? 'selected' : ''}>${esc(label)}</option>`;
 export const taskTypes = [
@@ -85,14 +86,7 @@ export function scheduleLabel(schedule = {}) {
 export function uncertainProfiles(task, state) {
   return [];
 }
-export function proactiveTable(state, view = {}) {
-  const all = (state.proactiveTasks || []).filter(t => !t.deletedAt && !t.deleted), tasks = all.filter(t => !view.filter || view.filter === 'all' || t.status === view.filter);
-  return `<section class="ap-table-panel"><header class="ap-table-head"><h4>任务列表</h4><span>${all.length} 个任务</span><div class="ap-filters" role="group" aria-label="任务状态">${[['all', '全部'], ...Object.entries(statuses)].map(([key, label]) => `<button type="button" data-proactive-filter="${key}" aria-pressed="${(view.filter || 'all') === key}">${label}</button>`).join('')}</div></header><div class="ap-table-scroll"><table class="ap-task-table"><thead><tr><th>任务名称</th><th>聊天对象</th><th>聊天目标与其他要求</th><th>执行周期</th><th>状态</th><th>最近执行</th><th><span class="sr-only">操作</span></th></tr></thead><tbody>${tasks.map(task => {
-    const open = view.menu === task.id;
-    const command = (key, label, danger = false) => `<button type="button" data-proactive-command="${key}" data-task-id="${esc(task.id)}" ${danger ? 'class="ap-danger"' : ''}>${label}</button>`;
-    return `<tr data-proactive-task="${esc(task.id)}"><td><strong>${esc(task.name)}</strong><small>创建于 ${esc(beijingTime(task.createdAt))}</small></td><td><div class="ap-object-list">${(task.contacts || []).map(c => `<span class="ap-chip">${contactName(c) || esc(c.id)}</span>`).join('')}</div></td><td><div class="ap-description"><span>目标</span><p title="${esc(task.goal)}">${esc(task.goal)}</p><span>要求</span><p title="${esc(task.requirements)}">${esc(task.requirements || '未补充')}</p></div></td><td><span class="ap-cycle ${task.schedule?.mode === 'random' ? 'random' : task.schedule?.cycle === 'once' ? 'once' : ''}">${esc(task.migrationRequired && !task.migrationScheduleMapped ? '待确认执行安排' : scheduleLabel(task.schedule))}</span>${task.legacyScheduleText ? `<small>原安排：${esc(task.legacyScheduleText)}</small>` : ''}${task.schedule?.cycle === 'custom' ? `<small>开始日 ${esc(task.schedule.startDate)}</small>` : ''}</td><td><span class="ap-status ${esc(task.status)}">${esc(statuses[task.status] || '状态待更新')}</span>${task.reason || task.lastError ? `<small class="ap-error">${esc(task.reason || task.lastError)}</small>` : ''}</td><td><time>${esc(beijingTime(task.lastRunAt))}</time>${task.nextAt ? `<small>下次 ${esc(beijingTime(task.nextAt))}</small>` : task.status === 'running' && task.schedule?.mode === 'random' ? '<small>下次时间：本次执行后生成</small>' : ''}</td><td class="ap-actions-cell"><button type="button" class="ap-more" data-proactive-menu="${esc(task.id)}" aria-label="${esc(task.name)} · 更多操作" aria-expanded="${open}">···</button>${open ? `<div class="ap-action-menu" aria-label="任务操作">${command('edit', task.status === 'ended' ? '查看任务' : '编辑任务')}${command('records', '查看记录')}${task.status === 'running' ? command('pause', '暂停任务') : task.status === 'paused' ? command('resume', '继续任务') : task.status === 'failed' ? command('retry', '仅重试失败项') : ''}${task.status !== 'ended' ? command('end', '结束任务', true) : ''}${command('delete', '删除任务', true)}</div>` : ''}</td></tr>`;
-  }).join('') || '<tr><td colspan="7"><div class="ap-empty">这个筛选下还没有任务</div></td></tr>'}</tbody></table></div></section>`;
-}
+export function proactiveTable(state, view = {}) { return renderProactiveTable(state, view, { beijingTime, scheduleLabel }); }
 // 主动聊天只负责发起：没开自动回复的联系人，对方此后的回复不会被处理。
 // 这里只在发起时做判断并给出快捷开启，不在后端做兜底接管。
 function replyOffContacts(state, contacts) {

@@ -39,6 +39,11 @@ try {
   const shot = async file => { await page.screenshot({ path: path.join(output, file + '.png') }); };
   await page.locator('#ai-open').click();
   await page.locator('.ai-main-tabs [data-ai-nav=analysis]').click(); await settled();
+  await page.locator('[data-ai-analysis-range=week]').click();
+  assert.match(await page.locator('#ai-analysis-form [name=from]').inputValue(), /^\d{4}-\d{2}-\d{2}$/);
+  await page.locator('[data-ai-analysis-range=all]').click();
+  assert.equal(await page.locator('#ai-analysis-form [name=from]').inputValue(), '');
+  report.checks.push('分析时间范围快捷选择更新并可恢复全部');
 
   // 1) Search box present with all person contacts visible initially.
   const search = page.locator('#ai-analysis-search');

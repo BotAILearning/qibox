@@ -41,7 +41,9 @@ try {
   await page.goto(`http://127.0.0.1:${app.server.address().port}${app.prefix}/?dev=${app.devKey}`);
   await page.locator('[data-action=open]').first().click(); await page.locator('#ai-open').click();
   await page.locator(`[data-ai-object="${bridge.contacts[0].id}"]`).click();
+  await page.locator('[data-ai-object-section=memory]').click();
   assert.equal(await page.locator('[data-ai-wiki-entities]').isVisible(), true);
+  await page.locator('[data-ai-object-section=reply]').click();
   if (!(await page.locator('[data-ai-fold=reply]').evaluate(n=>n.open))) await page.locator('[data-ai-fold=reply] summary').click(); await page.locator('[name=replyGoal]').fill('核实需求再答复');
   await page.locator('[data-ai-fold=strategy] > summary').click();
   await page.locator('[name=facts]').fill('只使用已确认的材料'); await page.locator('[name=boundaries]').fill('报价由本人决定'); await page.locator('[name=maxRounds]').fill('8');
@@ -49,7 +51,7 @@ try {
   await page.waitForFunction(() => document.querySelector('#ai-feedback').textContent.includes('设置已保存'));
   const profile = ai.publicState().profiles.find(p => p.contact === bridge.contacts[0].id);
   assert.equal(profile.replyStrategy.replyGoal, '核实需求再答复'); assert.equal(profile.replyStrategy.maxRounds, 8); assert.ok(!profile.learnedAt);
-  report.checks.push('All reply strategy fields save on an unlearned contact; the structured memory editor starts visible');
+  report.checks.push('All reply strategy fields save on an unlearned contact; the memory editor opens from its own tab');
   await page.screenshot({ path: path.join(output, 'automatic-reply.png') });
   await page.locator('[data-ai-nav=analysis]').click();
   await page.locator('#ai-analysis-form [name=request]').fill('分别总结约定');

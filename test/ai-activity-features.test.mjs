@@ -22,6 +22,10 @@ test('record lists expose confirmed deletion, summary ranges, and reply-needed a
   assert.match(html, /data-ai-delete-record="sent-1"/);
   assert.match(html, /ai-reply-record-card/);
   assert.match(html, /data-ai-summary-result="p1" role="status" hidden/);
+  const refreshed = activityRows({ activity: [{ id: 'p1', label: '甲', kind: 'person', hasSent: true, at: Date.now() }] }, { source: 'reply', page: 0 }, [], false, new Map([['p1', { range: 'month', text: '已生成总结', pending: false }]]));
+  assert.match(refreshed, /data-ai-record-expand="p1" open/);
+  assert.match(refreshed, /value="month" selected/);
+  assert.match(refreshed, /data-ai-summary-result="p1" role="status"\s*>已生成总结/);
   assert.match(html, /ai-reply-history-list/);
   for (const range of ['takeover', 'all', 'day', 'week', 'month']) assert.match(html, new RegExp(`value="${range}"`));
   const skips = skipRecordsView({ profiles: [{ id: 'p1', contact: 'c1', label: '甲' }], contacts: [], events: [{ id: 'e1', target: 'p1', at: Date.now(), code: 'skip', source: 'system-skip', reasonCode: 'model-no-reply', messageId: 'incoming-1' }] });
@@ -171,12 +175,14 @@ test('activity summary uses only selected-range AI reply samples and their two-s
     { id: 'old-ai', source: 'reply', at: now() - 86400 * 3 * 1000 },
     { id: 'ai-sample', source: 'reply', at: now() - 29 * 1000 },
   ];
-  provider.complete = async (_config, _system, input) => {
+  provider.complete = async (_config, _system, input, signal) => {
     const rows = input.conversation;
     assert.ok(rows.some(row => row.text === '所选范围内的问题' && row.side === '对方'));
     assert.ok(rows.some(row => row.text === '所选范围内 AI 回复' && row.side === 'AI代你回复'));
     assert.ok(!rows.some(row => row.text.includes('范围外')));
     assert.ok(!rows.some(row => row.text.includes('没有 AI 辅助回复')));
+    a.invalidate();
+    assert.equal(signal.aborted, false, 'manual input must not cancel a requested summary');
     return { summary: '总结了所选范围的双方对话' };
   };
   const result = await a.summarizeActivity(profile.id, 'day');
