@@ -8,7 +8,7 @@ test('provider page renders the legacy model name with both feature groups assig
   const state = { provider: { baseUrl: 'https://x.test/v1', model: 'm1', protocol: 'openai', timeout: 30, consent: true, hasKey: true, tested: true }, models: [], assignments: { chat: 'legacy', learningAnalysis: 'legacy' }, schema: { providerPresets: presets } };
   const html = providerPage(state, null);
   assert.match(html, /m1/);
-  assert.match(html, /聊天类/); assert.match(html, /主动聊天/); assert.match(html, /学习风格和记忆/); assert.match(html, /聊天分析/);
+  assert.match(html, /聊天类/); assert.match(html, /主动聊天/); assert.match(html, /学习风格和记忆/); assert.match(html, /分析报告/);
   assert.match(html, /data-ai-model-edit="legacy"/); assert.match(html, /data-ai-model-test="legacy"/); assert.match(html, /data-ai-model-apply="legacy"/); assert.match(html, /data-ai-model-delete="legacy"/);
   assert.match(html, /添加模型/); assert.match(html, /models-save/); assert.match(html, /data-ai-assignment="chat"/);
   assert.match(html, /selected/); // legacy selected in all dropdowns

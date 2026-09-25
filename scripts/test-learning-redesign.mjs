@@ -1,5 +1,4 @@
-// Local browser check for the batch-learning page redesign (2026-09-20):
-// back label "返回自动回复", hero/paste/contacts/range cards, handlers intact.
+// Local browser check for the full-feature AI UI reference refresh (2026-09-25).
 import { createRequire } from 'node:module';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -8,6 +7,7 @@ import { createApplication } from '../server/index.mjs';
 import { root, playwrightPath } from './tooling.mjs';
 import { temp, cleanup, runtimeFactory, extractor, fetcher } from '../test/fixtures.mjs';
 import { ChatFixture, AIModelFixture, key, modelConfig } from '../test/ai-fixtures.mjs';
+import { packageSha256 } from '../test/fixtures.mjs';
 import { rfbFixture } from '../test/rfb-fixture.mjs';
 
 const { chromium } = createRequire(import.meta.url)(playwrightPath);
@@ -17,19 +17,21 @@ for (let n = 1; n <= 12; n++) {
   bridge.contacts.push(c); bridge.messages.set(c.id, [{ id: key(`initial-${n}`), direction: 'self', text: '测试上下文' }]);
 }
 const peer = await rfbFixture(path.join(root, 'web/backgrounds/mist.jpg'));
-const app = await createApplication({ appRoot: root, dataRoot, dev: true, extract: extractor, fetcher, aiProvider: provider,
+const app = await createApplication({ appRoot: root, dataRoot, dev: true, extract: extractor, fetcher, trustedHashes: [packageSha256], aiProvider: provider,
   runtimeFactory: (...args) => ({ ...runtimeFactory(...args), port: peer.port, aiBridge: bridge, loginStatus: 'logged-in' }) });
 await new Promise(r => app.server.listen(0, '127.0.0.1', r));
 const space = await app.users.get('development'); await space.setConsent(true); app.library.download(); await app.library.working;
 const meta = await space.add('测试微信'); await space.start(meta.id); const ai = space.get(meta.id).ai;
 clearInterval(ai.timer); await ai.configure(modelConfig); await ai.scan(); await ai.settings({ enabled: false });
 const output = path.join(root, 'reports/learning-redesign-2026-09-20/browser'); await mkdir(output, { recursive: true });
-const report = { scope: 'Local browser with disposable fixtures; batch-learning page redesign.', checks: [], errors: [] };
+const report = { scope: 'Disposable local application and fixtures; full-feature AI UI reference refresh.', checks: [], errors: [] };
 let browser;
 try {
   browser = await chromium.launch({ channel: 'msedge', headless: true });
   const page = await browser.newPage({ viewport: { width: 1440, height: 960 } });
   page.on('pageerror', e => report.errors.push(e.message));
+  const aiRequests = [];
+  page.on('request', request => { if (request.method() === 'POST' && /\/api\/instances\/[^/]+\/ai$/.test(new URL(request.url()).pathname)) aiRequests.push(request.postDataJSON()); });
   page.setDefaultTimeout(15000);
   await page.goto(`http://127.0.0.1:${app.server.address().port}${app.prefix}/?dev=${app.devKey}`);
   await page.locator('[data-action=open]').first().click(); await page.locator('#ai-open').click();
@@ -49,42 +51,38 @@ try {
   await page.waitForFunction(() => document.querySelector('#ai-contact-count').textContent.includes('已选择 1 位'));
   assert.equal(await page.locator('[data-ai-action=learn-selected]').isEnabled(), true);
   await page.locator('.ai-learning-contacts [data-ai-action=select-contacts]').click();
-  await page.waitForFunction(() => document.querySelector('#ai-contact-count').textContent.includes('已选择 10 位'));
-  report.checks.push('学习页勾选联系人联动计数与「开始学习」按钮启用状态');
-  // 系统设置 → 学习默认风格：粘贴学习移入，且不再需要风格名称
+  await page.waitForFunction(() => Number(document.querySelector('#ai-contact-count')?.textContent.match(/已选择 (\d+) 位/)?.[1]) > 0);
+  assert.equal(await page.locator('[data-ai-action=learn-selected]').isEnabled(), true);
+  report.checks.push('学习页批量选择联动计数与「开始学习」按钮启用状态');
+  // 系统设置 → 学习默认风格：sources switch without losing the current draft.
   await page.getByRole('button', { name: '系统设置', exact: true }).click();
   await page.locator('.ai-settings-entry[data-ai-nav=default-style]').click();
   await page.locator('.ai-default-style-page').waitFor();
   assert.equal(await page.locator('.ai-default-style-page input[name=default-perspective]').count(), 0, '学习方向不再平铺在页面上');
-  assert.equal(await page.locator('.ai-default-style-page .ai-learning-range').count(), 0, '时间范围卡片已移到选择联系人右上角');
+  assert.equal(await page.locator('.ai-default-style-page .ai-default-style-layout').count(), 1, '学习素材与当前风格使用双栏布局');
+  assert.equal(await page.locator('.ai-default-current').count(), 1, '无现存风格时显示空状态，不造示例风格');
+  assert.equal(await page.locator('[data-ai-default-source=contacts]').isVisible(), true);
+  await page.locator('[data-ai-default-mode=paste]').click();
+  assert.equal(await page.locator('[data-ai-default-source=paste]').isVisible(), true);
   await page.locator('.ai-default-style-page .ai-paste > summary').click();
   await page.locator('#ai-paste-form').waitFor();
   assert.equal(await page.locator('#ai-paste-form [name=contact]').count(), 0, '粘贴学习不再选择对应联系人');
   assert.equal(await page.locator('#ai-paste-form [name=text]').count(), 1);
   assert.equal(await page.locator('[data-ai-action=learn-default]').count(), 1);
-  assert.equal(await page.locator('.ai-learning-contacts .ai-card-heading .ai-badge').count(), 0, '最多 5 位徽标已被学习按钮替换');
-  assert.ok(await page.locator('.ai-learning-contacts .ai-learning-heading-tools [data-ai-date-range=learning]').isVisible(), '学习范围筛选在学习按钮下方');
-  assert.equal((await page.locator('.ai-learning-contacts .ai-learning-heading-tools [data-ai-date-range=learning]').textContent()).trim(), '时间筛选', '未筛选时按钮显示时间筛选');
-  report.checks.push('学习默认风格页：学习按钮在选择联系人右上角、其下为时间范围筛选、粘贴表单（仅 text，无 contact）、学习方向改为弹窗');
-  // 默认风格学习最多 5 位联系人
-  await page.locator('.ai-learning-contacts [data-ai-action=clear-contacts]').click();
-  const dsChecks = page.locator('.ai-contact-list .ai-check');
-  for (let i = 0; i < 5; i++) await dsChecks.nth(i).click();
-  await page.waitForFunction(() => document.querySelector('#ai-contact-count').textContent.includes('已选择 5 位'));
-  assert.equal(await page.locator('[data-ai-action=learn-default]').isEnabled(), true);
-  await dsChecks.nth(5).click();
-  assert.equal(await dsChecks.nth(5).locator('input').isChecked(), false, '第六位被拒绝');
-  assert.equal(await page.locator('#ai-contact-count').textContent(), '已选择 5 位联系人，每次最多 5 位');
-  report.checks.push('默认风格学习限制 5 位联系人');
-  // 点击【学习默认风格】弹出学习方向选择；取消则不开始学习
-  await page.locator('[data-ai-action=learn-default]').click();
-  await page.locator('.ai-perspective-dialog').waitFor();
-  assert.equal(await page.locator('.ai-perspective-dialog input[name=default-perspective]').count(), 2, '弹窗内两个学习方向');
-  await page.locator('.ai-perspective-dialog input[value=other]').check();
-  await page.locator('.ai-perspective-dialog [data-cancel]').click();
-  await page.locator('.ai-perspective-dialog').waitFor({ state: 'detached' });
-  assert.equal(await page.locator('.ai-perspective-dialog').count(), 0, '取消后弹窗关闭且未开始学习');
-  report.checks.push('点击学习默认风格弹出学习方向选择，可取消');
+  const sourceText = '我：我们周末见面。对方：好，周六下午可以。';
+  await page.locator('#ai-paste-form [name=text]').fill(sourceText);
+  await page.locator('[data-ai-default-mode=contacts]').click();
+  assert.equal(await page.locator('[data-ai-default-source=contacts]').isVisible(), true);
+  await page.locator('[data-ai-default-mode=paste]').click();
+  assert.equal(await page.locator('#ai-paste-form [name=text]').inputValue(), sourceText, '切换素材页签保留未提交内容');
+  report.checks.push('默认风格页面双栏布局，联系人 / 粘贴切换保留输入草稿');
+  await page.locator('#ai-paste-form button[type=submit]').click();
+  await page.locator('#ai-default-style-form').waitFor();
+  assert.ok(aiRequests.some(request => request.action === 'learn' && request.value?.asDefault === true), '粘贴学习仍通过原 learn API');
+  await page.locator('#ai-default-style-form button[type=submit]').click();
+  await page.waitForFunction(() => document.querySelector('#ai-feedback')?.textContent.includes('默认风格已保存'));
+  assert.ok(aiRequests.some(request => request.action === 'commit-default-style'), '默认风格保存仍通过原 commit API');
+  report.checks.push('粘贴学习与风格保存分别调用现有 learn / commit-default-style 接口');
   await page.screenshot({ path: path.join(output, 'learning-redesign.png'), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'mobile horizontal overflow');

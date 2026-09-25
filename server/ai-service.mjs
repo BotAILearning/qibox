@@ -1834,8 +1834,24 @@ export class AIAssistant {
     const knownIds = new Set((profile.sentMessages || []).map(message => message.id));
     const proactiveIds = new Set((this.data.proactiveRecords || []).filter(record => record.account === account && record.profileId === profileId).map(record => record.messageId));
     for (const messageId of profile.generatedIds || []) if (!knownIds.has(messageId) && !proactiveIds.has(messageId)) generated.add(messageId);
-    const included = snapshot.messages.filter(message => ['self', 'other'].includes(message.direction) && Number.isFinite(message.timestamp) && (from === null || message.timestamp * 1000 >= from) && message.timestamp * 1000 <= now);
-    const total = included.length, bounded = included.slice(-120); let chars = 0;
+    const included = snapshot.messages.filter(message => ['self', 'other'].includes(message.direction) && Number.isFinite(message.timestamp) && (from === null || message.timestamp * 1000 >= from) && message.timestamp * 1000 <= now).sort((a, b) => a.timestamp - b.timestamp);
+    const replyIndexes = included.flatMap((message, index) => message.direction === 'self' && generated.has(message.id) ? [index] : []);
+    if (!replyIndexes.length) throw new AppError('所选时间范围内没有 AI 辅助回复样例');
+    // Summarize only conversational turns anchored by confirmed AI assisted replies.
+    // Keep the counterpart's messages before each reply and any immediate follow-up.
+    const sampleIndexes = new Set();
+    for (const replyIndex of replyIndexes) {
+      let start = replyIndex;
+      while (start > 0 && replyIndex - start < 20) {
+        start--;
+        if (included[start].direction === 'self') break;
+      }
+      let end = replyIndex;
+      while (end + 1 < included.length && included[end + 1].direction === 'other') end++;
+      for (let index = start; index <= end; index++) sampleIndexes.add(index);
+    }
+    const samples = [...sampleIndexes].sort((a, b) => a - b).map(index => included[index]);
+    const total = samples.length, bounded = samples.slice(-120); let chars = 0;
     const material = [];
     for (const message of bounded) {
       if (typeof message.text !== 'string') continue;

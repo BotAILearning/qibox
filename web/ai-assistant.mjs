@@ -53,7 +53,7 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
   const manualReplyDrafts = new Map();
   const objectDrafts = new Map();
   let learnRange = { from: '', to: '' }, learnScope = 'range', learnTarget = 'both', memoryPendingSignature = '';
-  let defaultStylePerspective = 'self';
+  let defaultStylePerspective = 'self', defaultStyleMode = 'contacts';
   let defaultStyleReturn = 'settings';
   let analysisDraft = { request: '', from: '', to: '', contacts: [] }, analysisResult = null, analysisSearch = '', analysisHistoryReport = null, analysisHistoryEpoch = 0;
   let objectKind = 'person', selectedObject = '', objectSearch = '', logFilters = { source: 'reply' };
@@ -542,9 +542,12 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
     const perspective = defaultStylePerspective;
     const perspectiveLabel = p => p === 'other' ? '对方的风格' : '自己与对方聊天的风格';
     const meta = ds ? `${perspectiveLabel(ds.perspective)}${ds.source === 'paste' ? ' · 来自粘贴的聊天' : ` · 基于 ${ds.labels?.length || ds.contacts?.length || 0} 位联系人的聊天`}${ds.learnedAt ? ` · ${new Date(ds.learnedAt).toLocaleString('zh-CN', { hour12: false })}` : ''}` : '';
-    const current = ds ? `<section class="ai-card"><div class="ai-card-heading"><div><h4>当前默认风格</h4><p>${esc(meta)}，将应用于没有单独风格的联系人自动回复。</p></div></div><form id="ai-default-style-form"><label class="ai-field">风格总结（可修改）<textarea name="summary" maxlength="6000" rows="6" placeholder="用自然语言描述默认的口吻与表达习惯">${esc(ds.style?.summary || summaryText(ds.style))}</textarea></label><div class="ai-actions"><button type="submit" class="primary">保存</button><button type="button" class="secondary" data-ai-action="cancel-default-style">取消</button></div><p class="ai-help">保存：保存这份默认风格并同步给所有联系人与群聊，选择「默认风格」的对象会换成最新内容并继续跟随账号默认风格的更新；只有改动过说明文字才会变成该对象自己的【自定义】风格。取消：撤销本次学习的内容，默认风格恢复到学习前那一份；学习前没有默认风格（或本次学习已经保存过）时，取消即清除默认风格。</p></form></section>` : '';
+    const current = ds ? `<section class="ai-card ai-default-current"><div class="ai-card-heading"><div><h4>当前风格</h4><p>${esc(meta)}，应用于没有单独风格设置的联系人和群聊。</p></div><span class="ai-badge blue">已保存</span></div><form id="ai-default-style-form"><label class="ai-field">风格总结（可修改）<textarea name="summary" maxlength="6000" rows="11" placeholder="用自然语言描述默认的口吻与表达习惯">${esc(ds.style?.summary || summaryText(ds.style))}</textarea></label><div class="ai-actions"><button type="submit" class="primary">保存</button><button type="button" class="secondary" data-ai-action="cancel-default-style">取消本次学习</button></div><p class="ai-help">保存后将同步给选择「默认风格」的对象。只有改动过说明文字才会变成该对象自己的自定义风格。取消会恢复学习前的默认风格；学习前没有默认风格时，取消会清除这次结果。</p></form></section>` : `<section class="ai-card ai-default-current ai-default-empty"><div><span class="ai-badge muted">尚未设置</span><h4>当前还没有默认风格</h4><p>从左侧联系人聊天或粘贴聊天内容开始学习。结果确认并保存后，才会应用于没有单独风格设置的对象。</p></div></section>`;
     const backLabel = ({ overview: '自动回复', settings: '系统设置', results: '学习结果', learning: '学习聊天风格', profile: '学习结果', 'manual-reply': '自动回复' })[defaultStyleReturn] || '系统设置';
-    return `<div class="ai-default-style-page"><div class="ai-page-heading ai-learning-page-heading"><div><button type="button" class="quiet ai-learning-back" data-ai-nav="${esc(defaultStyleReturn)}">${icon('arrow-l')}返回${esc(backLabel)}</button><h3>学习默认风格</h3><p>从联系人聊天中按语言、节奏、互动和情感表达学习，再汇总成一份默认风格。</p></div></div>${current}${contactPicker(`<div class="ai-learning-heading-tools"><button type="button" class="primary" data-ai-action="learn-default" ${selectedContacts.size ? '' : 'disabled'}>${icon('sparkle')}学习默认风格</button>${dateRangeField('learning',learnRange,{compact:true,label:'时间筛选'})}</div>`, '勾选联系人；每位联系人单独学习后，再汇总成一份默认风格。', ['person'])}<section class="ai-card">${pasteModule()}</section></div>`;
+    const sourceTabs = `<div class="ai-default-source-tabs" role="tablist" aria-label="学习素材来源"><button type="button" role="tab" data-ai-default-mode="contacts" aria-selected="${defaultStyleMode === 'contacts'}" class="${defaultStyleMode === 'contacts' ? 'selected' : ''}">联系人聊天</button><button type="button" role="tab" data-ai-default-mode="paste" aria-selected="${defaultStyleMode === 'paste'}" class="${defaultStyleMode === 'paste' ? 'selected' : ''}">粘贴聊天</button></div>`;
+    const contacts = `<section class="ai-card ai-default-source" data-ai-default-source="contacts" ${defaultStyleMode === 'contacts' ? '' : 'hidden'}><div class="ai-card-heading"><div><h4>选择学习素材</h4><p>每位联系人单独学习后，再汇总为账号默认风格。</p></div></div>${contactPicker(`<div class="ai-learning-heading-tools"><button type="button" class="primary" data-ai-action="learn-default" ${selectedContacts.size ? '' : 'disabled'}>${icon('sparkle')}学习默认风格</button>${dateRangeField('learning',learnRange,{compact:true,label:'时间筛选'})}</div>`, '选择一位或多位联系人；仅读取所选联系人的聊天记录。', ['person'])}</section>`;
+    const paste = `<section class="ai-card ai-default-source" data-ai-default-source="paste" ${defaultStyleMode === 'paste' ? '' : 'hidden'}><div class="ai-card-heading"><div><h4>粘贴聊天内容</h4><p>整理为“我：… / 对方：…”后提交学习，不会自动保存结果。</p></div></div>${pasteModule()}</section>`;
+    return `<div class="ai-default-style-page"><div class="ai-page-heading ai-learning-page-heading"><div><button type="button" class="quiet ai-learning-back" data-ai-nav="${esc(defaultStyleReturn)}">${icon('arrow-l')}返回${esc(backLabel)}</button><h3>学习默认风格</h3><p>从联系人聊天或粘贴内容生成一份账号级风格，结果需确认并保存后生效。</p></div></div><div class="ai-default-style-layout"><section class="ai-default-material"><div class="ai-default-material-head"><div><h4>学习素材</h4><p>选择联系人聊天或粘贴内容</p></div>${sourceTabs}</div>${contacts}${paste}</section><aside class="ai-default-result">${current}</aside></div></div>`;
   }
   function results() {
     const profiles = learnedProfiles().filter(p => !resultProfileIds || resultProfileIds.has(p.id));
@@ -552,7 +555,7 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
   }
   function advancedSettings() {
     const rule = state.settings.takeover || {enabled:true,minutes:5};
-    return '<div class="ai-page-heading"><div><h3>系统设置</h3><p>管理模型配置与 AI 回复的通用行为。</p></div></div><section class="ai-card ai-settings-group"><button type="button" class="ai-settings-entry" data-ai-nav="provider"><span class="ai-settings-entry-icon">' + icon('sliders') + '</span><span class="ai-settings-entry-text"><strong>模型设置</strong><small>为聊天回复、主动聊天、风格学习、聊天分析分别选择模型</small></span><span class="ai-settings-entry-arrow">' + icon('chev-r') + '</span></button><button type="button" class="ai-settings-entry" data-ai-nav="default-style"><span class="ai-settings-entry-icon">' + icon('sparkle') + '</span><span class="ai-settings-entry-text"><strong>学习默认风格</strong><small>选择联系人的聊天记录学习，作为没有单独风格时的默认口吻</small></span><span class="ai-settings-entry-arrow">' + icon('chev-r') + '</span></button></section><section class="ai-card">' + switchRow('acknowledgeAI','被问及身份时承认 AI','开启后，仅被询问时说明由 AI 回复；关闭后按本人身份回答。') + '</section><form id="ai-takeover-form" class="ai-card"><h4>AI 辅助等待</h4><label class="ai-switch-row"><span>开启 AI 辅助等待<small>开启后，每次手动回复后，从对方第一条新消息开始等待设定时长；同一轮后续消息不会延长等待。首次自动回复成功后恢复正常回复节奏；再次手动回复会重新开始等待。</small></span><input type="checkbox" name="enabled" role="switch" aria-label="开启 AI 辅助等待" '+(rule.enabled?'checked':'')+'></label><div data-takeover-minutes '+(rule.enabled?'':'hidden')+'><label class="ai-field">等待时长（分钟）<input name="minutes" type="number" min="1" max="10080" required value="'+rule.minutes+'" '+(rule.enabled?'':'disabled')+'></label></div><p class="ai-help">关闭后，手动回复会关闭对应联系人的自动回复开关；群聊会关闭该群的自动回复触发开关。其他联系人的设置不受影响。</p><button class="primary" type="submit">保存设置</button></form>';
+    return '<div class="ai-page-heading"><div><h3>系统设置</h3><p>管理模型配置与 AI 回复的通用行为。</p></div></div><section class="ai-card ai-settings-group"><button type="button" class="ai-settings-entry" data-ai-nav="provider"><span class="ai-settings-entry-icon">' + icon('sliders') + '</span><span class="ai-settings-entry-text"><strong>模型设置</strong><small>为聊天回复、主动聊天、风格学习、分析报告分别选择模型</small></span><span class="ai-settings-entry-arrow">' + icon('chev-r') + '</span></button><button type="button" class="ai-settings-entry" data-ai-nav="default-style"><span class="ai-settings-entry-icon">' + icon('sparkle') + '</span><span class="ai-settings-entry-text"><strong>学习默认风格</strong><small>选择联系人的聊天记录学习，作为没有单独风格时的默认口吻</small></span><span class="ai-settings-entry-arrow">' + icon('chev-r') + '</span></button></section><section class="ai-card">' + switchRow('acknowledgeAI','被问及身份时承认 AI','开启后，仅被询问时说明由 AI 回复；关闭后按本人身份回答。') + '</section><form id="ai-takeover-form" class="ai-card"><h4>AI 辅助等待</h4><label class="ai-switch-row"><span>开启 AI 辅助等待<small>开启后，每次手动回复后，从对方第一条新消息开始等待设定时长；同一轮后续消息不会延长等待。首次自动回复成功后恢复正常回复节奏；再次手动回复会重新开始等待。</small></span><input type="checkbox" name="enabled" role="switch" aria-label="开启 AI 辅助等待" '+(rule.enabled?'checked':'')+'></label><div data-takeover-minutes '+(rule.enabled?'':'hidden')+'><label class="ai-field">等待时长（分钟）<input name="minutes" type="number" min="1" max="10080" required value="'+rule.minutes+'" '+(rule.enabled?'':'disabled')+'></label></div><p class="ai-help">关闭后，手动回复会关闭对应联系人的自动回复开关；群聊会关闭该群的自动回复触发开关。其他联系人的设置不受影响。</p><button class="primary" type="submit">保存设置</button></form>';
   }
   function proactive() { return proactiveUI.page(); }
   function profileEditor(profile) {
@@ -606,9 +609,9 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
     const objectScroll = $('#ai-object-list')?.scrollTop || 0;
     const disclosureStates = view === renderedView ? [...panel.querySelectorAll('#ai-content details')].filter(node => !node.hasAttribute('data-ai-record-expand')).map(node => ({ label: node.querySelector('summary')?.textContent, open: node.open })) : [];
     renderedView = view; panel.dataset.page = tab;
-    $('#ai-title').textContent = ({ overview: '自动回复', proactive: '主动聊天', activity: '运行记录', provider: '模型设置', settings: '系统设置', analysis: '聊天数据分析', learning: '学习聊天风格', 'default-style': '学习默认风格', results: '学习结果', profile: '编辑学习结果' })[tab] || 'AI 辅助';
+    $('#ai-title').textContent = ({ overview: '自动回复', proactive: '主动聊天', activity: '执行记录', provider: '模型设置', settings: '系统设置', analysis: '分析报告', learning: '批量学习风格与记忆', 'default-style': '学习默认风格', results: '学习结果', profile: '编辑学习结果' })[tab] || 'AI 辅助';
     const content = tab === 'profile' && editingProfile ? profileEditor(state.profiles.find(p => p.id === editingProfile)) : ({ overview: objects, analysis: () => analysisPage(state, analysisDraft, analysisResult, analysisSearch, analysisHistoryReport), activity, provider, settings: advancedSettings, learning, 'default-style': defaultStyleLearning, results, proactive, 'manual-reply': manualReplyEditor }[tab] || objects)();
-    const nav = `<nav class="ai-main-tabs" aria-label="AI 页面"><div class="ai-nav-brand"><span>${logoIcon}</span><div>AI 辅助<small>栖盒 · QIBOX</small></div></div><p class="ai-nav-caption">工作台</p>${[['overview', '自动回复', 'chat'], ['proactive', '主动聊天', 'send'], ['analysis', '聊天分析', 'file'], ['activity', '运行记录', 'clock'], ['settings', '系统设置', 'sliders']].map(([key, name, symbol]) => `<button type="button" data-ai-nav="${key}" title="${name}" aria-label="${name}" aria-current="${tab === key || key === 'overview' && ['learning','results','profile','manual-reply'].includes(tab) || key === 'settings' && tab === 'default-style' ? 'page' : 'false'}">${icon(symbol)}<span>${name}</span></button>`).join('')}<div class="ai-nav-footer">${icon('shield')}<span>设置按当前微信独立保存</span></div></nav>`;
+    const nav = `<nav class="ai-main-tabs" aria-label="AI 页面"><div class="ai-nav-brand"><span>${logoIcon}</span><div>AI 辅助<small>栖盒 · QIBOX</small></div></div><p class="ai-nav-caption">工作台</p>${[['overview', '自动回复', 'chat'], ['proactive', '主动聊天', 'send'], ['analysis', '分析报告', 'file'], ['activity', '执行记录', 'clock'], ['settings', '系统设置', 'sliders']].map(([key, name, symbol]) => `<button type="button" data-ai-nav="${key}" title="${name}" aria-label="${name}" aria-current="${tab === key || key === 'overview' && ['learning','results','profile','manual-reply'].includes(tab) || key === 'settings' && tab === 'default-style' ? 'page' : 'false'}">${icon(symbol)}<span>${name}</span></button>`).join('')}<div class="ai-nav-footer">${icon('shield')}<span>设置按当前微信独立保存</span></div></nav>`;
     $('#ai-content').innerHTML = iconSprite + nav + (tab === 'overview' ? content : `<div class="ai-page-body">${content}</div>`);
     for (const textarea of $('#ai-content').querySelectorAll('.ai-wiki-bubble textarea[aria-label="信息内容"]')) resizeWikiTextarea(textarea);
     if ($('#ai-object-list')) $('#ai-object-list').scrollTop = objectScroll;
@@ -1085,6 +1088,12 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
   panel.addEventListener('click', async event => {
     const button = event.target.closest('button'); if (!button) return;
     try {
+      if (button.dataset.aiDefaultMode) {
+        defaultStyleMode = button.dataset.aiDefaultMode;
+        panel.querySelectorAll('[data-ai-default-mode]').forEach(tabButton => { const selected = tabButton.dataset.aiDefaultMode === defaultStyleMode; tabButton.classList.toggle('selected', selected); tabButton.setAttribute('aria-selected', String(selected)); });
+        panel.querySelectorAll('[data-ai-default-source]').forEach(source => { source.hidden = source.dataset.aiDefaultSource !== defaultStyleMode; });
+        return;
+      }
       if (button.hasAttribute('data-ai-apply-limit-kind')) {
         const form = button.closest('form'), value = Number(form.elements.maxRounds.value), kind = button.dataset.aiApplyLimitKind;
         if (!Number.isInteger(value) || value < 1 || value > 2000) throw new Error('连续自动回复上限须为 1–2000 的整数');
@@ -1120,7 +1129,7 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
         message('已暂存；下一次自动回复前会先总结这条消息'); render(); return;
       }
       if ('aiSummaryProfile' in button.dataset) {
-        const profileId = button.dataset.aiSummaryProfile, row = button.closest('tr'), output = row?.querySelector(`[data-ai-summary-result="${CSS.escape(profileId)}"]`);
+        const profileId = button.dataset.aiSummaryProfile, row = button.closest('[data-ai-reply-card]'), output = row?.querySelector(`[data-ai-summary-result="${CSS.escape(profileId)}"]`);
         const range = row?.querySelector(`[data-ai-summary-range="${CSS.escape(profileId)}"]`)?.value || 'takeover';
         if (!output) return;
         output.hidden = false; output.textContent = '正在整理聊天…'; button.disabled = true;
@@ -1185,7 +1194,7 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
         rememberDraft(); render(); return;
       }
       if (busy && !['cancel'].includes(action)) throw new Error('请等待当前操作完成，或先取消');
-      if (action === 'analysis-use-chat') { await execute('analysis-use-chat', {}, '聊天分析已改用聊天模型'); return; }
+      if (action === 'analysis-use-chat') { await execute('analysis-use-chat', {}, '分析报告已改用聊天模型'); return; }
       if (action === 'analysis-settings') { await navigate('provider'); return; }
       if ('aiStyle' in button.dataset) {
         const form = $('#ai-object-form'), styleId = button.dataset.aiStyle;

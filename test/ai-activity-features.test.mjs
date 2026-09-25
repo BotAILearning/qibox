@@ -20,6 +20,9 @@ async function fixture(t) {
 test('record lists expose confirmed deletion, summary ranges, and reply-needed action', () => {
   const html = activityRows({ activity: [{ id: 'p1', label: '甲', kind: 'person', hasSent: true, at: Date.now() }] }, { source: 'reply', page: 0 }, [{ id: 'p1', messages: [{ id: 'sent-1', at: Date.now(), text: 'AI答复' }] }], false);
   assert.match(html, /data-ai-delete-record="sent-1"/);
+  assert.match(html, /ai-reply-record-card/);
+  assert.match(html, /data-ai-summary-result="p1" role="status" hidden/);
+  assert.match(html, /ai-reply-history-list/);
   for (const range of ['takeover', 'all', 'day', 'week', 'month']) assert.match(html, new RegExp(`value="${range}"`));
   const skips = skipRecordsView({ profiles: [{ id: 'p1', contact: 'c1', label: '甲' }], contacts: [], events: [{ id: 'e1', target: 'p1', at: Date.now(), code: 'skip', source: 'system-skip', reasonCode: 'model-no-reply', messageId: 'incoming-1' }] });
   assert.match(skips, /data-ai-open-conversation/);
@@ -151,4 +154,33 @@ test('first AI takeover summary uses the reply watch start when there is no manu
   const result = await a.summarizeActivity(profile.id, 'takeover');
   assert.equal(result.aiReplyCount, 1);
   assert.equal(result.total, 3);
+});
+
+test('activity summary uses only selected-range AI reply samples and their two-sided conversation', async t => {
+  const { a, bridge, provider, now } = await fixture(t), [profile] = a.profiles();
+  const day = Math.floor(now() / 1000), messages = bridge.messages.get(profile.contact);
+  messages.push(
+    { id: 'old-in', direction: 'other', text: '范围外提问', timestamp: day - 86400 * 3 },
+    { id: 'old-ai', direction: 'self', text: '范围外 AI 回复', timestamp: day - 86400 * 3 + 1 },
+    { id: 'in-sample', direction: 'other', text: '所选范围内的问题', timestamp: day - 30 },
+    { id: 'ai-sample', direction: 'self', text: '所选范围内 AI 回复', timestamp: day - 29 },
+    { id: 'manual-break', direction: 'self', text: '本人另起的话题', timestamp: day - 20 },
+    { id: 'unpaired-in', direction: 'other', text: '没有 AI 辅助回复的内容', timestamp: day - 19 },
+  );
+  profile.sentMessages = [
+    { id: 'old-ai', source: 'reply', at: now() - 86400 * 3 * 1000 },
+    { id: 'ai-sample', source: 'reply', at: now() - 29 * 1000 },
+  ];
+  provider.complete = async (_config, _system, input) => {
+    const rows = input.conversation;
+    assert.ok(rows.some(row => row.text === '所选范围内的问题' && row.side === '对方'));
+    assert.ok(rows.some(row => row.text === '所选范围内 AI 回复' && row.side === 'AI代你回复'));
+    assert.ok(!rows.some(row => row.text.includes('范围外')));
+    assert.ok(!rows.some(row => row.text.includes('没有 AI 辅助回复')));
+    return { summary: '总结了所选范围的双方对话' };
+  };
+  const result = await a.summarizeActivity(profile.id, 'day');
+  assert.equal(result.aiReplyCount, 1);
+  assert.equal(result.range, 'day');
+  assert.equal(result.summary, '总结了所选范围的双方对话');
 });

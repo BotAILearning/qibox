@@ -4,7 +4,7 @@ const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;
 const option = (value, label, selected) => `<option value="${esc(value)}" ${selected ? 'selected' : ''}>${esc(label)}</option>`;
 const features = [
   { key: 'chat', label: '聊天类', hint: '自动回复和主动聊天' },
-  { key: 'learningAnalysis', label: '学习分析类', hint: '学习风格和记忆、聊天分析' },
+  { key: 'learningAnalysis', label: '学习分析类', hint: '学习风格和记忆、分析报告' },
 ];
 function modelsFor(state, draft) {
   if (draft?.models) return draft.models;
@@ -48,7 +48,7 @@ function editorCard(state, draft, presets) {
   <div class="ai-field"><label for="ai-api-key">API Key</label><div class="ai-key-field"><input id="ai-api-key" name="apiKey" type="password" maxlength="2048" value="${keyStored ? '********' : esc(f.apiKey || '')}" data-key-stored="${keyStored}" placeholder="输入服务商提供的密钥" autocomplete="new-password" autocapitalize="none" spellcheck="false"><button type="button" class="ai-key-eye" data-ai-action="toggle-key" aria-label="展示 API Key" aria-controls="ai-api-key" aria-pressed="false">${keyIcon(false)}</button></div></div>
   <div class="ai-field"><label for="ai-model-choice">选择模型</label><div class="ai-model-picker"><select id="ai-model-choice">${option('', '手动填写模型名称', !f.model)}${[...new Set([f.model, ...(preset?.models || [])].filter(Boolean))].map(x => option(x, x, x === f.model)).join('')}</select><button type="button" class="secondary" data-ai-action="models">${icon('refresh')}拉取支持的模型</button></div><p id="ai-model-status" class="ai-help" role="status"></p></div>
   <div class="ai-form-grid ai-model-fields"><label class="ai-field">模型名称<input name="model" required maxlength="160" value="${esc(f.model || '')}" placeholder="填写服务商提供的完整模型名称"></label><label class="ai-field">响应超时（秒）<input name="timeout" type="number" min="10" max="120" value="${f.timeout || 60}"></label></div>
-  <label class="ai-check"><input name="consent" type="checkbox" required ${f.consent ? 'checked' : ''}><span>同意将选定聊天发送至此模型服务，用于学习风格、生成回复和聊天分析。</span></label>
+  <label class="ai-check"><input name="consent" type="checkbox" required ${f.consent ? 'checked' : ''}><span>同意将选定聊天发送至此模型服务，用于学习风格、生成回复和分析报告。</span></label>
   <div class="ai-provider-footer"><p id="ai-provider-status" class="ai-help">${esc(draft.status || '填写完成后可测试连接；保存模型后到功能分配中点击“保存”生效')}</p><button type="button" class="secondary" data-ai-action="test">${icon('link')}测试连接</button><button class="primary" type="submit">${icon('check')}保存模型</button></div></form>`;
 }
 function assignmentCard(state, draft, models, assignments) {
