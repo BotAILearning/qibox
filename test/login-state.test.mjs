@@ -13,12 +13,12 @@ test('AI entry needs a connected desktop and a confirmed current WeChat login', 
   assert.equal(aiAvailable({ status: 'running', loginStatus: 'logged-in' }, true), true);
 });
 
-test('native login observations expire, detect logout and cannot survive a process restart', async () => {
+test('native login observations refresh within one second, expire, detect logout and reset on process restart', async () => {
   let time = 20000, status = 'logged-out', calls = 0;
   const state = new LoginState({ now: () => time, probe: async () => { calls++; return { status }; } });
   await state.refresh(); assert.equal(state.state(true), 'logged-out');
-  status = 'logged-in'; await state.refresh(); assert.equal(calls, 1);
-  time += 3000; await state.refresh(); assert.equal(state.state(true), 'logged-in');
+  status = 'logged-in'; time += 999; await state.refresh(); assert.equal(calls, 1);
+  time += 1; await state.refresh(); assert.equal(state.state(true), 'logged-in');
   status = 'unknown'; time += 16000; await state.refresh(); assert.equal(state.state(true), 'unknown');
   status = 'logged-out'; await state.refresh(true); assert.equal(state.state(true), 'relogin-required');
   assert.equal(state.state(false), 'logged-out');

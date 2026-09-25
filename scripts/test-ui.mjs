@@ -204,22 +204,24 @@ try {
       assert.equal(await page.getByRole('button', { name: '启动设置', exact: true }).first().isVisible(), false);
       assert.equal(await page.locator('#add-instance').isVisible(), false);
       let starts = 0; const listener = request => { if (/\/start$|\/desktop$/.test(new URL(request.url()).pathname)) starts++; }; page.on('request', listener);
-      await page.locator('#launch-installed').click(); await page.getByRole('heading', { name: '选择要登录的微信' }).waitFor();
-      assert.equal(await page.locator('.mobile-instance-choice').count(), 2);
+      assert.equal(await page.locator('#mobile-instances').isVisible(), true);
+      assert.equal(await page.locator('[data-mobile-instance]').count(), 2);
+      assert.equal(await page.locator('[data-mobile-login], [data-mobile-stop]').count(), 2);
       assert.equal(await page.locator('#desktop-view').isVisible(), false); assert.equal(starts, 0);
-      if (width === 390) await page.screenshot({ path: path.join(root, 'reports/screenshots/mobile-pc-prompt.png'), fullPage: true });
-      await page.getByRole('button', { name: '取消', exact: true }).click(); page.off('request', listener);
+      if (width === 390) await page.screenshot({ path: path.join(root, 'reports/screenshots/mobile-instances.png'), fullPage: true });
+      page.off('request', listener);
       if (width === 390) await page.screenshot({ path: path.join(root, 'reports/screenshots/mobile-installed.png'), fullPage: true });
     }
   }
-  report.checks.push('320/390/760/1024/1440 layouts do not overflow; mobile opens prompt without starting or connecting to WeChat');
+  report.checks.push('320/390/760/1024/1440 layouts do not overflow; mobile instance controls render without opening a desktop session');
   const mobileContext = await browser.newContext({ viewport: { width: 844, height: 390 }, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148' });
   const mobilePage = await mobileContext.newPage(); await mobilePage.goto(`${base}/?dev=${app.devKey}`);
-  await mobilePage.locator('#launch-installed').waitFor(); assert.equal(await mobilePage.locator('#add-instance').isVisible(), false);
-  await mobilePage.locator('#launch-installed').click(); await mobilePage.getByRole('heading', { name: '选择要登录的微信' }).waitFor();
-  assert.equal(await mobilePage.locator('.mobile-instance-choice').count(), 2);
+  await mobilePage.waitForFunction(() => document.querySelectorAll('[data-mobile-instance]').length === 2);
+  await mobilePage.locator('#mobile-instances').waitFor(); assert.equal(await mobilePage.locator('#add-instance').isVisible(), false);
+  assert.equal(await mobilePage.locator('[data-mobile-instance]').count(), 2);
+  assert.equal(await mobilePage.locator('[data-mobile-login], [data-mobile-stop]').count(), 2);
   assert.equal(await mobilePage.locator('#desktop-view').isVisible(), false);
-  report.checks.push('Phone landscape remains restricted even above the width breakpoint');
+  report.checks.push('Phone portrait and landscape show instance-level login/stop controls without opening a desktop session');
   await page.setViewportSize({ width: 1440, height: 960 });
   const homeBefore = [...(await app.users.get('development')).instances.values()][0].home;
   await page.locator('#uninstall').click();

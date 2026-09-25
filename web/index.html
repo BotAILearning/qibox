@@ -16,11 +16,16 @@
         <div id="empty-state" class="empty-state"><svg viewBox="0 0 48 48" aria-hidden="true"><rect x="7" y="8" width="34" height="24" rx="4"/><path d="M17 40h14M24 32v8"/></svg><p>从左侧精选应用添加到桌面</p></div>
       </section>
     </div>
+    <section id="mobile-instances" class="mobile-only" aria-label="微信实例">
+      <div class="panel-heading"><h2>我的实例</h2></div>
+      <div id="mobile-instance-list" class="mobile-instance-list"></div>
+      <p id="mobile-instance-empty" class="mobile-instance-empty">还没有实例，请先在上方添加实例。</p>
+    </section>
     <section id="mobile-ai" class="mobile-only" aria-label="微信 AI 辅助" hidden><h2>AI 辅助</h2><p>登录微信后，可在这里管理回复设置与聊天任务。</p><div id="mobile-ai-list"></div></section>
     <footer><span id="version">栖盒</span><a href="./privacy.html" target="_blank" rel="noopener">隐私政策</a><a href="./terms.html" target="_blank" rel="noopener">用户协议</a></footer>
   </main>
   <dialog id="modal"><form id="modal-form"><div class="modal-heading"><h2 id="modal-title"></h2><button type="button" class="icon-button" id="modal-close" aria-label="关闭">×</button></div><div id="modal-body"></div><p id="modal-error" role="alert" hidden></p><div id="modal-actions" class="modal-actions"></div></form></dialog>
-  <section id="desktop-view" hidden><header class="desktop-bar"><strong id="desktop-name">微信</strong><div><button id="desktop-reconnect" class="quiet">连接微信</button><button id="desktop-fullscreen" class="quiet">全屏</button><button id="desktop-back" class="secondary">← 返回栖盒</button></div></header><div id="desktop-body">
+  <section id="desktop-view" hidden><div id="mobile-login-shell"><header class="mobile-login-bar"><div><strong>登录微信</strong><small id="mobile-login-instance"></small></div><button type="button" id="mobile-login-back" class="secondary">返回实例</button></header><p id="mobile-login-help">请使用另一台设备的微信扫描下方二维码，并按提示确认。</p><p id="mobile-login-status" role="status">正在加载微信二维码…</p></div><header class="desktop-bar"><strong id="desktop-name">微信</strong><div><button id="desktop-reconnect" class="quiet">连接微信</button><button id="desktop-fullscreen" class="quiet">全屏</button><button id="desktop-back" class="secondary">← 返回栖盒</button></div></header><div id="desktop-body">
   <aside id="ai-rail" aria-label="AI 辅助" hidden><button type="button" id="ai-open" aria-expanded="false" aria-controls="ai-panel"><strong aria-hidden="true">AI</strong><span>AI 辅助</span></button><label class="ai-outer-master"><input type="checkbox" role="switch" data-ai-setting="enabled" aria-label="AI 总开关"><span>AI 总开关</span></label></aside>
   <aside id="ai-panel" aria-labelledby="ai-title" hidden>
     <div class="ai-panel-heading"><div class="ai-breadcrumb"><span>AI 辅助</span><span aria-hidden="true">/</span><h2 id="ai-title">自动回复</h2></div><div class="ai-heading-actions"><span id="ai-account-label"></span><label class="ai-header-master"><input type="checkbox" role="switch" data-ai-panel-master aria-label="AI 总开关"><span id="ai-panel-master-label">AI 已关闭</span></label><button type="button" id="ai-close" class="icon-button" aria-label="收起 AI 辅助">×</button></div></div>

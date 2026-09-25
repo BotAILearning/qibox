@@ -1,6 +1,6 @@
 // Current authentication is deliberately separate from automatic-login eligibility.
 export class LoginState {
-  constructor({ probe, now = Date.now, timeoutMs = 8000 }) { this.probe = probe; this.now = now; this.timeoutMs = timeoutMs; this.reset(); }
+  constructor({ probe, now = Date.now, timeoutMs = 8000, pollIntervalMs = 1000 }) { this.probe = probe; this.now = now; this.timeoutMs = timeoutMs; this.pollIntervalMs = pollIntervalMs; this.reset(); }
   reset() { this.generation = (this.generation || 0) + 1; this.value = 'unknown'; this.observedAt = 0; this.startedAt = this.now(); this.attemptedAt = -Infinity; this.hadLogin = false; this.pending = null; }
   details(running) {
     const unknown = running && this.state(true) === 'unknown';
@@ -28,7 +28,7 @@ export class LoginState {
   }
   refresh(force = false) {
     if (this.pending) return this.pending;
-    if (!force && this.now() - this.attemptedAt < 3000) return Promise.resolve(this.value);
+    if (!force && this.now() - this.attemptedAt < this.pollIntervalMs) return Promise.resolve(this.value);
     const generation = this.generation;
     this.attemptedAt = this.now();
     let timer;
