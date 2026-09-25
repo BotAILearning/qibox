@@ -9,7 +9,7 @@ No window, clipboard or network calls.
 """
 import ctypes as c
 import bisect
-from collections import Counter, OrderedDict
+from collections import OrderedDict
 import hashlib
 import hmac
 import importlib.util
@@ -30,6 +30,7 @@ image_spec = importlib.util.spec_from_file_location('qibox_images', pathlib.Path
 images = importlib.util.module_from_spec(image_spec)
 image_spec.loader.exec_module(images)
 USER = re.compile(r'[A-Za-z][A-Za-z0-9_.-]{2,127}')
+CONTACT_UID = re.compile(r'[A-Za-z0-9_.-]{3,128}')
 GROUP = re.compile(r'[A-Za-z0-9_-]{1,100}@chatroom')
 SYSTEM = {'weixin', 'filehelper', 'newsapp', 'fmessage', 'medianote', 'floatbottle', 'qqmail', 'qqsafe',
           'shakeapp', 'feedsapp', 'brandsessionholder', 'weixinreminder', 'officialaccounts', 'notification_messages'}
@@ -92,6 +93,7 @@ FAILURE_STAGES = {'message too long': 'message-too-long', 'unsupported message t
                   'active account unavailable': 'account-unavailable', 'account identity unavailable': 'account-unavailable',
                   'ambiguous account': 'account-unavailable', 'duplicate contact identity': 'contact-unavailable',
                   'unsupported contact label': 'contact-unavailable', 'contact unavailable': 'contact-unavailable',
+                  'contact uid unavailable': 'contact-uid-unavailable',
                   # Layouts this build cannot read.
                   'unsupported message schema': 'schema', 'unsupported contacts schema': 'schema',
                   'unsupported message ordering schema': 'schema-ordering',
@@ -199,6 +201,12 @@ def digest(value):
 
 def contact_id(account, username):
     return digest('wechat-data-contact\0' + account + '\0' + username)
+
+
+def wechat_id_contact_id(account, wechat_id):
+    # Keep the historical UID-derived IDs stable. The separate domain makes
+    # an alias-only identity unable to collide with a native UID of the same text.
+    return digest('wechat-data-contact-wechat-id\0' + account + '\0' + wechat_id)
 
 
 def new_session_reader(pid, home, check):
@@ -477,7 +485,7 @@ def check_versions(files, before):
 def self_username(root, rows):
     directory = root.parent.name
     candidates = {directory, re.sub(r'_[a-fA-F0-9]{4,}$', '', directory)}
-    matches = {row[0] for row in rows if row[0] in candidates and USER.fullmatch(row[0])}
+    matches = {row[0] for row in rows if row[0] in candidates and CONTACT_UID.fullmatch(row[0])}
     if len(matches) != 1:
         raise ValueError('account identity unavailable')
     return matches.pop()
@@ -489,36 +497,69 @@ def contacts(rows, username):
     if len(own) != 1:
         raise ValueError('ambiguous account')
     own_alias = own[0][3] or username
-    counts = Counter(row[0] for row in rows if isinstance(row[0], str))
-    result, skipped = [], set()
-    for name, nickname, remark, alias in rows:
-        if not isinstance(name, str) or not (USER.fullmatch(name) or GROUP.fullmatch(name)) or name == username or name in SYSTEM or name.startswith('gh_'):
+    identities, unreadable = OrderedDict(), 0
+    for row in rows:
+        name, nickname, remark, alias = row[:4]
+        local_type = row[4] if len(row) > 4 else 2 if isinstance(name, str) and GROUP.fullmatch(name) else 1
+        if name == username or isinstance(name, str) and (name in SYSTEM or name.startswith('gh_')):
             continue
-        # A malformed entry must not hide every healthy contact. A duplicated
-        # username has no trustworthy row to choose, so omit that identity in
-        # full rather than retaining whichever copy happened to sort first.
-        if counts[name] != 1:
-            skipped.add(name)
+        if isinstance(name, str) and (CONTACT_UID.fullmatch(name) or GROUP.fullmatch(name)):
+            identity = ('uid', name)
+        elif local_type == 1 and isinstance(alias, str) and USER.fullmatch(alias):
+            identity = ('wechat-id', alias)
+        else:
+            unreadable += 1
             continue
-        group = bool(GROUP.fullmatch(name))
-        # A deleted or left group chat can keep a contact row whose nickname
-        # and remark are both empty; the raw chatroom id is not a display
-        # name, so drop those entries instead of listing unknown groups.
-        if group and not (nickname or '').strip() and not (remark or '').strip():
+        identities.setdefault(identity, []).append((name, nickname, remark, alias))
+
+    # A row without a UID may duplicate a UID-backed contact. Never expose a
+    # second selectable identity when its WeChat ID already belongs to one.
+    uid_names = {uid for kind, uid in identities if kind == 'uid' and CONTACT_UID.fullmatch(uid)}
+    uid_alias_owners = {}
+    for (kind, uid), group in identities.items():
+        if kind != 'uid' or uid not in uid_names:
             continue
-        label = (remark or nickname or name).strip()
-        if not label or len(label) > 120 or re.search(r'[\x00-\x1f\x7f]', label):
-            skipped.add(name)
+        for value in {row[3] for row in group if isinstance(row[3], str) and USER.fullmatch(row[3])}:
+            uid_alias_owners.setdefault(value, set()).add(uid)
+    result = []
+    for (source, identity), group in identities.items():
+        if source == 'wechat-id' and (identity in uid_names or identity in uid_alias_owners):
+            unreadable += 1
             continue
-        # The WeChat nickname is carried alongside the label so the interface can
-        # tell apart contacts sharing one remark. Anything unprintable or overly
-        # long is dropped rather than surfaced, the label stays authoritative.
+        selected = None
+        for name, nickname, remark, alias in group:
+            if source == 'uid' and GROUP.fullmatch(identity) and not (nickname or '').strip() and not (remark or '').strip():
+                continue
+            label = remark or nickname or name or alias
+            if not isinstance(label, str):
+                continue
+            label = label.strip()
+            if label and len(label) <= 120 and not re.search(r'[\x00-\x1f\x7f]', label):
+                selected = (nickname, label, alias)
+                break
+        if selected is None:
+            # Nameless old group rows are not active conversations. A bad label
+            # on a person is instead reported as one unreadable identity.
+            if source != 'uid' or not GROUP.fullmatch(identity):
+                unreadable += 1
+            continue
+        nickname, label, alias = selected
         display_nickname = nickname.strip() if isinstance(nickname, str) else ''
         if len(display_nickname) > 120 or re.search(r'[\x00-\x1f\x7f]', display_nickname):
             display_nickname = ''
-        route = native_route(own_alias, name if GROUP.fullmatch(name) else alias or name)
-        result.append({'id': contact_id(account, name), 'label': label, 'nickname': display_nickname, 'kind': 'group' if group else 'person', 'username': name, 'native': route})
-    return account, result, len(skipped)
+        group_chat = source == 'uid' and bool(GROUP.fullmatch(identity))
+        if group_chat:
+            native_target = identity
+        elif source == 'wechat-id':
+            native_target = identity
+        else:
+            aliases = {row[3] for row in group if isinstance(row[3], str) and USER.fullmatch(row[3])}
+            proposed = next(iter(aliases)) if len(aliases) == 1 else None
+            native_target = proposed if proposed and len(uid_alias_owners[proposed]) == 1 and (proposed not in uid_names or proposed == identity) else identity
+        result.append({'id': contact_id(account, identity) if source == 'uid' else wechat_id_contact_id(account, identity),
+                       'label': label, 'nickname': display_nickname, 'kind': 'group' if group_chat else 'person',
+                       'username': identity if source == 'uid' else None, 'native': native_route(own_alias, native_target)})
+    return account, result, unreadable
 
 
 def decode(content, compression):
@@ -886,7 +927,7 @@ class SessionCache:
 
 
 def contact_activity(database, files, people):
-    targets = {'Msg_' + hashlib.md5(p['username'].encode()).hexdigest(): p for p in people}
+    targets = {'Msg_' + hashlib.md5(p['username'].encode()).hexdigest(): p for p in people if p['username']}
     for index, person in enumerate(people):
         person['contactOrder'], person['lastChatAt'] = index, None
     for file in files:
@@ -924,7 +965,7 @@ def session_activity(database, file, people):
     summaries, drafts, raw usernames and message bodies never do: the index is
     a change signal for objects the app already knows, not a message store.
     """
-    known = {p['username']: p['id'] for p in people}
+    known = {p['username']: p['id'] for p in people if p['username']}
     db = database(file)
     if db is None:
         raise ValueError('session database unavailable')
@@ -1049,7 +1090,7 @@ def execute(request, pid, home, check, cache=None):
         active = ' AND COALESCE(delete_flag, 0) = 0' if 'delete_flag' in columns else ''
         groups = " OR (local_type = 2 AND username LIKE '%@chatroom' AND is_in_chat_room = 1)" if 'is_in_chat_room' in columns else ''
         order = "COALESCE(NULLIF(remark_quan_pin,''), NULLIF(quan_pin,''), NULLIF(remark,''), NULLIF(nick_name,''), username) COLLATE NOCASE, username" if {'remark_quan_pin', 'quan_pin'} <= columns else "COALESCE(NULLIF(remark,''), NULLIF(nick_name,''), username) COLLATE NOCASE, username"
-        rows = db.query('SELECT username, nick_name, remark, alias FROM contact WHERE (local_type = 1' + groups + ')' + active + ' ORDER BY ' + order)
+        rows = db.query('SELECT username, nick_name, remark, alias, local_type FROM contact WHERE (local_type = 1' + groups + ')' + active + ' ORDER BY ' + order)
         self_name = self_username(root, rows)
         account, people, unreadable_count = contacts(rows, self_name)
         if request.get('account') and request['account'] != account:
@@ -1065,6 +1106,11 @@ def execute(request, pid, home, check, cache=None):
             if len(matches) != 1:
                 raise ValueError('contact unavailable')
             target, candidates = matches[0], {}
+            if target['username'] is None:
+                # An alias identifies this entry in the address book, but the
+                # message/session databases are keyed by WeChat's internal UID.
+                # Do not manufacture an empty history under a guessed key.
+                raise ValueError('contact uid unavailable')
             if request['action'] == 'read-dates':
                 days = set()
                 table = 'Msg_' + hashlib.md5(target['username'].encode()).hexdigest()

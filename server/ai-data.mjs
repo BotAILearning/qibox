@@ -37,6 +37,7 @@ const readFailure = stage => {
     'message-unloaded': '该对象的聊天记录尚未加载，请在微信中打开与该对象的聊天窗口后重试',
     'key-unavailable': '聊天数据库密钥暂不可用，请在微信中打开任意聊天窗口后重试',
     'contact-unavailable': '该对象已不在当前微信通讯录中，请重新检测联系人',
+    'contact-uid-unavailable': '该联系人缺少微信内部身份，当前只能按微信号区分，暂无法读取聊天记录',
     'account-unavailable': '当前微信账号数据暂不可用，请确认微信已登录后重试',
     'database-changed': '微信聊天数据库正在写入，请稍后重试',
     schema: '当前微信版本的聊天数据库结构暂不支持读取',

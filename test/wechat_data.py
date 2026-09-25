@@ -127,10 +127,58 @@ class DataTest(unittest.TestCase):
                 result = data.execute({'action': 'contacts'}, 42, directory, lambda: None)
             self.assertTrue(result['available'])
             self.assertEqual(result['account'], data.digest('wechat-data-account\0long262802'))
-            self.assertEqual([p['label'] for p in result['contacts']], ['正常联系人'])
-            self.assertEqual(result['unreadableCount'], 2)
+            self.assertEqual({p['label'] for p in result['contacts']}, {'正常联系人', '乙'})
+            self.assertEqual(len(result['contacts']), 2)  # Duplicate UID is one person.
+            self.assertEqual(result['unreadableCount'], 1)
             with self.assertRaisesRegex(ValueError, 'ambiguous account'):
                 data.contacts([('long262802', '本人', '', ''), ('long262802', '另一个', '', '')], 'long262802')
+
+    def test_contact_identity_prefers_native_uid_then_unique_wechat_id(self):
+        rows = [('long262802', '本人', '', '', 1),
+                ('wxid_one', '同名', '', 'wechat_one', 1),
+                ('wxid_two', '同名', '', 'wechat_two', 1),
+                ('12345678', '同名', '', 'wechat_numeric', 1),
+                ('wxid_one', '同名', '', 'wechat_one', 1),
+                (None, '同名', '', 'wechat_three', 1),
+                ('', '同名', '', 'wechat_four', 1),
+                (None, '重复', '', 'wechat_three', 1),
+                (None, '旧资料', '', 'wechat_one', 1),
+                (None, '无身份', '', '', 1)]
+        account, people, unreadable = data.contacts(rows, 'long262802')
+        self.assertEqual(len(people), 5)
+        self.assertEqual(len({person['id'] for person in people}), 5)
+        self.assertEqual([person['id'] for person in people[:3]],
+                         [data.contact_id(account, 'wxid_one'), data.contact_id(account, 'wxid_two'),
+                          data.contact_id(account, '12345678')])
+        self.assertEqual([person['username'] for person in people[3:]], [None, None])
+        self.assertEqual(people[3]['id'], data.wechat_id_contact_id(account, 'wechat_three'))
+        self.assertNotEqual(people[3]['id'], data.wechat_id_contact_id(data.digest('other-account'), 'wechat_three'))
+        self.assertEqual(unreadable, 2)  # UID-backed alias collision and no ID.
+        changed = [rows[0], ('wxid_one', '新备注', '', 'wechat_one', 1)]
+        self.assertEqual(data.contacts(changed, 'long262802')[1][0]['id'], people[0]['id'])
+        shared_alias = [rows[0], ('wxid_first', '甲', '', 'shared_alias', 1),
+                        ('wxid_second', '乙', '', 'shared_alias', 1)]
+        _, distinct, _ = data.contacts(shared_alias, 'long262802')
+        self.assertEqual(len({person['id'] for person in distinct}), 2)
+        self.assertEqual(len({person['native']['contact'] for person in distinct}), 2)
+
+    def test_alias_only_contact_is_listed_without_guessing_a_chat_database(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory, 'xwechat_files/long262802_a36b/db_storage')
+            (root / 'contact').mkdir(parents=True)
+            (root / 'message').mkdir()
+            make_database(root / 'contact/contact.db',
+                          "CREATE TABLE contact(username TEXT,nick_name TEXT,remark TEXT,alias TEXT,local_type INTEGER);"
+                          "INSERT INTO contact VALUES('long262802','本人','','',1),"
+                          "(NULL,'联系人','','wechat_fallback',1);")
+            make_database(root / 'message/message_0.db', 'CREATE TABLE placeholder(x);')
+            with patch.object(data, 'active_root', return_value=root), \
+                    patch.object(data, 'discover_keys', side_effect=lambda *_: {SALT: KEY}):
+                scan = data.execute({'action': 'contacts'}, 42, directory, lambda: None)
+                self.assertEqual(len(scan['contacts']), 1)
+                with self.assertRaisesRegex(ValueError, 'contact uid unavailable'):
+                    data.execute({'action': 'read', 'account': scan['account'],
+                                  'contact': scan['contacts'][0]['id']}, 42, directory, lambda: None)
 
     def test_date_inventory_and_image_pipe_bind_to_authenticated_contact(self):
         with tempfile.TemporaryDirectory() as directory:
