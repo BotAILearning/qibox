@@ -31,11 +31,11 @@ test('chat memory accepts only evidence IDs actually supplied for this contact',
  Object.assign(p,mergeMemory(a.vault,p,{entries:[{text:'有依据',evidence:['m1']},{text:'未发送承诺',evidence:['planned']},{text:'无证据'}]},1,{evidence:new Set(['m1'])}));
  assert.equal(readMemory(a.vault,p).summary,'有依据');
 });
-test('memory learning preserves model field assignments as grouped pending Wiki entries',async t=>{
+test('memory learning writes model field assignments into the contact Wiki table',async t=>{
  const {a,bridge,provider}=await fixture(t),contact=bridge.contacts[0].id;
  bridge.messages.set(contact,[{id:'peer-1',direction:'other',text:'我是林女士，电话 13800000001，生日正月初八，毕业于浙江大学，户籍在杭州，平时喜欢徒步。'}]);
  provider.complete=async(_config,prompt,input)=>{
-  assert.match(prompt,/基础资料字段描述当前聊天对象（对方）本人/);
+  assert.match(prompt,/当前联系人（对方）的聊天记忆字段表/);
   assert.deepEqual(input.material.map(message=>message.direction),['other']);
   return {memory:{entries:[
    {field:'name',text:'林女士'}, {field:'phone',text:'13800000001'}, {field:'birthday',calendar:'lunar',text:'正月初八'},
@@ -43,11 +43,35 @@ test('memory learning preserves model field assignments as grouped pending Wiki 
   ]}};
  };
  await a.learn({contacts:[contact],target:'memory',perspective:'other'});
- const profile=a.profiles().find(item=>item.contact===contact),pending=a.pendingMemoryOf(profile);
- assert.deepEqual(pending.entries.map(entry=>entry.field),['name','phone','birthday','school','household','other']);
- assert.equal(pending.entries[2].calendar,'lunar');assert.equal(pending.entries[3].degree,'本科');
- const markup=memoryFields({memory:{entries:pending.entries}});
+ const profile=a.profiles().find(item=>item.contact===contact),stored=readMemory(a.vault,profile);
+ assert.deepEqual(stored.entries.map(entry=>entry.field),['name','phone','birthday','school','household','other']);
+ assert.equal(stored.entries[2].calendar,'lunar');assert.equal(stored.entries[3].degree,'本科');
+ assert.equal(a.pendingMemoryOf(profile),null);
+ const markup=memoryFields({memory:stored});
  for(const field of ['name','phone','birthday','school','household','other']) assert.match(markup,new RegExp(`data-ai-wiki-field="${field}"[\\s\\S]*?${field==='name'?'林女士':field==='phone'?'13800000001':field==='birthday'?'正月初八':field==='school'?'浙江大学':field==='household'?'杭州市':'喜欢徒步'}`));
+});
+test('learning retains multiple contact values and address dates without requiring self messages',async t=>{
+ const {a,bridge,provider}=await fixture(t),contact=bridge.contacts[0].id;
+ bridge.messages.set(contact,[{id:'peer-only',direction:'other',text:'我叫林一，也用林二这个名字。手机号码是 13800000001 和 13800000002。2025 年起住杭州，2024 年底之前住宁波。'}]);
+ provider.complete=async(_config,prompt,input,_signal,options)=>{
+  assert.match(prompt,/同一字段可以输出多个值/);
+  assert.deepEqual(input.material.map(message=>message.direction),['other']);
+  const result={memory:{entries:[
+   {field:'name',text:'林一'},{field:'name',text:'林二'},
+   {field:'phone',text:'13800000001'},{field:'phone',text:'13800000002'},
+   {field:'residence',text:'杭州市',from:Date.UTC(2025,0,1)},
+   {field:'residence',text:'宁波市',to:Date.UTC(2024,11,31)},
+  ]}};
+  return options.validate(result);
+ };
+ await a.learn({contacts:[contact],target:'memory'});
+ const profile=a.profiles().find(item=>item.contact===contact),entries=readMemory(a.vault,profile).entries;
+ assert.deepEqual(entries.map(e=>e.field),['name','name','phone','phone','residence','residence']);
+ assert.equal(entries[4].from,Date.UTC(2025,0,1));
+ assert.equal(entries[5].to,Date.UTC(2024,11,31));
+ assert.equal(profile.pendingMemory,undefined);
+ await a.learn({contacts:[contact],target:'memory'});
+ assert.equal(readMemory(a.vault,profile).entries.length,6,'relearning the same values is idempotent');
 });
 test('legacy wiki text migrates to other and typed facts preserve calendar and period',()=>{
  const old=memoryValue({summary:'旧版学校记忆\n旧版住址'});

@@ -727,7 +727,7 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
     });
   }
   async function learn(value) {
-    // 学习目标：默认「风格 + 记忆」（沿用原有行为）；仅风格不动记忆；仅记忆读取全量聊天并增量合并。
+    // 学习目标：默认「风格 + 记忆」；仅风格不动记忆；仅记忆读取所选聊天并增量写入字段。
     const target = value.asDefault ? 'style' : ['style', 'memory'].includes(value.target) ? value.target : 'both';
     if (value.asDefault) {
       if (value.contacts && !value.contacts.length) throw new Error('请选择至少一位联系人');
@@ -756,7 +756,7 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
         const keys = value.contacts || (value.contact ? [value.contact] : []);
         const updated = selectProfiles().filter(p => keys.includes(p.contact));
         rememberDraft();
-        // 学到的记忆先放在对象页的待确认区，跳过去让用户马上能替换或合并。
+        // 学到的记忆已写入字段，跳到对象页供用户核对、修改或删除。
         const first = updated.find(p => state.contacts.some(c => c.id === p.contact));
         if (first) { objectDrafts.delete(first.contact); selectedObject = first.contact; objectKind = first.kind === 'group' ? 'group' : 'person'; tab = 'overview'; }
         return;
@@ -768,7 +768,7 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
       replyDraft = null; tab = 'results';
     });
     if (workToken !== expectedWorkToken) return;
-    message(state.notice || (target === 'memory' ? '聊天记忆学习完成，请在下方「聊天记忆」中确认后应用' : target === 'style' ? '聊天风格已更新' : '风格学习完成'), /失败/.test(state.notice || ''));
+    message(state.notice || (target === 'memory' ? '聊天记忆已写入，可在下方「聊天记忆」中核对' : target === 'style' ? '聊天风格已更新' : '风格学习完成'), /失败/.test(state.notice || ''));
   }
   function show() {
     panel.hidden = false; rail.querySelector('#ai-open').setAttribute('aria-expanded', 'true'); if (state) render(); $('#ai-close').focus();

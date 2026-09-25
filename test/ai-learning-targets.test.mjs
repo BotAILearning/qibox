@@ -32,9 +32,8 @@ async function fixture(t, { long = false, count = 3 } = {}) {
 
 test('learning only style composes five layers and leaves the stored memory untouched', async t => {
   const f = await fixture(t);
-  f.respond(() => ({ memory: { entries: [{ text: '手工维护的旧记忆' }] } }));
+  f.respond(() => ({ memory: { entries: [{ field: 'other', text: '手工维护的旧记忆' }] } }));
   await f.a.learn({ contacts: [f.contacts[0]], target: 'memory' });
-  await f.a.applyPendingMemory(f.profile().id);
   const seeded = f.profile(), memoryBefore = readMemory(f.a.vault, seeded).summary, learnedAtBefore = seeded.memoryLearnedAt;
   f.respond(() => ({ style: { ...layers }, ignoredRaw: 'CHAT_PRIVATE_MARKER' }));
   await f.a.learn({ contacts: [f.contacts[0]], target: 'style' });
@@ -84,9 +83,9 @@ test('default style with other perspective reuses one-person learning input and 
   assert.doesNotMatch(call.system, /只学习 direction=self/);
 });
 
-test('memory-only learning sends the full in-limit range once and parks its result', async t => {
+test('memory-only learning sends the full in-limit range once and writes its result', async t => {
   const f = await fixture(t, { long: true });
-  f.respond(input => ({ memory: { entries: [{ text: '整理出的记忆' }] } }));
+  f.respond(input => ({ memory: { entries: [{ field: 'other', text: '整理出的记忆' }] } }));
   await f.a.learn({ contacts: [f.contacts[0]], target: 'memory' });
   const profile = f.profile(), call = f.provider.calls[0];
   assert.equal(f.provider.calls.length, 1, 'one request per contact');
@@ -95,9 +94,22 @@ test('memory-only learning sends the full in-limit range once and parks its resu
   assert.equal(call.input.coverage.truncated, false);
   assert.deepEqual(call.input.material.map(row => row.text), Array.from({ length: 600 }, (_, i) => `第 ${i} 条聊天内容，用于分批学习的长期记忆素材`));
   assert.match(call.system, /人物卡/);
-  assert.equal(readMemory(f.a.vault, profile).summary, '', 'stored memory is untouched until confirmed');
-  assert.ok(profile.pendingMemory, 'the result waits for confirmation');
-  assert.match(f.a.notice, /聊天记忆学习完成/);
+  assert.equal(readMemory(f.a.vault, profile).summary, '整理出的记忆');
+  assert.equal(profile.pendingMemory, undefined);
+  assert.match(f.a.notice, /聊天记忆已填入对应字段/);
+});
+
+test('missing memory fields need no retry in memory-only or combined learning', async t => {
+  const f = await fixture(t);
+  f.respond(() => ({}));
+  await f.a.learn({ contacts: [f.contacts[0]], target: 'memory' });
+  assert.equal(readMemory(f.a.vault, f.profile()).entries.length, 0);
+  assert.equal(f.provider.calls.length, 1);
+  f.respond(() => ({ style: { ...layers } }));
+  await f.a.learn({ contacts: [f.contacts[0]], target: 'both' });
+  assert.equal(f.provider.calls.length, 2);
+  assert.equal(readMemory(f.a.vault, f.profile()).entries.length, 0);
+  assert.equal(f.profile().styleId, 'learned');
 });
 
 test('memory learning uses the full range to retain several durable facts and ignore boilerplate', async t => {
@@ -119,20 +131,21 @@ test('memory learning uses the full range to retain several durable facts and ig
     const system = f.provider.calls.at(-1).system;
     assert.match(system, /先通读本次实际提供的全部聊天材料/);
     assert.match(system, /排除好友验证\/通过好友验证/);
-    assert.match(system, /有多条证据时逐项提取/);
+    assert.match(system, /多条互不重复的事实分别写成条目/);
     return { memory: { entries: [
-      { text: '对方对花生过敏，点餐需避开花生和花生油' },
-      { text: '去年冬天双方在杭州看过《宇宙探索》展览' },
-      { text: '对方生日是 11 月 12 日' },
+      { field: 'other', text: '对方对花生过敏，点餐需避开花生和花生油' },
+      { field: 'other', text: '去年冬天双方在杭州看过《宇宙探索》展览' },
+      { field: 'birthday', text: '11 月 12 日' },
     ] } };
   });
   await f.a.learn({ contacts: [f.contacts[0]], target: 'memory', scope: 'range' });
-  const pending = f.a.pendingMemoryOf(f.profile());
-  assert.deepEqual(pending.entries.map(entry => entry.text), [
+  const stored = readMemory(f.a.vault, f.profile());
+  assert.deepEqual(stored.entries.map(entry => entry.text), [
     '对方对花生过敏，点餐需避开花生和花生油',
     '去年冬天双方在杭州看过《宇宙探索》展览',
-    '对方生日是 11 月 12 日',
+    '11 月 12 日',
   ]);
+  assert.deepEqual(stored.entries.map(entry => entry.field), ['other', 'other', 'birthday']);
   assert.equal(f.provider.calls.length, 1);
 });
 
@@ -151,7 +164,7 @@ test('desktop activity and input do not cancel an in-progress read-only learning
     ] };
   };
   f.bridge.waitForIdle = async () => { idleCalls++; };
-  f.respond(() => ({ memory: { entries: [{ text: '双方计划周末看展' }] } }));
+  f.respond(() => ({ memory: { entries: [{ field: 'other', text: '双方计划周末看展' }] } }));
   const learning = f.a.learn({ contacts: [f.contacts[0]], target: 'memory' });
   await started;
   f.a.ticking = true; // A stale scheduler tick must not let UI activity abort learning.
@@ -163,7 +176,7 @@ test('desktop activity and input do not cancel an in-progress read-only learning
   release();
   await learning;
   assert.equal(observedSignal.aborted, false);
-  assert.equal(f.a.pendingMemoryOf(f.profile()).summary, '双方计划周末看展');
+  assert.equal(readMemory(f.a.vault, f.profile()).summary, '双方计划周末看展');
 });
 
 test('learning surfaces a concrete logged-out error instead of rewriting it as cancellation', async t => {
@@ -193,11 +206,10 @@ test('explicit cancellation during learning still returns the cancellation resul
 
 test('a short chat takes one request and reads every readable message', async t => {
   const f = await fixture(t);
-  f.respond(() => ({ memory: { entries: [{ text: '约定明年一起去成都看展' }] } }));
+  f.respond(() => ({ memory: { entries: [{ field: 'other', text: '约定明年一起去成都看展' }] } }));
   await f.a.learn({ contacts: [f.contacts[0]], target: 'memory' });
   assert.equal(f.provider.calls.length, 1);
   assert.equal(f.provider.calls[0].input.material.length, 2);
-  await f.a.applyPendingMemory(f.profile().id);
   assert.equal(readMemory(f.a.vault, f.profile()).summary, '约定明年一起去成都看展');
   assert.equal(f.profile().pendingMemory, undefined);
 });
@@ -214,7 +226,7 @@ test('combined learning sends one continuous bounded material per contact withou
     assert.deepEqual(input.material.map(row => row.text), source.map(row => row.text));
     assert.equal(input.memoryCoverage.includedMessages, source.length);
     assert.equal(Object.hasOwn(input, 'memoryMaterial'), false, 'the same source must not be sent twice');
-    return { style: { ...layers }, memory: { entries: [{ text: '完整范围事实' }] } };
+    return { style: { ...layers }, memory: { entries: [{ field: 'other', text: '完整范围事实' }] } };
   });
   await f.a.learn({ contacts: [f.contacts[0]], scope: 'range' });
   assert.equal(f.provider.calls.length, 1, 'style and memory share one request per contact');
@@ -235,7 +247,7 @@ test('combined batch bounds each contact to 150000 codepoints and sends one mate
     assert.equal(input.memoryCoverage.includedChars, 150000);
     assert.equal(input.memoryCoverage.truncated, true);
     assert.equal(Object.hasOwn(input, 'memoryMaterial'), false);
-    return { style: { ...layers }, memory: { entries: [{ text: `事实 ${input.contact}` }] } };
+    return { style: { ...layers }, memory: { entries: [{ field: 'other', text: `事实 ${input.contact}` }] } };
   });
   await f.a.learn({ contacts: f.contacts, scope: 'range' });
   assert.equal(f.provider.calls.length, 2, 'each contact is read and learned separately');
@@ -248,7 +260,7 @@ test('memory learning trims the oldest text to 150000 codepoints and marks cover
   f.bridge.readRange = async args => ({ account: args.account, contact: args.contact, messages: [
     { id: 'oversized-memory-row', direction: 'self', text: '😀'.repeat(150001), timestamp: 1789000000 },
   ], rangeRevision: 'oversized-memory-range' });
-  f.respond(input => ({ memory: { entries: [{ text: '可读的保留内容' }] } }));
+  f.respond(input => ({ memory: { entries: [{ field: 'other', text: '可读的保留内容' }] } }));
   await f.a.learn({ contacts: [f.contacts[0]], target: 'memory', scope: 'range' });
   const call = f.provider.calls[0];
   assert.equal(f.provider.calls.length, 1);
@@ -259,29 +271,29 @@ test('memory learning trims the oldest text to 150000 codepoints and marks cover
   assert.match(f.a.notice, /150000 个 Unicode 字符/);
 });
 
-test('applying replaces the memory, discarding leaves it alone and merging asks the model once more', async t => {
+test('learning appends to edited memory while legacy pending replace and merge remain available', async t => {
   const f = await fixture(t);
-  f.respond(() => ({ memory: { entries: [{ text: '旧记忆：她是素食主义者' }] } }));
+  f.respond(() => ({ memory: { entries: [{ field: 'other', text: '旧记忆：她是素食主义者' }] } }));
   await f.a.learn({ contacts: [f.contacts[0]], target: 'memory' });
-  await f.a.applyPendingMemory(f.profile().id);
   Object.assign(f.profile(), editMemory(f.a.vault, f.profile(), { summary: '手工修正：她是素食主义者' }, 1));
-  f.respond(() => ({ memory: { entries: [{ text: '2025-06 一起去过成都' }] } }));
+  f.respond(() => ({ memory: { entries: [{ field: 'other', text: '2025-06 一起去过成都' }] } }));
   await f.a.learn({ contacts: [f.contacts[0]], target: 'memory' });
-  // 学习本身不动已有记忆：只有用户确认后才写。
-  assert.equal(readMemory(f.a.vault, f.profile()).summary, '手工修正：她是素食主义者');
-  await f.a.discardPendingMemory(f.profile().id);
-  assert.equal(readMemory(f.a.vault, f.profile()).summary, '手工修正：她是素食主义者');
+  assert.equal(readMemory(f.a.vault, f.profile()).summary, '手工修正：她是素食主义者\n2025-06 一起去过成都');
   assert.equal(f.profile().pendingMemory, undefined);
-  // 合并是另一次模型调用，结果仍然只是待确认。
-  await f.a.learn({ contacts: [f.contacts[0]], target: 'memory' });
-  f.respond(() => ({ memory: { entries: [{ text: '合并后的记忆' }] } }));
+  f.a.setPendingMemory(f.profile(), { entries: [{ field: 'other', text: '待确认的旧候选' }] });
+  await f.a.discardPendingMemory(f.profile().id);
+  assert.equal(readMemory(f.a.vault, f.profile()).summary, '手工修正：她是素食主义者\n2025-06 一起去过成都');
+  assert.equal(f.profile().pendingMemory, undefined);
+  // 旧候选的合并仍需再确认，兼容升级前留下的待确认数据。
+  f.a.setPendingMemory(f.profile(), { entries: [{ field: 'other', text: '待合并的旧候选' }] });
+  f.respond(() => ({ memory: { entries: [{ field: 'other', text: '合并后的记忆' }] } }));
   await f.a.mergePendingMemory(f.profile().id);
   for (let i = 0; i < 50 && f.profile().memoryMerge?.status === 'running'; i++) await new Promise(resolve => setTimeout(resolve, 5));
   assert.equal(f.profile().memoryMerge?.status, 'done');
   const merged = f.provider.calls.at(-1);
-  assert.equal(merged.input.current.entries.length, 1);
-  assert.equal(merged.input.incoming.entries[0].text, '2025-06 一起去过成都');
-  assert.equal(readMemory(f.a.vault, f.profile()).summary, '手工修正：她是素食主义者', 'a merge is not applied on its own');
+  assert.equal(merged.input.current.entries.length, 2);
+  assert.equal(merged.input.incoming.entries[0].text, '待合并的旧候选');
+  assert.equal(readMemory(f.a.vault, f.profile()).summary, '手工修正：她是素食主义者\n2025-06 一起去过成都', 'a legacy merge is not applied on its own');
   assert.equal(f.profile().pendingMemorySource, 'merge');
   await f.a.applyPendingMemory(f.profile().id);
   assert.equal(readMemory(f.a.vault, f.profile()).summary, '合并后的记忆');
@@ -289,7 +301,7 @@ test('applying replaces the memory, discarding leaves it alone and merging asks 
 
 test('memory learning guards the contact limit, the default-style mix and a bridge without full reads', async t => {
   const f = await fixture(t, { count: 6 });
-  f.respond(input => ({ memory: { entries: [{ text: `记忆 ${input.contact}` }] } }));
+  f.respond(input => ({ memory: { entries: [{ field: 'other', text: `记忆 ${input.contact}` }] } }));
   await f.a.learn({ contacts: f.contacts, target: 'memory' });
   assert.equal(f.provider.calls.length, 6, 'there is no selected-contact ceiling');
   f.provider.calls.length = 0;

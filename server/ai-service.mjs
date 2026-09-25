@@ -35,7 +35,14 @@ function validatedLearnedStyleFields(value) {
 }
 const validatedLearnedStyle = value => composeLearnedStyle(validatedLearnedStyleFields(value));
 function validatedLearnedMemory(value) {
+  // No entry for a field means the supplied chat did not establish that fact.
+  // A model may omit memory entirely when nothing is supported; do not retry.
+  if (value == null) return undefined;
   try {
+    const fields = new Set(['name','phone','birthday','date','school','household','residence','workplace','employer','shipping','other']);
+    if (!Array.isArray(value?.entries) || value.entries.some(entry => !entry || typeof entry !== 'object' || !fields.has(entry.field))) {
+      throw new Error('memory entries must use a Wiki field');
+    }
     const memory = memoryValue(value);
     if (memory) return memory;
   } catch { /* malformed or oversized model structure is a retryable schema failure */ }
@@ -1099,8 +1106,10 @@ export class AIAssistant {
           signal.throwIfAborted();
           if (revision !== this.revision) throw new AppError('学习已取消');
           if (!material.length) throw new AppError('当前对象没有可学习的文字，请粘贴聊天');
-          if (perspective === 'other') { if (!material.some(message => message.direction === 'other' && message.text.trim())) throw new AppError('当前没有对方的发言，请粘贴包含对方发言的聊天'); }
-          else if (!material.some(message => message.direction === 'self' && message.text.trim())) throw new AppError('当前没有你的发言，请粘贴包含你发言的聊天');
+          if (target !== 'memory') {
+            if (perspective === 'other') { if (!material.some(message => message.direction === 'other' && message.text.trim())) throw new AppError('当前没有对方的发言，请粘贴包含对方发言的聊天'); }
+            else if (!material.some(message => message.direction === 'self' && message.text.trim())) throw new AppError('当前没有你的发言，请粘贴包含你发言的聊天');
+          }
           if (target !== 'style' && Array.isArray(material)) {
             const bounded = tailMemoryMaterial(material);
             memoryMaterial = bounded.messages; memoryCoverage = { ...bounded.coverage, sourceTruncated: materialTruncated };
@@ -1179,8 +1188,8 @@ export class AIAssistant {
         this.notice = `默认风格已更新，将应用于没有单独风格的联系人${learnTruncated ? '；部分联系人的聊天内容过长，已按上限截取' : ''}${learningFailures.length ? `；${learningFailures.map(failure => `${failure.label}：${failure.error}`).join('；')}` : ''}`; return this.publicState();
       }
       if (target === 'memory') {
-        // 仅学习记忆：每位对象的聊天整理成一份候选记忆，先放进待确认，不直接覆盖已有记忆。
-        // 用户在结果页选择「替换」直接应用，或「合并」把两份交给模型合成后再确认一次。
+        // 仅学习记忆：将有依据的字段直接增量写入该联系人的聊天记忆。
+        // 保留未涉及的旧值、用户手动维护的值和已删除事实的抑制记录。
         this.operation = { phase: 'reading', total: items.length, completed: 0 };
         let emptyMemoryResults = 0;
         let truncatedResults = 0;
@@ -1203,12 +1212,16 @@ export class AIAssistant {
               return { ...result, memory };
             } });
             if (revision !== this.revision) throw new AppError('学习已取消');
-            const parsedMemory = memoryValue(parsed?.memory);
+            const parsedMemory = parsed?.memory == null ? { summary: '', entries: [] } : memoryValue(parsed.memory);
             if (!parsedMemory) throw new AppError('模型未返回有效聊天记忆，未保存空结果');
             const entries = parsedMemory.entries;
             if (!entries.length) emptyMemoryResults++;
             if (memoryCoverage?.truncated || memoryCoverage?.sourceTruncated) truncatedResults++;
-            this.setPendingMemory(profile, { summary: entries.map(entry => entry.text).join('\n'), entries }, { source: source || 'learned', coverage: memoryCoverage });
+            const stored = this.data.profiles[profile.id] || { ...profile, source: source || 'learned', paused: false, rounds: 0 };
+            const memory = learnedMemory(this.vault, stored, parsedMemory, this.now());
+            this.data.profiles[profile.id] = { ...stored, ...memory,
+              ...(memoryCoverage ? { memoryCoverage, memoryCoverageAt: this.now() } : {}) };
+            this.clearPendingMemory(stored);
             await this.save();
             memorySuccesses++;
           } catch (error) {
@@ -1218,7 +1231,7 @@ export class AIAssistant {
         }
         if (learningFailures.length) { for (const failure of learningFailures) this.event('error', failure.profileId, null, `${failure.label}：${failure.error}`); await this.save(); }
         if (!memorySuccesses) throw new AppError(learningFailures.map(failure => `${failure.label}：${failure.error}`).join('；') || '没有联系人成功完成记忆学习', learningFailures.length === 1 ? learningFailures[0].status || 400 : 400, learningFailures.length === 1 ? learningFailures[0].code : undefined);
-        this.notice = `${emptyMemoryResults ? `${emptyMemoryResults} 位联系人没有发现可保存的新记忆；` : ''}聊天记忆学习完成，请确认后应用（每人最多 ${memoryMaterialChars} 个 Unicode 字符）${truncatedResults ? `；${truncatedResults} 位联系人范围已截断，实际条数与字数见联系人范围标记` : ''}${learningFailures.length ? `；失败 ${learningFailures.map(failure => `${failure.label}：${failure.error}`).join('；')}` : ''}`;
+        this.notice = `${emptyMemoryResults ? `${emptyMemoryResults} 位联系人没有发现可保存的新记忆；` : ''}聊天记忆已填入对应字段（每人最多 ${memoryMaterialChars} 个 Unicode 字符），可直接修改或删除${truncatedResults ? `；${truncatedResults} 位联系人范围已截断，实际条数与字数见联系人范围标记` : ''}${learningFailures.length ? `；失败 ${learningFailures.map(failure => `${failure.label}：${failure.error}`).join('；')}` : ''}`;
         return this.publicState();
       }
       this.operation = { phase: 'reading', total: items.length, completed: 0 };
@@ -1267,7 +1280,7 @@ export class AIAssistant {
       if (!profiles.length) throw new AppError(learningFailures.map(failure => `${failure.label}：${failure.error}`).join('；') || '没有联系人成功完成学习', learningFailures.length === 1 ? learningFailures[0].status || 400 : 400, learningFailures.length === 1 ? learningFailures[0].code : undefined);
       const suffix = learnTruncated ? '；部分对象的聊天记录过长，已自动截断' : '';
       this.notice = (target === 'style' ? `聊天风格已更新${suffix}，聊天记忆未改动` : memoryMissing
-        ? `风格已更新，但 ${memoryMissing} 位联系人未返回记忆；已有记忆已保留，请检查结果后重试${suffix}`
+        ? `风格已更新；${memoryMissing} 位联系人本次没有可确认的新记忆，已有记忆已保留${suffix}`
         : memoryCoverageTruncated ? `风格与记忆已更新；${memoryCoverageTruncated} 位联系人范围已截断，实际条数和字数见联系人记忆详情`
         : `风格与记忆学习完成${learnTruncated ? suffix : '，请查看结果'}`) + (learningFailures.length ? `；失败 ${learningFailures.map(failure => `${failure.label}：${failure.error}`).join('；')}` : ''); return this.publicState();
     } catch (error) {
