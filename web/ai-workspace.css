@@ -1056,3 +1056,40 @@
 #ai-panel .ai-page-body:has(>.ai-analysis-setup) .ai-analysis-history{grid-column:2;grid-row:3}
 #ai-panel #ai-analysis-form.ai-analysis-setup{display:contents}
 @media(max-width:850px){#ai-panel .ai-page-body:has(>.ai-analysis-setup){grid-template-columns:1fr}#ai-panel .ai-page-body:has(>.ai-analysis-setup) .ai-analysis-selection,#ai-panel .ai-page-body:has(>.ai-analysis-setup) .ai-analysis-request,#ai-panel .ai-page-body:has(>.ai-analysis-setup) .ai-analysis-reports,#ai-panel .ai-page-body:has(>.ai-analysis-setup) .ai-analysis-history{grid-column:1;grid-row:auto;position:static}}
+
+/* Responsive workspace: full-width phone content and a touch navigation strip. */
+#ai-panel .ai-analysis-contacts{height:clamp(380px,62vh,760px);max-height:none;align-content:start;overflow:auto;overscroll-behavior:contain}
+#ai-panel .ai-analysis-request .ai-analysis-section-title{flex-wrap:wrap}
+@media(max-width:860px){
+ #ai-panel{--ai-sidebar:0px}
+ #ai-panel .ai-main-tabs{position:static;inset:auto;width:100%;flex-direction:row;flex-shrink:0;overflow-x:auto;gap:4px;padding:6px 10px;white-space:nowrap;order:0}
+ #ai-panel .ai-main-tabs button{width:auto;min-width:64px;min-height:48px;flex-direction:column;gap:2px;padding:6px 10px;font-size:12px}
+ #ai-panel .ai-main-tabs button>span{display:block}
+ #ai-panel .ai-nav-brand,#ai-panel .ai-nav-caption{display:none}
+ #ai-panel .ai-nav-master{margin:0 0 0 auto;min-width:80px;padding:6px;border:0;flex-shrink:0}
+ #ai-panel .ai-panel-heading{margin:0;padding:0 12px;min-height:50px;height:50px}
+ #ai-panel #ai-content{margin:0;min-height:0;flex:1;width:100%}
+ #ai-panel .ai-page-body{padding:14px 12px 24px;min-width:0;width:100%}
+ #ai-panel .ai-page-body:has(>.ai-analysis-setup){grid-template-columns:minmax(0,1fr);gap:14px}
+ #ai-panel .ai-page-body:has(>.ai-analysis-setup) .ai-analysis-selection,#ai-panel .ai-page-body:has(>.ai-analysis-setup) .ai-analysis-request,#ai-panel .ai-page-body:has(>.ai-analysis-setup) .ai-analysis-reports,#ai-panel .ai-page-body:has(>.ai-analysis-setup) .ai-analysis-history{grid-column:1;grid-row:auto;position:static;min-width:0;margin:0}
+ #ai-panel .ai-analysis-contacts{display:grid;grid-template-columns:1fr;height:auto;max-height:clamp(240px,42dvh,420px)}
+ #ai-panel .ai-analysis-contacts label{min-height:48px;font-size:14px;overflow-wrap:anywhere}
+ #ai-panel .ai-analysis-selection,#ai-panel .ai-analysis-request,#ai-panel .ai-card,#ai-panel .ai-page-body>form,#ai-panel .ai-task-card{padding:16px;border-radius:12px}
+ #ai-panel .ai-analysis-section-title h4{font-size:16px}
+ #ai-panel .ai-analysis-section-title p,#ai-panel .ai-analysis-request .ai-provider-footer p{font-size:12px}
+ #ai-panel .ai-analysis-request .ai-analysis-section-title{display:flex;flex-direction:column;align-items:stretch;gap:16px}
+ #ai-panel .ai-analysis-time-entry{gap:8px;width:100%;min-width:0}
+ #ai-panel .ai-analysis-time-entry>span{width:100%;font-size:13px}
+ #ai-panel .ai-reference-analysis-ranges{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));width:100%;gap:2px}
+ #ai-panel .ai-reference-analysis-ranges button{padding:8px 2px;font-size:12px;min-width:0;min-height:44px}
+ #ai-panel .ai-analysis-presets{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+ #ai-panel .ai-analysis-presets button{min-height:44px;font-size:13px;padding:8px;white-space:normal}
+ #ai-panel .ai-analysis-request textarea[name=request]{min-height:144px;font-size:16px}
+ #ai-panel .ai-analysis-request .ai-provider-footer{display:flex;flex-direction:column;align-items:stretch;gap:10px}
+ #ai-panel .ai-analysis-request .ai-provider-footer .primary{width:100%;min-height:48px;font-size:16px}
+ #ai-panel .ai-card-heading,#ai-panel .ai-page-heading{flex-wrap:wrap}
+ #ai-panel :is(.ai-card,.ai-task-card,.ai-field,.ai-model-summary,.ai-setting-section){min-width:0;overflow-wrap:anywhere}
+ #ai-panel :is(input:not([type=checkbox]):not([type=radio]),select,textarea){max-width:100%;font-size:16px}
+ #ai-panel button:not(.ai-key-eye){min-height:44px}
+}
+@media(max-width:380px){#ai-panel .ai-page-body{padding:10px 8px 20px}#ai-panel .ai-analysis-selection,#ai-panel .ai-analysis-request{padding:12px}}

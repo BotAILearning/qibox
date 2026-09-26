@@ -860,6 +860,8 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
       if (input.closest('#ai-analysis-form') && input.name === 'contacts') {
         const checked = [...panel.querySelectorAll('#ai-analysis-form [name=contacts]:checked')];
         $('#ai-analysis-count').textContent = String(checked.length);
+        $('#ai-analysis-form button[type=submit]').textContent = `开始分析 · ${checked.length} 位`;
+        rememberDraft();
       }
       if (input.dataset.objectOption) {
         // 开关修改只作为草稿，点击【保存设置】后统一生效。

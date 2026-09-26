@@ -57,6 +57,7 @@ try {
   await page.locator('#ai-analysis-contacts [name=contacts]').nth(2).check();   // 周末
   assert.equal(await page.locator('#ai-analysis-count').textContent(), '2');
 
+  assert.equal(await page.locator('#ai-analysis-form button[type=submit]').textContent(), '开始分析 · 2 位');
   // 3) Search "林" -> only 林一 visible; filtered-out labels stay hidden but checked.
   await search.fill('林');
   assert.equal(await page.locator('#ai-analysis-contacts label[hidden]').count(), 2, 'two contacts hidden by search');
@@ -98,5 +99,29 @@ try {
   await search.fill('周'); assert.equal(await page.locator('#ai-analysis-contacts label:not([hidden])').textContent(), '周末');
   await shot('search-mobile');
   report.checks.push('390px 移动端无横向溢出，搜索仍可用');
+  await search.fill('');
+  for (const width of [320,360,375,390,414,480,768,850,860,1024,1440]) {
+    await page.setViewportSize({width,height:900});
+    assert.ok(await page.locator('#ai-content').evaluate(el=>el.scrollWidth<=el.clientWidth+1), width+' content overflow');
+    const request=await page.locator('.ai-analysis-request').boundingBox();
+    assert.ok(request.x>=0 && request.x+request.width<=width+1,width+' request fits screen');
+    await page.locator('#ai-analysis-contacts [name=contacts]').nth(1).check();
+    const count=await page.locator('#ai-analysis-contacts [name=contacts]:checked').count();
+    assert.equal(await page.locator('#ai-analysis-form button[type=submit]').textContent(), '开始分析 · '+count+' 位');
+    await page.locator('#ai-analysis-contacts [name=contacts]').nth(1).uncheck();
+    await shot('responsive-'+width);
+  }
+  report.checks.push('320–1440px content bounds and selection/button synchronization passed');
+  for (const width of [320,390,768]) {
+    await page.setViewportSize({width,height:844});
+    for (const nav of ['overview','proactive','activity','settings']) {
+      const button=page.locator('.ai-main-tabs [data-ai-nav='+nav+']');
+      if(!await button.count()) continue;
+      await button.click();await settled();
+      assert.ok(await page.locator('#ai-content').evaluate(el=>el.scrollWidth<=el.clientWidth+1),width+' '+nav+' overflow');
+      await shot('workspace-'+width+'-'+nav);
+    }
+  }
+  report.checks.push('All available main navigation pages fit 320,390,768px');
 } catch (error) { report.failure = error.stack; throw error; }
 finally { await writeFile(path.join(output, 'report.json'), JSON.stringify(report, null, 2)); await browser?.close(); await app.close(); await peer.close(); await cleanup(dataRoot); }
