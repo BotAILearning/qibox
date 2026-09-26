@@ -250,6 +250,23 @@ try {
     await page.locator('.ai-main-tabs [data-ai-nav=overview]').click();
     await page.locator('[data-ai-object]').first().click();
   }
+  for (const width of [320,390,768,1440]) {
+    await page.setViewportSize({width,height:844});
+    await page.locator('[data-ai-object-section=memory]').click();
+    await page.locator('.ai-reference-memory-content').evaluate(el=>{
+      const spacer=document.createElement('div');spacer.className='sticky-test-content';spacer.style.height='1800px';spacer.textContent='长记忆内容';el.append(spacer);
+    });
+    for(const ratio of [0,.5,1]) {
+      await page.locator('#ai-content,.ai-object-detail').evaluateAll((nodes,ratio)=>nodes.forEach(el=>el.scrollTop=(el.scrollHeight-el.clientHeight)*ratio),ratio);
+      await page.waitForTimeout(50);
+      const b=await page.locator('.ai-object-save').boundingBox();
+      const c=await page.locator('#ai-content').boundingBox();
+      assert.ok(b.y>=c.y && b.y+b.height<=c.y+c.height+1,width+' actions must remain visible at '+ratio+': '+JSON.stringify({b,c}));
+    }
+    await page.screenshot({path:path.join(output,'sticky-actions-'+width+'.png')});
+    await page.locator('.sticky-test-content').evaluate(el=>el.remove());
+  }
+  report.checks.push('Object save and learning actions visible at start, middle and end of long content on phone and desktop');
   assert.deepEqual(report.errors, []); report.passed = true;
 } catch (error) { report.failure = error.stack; throw error; }
 finally { await writeFile(path.join(output, 'report.json'), JSON.stringify(report, null, 2)); await browser?.close(); await app.close(); await peer.close(); await chooser.close(); await cleanup(dataRoot); }
