@@ -100,6 +100,28 @@ test('memory-only learning sends the full in-limit range once and parks its resu
   assert.match(f.a.notice, /聊天记忆学习完成/);
 });
 
+test('empty memory extraction gets one focused recheck against the same read material', async t => {
+  const f = await fixture(t); let reads = 0, calls = 0;
+  const readRange = f.bridge.readRange.bind(f.bridge);
+  f.bridge.readRange = async args => { reads++; return readRange(args); };
+  f.respond(() => ++calls === 1 ? { memory: { entries: [] } } : { memory: { entries: [{ field: 'other', text: '有聊天证据的长期事实' }] } });
+  await f.a.learn({ contacts: [f.contacts[0]], target: 'memory' });
+  assert.equal(reads, 1, 'the recheck reuses the original range read');
+  assert.equal(calls, 2, 'only an empty first result triggers one supplemental model call');
+  assert.match(f.provider.calls[1].system, /补充核查/);
+  assert.equal(f.a.pendingMemoryOf(f.profile()).entries.length, 1);
+});
+
+test('repeated empty extraction remains empty and does not touch saved memory', async t => {
+  const f = await fixture(t); let calls = 0;
+  f.respond(() => { calls++; return { memory: { entries: [] } }; });
+  await f.a.learn({ contacts: [f.contacts[0]], target: 'memory' });
+  assert.equal(calls, 2);
+  assert.deepEqual(f.a.pendingMemoryOf(f.profile()).entries, []);
+  assert.deepEqual(readMemory(f.a.vault, f.profile()).entries, []);
+  assert.match(f.a.notice, /没有发现可保存的新记忆/);
+});
+
 test('memory learning uses the full range to retain several durable facts and ignore boilerplate', async t => {
   const f = await fixture(t);
   const material = [

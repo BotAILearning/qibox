@@ -1215,17 +1215,28 @@ export class AIAssistant {
           try {
             this.operation.phase = 'memory';
             const memoryInput = Array.isArray(memoryMaterial) ? memoryMaterial : [{ direction: perspective === 'other' ? 'other' : 'self', text: material, timestamp: null }];
-            const parsed = await this.provider.complete(this.modelFor('learning'), memoryLearningPrompt, {
+            const memoryInputData = {
               styleOwner: perspective, styleOwnerText: styleOwnerText(perspective), kind: profile.kind,
               contact: profile.contact, label: profile.label, timezone: 'Asia/Shanghai',
               coverage: memoryCoverage, material: memoryInput,
-            }, signal, { budget: 16384, validate: result => {
+            };
+            const validateMemoryResult = result => {
               const memory = validatedLearnedMemory(result?.memory);
               return { ...result, memory };
-            } });
+            };
+            let parsed = await this.provider.complete(this.modelFor('learning'), memoryLearningPrompt, memoryInputData,
+              signal, { budget: 16384, validate: validateMemoryResult });
             if (revision !== this.revision) throw new AppError('学习已取消');
-            const parsedMemory = memoryValue(parsed?.memory);
+            let parsedMemory = memoryValue(parsed?.memory);
             if (!parsedMemory) throw new AppError('模型未返回有效聊天记忆，未保存空结果');
+            if (!parsedMemory.entries.length && memoryInput.some(message => message.text.trim())) {
+              const recheckPrompt = `${memoryLearningPrompt}\n这是对同一份材料的补充核查。上一轮没有返回任何条目，请重新检查材料前段和后段，留意明确的个人资料、稳定偏好、关系、重要经历、已确认约定与待办；有依据的事实分别列出，不要因为聊天很多或范围截断就整体留空。不得编造，也不要凑数；确实没有符合条件的事实时才返回空 entries。`;
+              parsed = await this.provider.complete(this.modelFor('learning'), recheckPrompt, memoryInputData,
+                signal, { budget: 16384, validate: validateMemoryResult });
+              if (revision !== this.revision) throw new AppError('学习已取消');
+              parsedMemory = memoryValue(parsed?.memory);
+              if (!parsedMemory) throw new AppError('模型未返回有效聊天记忆，未保存空结果');
+            }
             const entries = parsedMemory.entries;
             if (!entries.length) emptyMemoryResults++;
             if (memoryCoverage?.truncated || memoryCoverage?.sourceTruncated) truncatedResults++;
