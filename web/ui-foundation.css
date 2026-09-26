@@ -1123,3 +1123,8 @@ dialog {
  #ai-panel .ai-reference-learning-config>section,#ai-panel .ai-reference-learning-config>footer{padding:14px 0}
  #ai-panel .ai-object-reference .ai-object-save{box-shadow:none;border:0;border-top:1px solid var(--ai-border);border-radius:0;padding:14px 0;position:static}
 }
+@media(max-width:860px){
+ #ai-panel .ai-object-reference .ai-reference-memory{min-width:0;max-width:100%;overflow:hidden}
+ #ai-panel .ai-reference-memory-categories{width:100%;max-width:100%;min-width:0;overscroll-behavior-x:contain}
+ #ai-panel .ai-reference-memory-content,#ai-panel .ai-wiki-field-values,#ai-panel .ai-wiki-bubble{min-width:0;max-width:100%}
+}
