@@ -1104,3 +1104,22 @@ dialog {
  #ai-panel .ai-object-save{position:static;padding:14px 0;margin:0;background:#fff}
  #ai-panel .ai-object-save>.primary{min-height:48px;flex:1}
 }
+@media(max-width:860px){
+ #ai-panel .ai-object-reference .ai-reference-profile,#ai-panel .ai-object-reference .ai-reference-panel{border:0;border-radius:0;box-shadow:none;overflow:visible;background:#fff}
+ #ai-panel .ai-object-reference .ai-reference-profile{border-bottom:1px solid var(--ai-border);padding-bottom:10px}
+ #ai-panel .ai-object-reference .ai-object-detail{overflow:visible;max-height:none;flex:none;min-height:0}
+ #ai-panel .ai-object-workspace.ai-object-reference{height:auto;min-height:0;max-height:none;padding:16px;overflow:visible}
+ #ai-panel .ai-object-reference #ai-object-form{gap:12px}
+ #ai-panel .ai-object-reference .ai-reference-memory{display:block}
+ #ai-panel .ai-reference-memory-categories{display:flex;gap:6px;overflow-x:auto;padding:8px 0;background:#fff}
+ #ai-panel .ai-reference-memory-categories button{flex:0 0 auto;width:auto;min-width:64px;padding:9px 12px;font-size:14px;white-space:nowrap}
+ #ai-panel .ai-reference-memory-categories button span{width:auto;text-align:left;text-align-last:auto}
+ #ai-panel .ai-reference-memory-content{padding:14px 0;min-width:0}
+ #ai-panel .ai-reference-memory-head{padding:12px 0}
+ #ai-panel .ai-reference-reply-settings>.ai-reference-section{border:0;box-shadow:none;padding:12px 0}
+ #ai-panel .ai-reference-learning-top{display:none}
+ #ai-panel .ai-reference-learning-list header,#ai-panel .ai-reference-learning-tools{padding:12px 0}
+ #ai-panel .ai-reference-learning-choices{padding:0;max-height:45dvh}
+ #ai-panel .ai-reference-learning-config>section,#ai-panel .ai-reference-learning-config>footer{padding:14px 0}
+ #ai-panel .ai-object-reference .ai-object-save{box-shadow:none;border:0;border-top:1px solid var(--ai-border);border-radius:0;padding:14px 0;position:static}
+}
