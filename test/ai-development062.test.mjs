@@ -146,6 +146,13 @@ test('chat memory renders a fixed empty field template, groups addresses and kee
  assert.equal((names.match(/aria-label="信息内容"/g)||[]).length,2);
  assert.match(wikiEntryMarkup({field:'other',text:'喜欢徒步'}),/<textarea[^>]*aria-label="信息内容"/);
 });
+test('empty pending learning result explains that saved memory stays and cannot be applied',()=>{
+ const markup=memoryFields({id:'profile-1',memory:{entries:[{field:'other',text:'已有记忆'}]},pendingMemory:{entries:[],summary:''}});
+ assert.match(markup,/本次学习未提取到记忆/);
+ assert.match(markup,/已有记忆未改变/);
+ assert.doesNotMatch(markup,/data-ai-memory-apply|data-ai-memory-merge/);
+ assert.match(markup,/data-ai-memory-discard/);
+});
 test('Wiki retains recordedAt through edit and restore while manual legacy ranges remain readable',async t=>{
  const {a}=await fixture(t),profile={};
  assert.throws(()=>memoryValue({entries:[{field:'residence',text:'住址',from:2000,to:1000}]}),/结束时间不能早于开始时间/);

@@ -287,6 +287,29 @@ test('applying replaces the memory, discarding leaves it alone and merging asks 
   assert.equal(readMemory(f.a.vault, f.profile()).summary, '合并后的记忆');
 });
 
+test('empty learning results cannot replace or merge saved memory', async t => {
+  const f = await fixture(t);
+  f.respond(() => ({ memory: { entries: [{ field: 'other', text: '已有的长期记忆' }] } }));
+  await f.a.learn({ contacts: [f.contacts[0]], target: 'memory' });
+  await f.a.applyPendingMemory(f.profile().id);
+  const before = readMemory(f.a.vault, f.profile()).summary;
+  f.respond(() => ({ memory: { entries: [] } }));
+  await f.a.learn({ contacts: [f.contacts[0]], target: 'memory' });
+  assert.deepEqual(f.a.pendingMemoryOf(f.profile()).entries, []);
+  await assert.rejects(f.a.applyPendingMemory(f.profile().id), /没有提取到明确记忆/);
+  await assert.rejects(f.a.mergePendingMemory(f.profile().id), /没有提取到明确记忆/);
+  assert.equal(readMemory(f.a.vault, f.profile()).summary, before);
+});
+
+test('empty learning result without prior memory can be dismissed safely', async t => {
+  const f = await fixture(t);
+  f.respond(() => ({ memory: { entries: [] } }));
+  await f.a.learn({ contacts: [f.contacts[0]], target: 'memory' });
+  await assert.rejects(f.a.applyPendingMemory(f.profile().id), /没有提取到明确记忆/);
+  await f.a.discardPendingMemory(f.profile().id);
+  assert.deepEqual(readMemory(f.a.vault, f.profile()).entries, []);
+});
+
 test('memory learning guards the contact limit, the default-style mix and a bridge without full reads', async t => {
   const f = await fixture(t, { count: 6 });
   f.respond(input => ({ memory: { entries: [{ text: `记忆 ${input.contact}` }] } }));

@@ -1516,6 +1516,7 @@ export class AIAssistant {
     return this.exclusive(async () => {
       const profile = this.profile(id), pending = this.pendingMemoryOf(profile);
       if (!pending) throw new AppError('没有待确认的记忆，请先学习一次');
+      if (!pending.entries.length) throw new AppError('本次没有提取到明确记忆，已有记忆未改变');
       this.invalidate();
       Object.assign(profile, replaceMemory(this.vault, profile, { entries: pending.entries }, this.now()));
       this.clearPendingMemory(profile);
@@ -1541,7 +1542,9 @@ export class AIAssistant {
   async mergePendingMemory(id) {
     return this.exclusive(async () => {
       const profile = this.profile(id);
-      if (!this.pendingMemoryOf(profile)) throw new AppError('没有待确认的记忆，请先学习一次');
+      const pending = this.pendingMemoryOf(profile);
+      if (!pending) throw new AppError('没有待确认的记忆，请先学习一次');
+      if (!pending.entries.length) throw new AppError('本次没有提取到明确记忆，已有记忆未改变');
       if (profile.memoryMerge?.status === 'running') throw new AppError('正在合并记忆，请稍候');
       if (!this.modelReady()) throw new AppError('请先配置模型');
       this.invalidate();
