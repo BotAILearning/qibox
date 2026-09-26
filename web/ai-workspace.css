@@ -1093,3 +1093,44 @@
  #ai-panel button:not(.ai-key-eye){min-height:44px}
 }
 @media(max-width:380px){#ai-panel .ai-page-body{padding:10px 8px 20px}#ai-panel .ai-analysis-selection,#ai-panel .ai-analysis-request{padding:12px}}
+
+/* Execution records: bounded identity, stable actions and readable history. */
+#ai-panel .ai-reply-record-head{grid-template-columns:minmax(180px,1fr) 150px minmax(0,1.3fr) auto;gap:18px;padding:18px 20px}
+#ai-panel .ai-reply-record-person>span:last-child{min-width:0;flex:1}
+#ai-panel .ai-reply-record-person strong{white-space:normal;overflow-wrap:anywhere;line-height:1.5}
+#ai-panel .ai-reply-record-person .ai-contact-nick{display:block;font-size:12px;font-weight:400;color:var(--ai-hint)}
+#ai-panel .ai-reply-record-time{min-width:0}
+#ai-panel .ai-reply-record-actions{flex-shrink:0}
+#ai-panel .ai-reply-summary-toolbar .ai-summary-controls{display:flex;align-items:center;gap:8px;flex:0 0 auto;width:auto;min-width:0}
+#ai-panel .ai-reply-summary-toolbar select{width:150px;min-width:0;flex:1 1 auto}
+#ai-panel .ai-reply-summary-toolbar button{flex:0 0 auto;min-width:76px;min-height:44px;white-space:nowrap}
+#ai-panel .ai-reply-history-list{max-height:clamp(300px,48vh,620px);overscroll-behavior:contain}
+#ai-panel .ai-reply-history-list li{grid-template-columns:150px minmax(0,1fr) auto auto;align-items:center;padding:14px 0;gap:14px}
+#ai-panel .ai-reply-history-list button{min-height:36px;padding:6px 10px;white-space:nowrap}
+#ai-panel .ai-reply-history-list .ai-record-message{font-size:14px;line-height:1.75}
+@media(max-width:1100px){
+ #ai-panel .ai-reply-record-head{grid-template-columns:minmax(0,1fr) auto;gap:10px 16px}
+ #ai-panel .ai-reply-record-person{grid-column:1;grid-row:1}
+ #ai-panel .ai-reply-record-time{grid-column:1;grid-row:2;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+ #ai-panel .ai-reply-record-preview{grid-column:1/-1;grid-row:3;margin:0}
+ #ai-panel .ai-reply-record-actions{grid-column:2;grid-row:1/3}
+}
+@media(max-width:650px){
+ #ai-panel .ai-activity-page{gap:12px 8px}
+ #ai-panel .ai-activity-page .ap-record-tabs{display:flex;width:100%;margin:0}
+ #ai-panel .ai-activity-page .ap-record-tabs button{flex:1}
+ #ai-panel .ai-activity-page .ai-record-search{min-width:0;margin:0}
+ #ai-panel .ai-reply-record-head{padding:14px;gap:10px}
+ #ai-panel .ai-reply-record-avatar{width:32px;height:32px}
+ #ai-panel .ai-reply-record-actions button{padding:8px 10px;white-space:nowrap}
+ #ai-panel .ai-reply-record-detail{padding:4px 12px 12px;gap:12px}
+ #ai-panel .ai-reply-summary-toolbar{flex-direction:column;align-items:stretch;padding:12px;gap:10px}
+ #ai-panel .ai-reply-summary-toolbar .ai-summary-controls{width:100%}
+ #ai-panel .ai-reply-summary-toolbar select{width:0;min-height:44px}
+ #ai-panel .ai-reply-history-list{padding:0 12px;max-height:55dvh}
+ #ai-panel .ai-reply-history-list li{grid-template-columns:minmax(0,1fr) auto;gap:8px;padding:14px 0}
+ #ai-panel .ai-reply-history-list time{grid-column:1;grid-row:1;font-size:12px}
+ #ai-panel .ai-reply-history-list li>span{grid-column:2;grid-row:1;font-size:12px}
+ #ai-panel .ai-reply-history-list .ai-record-message{grid-column:1/-1;grid-row:2}
+ #ai-panel .ai-reply-history-list button{grid-column:1/-1;grid-row:3;justify-self:end;min-height:44px}
+}
