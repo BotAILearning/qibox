@@ -665,6 +665,16 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
     if (next === 'activity') await Promise.all([loadActivity(), loadProactiveRecords()]);
     if ((next === 'analysis' || next === 'learning' || next === 'default-style' || next === 'proactive' || next === 'overview' && state.settings.reply) && needsContacts()) await refreshContacts();
   }
+  function mobileLayout() {
+    if (!window.matchMedia?.('(max-width:860px)').matches) return;
+    for (const node of panel.querySelectorAll('textarea')) {
+      node.style.height = 'auto';
+      node.style.height = Math.min(Math.max(node.scrollHeight, 96), window.innerHeight * .5) + 'px';
+      node.style.overflowY = 'auto';
+    }
+    const back = $('#ai-mobile-back');
+    if (back) back.textContent = '← 返回';
+  }
   function render() {
     if (!state) return;
     revealRevision++;
@@ -674,8 +684,10 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
     renderedView = view; panel.dataset.page = tab;
     $('#ai-title').textContent = ({ overview: '自动回复', proactive: '主动聊天', activity: '执行记录', provider: '模型设置', settings: '系统设置', analysis: '分析报告', learning: '批量学习风格与记忆', 'default-style': '学习默认风格', results: '学习结果', profile: '编辑学习结果' })[tab] || 'AI 辅助';
     const content = tab === 'profile' && editingProfile ? profileEditor(state.profiles.find(p => p.id === editingProfile)) : ({ overview: objects, analysis: () => analysisPage(state, analysisDraft, analysisResult, analysisSearch, analysisHistoryReport, analysisRangeMode), activity, provider, settings: advancedSettings, learning, 'default-style': defaultStyleLearning, results, proactive, 'manual-reply': manualReplyEditor }[tab] || objects)();
-    const nav = `<nav class="ai-main-tabs" aria-label="AI 页面"><div class="ai-nav-brand"><span>${logoIcon}</span><div>AI 辅助<small>栖盒 · QIBOX</small></div></div><p class="ai-nav-caption">工作台</p>${[['overview', '自动回复', 'chat'], ['proactive', '主动聊天', 'send'], ['analysis', '分析报告', 'file'], ['activity', '执行记录', 'clock'], ['settings', '系统设置', 'sliders']].map(([key, name, symbol]) => `<button type="button" data-ai-nav="${key}" title="${name}" aria-label="${name}" aria-current="${tab === key || key === 'overview' && ['learning','results','profile','manual-reply'].includes(tab) || key === 'settings' && tab === 'default-style' ? 'page' : 'false'}">${icon(symbol)}<span>${name}</span></button>`).join('')}</nav>`;
+    const nav = `<nav class="ai-main-tabs" aria-label="AI 页面"><div class="ai-nav-brand"><span>${logoIcon}</span><div>AI 辅助<small>栖盒 · QIBOX</small></div></div><p class="ai-nav-caption">工作台</p>${[['overview', '自动回复', 'chat'], ['proactive', '主动聊天', 'send'], ['analysis', '分析报告', 'file'], ['activity', '执行记录', 'clock'], ['settings', '系统设置', 'sliders']].map(([key, name, symbol]) => `<button type="button" data-ai-nav="${key}" title="${name}" aria-label="${name}" aria-current="${tab === key || key === 'overview' && ['learning','results','profile','manual-reply'].includes(tab) || key === 'settings' && ['default-style','provider'].includes(tab) ? 'page' : 'false'}">${icon(symbol)}<span>${name}</span></button>`).join('')}</nav>`;
+    panel.querySelector(':scope > .ai-main-tabs')?.remove();
     $('#ai-content').innerHTML = iconSprite + nav + (tab === 'overview' ? content : `<div class="ai-page-body">${content}</div>`);
+    panel.append($('#ai-content .ai-main-tabs'));
     for (const node of panel.querySelectorAll('.ai-reference-memory [data-ai-wiki-field]')) node.hidden = node.dataset.aiWikiField !== objectMemoryCategory;
     for (const textarea of $('#ai-content').querySelectorAll('.ai-wiki-bubble textarea[aria-label="信息内容"]')) resizeWikiTextarea(textarea);
     if ($('#ai-object-list')) { $('#ai-object-list').innerHTML = objectList(state, objectView()); $('#ai-object-list').scrollTop = objectScroll; }
@@ -688,6 +700,7 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
     const paste = $('#ai-paste-form'); if (paste && learningDraft) for (const [key, value] of Object.entries(learningDraft)) if (paste.elements[key]) paste.elements[key].value = value;
     controls();
     resizeStyleSummary();
+    mobileLayout();
   }
   async function workflow(work, success = '') {
     if (busy) throw new Error('请等待当前操作完成，或先取消');
@@ -802,6 +815,15 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
     panel.hidden ? show() : hide();
   };
   $('#ai-close').onclick = hide;
+  $('#ai-mobile-back').onclick = () => {
+    const content = $('#ai-content');
+    const candidate = ['[data-ai-action="model-cancel"]', '[data-proactive-back]', '[data-ai-object-back]', '[data-ai-action="back-learning"]', '[data-ai-action="back-reply-contacts"]', '.ai-learning-back', '.ai-sticky-back button', '.ai-reference-learning-top [data-ai-nav]'].map(selector => content.querySelector(selector)).find(Boolean);
+    if (candidate && (!candidate.hasAttribute('data-ai-object-back') || selectedObject)) candidate.click();
+    else if (tab !== 'overview') void navigate('overview');
+    else hide();
+  };
+  panel.addEventListener('input', event => { if (event.target.tagName === 'TEXTAREA') mobileLayout(); });
+  window.addEventListener('resize', mobileLayout);
   panel.addEventListener('keydown', event => { if (event.key === 'Escape') { event.stopPropagation(); if (!proactiveUI.closeOverlay()) hide(); } });
   const changeMaster = async event => {
     if (!pass()) { event.target.checked = !event.target.checked; return; }
@@ -1189,7 +1211,7 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
         await execute('contact-remark', { id: form.dataset.id, value: { remark } }, '已写入并核验微信备注');
         return;
       }
-      if (button.hasAttribute('data-ai-wiki-remove')) { button.closest('.ai-wiki-bubble')?.remove(); return; }
+      if (button.hasAttribute('data-ai-wiki-remove')) { if (!window.confirm('确认删除这条记忆？保存设置后生效。')) return; button.closest('.ai-wiki-bubble')?.remove(); return; }
       if (button.hasAttribute('data-ai-wiki-add')) {
         const field = button.dataset.aiWikiAddField || 'other';
         const entities=button.closest('form')?.querySelector('[data-ai-wiki-entities]');
@@ -1310,7 +1332,7 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
       if (button.dataset.aiMemoryRestore) { const current=generation;const result=await execute('memory', {id:button.dataset.profile,value:{restoreId:button.dataset.aiMemoryRestore}}, '已恢复记忆'); if(!result || current!==generation)return;objectDrafts.delete(selectedObject); render(); return; }
       // 记忆学习的结果先放在待确认区，由用户决定替换、合并还是放弃。
       if (button.dataset.aiMemoryApply) { const current=generation;const result=await execute('memory-apply', {id:button.dataset.aiMemoryApply}, '已用本次学习的记忆替换'); if(!result || current!==generation)return;objectDrafts.delete(selectedObject); render(); return; }
-      if (button.dataset.aiMemoryDiscard) { const current=generation;const result=await execute('memory-discard', {id:button.dataset.aiMemoryDiscard}, '已放弃本次学习到的记忆'); if(!result || current!==generation)return;objectDrafts.delete(selectedObject); render(); return; }
+      if (button.dataset.aiMemoryDiscard) { if (!window.confirm('确认放弃本次学习到的记忆？')) return; const current=generation;const result=await execute('memory-discard', {id:button.dataset.aiMemoryDiscard}, '已放弃本次学习到的记忆'); if(!result || current!==generation)return;objectDrafts.delete(selectedObject); render(); return; }
       if (button.dataset.aiMemoryMerge) { const current=generation;const result=await execute('memory-merge', {id:button.dataset.aiMemoryMerge}, '正在与原有记忆合并，完成后请再确认一次'); if(!result || current!==generation)return;objectDrafts.delete(selectedObject); render(); return; }
       if (button.dataset.aiAdoptMemory) {
         const profile = state.profiles.find(p => p.id === button.dataset.aiAdoptMemory);
@@ -1354,7 +1376,7 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
       }
       if (action === 'model-add') { rememberDraft(); openModelEditor('new'); return; }
       if (button.dataset.aiModelEdit) { rememberDraft(); openModelEditor(button.dataset.aiModelEdit); return; }
-      if (button.dataset.aiModelDelete) { rememberDraft(); deleteModel(button.dataset.aiModelDelete); return; }
+      if (button.dataset.aiModelDelete) { if (!window.confirm('确认删除这个模型？点击保存后生效，使用该模型的功能将切换到剩余模型。')) return; rememberDraft(); deleteModel(button.dataset.aiModelDelete); return; }
       if (button.dataset.aiModelApply) { rememberDraft(); applyModelToAll(button.dataset.aiModelApply); return; }
       if (button.dataset.aiModelTest) { await testListModel(button.dataset.aiModelTest); return; }
       if (action === 'model-cancel') { modelDraft = { ...(modelDraft || {}), editing: null, draftId: undefined, form: null, status: '' }; render(); return; }
@@ -1425,7 +1447,7 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
       }
       if (action === 'resume-profile' || action === 'delete-profile') {
         const key = $('#ai-profile-form').dataset.id, profile = state.profiles.find(p => p.id === key);
-        if (action === 'delete-profile' && button.dataset.confirm !== 'yes') { button.dataset.confirm = 'yes'; button.textContent = '再次点击确认删除'; return; }
+        if (action === 'delete-profile' && !window.confirm('确认删除这个已学习的风格？删除后无法恢复。')) return;
         await workflow(async step => {
           await step('profile', { id: key, value: action === 'delete-profile' ? { delete: true } : { style: profile.style, paused: false } });
           editingProfile = null; tab = profileReturn;

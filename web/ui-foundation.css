@@ -1014,3 +1014,93 @@ dialog {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Phone workspace: one navigation bar, continuous sections, native-sized controls. */
+#ai-mobile-back,#ai-panel .ap-mobile-task-toggle{display:none}
+@media(max-width:860px){
+ #ai-panel .ai-panel-heading{order:0;min-height:52px;background:#fff;gap:12px;border-bottom:1px solid var(--ai-border)}
+ #ai-panel #ai-mobile-back{display:inline-flex;min-height:44px;flex:none;padding:8px 0;color:var(--ai-primary)}
+ #ai-panel .ai-heading-actions,#ai-panel .ai-header-master,#ai-panel #ai-close,#ai-panel .ai-nav-master{display:none!important}
+ #ai-panel #ai-content{order:1;flex:1;min-height:0;background:#fff;scroll-padding-bottom:24px}
+ #ai-panel #ai-feedback,#ai-panel #ai-operation,#ai-panel #ai-manual-recovery{order:1;margin:0}
+ #ai-panel .ai-main-tabs{order:2;background:#fff;border-top:1px solid var(--ai-border);padding:4px 4px calc(4px + env(safe-area-inset-bottom));gap:0;overflow-x:auto;min-height:62px}
+ #ai-panel .ai-main-tabs button{flex:1;min-width:56px;width:auto;color:var(--ai-muted);border-radius:0;font-size:11px;padding:5px 2px;min-height:52px}
+ #ai-panel .ai-main-tabs button[aria-current=page]{background:#f2f4ff;color:var(--ai-primary);box-shadow:none}
+ #ai-panel .ai-main-tabs button>span{display:block}
+ #ai-panel .ai-page-body{background:#fff;padding:16px 16px 28px;max-width:none}
+ #ai-panel .ai-page-heading h3,#ai-panel .ai-activity-page>.ai-page-heading,#ai-panel .ai-provider-page-heading .ai-badge{display:none}
+ #ai-panel :is(.ai-card,.ai-model-sidebar,.ai-task-card,.ai-object-sidebar,.ai-object-detail,.ap-form-card,.ap-table-panel,.ai-analysis-selection,.ai-analysis-request,.ai-default-material-head,.ai-reference-profile,.ai-reference-panel){box-shadow:none;border-radius:0;border:0;background:#fff;padding:16px 0;margin:0}
+ #ai-panel :is(.ai-card,.ap-form-card,.ai-analysis-selection,.ai-analysis-request,.ai-reference-panel)+:is(.ai-card,.ap-form-card,.ai-analysis-request,.ai-reference-panel){border-top:1px solid var(--ai-border)}
+ #ai-panel .ai-model-workspace,#ai-panel .ai-default-style-layout,#ai-panel .ai-reference-learning-shell{display:flex;flex-direction:column;gap:12px}
+ #ai-panel .ai-model-workspace>*,#ai-panel .ai-default-style-layout>*,#ai-panel .ai-reference-learning-shell>*{width:100%;min-width:0}
+ #ai-panel .ai-model-item{border-radius:0;border:0;border-bottom:1px solid var(--ai-border);padding:16px 0;display:flex;flex-direction:column;align-items:stretch;gap:10px}
+ #ai-panel .ai-model-item-main{min-width:0}
+ #ai-panel .ai-model-item-main small{white-space:normal;overflow-wrap:anywhere}
+ #ai-panel .ai-model-item-actions{display:flex;justify-content:space-between;width:100%}
+ #ai-panel .ai-model-item-actions button{width:44px;height:44px}
+ #ai-panel .ai-assignment-row{grid-template-columns:minmax(0,1fr);gap:8px;padding:14px 0}
+ #ai-panel .ai-assignment-row select{width:100%}
+ #ai-panel .ai-reference-settings-entries{display:block}
+ #ai-panel .ai-reference-settings-entries>a,#ai-panel .ai-reference-settings-entries>button{border-radius:0;box-shadow:none;border:0;border-bottom:1px solid var(--ai-border);width:100%}
+ #ai-panel textarea{resize:none!important;min-height:96px;max-height:50dvh;overflow-y:auto;line-height:1.65;font-size:16px}
+ #ai-panel :is(.ai-learning-back,.ai-object-back,.ai-sticky-back button,[data-proactive-back],[data-ai-action="model-cancel"],[data-ai-action="back-learning"],[data-ai-action="back-reply-contacts"],.ai-reference-learning-top [data-ai-nav]){display:none!important}
+ #ai-panel .ai-reference-learning-top{margin:0 0 12px}
+ #ai-panel .ai-reference-learning-top h3{display:none}
+ #ai-panel .ai-object-reference{padding:14px 16px;gap:0}
+ #ai-panel .ai-object-reference .ai-reference-reply-main{padding:14px 0}
+ #ai-panel .ai-reference-child-grid{display:flex;flex-direction:column;border:0}
+ #ai-panel .ai-reference-child-grid>*{border-bottom:1px solid var(--ai-border)}
+ #ai-panel .ai-reference-tabs{padding:0;gap:0}
+ #ai-panel .ai-reference-tabs button{flex:1;padding:12px 6px}
+ #ai-panel .ai-person-head{padding:4px 0 14px!important}
+ #ai-panel .ai-reference-children{padding:12px;background:#fafbff}
+ #ai-panel .ai-activity-page{grid-template-columns:minmax(0,1fr) auto;gap:12px 8px;align-items:center}
+ #ai-panel .ai-activity-page .ap-record-tabs{grid-column:1/-1;margin:0;display:flex}
+ #ai-panel .ai-activity-page .ap-record-tabs button{flex:1}
+ #ai-panel .ai-activity-page .ai-record-search{grid-column:1;margin:0;padding:0;line-height:0;font-size:0}
+ #ai-panel .ai-activity-page .ai-record-search input{height:46px;min-height:46px;margin:0;box-sizing:border-box;font-size:16px;line-height:1.4}
+ #ai-panel .ai-activity-page .ai-reference-filter-button{grid-column:2;height:46px;min-height:46px;margin:0;align-self:center}
+ #ai-panel .ai-reply-history>header{display:none}
+ #ai-panel .ai-reply-record-card{border-radius:0;box-shadow:none;border:0;border-bottom:1px solid var(--ai-border)}
+ #ai-panel .ai-reply-record-head{padding:14px 0}
+ #ai-panel .ai-reply-record-detail{padding:0 0 14px}
+ #ai-panel .ap-reference-columns{display:none}
+ #ai-panel .ap-reference-task{display:block;padding:0;border:0;border-bottom:1px solid var(--ai-border);border-radius:0;box-shadow:none}
+ #ai-panel .ap-reference-task>.ap-reference-cell{display:none}
+ #ai-panel .ap-reference-task.mobile-expanded>.ap-reference-cell{display:block;padding:8px 0}
+ #ai-panel .ap-reference-task.mobile-expanded>.ap-reference-cell:nth-child(2){display:none}
+ #ai-panel .ap-mobile-task-toggle{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;width:100%;text-align:left;justify-content:stretch;border:0;border-radius:0;background:#fff;padding:16px 0}
+ #ai-panel .ap-mobile-task-toggle strong{font-size:15px;overflow-wrap:anywhere}
+ #ai-panel .ap-mobile-task-toggle small{white-space:normal;text-align:left}
+ #ai-panel .ap-mobile-task-toggle>span:last-child{font-size:12px;color:var(--ai-primary)}
+ #ai-panel .ap-filters{flex-wrap:nowrap;overflow-x:auto;max-width:100%;gap:4px}
+ #ai-panel .ap-filters button{white-space:nowrap;flex:none}
+ #ai-panel .ap-form-grid,#ai-panel .ap-grid-2,#ai-panel .ai-form-grid{grid-template-columns:minmax(0,1fr)}
+ #ai-panel .ap-form-actions,#ai-panel .ai-provider-footer,#ai-panel .ai-model-save{flex-wrap:wrap;gap:10px}
+ #ai-panel .ai-model-save .primary,#ai-panel .ap-form-actions .primary{width:100%;min-height:48px}
+ dialog.ai-confirm-dialog,dialog.ap-dialog{max-width:calc(100vw - 24px);max-height:85dvh;overflow:auto}
+}
+@media(max-width:860px){
+ #ai-panel .ai-main-tabs{position:static;flex-shrink:0;box-shadow:none;background:#fff;border-top:1px solid #e5e7f0}
+ #ai-panel .ai-main-tabs button[aria-current="page"]{background:#eef1ff;color:#5061cf;box-shadow:none}
+ #ai-panel .ai-main-tabs button>span{color:inherit}
+ #ai-panel #ai-content{padding-bottom:0}
+ #ai-panel .ai-reference-settings-entries .ai-settings-entry{border-radius:0;border:0;border-bottom:1px solid #e5e7f0;box-shadow:none;padding:14px 0}
+ #ai-panel .ai-reference-settings>form,#ai-panel .ai-reference-settings>.ai-card{border:0;border-radius:0;box-shadow:none;padding:12px 0}
+ #ai-panel .ai-reference-settings{gap:12px}
+}
+@media(max-width:860px){
+ #ai-panel p,#ai-panel label,#ai-panel button,#ai-panel .ai-switch-row>span{font-size:14px;line-height:1.6}
+ #ai-panel small,#ai-panel .ai-help,#ai-panel .ai-intro{font-size:12px}
+ #ai-panel h4{font-size:16px}
+ #ai-panel .ai-main-tabs button,#ai-panel .ai-main-tabs button>span{font-size:11px}
+ #ai-panel .ai-assignment-row>.ai-badge{justify-self:start;width:auto}
+ #ai-panel .ai-model-sidebar{padding-bottom:0}
+ #ai-panel .ai-provider-page-heading{margin-bottom:12px;background:none}
+ #ai-panel .ai-proactive-page>.ap-heading h3{display:none}
+ #ai-panel .ap-reference-toolbar{padding:8px 0;background:none}
+ #ai-panel .ap-table-head{padding:12px 0}
+ #ai-panel .ai-reference-style-body,#ai-panel .ai-reference-reply-settings{padding:12px 0}
+ #ai-panel .ai-object-save{position:static;padding:14px 0;margin:0;background:#fff}
+ #ai-panel .ai-object-save>.primary{min-height:48px;flex:1}
+}

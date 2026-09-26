@@ -225,15 +225,31 @@ try {
   await page.screenshot({ path: path.join(output, 'style-autosize.png') });
   await page.setViewportSize({ width: 760, height: 900 });
   assert.equal(await page.locator('.ai-main-tabs').evaluate(node => Math.round(node.getBoundingClientRect().width)), 760);
-  await page.waitForFunction(() => {
-    const content = document.querySelector('#ai-content'), footer = document.querySelector('#ai-object-form .ai-object-save');
-    return footer && footer.getBoundingClientRect().bottom <= Math.min(content.getBoundingClientRect().bottom, window.innerHeight) - 2;
-  });
+  await page.locator('#ai-object-form .ai-object-save').scrollIntoViewIfNeeded();
   await page.screenshot({ path: path.join(output, 'narrow-style-actions.png') });
   const longStyleHeight = await styleSummary.evaluate(node => node.getBoundingClientRect().height);
   await styleSummary.fill('简短风格');
   assert.ok(await styleSummary.evaluate(node => node.getBoundingClientRect().height) < longStyleHeight, '文本缩短后输入框收回');
-  report.checks.push('Touch navigation spans the narrow screen above the content');
+  report.checks.push('Touch navigation spans the narrow screen below the content');
+  for (const width of [320,390,768]) {
+    await page.setViewportSize({width,height:844});
+    for (const section of ['reply','style','memory']) {
+      await page.locator('[data-ai-object-section='+section+']').click();
+      assert.ok(await page.locator('#ai-content').evaluate(el=>el.scrollWidth<=el.clientWidth+1),width+' '+section+' overflow');
+      await page.screenshot({path:path.join(output,'phone-'+width+'-'+section+'.png')});
+    }
+    await page.locator('#ai-mobile-back').click();
+    await page.locator('[data-ai-nav=learning]').click();
+    await page.screenshot({path:path.join(output,'phone-'+width+'-learning.png')});
+    assert.ok(await page.locator('#ai-content').evaluate(el=>el.scrollWidth<=el.clientWidth+1));
+    await page.locator('#ai-mobile-back').click();
+    await page.locator('.ai-main-tabs [data-ai-nav=settings]').click();
+    await page.locator('[data-ai-nav=default-style]').click();
+    await page.screenshot({path:path.join(output,'phone-'+width+'-default-style.png')});
+    assert.ok(await page.locator('#ai-content').evaluate(el=>el.scrollWidth<=el.clientWidth+1));
+    await page.locator('.ai-main-tabs [data-ai-nav=overview]').click();
+    await page.locator('[data-ai-object]').first().click();
+  }
   assert.deepEqual(report.errors, []); report.passed = true;
 } catch (error) { report.failure = error.stack; throw error; }
 finally { await writeFile(path.join(output, 'report.json'), JSON.stringify(report, null, 2)); await browser?.close(); await app.close(); await peer.close(); await chooser.close(); await cleanup(dataRoot); }

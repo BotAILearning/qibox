@@ -175,11 +175,12 @@ export function createProactiveUI({ panel, getState, context, isBusy, mutate, re
     if ([...button.attributes].every(a => !a.name.startsWith('data-proactive-'))) return false;
     if (isBusy()) throw new Error('请等待当前操作完成');
     remember();
-    if (button.hasAttribute('data-proactive-new')) { view.draft ||= taskDraft(); view.editing = true; view.menu = ''; render(); }
+    if (button.hasAttribute('data-proactive-expand')) { const key = button.dataset.proactiveExpand; const expanded = new Set(view.expandedTasks || []); if (expanded.has(key)) expanded.delete(key); else expanded.add(key); view.expandedTasks = [...expanded]; render(); }
+    else if (button.hasAttribute('data-proactive-new')) { view.draft ||= taskDraft(); view.editing = true; view.menu = ''; render(); }
     else if (button.hasAttribute('data-proactive-back')) { view.editing = false; render(); }
     else if (button.hasAttribute('data-proactive-cancel')) { view.editing = false; view.draft = null; render(); }
     else if (button.hasAttribute('data-proactive-pick')) pickContacts();
-    else if (button.hasAttribute('data-proactive-remove')) { view.draft.contacts = view.draft.contacts.filter(c => c.id !== button.dataset.proactiveRemove); render(); }
+    else if (button.hasAttribute('data-proactive-remove')) { if (!window.confirm('确认从任务中移除这个联系人？保存任务后生效。')) return true; view.draft.contacts = view.draft.contacts.filter(c => c.id !== button.dataset.proactiveRemove); render(); }
     else if (button.hasAttribute('data-proactive-enable-reply')) {
       const contacts = replyOffContacts(getState(), view.draft?.contacts || []).map(c => c.id);
       if (!contacts.length) { render(); return true; }

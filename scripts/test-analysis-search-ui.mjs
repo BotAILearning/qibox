@@ -123,5 +123,36 @@ try {
     }
   }
   report.checks.push('All available main navigation pages fit 320,390,768px');
+  for (const width of [320,390,768]) {
+    await page.setViewportSize({width,height:844});
+    const navBox=await page.locator('.ai-main-tabs').boundingBox();
+    const contentBox=await page.locator('#ai-content').boundingBox();
+    assert.ok(navBox.y>=contentBox.y+contentBox.height-1,'navigation below content');
+    assert.equal(await page.locator('#ai-close').isVisible(),false);
+    assert.equal(await page.locator('.ai-header-master').isVisible(),false);
+    await page.locator('.ai-main-tabs [data-ai-nav=settings]').click();
+    await page.locator('[data-ai-nav=provider]').click();await settled();
+    await shot('phone-'+width+'-models');
+    await page.locator('[data-ai-action=model-add]').click();
+    await shot('phone-'+width+'-model-editor');
+    await page.locator('#ai-mobile-back').click();
+    assert.equal(await page.locator('#ai-model-form').count(),0,'one back returns to model list');
+    await page.locator('#ai-mobile-back').click();
+    assert.equal(await page.locator('#ai-panel').getAttribute('data-page'),'settings');
+    await page.locator('.ai-main-tabs [data-ai-nav=proactive]').click();
+    await page.locator('[data-proactive-new]').click();
+    const area=page.locator('#ai-proactive-form textarea').first();
+    await area.fill('长内容自动适应\n'.repeat(25));
+    assert.equal(await area.evaluate(el=>getComputedStyle(el).resize),'none');
+    assert.ok(await area.evaluate(el=>el.getBoundingClientRect().height>=96));
+    assert.ok(await page.locator('#ai-content').evaluate(el=>el.scrollWidth<=el.clientWidth+1),width+' task editor overflow');
+    await shot('phone-'+width+'-task-editor');
+    await page.locator('#ai-mobile-back').click();
+    assert.equal(await page.locator('#ai-proactive-form').count(),0);
+    await page.locator('.ai-main-tabs [data-ai-nav=activity]').click();await settled();
+    const searchBox=await page.locator('#ai-log-search').boundingBox(),filterBox=await page.locator('.ai-reference-filter-button').boundingBox();
+    assert.ok(Math.abs(searchBox.y-filterBox.y)<2 && Math.abs(searchBox.height-filterBox.height)<2,'search and filter aligned');
+  }
+  report.checks.push('Bottom navigation, header cleanup, single back, model/task editors, auto-sized input and search/filter alignment passed');
 } catch (error) { report.failure = error.stack; throw error; }
 finally { await writeFile(path.join(output, 'report.json'), JSON.stringify(report, null, 2)); await browser?.close(); await app.close(); await peer.close(); await cleanup(dataRoot); }

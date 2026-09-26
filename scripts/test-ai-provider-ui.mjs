@@ -164,6 +164,10 @@ try {
   assert.match(await firstItem.innerText(), /未分配功能/);
   report.checks.push('Second model is not auto-assigned; per-feature dropdown saves and applies; “应用于所有功能” reassigns every feature; unassigned models show 未分配功能');
   // 删除第二个模型 → 引用它的功能回退到剩余第一个
+  page.once('dialog', dialog => dialog.dismiss());
+  await page.locator(`[data-ai-model-delete=${secondId}]`).click();
+  assert.equal(await page.locator(`[data-ai-model-delete=${secondId}]`).count(), 1, 'cancel retains model');
+  page.once('dialog', dialog => dialog.accept());
   await page.locator(`[data-ai-model-delete=${secondId}]`).click();
   await page.locator('.ai-model-item').filter({ hasText: 'fixture-chat-pro' }).waitFor({ state: 'detached' });
   for (const feature of ['chat', 'learningAnalysis']) assert.equal(await page.locator(`[data-ai-assignment=${feature}]`).inputValue(), firstId);

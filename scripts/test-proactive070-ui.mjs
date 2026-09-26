@@ -92,6 +92,14 @@ try {
   for (const width of [1024, 768, 390]) {
     await page.setViewportSize({ width, height: 844 }); await nav('proactive');
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    if(width<=860){
+      const toggle=page.locator('[data-proactive-expand]').first();
+      assert.equal(await toggle.getAttribute('aria-expanded'),'false');
+      await toggle.click();assert.equal(await toggle.getAttribute('aria-expanded'),'true');
+      assert.ok(await page.locator('.mobile-expanded .ap-reference-goal').isVisible());
+      await shot('task-expanded-'+width);
+      await toggle.click();assert.equal(await toggle.getAttribute('aria-expanded'),'false');
+    }
     await shot('tasks-' + width);
     await page.locator('[data-proactive-new]').click();
     assert.ok(await page.locator('.ap-editor').evaluate(node => node.scrollWidth <= node.clientWidth + 1));
