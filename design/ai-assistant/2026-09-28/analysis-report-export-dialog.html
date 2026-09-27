@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>分析报告导出弹窗 · 设计预览</title>
+  <style>
+    :root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;color:#25283b;background:#f5f6fa}
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh}
+    button,input{font:inherit}
+    button{cursor:pointer}
+    .shell{min-height:100vh;display:flex}
+    .nav{width:164px;flex:none;background:#202337;color:#d4d7e5;padding:28px 13px}
+    .brand{color:#fff;font-size:18px;font-weight:700;padding:0 12px 36px}
+    .nav-item{display:block;width:100%;padding:11px 13px;border:0;border-radius:9px;background:#4f6bfb;color:#fff;text-align:left;font-size:13px}
+    .workspace{flex:1;min-width:0;padding:26px 34px}
+    .workspace h1{margin:0 0 6px;font-size:22px}
+    .workspace>p{margin:0 0 24px;color:#85899c;font-size:13px}
+    .ghost-card{max-width:900px;padding:23px;border:1px solid #e8eaf2;border-radius:15px;background:#fff;color:#686d82}
+    .ghost-card h2{margin:0 0 10px;font-size:16px;color:#31354b}
+    .ghost-line{height:10px;margin:10px 0;border-radius:5px;background:#eff0f6}
+    .ghost-line.short{width:46%}
+    .ghost-line.medium{width:73%}
+    .preview-note{margin-top:20px;color:#777e93;font-size:12px}
+    .overlay{position:fixed;inset:0;display:grid;place-items:center;padding:24px;background:rgba(28,31,51,.48)}
+    .overlay[hidden]{display:none}
+    .dialog{width:min(100%,488px);border:1px solid #e6e8f2;border-radius:20px;background:#fff;box-shadow:0 22px 70px rgba(22,27,68,.2);overflow:hidden}
+    .dialog-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding:28px 30px 18px}
+    .dialog h2{margin:0;color:#252940;font-size:21px;line-height:1.35;font-weight:700}
+    .close{border:0;background:transparent;color:#737a91;font-size:13px;padding:4px 0}
+    .close:hover{text-decoration:underline}
+    .dialog-content{padding:0 30px 26px}
+    .summary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 18px;border:1px solid #e6e9fa;border-radius:12px;background:#f7f8ff}
+    .summary strong{font-size:14px;color:#303652}
+    .summary span{padding:5px 9px;border-radius:6px;background:#e9edff;color:#435ad7;font-size:12px;font-weight:600;white-space:nowrap}
+    fieldset{border:0;padding:0;margin:25px 0 0}
+    legend{padding:0;margin-bottom:12px;color:#41465c;font-size:13px;font-weight:650}
+    .formats{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .format{display:flex;align-items:center;gap:12px;min-height:72px;padding:14px 15px;border:1px solid #dfe2ed;border-radius:12px;background:#fff;cursor:pointer;transition:border-color .15s,background .15s,box-shadow .15s}
+    .format:hover{border-color:#8799fc}
+    .format:has(input:checked){border-color:#4f6bfb;background:#f6f7ff;box-shadow:0 0 0 2px rgba(79,107,251,.12)}
+    .format:has(input:focus-visible){outline:3px solid rgba(79,107,251,.25);outline-offset:2px}
+    .format input{width:17px;height:17px;flex:none;margin:0;accent-color:#4f6bfb}
+    .format-name{display:flex;align-items:baseline;flex-wrap:wrap;gap:6px;min-width:0}
+    .format-name strong{color:#272c43;font-size:15px;font-weight:650}
+    .format-name small{color:#7c8297;font-size:12px}
+    .dialog-foot{display:flex;align-items:center;justify-content:space-between;gap:18px;border-top:1px solid #eef0f5;padding:17px 30px 19px}
+    .dialog-foot p{margin:0;color:#858a9c;font-size:11px;line-height:1.5}
+    .actions{display:flex;gap:9px;flex:none}
+    .actions button{min-height:38px;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600}
+    .cancel{border:1px solid #e0e3ed;background:#fff;color:#60677a}
+    .cancel:hover{background:#f5f6fa}
+    .download{border:1px solid #4f6bfb;background:#4f6bfb;color:#fff}
+    .download:hover{background:#3d58df}
+    .reopen{margin-top:16px;border:1px solid #4f6bfb;border-radius:8px;background:#fff;color:#435ad7;padding:9px 14px}
+    .status{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:10px 16px;border-radius:9px;background:#262b40;color:#fff;font-size:13px;box-shadow:0 8px 20px rgba(22,27,68,.18)}
+    .status[hidden]{display:none}
+    @media(max-width:560px){.nav{display:none}.workspace{padding:22px}.overlay{padding:14px}.dialog-head{padding:24px 22px 16px}.dialog-content{padding:0 22px 24px}.dialog-foot{padding:16px 22px;align-items:stretch;flex-direction:column}.dialog-foot p{text-align:center}.actions button{flex:1}.formats{gap:9px}.format{padding:12px 10px;gap:8px}}
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="nav"><div class="brand">栖盒 · AI</div><button class="nav-item" type="button">分析报告</button></aside>
+    <main class="workspace">
+      <h1>分析报告</h1><p>设计预览 · 批量导出弹窗</p>
+      <section class="ghost-card" aria-hidden="true"><h2>历史分析报告</h2><div class="ghost-line medium"></div><div class="ghost-line short"></div><div class="ghost-line medium"></div></section>
+      <button class="reopen" id="reopen" type="button" hidden>重新打开弹窗</button>
+      <p class="preview-note">这是界面预览，下载按钮不会生成文件。</p>
+    </main>
+  </div>
+  <div class="overlay" id="overlay">
+    <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
+      <header class="dialog-head"><h2 id="dialog-title">导出分析报告</h2><button class="close" id="close" type="button" aria-label="关闭导出弹窗">关闭</button></header>
+      <div class="dialog-content">
+        <div class="summary"><strong>已选 2 份报告</strong><span>下载为 ZIP</span></div>
+        <fieldset><legend>文件格式</legend><div class="formats">
+          <label class="format"><input type="radio" name="format" value="pdf" checked><span class="format-name"><strong>PDF</strong><small>.pdf</small></span></label>
+          <label class="format"><input type="radio" name="format" value="docx"><span class="format-name"><strong>Word</strong><small>.docx</small></span></label>
+        </div></fieldset>
+      </div>
+      <footer class="dialog-foot"><p>每份报告生成独立文件</p><div class="actions"><button class="cancel" id="cancel" type="button">取消</button><button class="download" id="download" type="button">下载 ZIP</button></div></footer>
+    </section>
+  </div>
+  <div class="status" id="status" role="status" hidden></div>
+  <script>
+    const overlay=document.getElementById('overlay');
+    const reopen=document.getElementById('reopen');
+    const status=document.getElementById('status');
+    function closeDialog(){overlay.hidden=true;reopen.hidden=false;reopen.focus()}
+    document.getElementById('close').addEventListener('click',closeDialog);
+    document.getElementById('cancel').addEventListener('click',closeDialog);
+    reopen.addEventListener('click',()=>{overlay.hidden=false;reopen.hidden=true;document.querySelector('input[name="format"]:checked').focus()});
+    document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!overlay.hidden)closeDialog()});
+    document.getElementById('download').addEventListener('click',()=>{status.textContent='这是界面预览，尚未生成文件';status.hidden=false;setTimeout(()=>status.hidden=true,3200)});
+  </script>
+</body>
+</html>

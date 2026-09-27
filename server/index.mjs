@@ -19,6 +19,7 @@ import { DesktopStreams } from './desktop-stream.mjs';
 import { RfbInputGate } from './rfb-input.mjs';
 import { streamAudio } from './audio.mjs';
 import { proxyWebApp } from './web-app.mjs';
+import { exportAnalysisReports } from './ai-report-export.mjs';
 
 const moduleRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const equal = (a, b) => typeof a === 'string' && typeof b === 'string' && Buffer.byteLength(a) === Buffer.byteLength(b) && timingSafeEqual(Buffer.from(a), Buffer.from(b));
@@ -84,6 +85,7 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
         const aiMatch = /^\/api\/instances\/([a-f0-9-]{36})\/ai$/.exec(route);
         const aiMasterMatch = /^\/api\/instances\/([a-f0-9-]{36})\/ai\/master$/.exec(route);
         const aiReportMatch = /^\/api\/instances\/([a-f0-9-]{36})\/ai\/reports\/([a-f0-9-]{36})$/.exec(route);
+        const aiReportExportMatch = /^\/api\/instances\/([a-f0-9-]{36})\/ai\/reports\/export$/.exec(route);
         if (req.method === 'GET' && aiMasterMatch) {
           space.requireConsent(); const item = space.get(aiMasterMatch[1]); if (item.meta.appId !== 'wechat') throw new AppError('此应用不支持 AI', 409);
           return send(res, 200, await item.ai.mobileMasterState(item.meta.id));
@@ -114,6 +116,17 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
         const data = await body(req, /^\/api\/instances\/[a-f0-9-]{36}\/clipboard$/.test(route) ? 29 * 1024 * 1024 : 360064);
         if (route === '/api/consent') return send(res, 200, await space.setConsent(data.accepted));
         space.requireConsent();
+        if (aiReportExportMatch) {
+          const item = space.get(aiReportExportMatch[1]);
+          if (item.meta.appId !== 'wechat') throw new AppError('此应用不支持 AI', 409);
+          const controller = new AbortController();
+          res.once('close', () => { if (!res.writableEnded) controller.abort(); });
+          const file = await exportAnalysisReports(item.ai, data, { signal: controller.signal });
+          if (controller.signal.aborted) return;
+          res.writeHead(200, { 'Content-Type': file.mime, 'Content-Length': file.bytes.length, 'Cache-Control': 'no-store', 'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(file.filename)}` });
+          res.end(file.bytes);
+          return;
+        }
         const audioMatch = /^\/api\/instances\/([a-f0-9-]{36})\/audio$/.exec(route);
         if (audioMatch) return await streamAudio(space.get(audioMatch[1]).runtime, req, res);
         if (aiMatch) {

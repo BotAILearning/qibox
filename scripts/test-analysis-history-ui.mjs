@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { createApplication } from '../server/index.mjs';
@@ -7,6 +7,7 @@ import { root, playwrightPath } from './tooling.mjs';
 import { temp, cleanup, runtimeFactory, extractor, fetcher, packageSha256 } from '../test/fixtures.mjs';
 import { ChatFixture, AIModelFixture, key, modelConfig } from '../test/ai-fixtures.mjs';
 import { rfbFixture } from '../test/rfb-fixture.mjs';
+import { unzipSync } from 'fflate';
 
 const { chromium } = createRequire(import.meta.url)(playwrightPath);
 const dataRoot = await temp();
@@ -163,6 +164,18 @@ try {
   assert.match(copied, /数据开场/);
   report.checks.push('Refresh reads persisted history/detail without another provider call and copy returns complete report');
   await screenshot('02-history-detail');
+  await page.locator('[data-ai-export-detail]').click();
+  const exportDialog = page.locator('#ai-report-export-dialog[open]'); await exportDialog.waitFor();
+  assert.doesNotMatch(await exportDialog.innerText(), /方便阅读分享|方便编辑/);
+  await screenshot('02a-export-dialog');
+  await exportDialog.locator('[name=report-export-format][value=docx]').check();
+  const singleDownload = page.waitForEvent('download');
+  await exportDialog.locator('[data-ai-export-download]').click();
+  const word = await singleDownload;
+  assert.match(word.suggestedFilename(), /\.docx$/);
+  assert.ok(unzipSync(await readFile(await word.path()))['word/document.xml']);
+  assert.equal(provider.calls.length, providerAfterFirst, 'export reads the saved snapshot without asking the model');
+  report.checks.push('Single Word download opens from saved history and omits the removed format descriptions');
 
   const detailDelete = page.locator('.ai-analysis-history-detail [data-ai-history-delete]');
   await detailDelete.click();
@@ -180,6 +193,19 @@ try {
   await settled();
   await generate('第二份独立测试报告');
   assert.equal(await historyCount(), 2, 'repeated generation creates a second snapshot');
+  await page.locator('[data-ai-history-export-mode]').click();
+  await page.locator('[data-ai-history-export-all]').click();
+  assert.match(await page.locator('.ai-history-export-bar strong').textContent(), /已选 2 份/);
+  await page.locator('[data-ai-history-export-next]').click();
+  const batchDialog = page.locator('#ai-report-export-dialog[open]'); await batchDialog.waitFor();
+  assert.match(await batchDialog.innerText(), /下载为 ZIP/);
+  await screenshot('02b-batch-export-dialog');
+  const batchDownload = page.waitForEvent('download');
+  await batchDialog.locator('[data-ai-export-download]').click();
+  const archive = await batchDownload;
+  assert.match(archive.suggestedFilename(), /\.zip$/);
+  assert.equal(Object.keys(unzipSync(await readFile(await archive.path()))).filter(name => name.endsWith('.pdf')).length, 2);
+  report.checks.push('Batch PDF download contains two independent saved reports in one ZIP');
   const firstHistoryId = await page.locator('.ai-analysis-history-list [data-ai-history-delete]').first().getAttribute('data-ai-history-delete');
   const originalSave = ai.save.bind(ai);
   restoreAiSave = originalSave;

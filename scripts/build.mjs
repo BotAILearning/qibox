@@ -43,7 +43,9 @@ if (!process.argv.includes('--ui-only')) {
   for (const name of ['server', 'public', 'config', 'licenses', 'fonts']) await cp(path.join(root, name), path.join(app, name), { recursive: true, filter: file => !file.includes('__pycache__') && !/\.(?:bak|before)(?:$|[.\-_])/i.test(path.basename(file)) });
   await writeFile(path.join(app, 'config/product.json'), JSON.stringify(product, null, 2) + '\n');
   for (const name of ['README.md', 'NOTICE.md']) await cp(path.join(root, name), path.join(app, name));
-  await cp(path.join(root, 'node_modules/ws'), path.join(app, 'node_modules/ws'), { recursive: true });
+  for (const name of ['ws', 'pdfkit', 'fflate', 'fontkit', 'linebreak', 'png-js', '@noble', '@swc', 'brotli', 'base64-js', 'clone', 'dfa', 'fast-deep-equal', 'restructure', 'tiny-inflate', 'unicode-properties', 'unicode-trie', 'tslib']) {
+    await cp(path.join(root, 'node_modules', name), path.join(app, 'node_modules', name), { recursive: true });
+  }
   await writeFile(path.join(app, 'package.json'), JSON.stringify({ name: product.appname, version: product.version, type: 'module', private: true }));
   let components = 0;
   await run(python, [path.join(root, 'scripts/prepare-runtime-slim.py')]);
@@ -72,6 +74,12 @@ if (!process.argv.includes('--ui-only')) {
   for (const [name, license] of [['ws', 'LICENSE'], ['@novnc/novnc', 'LICENSE.txt'], ['@trimjs/web-app', 'package.json']]) {
     await mkdir(path.join(licenseRoot, name), { recursive: true });
     await cp(path.join(root, 'node_modules', name, license), path.join(licenseRoot, name, license));
+  }
+  for (const name of ['pdfkit', 'fflate', 'fontkit', 'linebreak', 'png-js', '@noble/ciphers', '@noble/hashes', '@swc/helpers', 'brotli', 'base64-js', 'clone', 'dfa', 'fast-deep-equal', 'restructure', 'tiny-inflate', 'unicode-properties', 'unicode-trie', 'tslib']) {
+    const source = path.join(root, 'node_modules', name);
+    const license = (await readdir(source)).find(file => /^licen[sc]e(?:\.[a-z0-9]+)?$/i.test(file)) || 'package.json';
+    await mkdir(path.join(licenseRoot, name), { recursive: true });
+    await cp(path.join(source, license), path.join(licenseRoot, name, license));
   }
   const ui = path.join(app, 'ui'); await mkdir(path.join(ui, 'images'), { recursive: true });
   await writeFile(path.join(ui, 'config'), JSON.stringify({ '.url': { [`${product.appname}.Application`]: { title: product.displayName, icon: `images/qibox-${iconRevision}_{0}.png`, type: 'url', protocol: '', gatewayPrefix: product.gatewayPrefix, gatewaySocket: 'app.sock', url: `${product.gatewayPrefix}/`, allUsers: true } } }, null, 2));

@@ -39,7 +39,7 @@ function showInputRecovery(id, text) {
   $('#input-recovery-text').value = text; $('#input-recovery').hidden = false;
 }
 const modal = $('#modal');
-const assistant = aiAssistant({ api, guard: aiRailGuard, onClose: () => { if (standaloneAI) disconnect(); },
+const assistant = aiAssistant({ api, downloadAnalysisReport, guard: aiRailGuard, onClose: () => { if (standaloneAI) disconnect(); },
   // 入口常驻后，入口可能先于实例挂载出现：操作开关 / 打开面板前补一次挂载，避免用空实例 id 请求。
   ensure: async () => {
     const target = desktopId || state?.instances.find(item => (item.appId || 'wechat') === 'wechat')?.id || null;
@@ -110,6 +110,35 @@ async function api(route, data, timeout = data === undefined ? 15000 : 120000) {
   if (response.status === 401) invalidateHostToken();
   let result; try { result = await response.json(); } catch { throw new Error('连接已中断，请刷新页面'); }
   if (!response.ok) throw Object.assign(new Error(result.error || '操作未完成，请重试'), { code: result.code }); return result;
+}
+async function downloadAnalysisReport(instanceId, value, signal) {
+  const combined = signal ? AbortSignal.any([signal, AbortSignal.timeout(300000)]) : AbortSignal.timeout(300000);
+  let response;
+  try {
+    response = await fetch(`${prefix}/api/instances/${instanceId}/ai/reports/export`, {
+      method: 'POST', credentials: 'same-origin',
+      headers: { ...await hostHeaders(), 'Content-Type': 'application/json', 'X-CSRF-Token': session?.csrf || '' },
+      body: JSON.stringify(value), signal: combined,
+    });
+  } catch (error) {
+    if (signal?.aborted) throw new Error('导出已取消');
+    if (error.name === 'TimeoutError') throw new Error('导出超时，请减少选择数量后重试');
+    throw error;
+  }
+  if (response.status === 401) invalidateHostToken();
+  if (!response.ok) {
+    const failure = await response.json().catch(() => ({}));
+    throw new Error(failure.error || '导出失败，请重试');
+  }
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(response.headers.get('Content-Disposition') || '')?.[1];
+  const filename = encoded ? decodeURIComponent(encoded) : `分析报告.${value.ids.length === 1 ? value.format : 'zip'}`;
+  const blob = await response.blob();
+  if (signal?.aborted) throw new Error('导出已取消');
+  const url = URL.createObjectURL(blob), link = document.createElement('a');
+  link.href = url; link.download = filename; link.hidden = true; document.body.append(link);
+  link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  return filename;
 }
 function closeModal() { if (requiredModal) return; modal.close(); modalSubmit = null; }
 function dialog(title, content, actions = '<button type="button" data-close class="secondary">取消</button><button type="submit" class="primary">确定</button>', submit, required = false) {

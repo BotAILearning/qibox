@@ -28,6 +28,13 @@
       "url": "https://raw.githubusercontent.com/notofonts/notofonts.github.io/92d2ea744479d3379927f1fb5f8b0945dd0349b7/fonts/NotoSansMath/unhinted/ttf/NotoSansMath-Regular.ttf",
       "sha256": "b127e84699212b6b2ef50aff58e0ebebeec04ffe6db1b9eb9e209c8c3d97b4aa",
       "bytes": 657440
+    },
+    {
+      "family": "Noto Sans CJK SC",
+      "file": "fonts/NotoSansCJKsc-Regular.otf",
+      "url": "https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf",
+      "sha256": "2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b",
+      "bytes": 16437364
     }
   ],
   "licenses": [
@@ -48,6 +55,12 @@
       "url": "https://raw.githubusercontent.com/notofonts/math/fbb2a1334f1d693c3c863b3b694ffadf75094b36/OFL.txt",
       "sha256": "403a95275b469061b7d4371c328e0ada3bc7d63328abe2e88aad5cd243b2fe21",
       "bytes": 4380
+    },
+    {
+      "file": "licenses/fonts/NotoSansCJKsc-OFL.txt",
+      "url": "https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/LICENSE",
+      "sha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2",
+      "bytes": 4301
     }
   ]
 }

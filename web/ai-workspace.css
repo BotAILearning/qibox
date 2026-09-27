@@ -1333,3 +1333,73 @@
 .ai-calendar-dialog-analysis .ai-calendar-toolbar .ai-calendar-pick-start>button[data-pick]{width:100%;min-height:68px;justify-content:space-between}
 .ai-calendar-dialog-analysis .ai-calendar-toolbar .ai-calendar-pick-start>.ai-calendar-earliest{position:absolute;top:7px;right:8px;z-index:1;display:inline-flex;flex-direction:row;align-items:center;justify-content:center;min-height:30px;padding:3px 7px;border:0;border-radius:7px;background:transparent;color:#4056df;font-size:11px;font-weight:700;white-space:nowrap}
 .ai-calendar-dialog-analysis .ai-calendar-toolbar .ai-calendar-pick-start>.ai-calendar-earliest:hover{background:#dfe5ff}
+
+/* Keep the original record columns; separate PC rows with the same rounded outline as reply cards. */
+#ai-panel .ai-record-collapse-desktop{display:none}
+@media(min-width:861px){
+ #ai-panel .ai-activity-page #ai-proactive-records>.ap-table-scroll{overflow:auto;border:0;border-radius:0;background:transparent}
+ #ai-panel .ai-activity-page #ai-proactive-records .ap-proactive-record-table{display:table}
+ #ai-panel .ai-activity-page #ai-proactive-records .ap-proactive-record-table thead{position:static;width:auto;height:auto;margin:0;overflow:visible;clip:auto;clip-path:none;white-space:normal}
+ #ai-panel .ai-activity-page #ai-proactive-records .ap-proactive-record-table tbody{display:table-row-group}
+ #ai-panel .ai-activity-page #ai-proactive-records .ap-proactive-record-table tr{display:table-row;padding:0;border:0;border-radius:0;box-shadow:none}
+ #ai-panel .ai-activity-page #ai-proactive-records .ap-proactive-record-table td{display:table-cell;width:auto;min-width:0;padding:14px;grid-column:auto}
+ #ai-panel .ai-activity-page #ai-proactive-records .ap-proactive-record-table td:before{content:none;display:none}
+ #ai-panel .ai-activity-page #ai-proactive-records .ap-proactive-record-table td[data-label="操作"]>button{display:flex;width:max-content;max-width:100%;min-width:0;margin:6px 0;white-space:nowrap}
+ #ai-panel .ai-activity-page .ap-record-block .ap-record-table td[data-label="操作"]>button{display:flex;width:max-content;max-width:100%;min-width:0;margin:6px 0;white-space:nowrap}
+ #ai-panel .ai-activity-page .ap-proactive-record-table{min-width:0;border-collapse:separate;border-spacing:0 12px}
+ #ai-panel .ai-activity-page .ap-proactive-record-table th{border-bottom:0;background:transparent}
+ #ai-panel .ai-activity-page .ap-proactive-record-table tbody td{border-top:1px solid #e8e9f1;border-bottom:1px solid #e8e9f1;background:#fff}
+ #ai-panel .ai-activity-page .ap-proactive-record-table tbody td:first-child{border-left:1px solid #e8e9f1;border-radius:15px 0 0 15px}
+ #ai-panel .ai-activity-page .ap-proactive-record-table tbody td:last-child{border-right:1px solid #e8e9f1;border-radius:0 15px 15px 0}
+ #ai-panel .ai-activity-page .ap-proactive-record-table tbody td[colspan]{border-radius:15px}
+ #ai-panel .ai-activity-page .ap-proactive-record-table tbody tr:hover td{background:#fafbff}
+ #ai-panel .ai-reply-record-card>details>summary{min-height:44px}
+ #ai-panel .ai-reply-record-card>details>summary::-webkit-details-marker{display:none}
+ #ai-panel .ai-reply-record-card>details>summary::marker{content:''}
+ #ai-panel .ai-reply-record-card>details>summary:after{content:'展开详情 ↓';display:inline-flex;align-items:center;min-height:30px;margin-left:auto;padding:3px 11px;border:1px solid #d8defb;border-radius:8px;background:#f3f5ff;color:#4d5bcc;font-weight:650}
+ #ai-panel .ai-reply-record-card>details>summary:hover:after{background:#e8eafe}
+ #ai-panel .ai-reply-record-card>details>summary:focus-visible{outline:2px solid #5969ed;outline-offset:-3px}
+ #ai-panel .ai-reply-record-card>details[open]{position:relative}
+ #ai-panel .ai-reply-record-card>details[open]>summary{min-height:66px;padding-right:370px}
+ #ai-panel .ai-reply-record-card>details[open]>summary:after{display:none}
+ #ai-panel .ai-reply-record-card>details[open] .ai-reply-summary-toolbar{position:absolute;top:11px;right:20px;z-index:1;gap:8px;margin:0;padding:0;border:0;background:transparent}
+ #ai-panel .ai-reply-record-card>details[open] .ai-reply-summary-toolbar>span{display:none}
+ #ai-panel .ai-reply-record-card>details[open] .ai-reply-summary-toolbar .ai-summary-controls{width:auto}
+ #ai-panel .ai-reply-record-card>details[open] .ai-record-collapse-desktop{display:inline-flex;align-items:center;justify-content:center;min-width:92px;min-height:44px;margin:0;padding:8px 10px;border:1px solid #d8defb;border-radius:8px;background:#f3f5ff;color:#4d5bcc;white-space:nowrap}
+ #ai-panel .ai-activity-page :is(button[data-ai-open-conversation],button[data-ai-resume-profile],button[data-ai-nav="proactive"],button[data-ai-mark-reply],button[data-ai-log-page],button[data-proactive-record-more],button[data-ai-error-more],button[data-ai-retry-records]){display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:8px 12px;border:1px solid #dce2f3;border-radius:8px;background:#fff;color:#4d5bcc;text-align:center;text-decoration:none}
+ #ai-panel .ai-activity-page :is(button[data-ai-open-conversation],button[data-ai-resume-profile],button[data-ai-nav="proactive"],button[data-ai-mark-reply],button[data-ai-log-page],button[data-proactive-record-more],button[data-ai-error-more],button[data-ai-retry-records]):hover{border-color:#b9c3f3;background:#f3f5ff}
+ #ai-panel .ai-activity-page :is(button[data-ai-delete-record],button[data-ai-clear-errors]){display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:8px 12px;border:1px solid #efd2ce;border-radius:8px;background:#fff8f7;color:#a83f39;text-align:center;text-decoration:none}
+ #ai-panel .ai-activity-page :is(button[data-ai-delete-record],button[data-ai-clear-errors]):hover{border-color:#dca9a4;background:#fff0ed;color:#942d28}
+ #ai-panel .ai-activity-page button:disabled{opacity:.5;cursor:not-allowed}
+}
+#ai-panel .ai-analysis-section-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
+#ai-panel .ai-history-export-check{flex:none;display:flex;align-items:center;margin-right:4px}
+#ai-panel .ai-history-export-check input{width:17px;height:17px;margin:0;accent-color:var(--ai-primary)}
+#ai-panel .ai-history-export-bar{position:sticky;bottom:0;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border:1px solid #dfe4fa;border-radius:11px;background:#f7f8ff;box-shadow:0 8px 22px #20245c15}
+#ai-panel .ai-history-export-bar strong{font-size:13px;color:#303652}
+#ai-panel .ai-history-export-bar button:disabled{opacity:.5;cursor:not-allowed}
+#ai-panel .ai-report-export-dialog{width:min(488px,calc(100vw - 28px));max-width:none;max-height:calc(100vh - 32px);padding:0;border:1px solid #e6e8f2;border-radius:20px;background:#fff;color:var(--ai-text);box-shadow:0 22px 70px #161b4433;overflow:auto}
+#ai-panel .ai-report-export-dialog::backdrop{background:#1c1f337a}
+#ai-panel .ai-report-export-dialog>header{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:26px 30px 18px}
+#ai-panel .ai-report-export-dialog h3{margin:0;font-size:21px;font-weight:700;color:#252940}
+#ai-panel .ai-report-export-dialog>header button{color:#737a91}
+#ai-panel .ai-report-export-body{padding:0 30px 26px}
+#ai-panel .ai-report-export-summary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 18px;border:1px solid #e6e9fa;border-radius:12px;background:#f7f8ff;min-width:0}
+#ai-panel .ai-report-export-summary strong{min-width:0;overflow:hidden;text-overflow:ellipsis;color:#303652;font-size:14px}
+#ai-panel .ai-report-export-summary span{flex:none;padding:5px 9px;border-radius:6px;background:#e9edff;color:#435ad7;font-size:12px;font-weight:600}
+#ai-panel .ai-report-export-dialog fieldset{border:0;padding:0;margin:24px 0 0}
+#ai-panel .ai-report-export-dialog legend{padding:0;margin-bottom:12px;color:#41465c;font-size:13px;font-weight:650}
+#ai-panel .ai-report-export-formats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+#ai-panel .ai-report-export-formats label{display:flex;align-items:center;gap:12px;min-height:72px;padding:14px 15px;border:1px solid #dfe2ed;border-radius:12px;background:#fff;cursor:pointer}
+#ai-panel .ai-report-export-formats label:hover{border-color:#8799fc}
+#ai-panel .ai-report-export-formats label:has(input:checked){border-color:var(--ai-primary);background:#f6f7ff;box-shadow:0 0 0 2px #4f6bfb1f}
+#ai-panel .ai-report-export-formats label:has(input:focus-visible){outline:3px solid #4f6bfb40;outline-offset:2px}
+#ai-panel .ai-report-export-formats input{width:17px;height:17px;flex:none;margin:0;accent-color:var(--ai-primary)}
+#ai-panel .ai-report-export-formats label span{display:flex;align-items:baseline;flex-wrap:wrap;gap:6px;min-width:0}
+#ai-panel .ai-report-export-formats strong{font-size:15px;color:#272c43}
+#ai-panel .ai-report-export-formats small{font-size:12px;color:#7c8297}
+#ai-panel .ai-report-export-dialog>footer{display:flex;align-items:center;justify-content:space-between;gap:16px;border-top:1px solid #eef0f5;padding:17px 30px 19px}
+#ai-panel .ai-report-export-dialog>footer small{font-size:11px;color:#858a9c}
+#ai-panel .ai-report-export-dialog>footer .ai-actions{flex:none}
+#ai-panel #ai-report-export-error{margin:14px 0 0;color:#ab3838;font-size:12px}
+@media(max-width:560px){#ai-panel .ai-report-export-dialog>header{padding:22px 20px 16px}#ai-panel .ai-report-export-body{padding:0 20px 23px}#ai-panel .ai-report-export-dialog>footer{padding:16px 20px;align-items:stretch;flex-direction:column}#ai-panel .ai-report-export-dialog>footer small{text-align:center}#ai-panel .ai-report-export-dialog>footer .ai-actions button{flex:1}#ai-panel .ai-report-export-formats{gap:9px}#ai-panel .ai-report-export-formats label{gap:8px;padding:12px 10px}#ai-panel .ai-history-export-bar{align-items:stretch;flex-direction:column}}

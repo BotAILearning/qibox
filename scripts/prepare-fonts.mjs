@@ -7,7 +7,7 @@ import { hashFile } from '../server/files.mjs';
 export async function prepareFonts() {
   const lock = JSON.parse(await readFile(path.join(root, 'config/fonts.json')));
   for (const asset of [...lock.fonts, ...lock.licenses]) {
-    if (!/^(fonts\/[A-Za-z0-9-]+\.ttf|licenses\/fonts\/[A-Za-z0-9-]+\.txt)$/.test(asset.file)) throw new Error('Invalid font asset path');
+    if (!/^(fonts\/[A-Za-z0-9-]+\.(?:ttf|otf)|licenses\/fonts\/[A-Za-z0-9-]+\.txt)$/.test(asset.file)) throw new Error('Invalid font asset path');
     const destination = path.join(root, asset.file);
     await mkdir(path.dirname(destination), { recursive: true });
     await download(asset.url, destination, asset.sha256);
