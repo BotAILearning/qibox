@@ -63,6 +63,15 @@ try {
   await ai.verifyProvider(modelConfig);
   await ai.scan();
   await ai.settings({ enabled: false });
+  const initialMaster = await ai.mobileMasterState(meta.id);
+  assert.deepEqual(Object.keys(initialMaster).sort(), ['available', 'enabled', 'scopeToken', 'settingsToken'].sort(), 'phone master endpoint returns only its narrow state');
+  const originalAccount = bridge.account;
+  bridge.account = key('account-switched-during-phone-toggle');
+  await assert.rejects(ai.mobileMasterChange(meta.id, { enabled: true, scopeToken: initialMaster.scopeToken, settingsToken: initialMaster.settingsToken }), error => error.code === 'AI_SCOPE_CHANGED');
+  bridge.account = originalAccount;
+  await ai.settings({ reply: false });
+  await assert.rejects(ai.mobileMasterChange(meta.id, { enabled: true, scopeToken: initialMaster.scopeToken, settingsToken: initialMaster.settingsToken }), error => error.code === 'AI_SETTINGS_CHANGED');
+  await ai.settings({ reply: true });
 
   browser = await chromium.launch({ channel: 'msedge', headless: true });
   const context = await browser.newContext({ viewport: { width: 1440, height: 960 }, permissions: ['clipboard-read', 'clipboard-write'] });
@@ -213,6 +222,31 @@ try {
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), '390px page must not overflow horizontally');
   await screenshot('03-mobile-390');
   report.checks.push('390px analysis/history view has no horizontal overflow');
+  await page.goto(base);
+  const mobileMaster = page.locator('[data-mobile-ai-master]');
+  await mobileMaster.waitFor();
+  await page.waitForFunction(() => {
+    const input = document.querySelector('[data-mobile-ai-master]');
+    return input && !input.disabled;
+  });
+  assert.equal(await page.locator('[data-mobile-ai]').count(), 0, 'mobile AI section has no workspace entry');
+  assert.equal(await page.locator('#ai-panel').isVisible(), false, 'mobile AI section does not show the workspace panel');
+  await screenshot('mobile-ai-outer-switch-390');
+  const waitMasterPost = expected => page.waitForResponse(response => response.request().method() === 'POST' && response.url().includes(`/api/instances/${meta.id}/ai`) && response.request().postDataJSON()?.action === 'mobile-master' && response.request().postDataJSON()?.value?.enabled === expected);
+  const enableResponse = waitMasterPost(true);
+  await mobileMaster.check();
+  assert.equal((await enableResponse).status(), 200, 'enable request must be accepted by the server');
+  await page.waitForFunction(() => document.querySelector('[data-mobile-ai-master]')?.checked);
+  assert.equal(ai.data.settings.enabled, true, 'outer switch updates the fixture AI setting');
+  assert.equal((await ai.mobileMasterState(meta.id)).enabled, true, 'server readback confirms the saved enable state');
+  assert.equal(await page.locator('#ai-panel').isVisible(), false, 'switching AI does not open the workspace');
+  const disableResponse = waitMasterPost(false);
+  await mobileMaster.uncheck();
+  assert.equal((await disableResponse).status(), 200, 'disable request must be accepted by the server');
+  await page.waitForFunction(() => !document.querySelector('[data-mobile-ai-master]')?.checked);
+  assert.equal(ai.data.settings.enabled, false, 'outer switch can restore the fixture AI setting');
+  assert.equal((await ai.mobileMasterState(meta.id)).enabled, false, 'server readback confirms the saved disable state');
+  report.checks.push('390px AI entry shows only the outer switch; each direction awaits one server save and independent state readback');
   assert.equal(bridge.sent.length, 0, 'browser fixture must not send WeChat messages');
   assert.deepEqual(report.errors, []);
   report.passed = true;

@@ -23,6 +23,8 @@ let desktopConnected = false, desktopBusy = false, desktopConnecting = false, po
 let sound, standaloneAI = false;
 let mobileLoginId = null;
 let mobileLoginCheckTimer = null, mobileLoginChecking = false;
+const mobileAISettings = new Map(), mobileAISettingsLoading = new Set(), mobileAIGeneration = new Map(), mobileAIRequests = new Map();
+let lastMobileAIMarkup = '';
 const busyIds = new Set();
 const inputDrafts = new Map();
 const reconnect = desktopReconnect({ notify, reconnect: async () => {
@@ -178,6 +180,53 @@ function consentDialog() {
 }
 const definition = id => state.catalog.find(app => app.id === (id || 'wechat'));
 const retainedFor = id => state.retained.filter(item => (item.appId || 'wechat') === id);
+function renderMobileAI() {
+  const entries = (state?.instances || []).filter(item => (item.appId || 'wechat') === 'wechat');
+  const ids = new Set(entries.map(item => item.id));
+  for (const id of new Set([...mobileAISettings.keys(), ...mobileAIGeneration.keys(), ...mobileAIRequests.keys()])) if (!ids.has(id)) {
+    mobileAISettings.delete(id); mobileAISettingsLoading.delete(id); mobileAIRequests.delete(id); mobileAIGeneration.delete(id);
+  }
+  const markup = entries.map(item => {
+    const runtimeAvailable = aiAvailable(item.runtime, true), settings = mobileAISettings.get(item.id);
+    const checked = settings?.enabled === true;
+    const disabled = !runtimeAvailable || !settings?.available || mobileAISettingsLoading.has(item.id);
+    const hint = !runtimeAvailable ? '微信登录后可使用' : mobileAISettingsLoading.has(item.id) ? '正在读取开关状态' : !settings ? `<button type="button" class="quiet" data-mobile-ai-retry="${esc(item.id)}">重试读取</button>` : !settings.available ? '请在电脑端登录微信并完成 AI 模型配置' : '';
+    return `<article class="mobile-ai-card"><div class="mobile-ai-instance-name"><strong>${esc(item.name)}</strong><small>手机端可切换总开关；自动回复规则请在电脑端设置</small></div><label class="mobile-ai-master"><span>AI 总开关</span><input type="checkbox" role="switch" data-mobile-ai-master="${esc(item.id)}" aria-label="${esc(item.name)} AI 总开关" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}></label>${hint ? `<div class="mobile-ai-status">${hint}</div>` : ''}</article>`;
+  }).join('');
+  if (markup !== lastMobileAIMarkup) { $('#mobile-ai-list').innerHTML = markup; lastMobileAIMarkup = markup; }
+  $('#mobile-ai').hidden = !entries.length;
+  if (mobile()) for (const item of entries) {
+    const settings = mobileAISettings.get(item.id);
+    if (aiAvailable(item.runtime, true) && !mobileAISettingsLoading.has(item.id) && (!settings || document.visibilityState === 'visible' && Date.now() - settings.lastReadAt >= 5000)) void loadMobileAISettings(item.id);
+  }
+}
+async function loadMobileAISettings(id) {
+  if (!state?.instances.some(item => item.id === id) || document.visibilityState !== 'visible' || mobileAISettingsLoading.has(id)) return;
+  mobileAISettingsLoading.add(id); const generation = mobileAIGeneration.get(id) || 0, requestId = Symbol(); mobileAIGeneration.set(id, generation); renderMobileAI();
+  mobileAIRequests.set(id, requestId);
+  try {
+    const settings = await api(`/instances/${id}/ai/master`);
+    if (mobileAIGeneration.get(id) === generation && mobileAIRequests.get(id) === requestId && state?.instances.some(item => item.id === id)) mobileAISettings.set(id, { ...settings, lastReadAt: Date.now() });
+  } catch (error) {
+    if (mobileAIGeneration.get(id) === generation && mobileAIRequests.get(id) === requestId && state?.instances.some(item => item.id === id)) { mobileAISettings.delete(id); if (!['AI_SCOPE_CHANGED', 'AI_ACCOUNT_UNVERIFIED'].includes(error.code)) notify(`无法读取 AI 开关：${error.message}`); }
+  } finally { if (mobileAIRequests.get(id) === requestId) { mobileAIRequests.delete(id); mobileAISettingsLoading.delete(id); renderMobileAI(); } }
+}
+async function changeMobileAIMaster(input) {
+  const id = input.dataset.mobileAiMaster;
+  const before = mobileAISettings.get(id);
+  if (!before?.available || mobileAISettingsLoading.has(id)) { input.checked = before?.enabled === true; return; }
+  const enabled = input.checked;
+  mobileAISettingsLoading.add(id); const generation = mobileAIGeneration.get(id) || 0; renderMobileAI();
+  try {
+    await api(`/instances/${id}/ai`, { action: 'mobile-master', value: { enabled, scopeToken: before.scopeToken, settingsToken: before.settingsToken } });
+    if (mobileAIGeneration.get(id) === generation) { mobileAISettings.delete(id); mobileAISettingsLoading.delete(id); await loadMobileAISettings(id); const confirmed = mobileAISettings.get(id); if (confirmed?.enabled === enabled) notify(enabled ? 'AI 总开关已开启' : 'AI 总开关已关闭'); }
+  } catch (error) {
+    if (mobileAIGeneration.get(id) === generation) { mobileAISettings.delete(id); notify(error.message); }
+  } finally { mobileAISettingsLoading.delete(id); renderMobileAI(); }
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') renderMobileAI(); });
+window.addEventListener('focus', () => renderMobileAI());
+window.addEventListener('online', () => { for (const id of mobileAISettings.keys()) mobileAISettings.delete(id); renderMobileAI(); });
 let marketAppId = 'wechat', lastCatalogMarkup = '';
 function renderMarket(app) {
   const card = document.querySelector(`[data-market-app="${app.id}"]`);
@@ -260,8 +309,7 @@ function render() {
     return `<article class="mobile-instance-card" data-mobile-instance="${esc(item.id)}"><div class="mobile-instance-info"><strong>${esc(item.name)}</strong><span class="status ${loggedIn ? 'logged-in' : ''}">${busy ? '请稍候…' : status}</span></div>${loggedIn ? `<button type="button" class="secondary" data-mobile-stop="${esc(item.id)}" ${busy ? 'disabled' : ''}>停止</button>` : `<button type="button" class="primary" data-mobile-login="${esc(item.id)}" ${busy || !definition(item.appId)?.library.installed ? 'disabled' : ''}>登录</button>`}</article>`;
   }).join('');
   $('#mobile-instance-empty').hidden = mobileEntries.length > 0;
-  $('#mobile-ai-list').innerHTML = mobileEntries.map(item => `<button class="secondary" data-mobile-ai="${esc(item.id)}" ${aiAvailable(item.runtime, true) ? '' : 'disabled'}>${esc(item.name)} · AI 辅助</button>`).join('');
-  $('#mobile-ai').hidden = !mobileEntries.length;
+  renderMobileAI();
 }
 function renderDesktop() {
   if ($('#desktop-view').hidden) return;
@@ -426,15 +474,6 @@ function disconnect(invalidate = true, keepAssistant = false, recovering = false
   $('#remote-canvas').replaceChildren(); $('#desktop-view').hidden = true;
   if (document.fullscreenElement === $('#desktop-view')) void document.exitFullscreen().catch(() => {});
 }
-async function openMobileAI(id) {
-  const entry = state.instances.find(item => item.id === id);
-  if (!entry || (entry.appId || 'wechat') !== 'wechat' || !aiAvailable(entry.runtime, true)) throw new Error('请先在电脑端登录微信');
-  disconnect(); const operation = desktopOperation; desktopId = id; standaloneAI = true;
-  $('#desktop-view').classList.add('ai-only'); $('#desktop-view').hidden = false;
-  $('#ai-account-label').textContent = '当前微信：' + entry.name;
-  await syncAssistant(id);
-  if (operation === desktopOperation && standaloneAI && assistantId === id) assistant.show();
-}
 async function openDesktop(id, start = true, login = false, allowMobile = false, recovering = false) {
   if (mobile() && !allowMobile) return pcHint();
   const operation = ++desktopOperation;
@@ -556,13 +595,14 @@ small.addEventListener('change', () => {
 document.addEventListener('change', e => {
   if (e.target.name === 'mode') updateIdleChoice();
   if (e.target.name === 'deleteData') $('#delete-confirm').hidden = e.target.value !== 'yes';
+  if (e.target.matches('[data-mobile-ai-master]')) void changeMobileAIMaster(e.target);
   if (e.target.id === 'package-file') { upload(e.target.files[0]).catch(err => notify(err.message)); e.target.value = ''; }
 });
 document.addEventListener('click', async event => {
   const button = event.target.closest('button'); if (!button || button.disabled) return;
   try {
     if (button.hasAttribute('data-close')) return closeModal();
-    if (button.dataset.mobileAi) { await openMobileAI(button.dataset.mobileAi); return; }
+    if (button.dataset.mobileAiRetry) { mobileAISettings.delete(button.dataset.mobileAiRetry); await loadMobileAISettings(button.dataset.mobileAiRetry); return; }
     if (button.dataset.mobileLogin) { const id = button.dataset.mobileLogin; closeModal(); await openMobileLogin(id); return; }
     if (button.dataset.mobileStop) {
       const id = button.dataset.mobileStop;

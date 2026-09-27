@@ -25,6 +25,7 @@ export class ChatFixture {
     this.sent = []; this.sequence = 0; this.delivery = null;
   }
   async scan() { return { available: true, account: this.account, contacts: this.contacts }; }
+  async currentAccount() { return { account: this.account }; }
   async read({ contact }) { const messages = structuredClone(this.messages.get(contact)); return { account: this.account, contact, messages, revision: key(JSON.stringify(messages)) }; }
   async readRange({ account, contact, from, to }) {
     const result = await this.read({ account, contact });

@@ -1035,7 +1035,7 @@ def execute(request, pid, home, check, cache=None):
             # first 'sessions' tick after a cold start adds no scan of its own.
             if session_file is not None:
                 files.append(session_file)
-    elif request.get('action') not in ('identity', 'contacts'):
+    elif request.get('action') not in ('account', 'identity', 'contacts'):
         raise ValueError('invalid action')
     if cache is not None:
         cache.bind(pid, root)
@@ -1090,6 +1090,27 @@ def execute(request, pid, home, check, cache=None):
         active = ' AND COALESCE(delete_flag, 0) = 0' if 'delete_flag' in columns else ''
         groups = " OR (local_type = 2 AND username LIKE '%@chatroom' AND is_in_chat_room = 1)" if 'is_in_chat_room' in columns else ''
         order = "COALESCE(NULLIF(remark_quan_pin,''), NULLIF(quan_pin,''), NULLIF(remark,''), NULLIF(nick_name,''), username) COLLATE NOCASE, username" if {'remark_quan_pin', 'quan_pin'} <= columns else "COALESCE(NULLIF(remark,''), NULLIF(nick_name,''), username) COLLATE NOCASE, username"
+        if request['action'] == 'account':
+            # A phone master-switch check needs only the live account identity.
+            # Query the two directory-derived candidates instead of materializing
+            # or sorting the address book on every lightweight refresh.
+            directory = root.parent.name
+            candidates = {directory, re.sub(r'_[a-fA-F0-9]{4,}$', '', directory)}
+            names = [name for name in candidates if CONTACT_UID.fullmatch(name)]
+            if not names:
+                raise ValueError('account identity unavailable')
+            placeholders = ','.join('?' for _ in names)
+            own_rows = db.query('SELECT username FROM contact WHERE username IN (' + placeholders + ')', tuple(names))
+            self_name = self_username(root, [(row[0],) for row in own_rows])
+            account = digest('wechat-data-account\0' + self_name)
+            if request.get('account') and request['account'] != account:
+                if cache is not None: cache.clear()
+                return {'error': 'account-changed'}
+            result = {'available': True, 'account': account}
+            if cache is not None: cache.remember(cache_key, versions, result)
+            check_versions(files, versions)
+            check()
+            return result
         rows = db.query('SELECT username, nick_name, remark, alias, local_type FROM contact WHERE (local_type = 1' + groups + ')' + active + ' ORDER BY ' + order)
         self_name = self_username(root, rows)
         account, people, unreadable_count = contacts(rows, self_name)

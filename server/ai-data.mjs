@@ -87,6 +87,7 @@ export class DataChatBridge extends NativeChatBridge {
   }
   async close() { const worker = this.dataWorker; this.clear(); await worker?.closed.promise; }
   read(args = {}) { return this.execute('read', args); }
+  async currentAccount() { return this.execute('account', {}); }
   readImage(args = {}) { return this.execute('read-image', args); }
   readDates(args = {}) { return this.execute('read-dates', args); }
   readRange(args = {}) { return this.execute('read-range', args); }
@@ -170,6 +171,11 @@ export class DataChatBridge extends NativeChatBridge {
     // blocks a read, it only supplies a verdict for an explicit logout.
     void login?.refresh?.().catch(() => {});
     this.check(context);
+    if (action === 'account') {
+      const result = await this.data('account', {}, context);
+      if (result.available !== true) throw unavailable();
+      return { account: result.account };
+    }
     if (action === 'scan') return this.scanData(context, args.onProgress);
     if (action === 'read') return this.readData(args, context);
     if (action === 'sessions') {

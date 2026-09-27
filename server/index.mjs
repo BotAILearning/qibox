@@ -82,7 +82,12 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
         if (req.method === 'GET' && route === '/api/session') return send(res, 200, { user, product, dev, host, capabilities: { nasPicker: host === 'fnos' }, csrf: token(user.uid), consent: space.consent });
         if (req.method === 'GET' && route === '/api/state') return send(res, 200, { catalog: marketState({ wechat: library }), library: library.publicState(), ...space.list() });
         const aiMatch = /^\/api\/instances\/([a-f0-9-]{36})\/ai$/.exec(route);
+        const aiMasterMatch = /^\/api\/instances\/([a-f0-9-]{36})\/ai\/master$/.exec(route);
         const aiReportMatch = /^\/api\/instances\/([a-f0-9-]{36})\/ai\/reports\/([a-f0-9-]{36})$/.exec(route);
+        if (req.method === 'GET' && aiMasterMatch) {
+          space.requireConsent(); const item = space.get(aiMasterMatch[1]); if (item.meta.appId !== 'wechat') throw new AppError('此应用不支持 AI', 409);
+          return send(res, 200, await item.ai.mobileMasterState(item.meta.id));
+        }
         if (req.method === 'GET' && (aiMatch || aiReportMatch)) {
           space.requireConsent(); const item = space.get((aiMatch || aiReportMatch)[1]); if (item.meta.appId !== 'wechat') throw new AppError('此应用不支持 AI', 409);
           return send(res, 200, aiReportMatch ? item.ai.analysisReport(aiReportMatch[2]) : item.ai.publicState());
@@ -113,7 +118,8 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
         if (audioMatch) return await streamAudio(space.get(audioMatch[1]).runtime, req, res);
         if (aiMatch) {
           if (space.get(aiMatch[1]).meta.appId !== 'wechat') throw new AppError('此应用不支持 AI', 409);
-          const ai = space.get(aiMatch[1]).ai;
+          const item = space.get(aiMatch[1]), ai = item.ai;
+          if (data.action === 'mobile-master') return send(res, 200, await ai.mobileMasterChange(item.meta.id, data.value || {}));
           const handlers = { configure: () => ai.configure(data.value, data.scope), test: () => ai.testProvider(data.scope), models: () => ai.discoverModels(data.value, data.scope), 'model-test': () => ai.testModel(data.value), 'models-save': () => ai.saveModels(data.value), scan: () => ai.scan(),
             'verify-provider': () => ai.verifyProvider(data.value, data.scope), 'reply-options': () => ai.setReplyOptions(data.value || {}),
             'analysis-use-chat': () => ai.useSharedAnalysis(), 'analysis-report-delete': () => ai.deleteAnalysisReport(data.id || data.value?.id), 'contact-remark': () => ai.setContactRemark(data.id, data.value || {}),

@@ -24,7 +24,9 @@ function fixture(handler) {
   const bridge = new DataChatBridge(runtime, { invoke() { assert.fail('Data reads must not use native UI'); },
     async invokeData(action, args, context) {
       calls.push({ action, args });
-      const result = await handler?.(action, args, context) ?? (['contacts', 'identity'].includes(action)
+      const result = await handler?.(action, args, context) ?? (action === 'account'
+        ? { account }
+        : ['contacts', 'identity'].includes(action)
         ? { available: true, account, contacts: [person, { ...person, id: second, native: { ...person.native, contact: key('native-b') } }] }
         : { ...structuredClone(snapshot), contact: args.contact });
       return ['read', 'read-range'].includes(action) ? { label: person.label, native: { ...person.native,

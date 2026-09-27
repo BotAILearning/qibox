@@ -1376,6 +1376,15 @@ export class AIAssistant {
   pauseQueue() { if (this.data.queue.status === 'running') this.data.queue.status = 'paused'; this.data.queue.nextAt = null; this.followUps.clear(); }
   async settings(value) {
     return this.exclusive(async () => {
+      if (value.mobileMaster) {
+        if (typeof this.bridge.currentAccount !== 'function') throw new AppError('暂时无法确认当前微信账号，请稍后重试', 409, 'AI_ACCOUNT_UNVERIFIED');
+        const identity = await this.bridge.currentAccount();
+        if (!identity?.account || identity.account !== value.scopeAccount || this.data.account !== identity.account) {
+          throw new AppError('微信账号或设置已变化，请重新读取后再操作', 409, 'AI_SCOPE_CHANGED');
+        }
+        const currentToken = digest(JSON.stringify(this.data.settings));
+        if (value.settingsToken !== currentToken) throw new AppError('AI 设置已在其他页面更新，请重新读取后再操作', 409, 'AI_SETTINGS_CHANGED');
+      }
       const next = { ...this.data.settings, ...fixedTimingSettings };
       for (const key of ['enabled', 'proactive', 'reply', 'judgeReply', 'updateStyle', 'multiTurn', 'acknowledgeAI']) if (value[key] !== undefined) { if (typeof value[key] !== 'boolean') throw new AppError('开关设置无效'); next[key] = value[key]; }
       if (value.takeover !== undefined) next.takeover = takeoverValue(value.takeover);
@@ -1508,6 +1517,25 @@ export class AIAssistant {
       this.invalidate(); Object.assign(profile, changeMemory(this.vault, profile, value, this.now()));
       await this.save(); return this.publicState();
     });
+  }
+  async mobileMasterState(instanceId) {
+    if (typeof this.bridge.currentAccount !== 'function') throw new AppError('暂时无法确认当前微信账号，请稍后重试', 409, 'AI_ACCOUNT_UNVERIFIED');
+    const identity = await this.bridge.currentAccount();
+    const account = identity?.account;
+    if (typeof account !== 'string' || !validKey(account)) throw new AppError('请打开并登录微信后重试', 409, 'AI_ACCOUNT_UNVERIFIED');
+    const scopeToken = digest(`${instanceId}\0${account}`);
+    const matches = this.data.account === account;
+    return { enabled: matches && this.data.settings.enabled === true, available: matches && this.available && this.ready() && this.modelReady(), scopeToken,
+      settingsToken: digest(JSON.stringify(this.data.settings)) };
+  }
+  async mobileMasterChange(instanceId, { enabled, scopeToken, settingsToken } = {}) {
+    if (typeof enabled !== 'boolean' || typeof scopeToken !== 'string' || typeof settingsToken !== 'string') throw new AppError('开关状态已过期，请重新读取后再操作', 409, 'AI_SCOPE_CHANGED');
+    if (typeof this.bridge.currentAccount !== 'function') throw new AppError('暂时无法确认当前微信账号，请稍后重试', 409, 'AI_ACCOUNT_UNVERIFIED');
+    const identity = await this.bridge.currentAccount();
+    const account = identity?.account;
+    if (typeof account !== 'string' || !validKey(account) || digest(`${instanceId}\0${account}`) !== scopeToken) throw new AppError('微信账号已变化，请重新读取后再操作', 409, 'AI_SCOPE_CHANGED');
+    const state = await this.settings({ enabled, mobileMaster: true, scopeAccount: account, settingsToken });
+    return { enabled: state.settings.enabled === true };
   }
   async editContactMemory(contactId, value) {
     return this.exclusive(async () => {

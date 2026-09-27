@@ -94,6 +94,17 @@ def wal_bytes(pages, commit=True):
 
 
 class DataTest(unittest.TestCase):
+    def test_account_identity_reads_only_own_contact_row_and_returns_no_address_book(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory, 'wxid_self_abcd/db_storage')
+            (root / 'contact').mkdir(parents=True)
+            make_database(root / 'contact/contact.db',
+                          "CREATE TABLE contact(username TEXT,nick_name TEXT,remark TEXT,alias TEXT,local_type INTEGER);"
+                          "INSERT INTO contact VALUES('wxid_self','我','','',1),('wxid_a','联系人','','',1);")
+            with patch.object(data, 'active_root', return_value=root), patch.object(data, 'discover_keys', return_value={SALT: KEY}):
+                result = data.execute({'action': 'account'}, 42, directory, lambda: None)
+            self.assertEqual(result, {'available': True, 'account': data.digest('wechat-data-account\0wxid_self')})
+
     def test_contact_scan_does_not_require_message_shards(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory, 'wxid_self_abcd/db_storage')
