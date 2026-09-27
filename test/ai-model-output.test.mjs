@@ -71,10 +71,10 @@ test('提示词对返回结构有明确约定，对正文写法不做格式化�
   assert.match(batchLearningPrompt, /profiles 的长度必须与输入 conversations 的长度完全一致/);
 });
 
-test('未转化语音只跳过，不生成无法识别或请转文字的回复', () => {
+test('未转化语音在实时回复可跳过，明确提及仍回复文字说明', () => {
   assert.match(conversationPrompt, /unresolved=true 表示该条语音未转化出文字，直接忽略该条语音/);
-  assert.match(conversationPrompt, /本轮只有这类语音时返回 action=skip/);
-  assert.match(conversationPrompt, /不回复“无法识别”“请转文字”等相关内容/);
+  assert.match(conversationPrompt, /仅实时回复可返回 action=skip/);
+  assert.match(conversationPrompt, /已验证的@我或@所有人仍须用文字说明暂时无法读取/);
 });
 
 test('记忆学习覆盖全部材料、筛掉寒暄占位并允许空 entries', () => {

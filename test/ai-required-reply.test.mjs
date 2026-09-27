@@ -109,7 +109,7 @@ test('@me explicit stop request sets stopUntil like required private replies', a
   await a.close(); await cleanup(root);
 });
 
-test('@all remains a model decision and may skip', async t => {
+test('verified group @all retries an invalid skip and sends a reply', async t => {
   const root = await temp(), bridge = new ChatFixture(), provider = new AIModelFixture();
   let now = 1700000000000; bridge.stableMessageIds = true;
   const a = new AIAssistant({ dataRoot: root, bridge, provider, now: () => now, delay: async () => {} });
@@ -119,10 +119,28 @@ test('@all remains a model decision and may skip', async t => {
   provider.next = async () => ({ action: 'skip' });
   Object.assign(bridge.push(target.id, 'other', '@所有人 通知'), { timestamp: Math.floor(now / 1000), sender: 'a'.repeat(64), mentions: { verified: true, self: false, all: true, others: false } });
   await a.tick(); now += 3000; await a.tick();
+  assert.equal(provider.calls.length, 2); assert.equal(bridge.sent.length, 1);
+  assert.equal(provider.calls[0].input.judgeReply, false);
+  assert.match(provider.calls[0].system, /普通决策的action只能为 send/);
+  assert.equal(a.data.events.some(e => e.code === 'skip'), false);
+  await a.close(); await cleanup(root);
+});
+
+test('verified group @all accepts an explicit request not to reply', async t => {
+  const root = await temp(), bridge = new ChatFixture(), provider = new AIModelFixture();
+  let now = 1700000000000; bridge.stableMessageIds = true;
+  const a = new AIAssistant({ dataRoot: root, bridge, provider, now: () => now, delay: async () => {} });
+  await a.init(); await a.configure(modelConfig); await a.testProvider(); await a.scan();
+  const target = bridge.contacts[0]; target.kind = 'group'; await a.scan();
+  await a.setGroupOptions({ contact: target.id, atAll: true }); await a.settings({ enabled: true }); await a.tick();
+  provider.next = async () => ({ stop: true });
+  const incoming = Object.assign(bridge.push(target.id, 'other', '@所有人 请不要回复'), { timestamp: Math.floor(now / 1000), sender: 'a'.repeat(64), mentions: { verified: true, self: false, all: true, others: false } });
+  await a.tick(); now += 3000; await a.tick();
   assert.equal(provider.calls.length, 1); assert.equal(bridge.sent.length, 0);
-  assert.equal(provider.calls[0].input.judgeReply, true);
-  assert.match(provider.calls[0].system, /skip/);
-  assert.equal(a.data.events[0].code, 'skip');
+  assert.equal(a.profiles()[0].handledIncomingId, incoming.id);
+  assert.equal(a.profiles()[0].stopUntil, now + 5 * 60 * 1000);
+  assert.equal(a.data.events.some(e => e.code === 'stop'), true);
+  assert.equal(a.data.events.some(e => e.code === 'skip'), false);
   await a.close(); await cleanup(root);
 });
 
@@ -138,6 +156,22 @@ test('unreadable image on @me reaches the model and is not silently skipped', as
   await a.tick(); now += 3000; await a.tick();
   assert.equal(provider.calls.length, 1); assert.equal(bridge.sent.length, 1);
   assert.equal(provider.calls[0].input.messages.find(m => m.id === image.id).unresolved, true);
+  await a.close(); await cleanup(root);
+});
+
+test('unreadable voice on @all gets a text reply instead of a silent skip', async t => {
+  const root = await temp(), bridge = new ChatFixture(), provider = new AIModelFixture();
+  let now = 1700000000000; bridge.stableMessageIds = true;
+  const a = new AIAssistant({ dataRoot: root, bridge, provider, now: () => now, delay: async () => {} });
+  await a.init(); await a.configure(modelConfig); await a.testProvider(); await a.scan();
+  const target = bridge.contacts[0]; target.kind = 'group'; await a.scan();
+  await a.setGroupOptions({ contact: target.id, atAll: true }); await a.settings({ enabled: true }); await a.tick();
+  provider.next = async () => ({ action: 'send', text: '我暂时读不到这条语音，请发一下文字内容' });
+  const incoming = Object.assign(bridge.push(target.id, 'other', '[语音]'), { type: 'voice', timestamp: Math.floor(now / 1000), sender: 'a'.repeat(64), mentions: { verified: true, self: false, all: true, others: false } });
+  await a.tick(); now += 3000; await a.tick();
+  assert.equal(provider.calls.length, 1); assert.equal(bridge.sent.length, 1);
+  assert.equal(provider.calls[0].input.messages.find(m => m.id === incoming.id).unresolved, true);
+  assert.equal(a.data.events.some(e => e.reasonCode === 'unreadable-voice'), false);
   await a.close(); await cleanup(root);
 });
 

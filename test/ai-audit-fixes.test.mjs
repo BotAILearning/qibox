@@ -110,7 +110,7 @@ for (const mention of ['self', 'all']) for (const otherSpeaker of [false, true])
   push('普通补充。', '', 'one'); await a.tick(); advance(4000); await a.tick();
   assert.equal(provider.calls.length, 1);
 });
-test('AI-03 @me skip reports an error while @all skip is consumed once', async t => {
+test('AI-03 @me skip reports an error while @all skip retries and sends', async t => {
   const { a, bridge, provider, advance } = await fixture(t), c = bridge.contacts[0]; c.kind = 'group'; await a.scan();
   const push = field => Object.assign(bridge.push(c.id, 'other', '测试'), { sender: key('one'), mentions: { verified: true, self: field === 'self', all: field === 'all', others: false } });
   const complete = provider.complete.bind(provider);
@@ -131,11 +131,12 @@ test('AI-03 @me skip reports an error while @all skip is consumed once', async t
   await a.setGroupOptions({ contact: c.id, atMe: false, atAll: true });
   await a.tick(); // Establish the all-mention boundary before generating new input.
   provider.next = async () => ({ action: 'skip' });
+  const priorSkips = a.data.events.filter(e => e.code === 'skip' && e.target === profile.id).length;
   push('all'); await a.tick(); advance(4000); await a.tick();
-  assert.equal(provider.calls.length, 3);
-  assert.equal(bridge.sent.length, 0);
-  assert.ok(a.data.events.some(e => e.code === 'skip' && e.target === profile.id));
-  push(''); await a.tick(); advance(4000); await a.tick(); assert.equal(provider.calls.length, 3);
+  assert.equal(provider.calls.length, 4);
+  assert.equal(bridge.sent.length, 1);
+  assert.equal(a.data.events.filter(e => e.code === 'skip' && e.target === profile.id).length, priorSkips);
+  push(''); await a.tick(); advance(4000); await a.tick(); assert.equal(provider.calls.length, 4);
 });
 test('AI-03 pending burst survives restart with its original unprocessed boundary', async t => {
   const { a, bridge, provider, advance, options } = await fixture(t), c = bridge.contacts[0]; bridge.stableMessageIds = true; c.kind = 'group'; await a.scan();

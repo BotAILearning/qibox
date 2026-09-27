@@ -173,7 +173,7 @@ test('@all continues to ask the model after more than 20 recent replies', async 
   assert.equal(profile.groupWait, undefined);
 });
 
-test('model wait is rejected and never creates a model-controlled group wait', async t => {
+test('model wait on @all is retried without creating a model-controlled group wait', async t => {
   const { a, bridge, provider, profile, advance } = await fixture(t);
   await a.setGroupOptions({ contact: profile.contact, atMe: false, atAll: true, realtime: false });
   Object.assign(bridge.push(profile.contact, 'other', '@所有人 请判断'), { timestamp: Math.floor(a.now() / 1000), sender: key('member'), mentions: { verified: true, self: false, all: true, others: false } });
@@ -182,7 +182,8 @@ test('model wait is rejected and never creates a model-controlled group wait', a
   await a.tick();
   assert.equal(profile.groupWait, undefined);
   assert.equal(a.data.events.some(e => e.code === 'wait' && e.source === 'model'), false);
-  assert.equal(provider.calls.length, 1); assert.equal(bridge.sent.length, 0);
+  assert.equal(provider.calls.length, 2); assert.equal(bridge.sent.length, 1);
+  assert.equal(a.data.events.some(e => e.code === 'error' && e.target === profile.id), false);
   assert.equal(a.data.events.some(e => e.code === 'wait' && e.source === 'model'), false);
 });
 
