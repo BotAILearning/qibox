@@ -977,6 +977,7 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
     }
     if (event.target.name === 'request' && event.target.closest('#ai-analysis-form')) {
       $('.ai-analysis-presets').innerHTML = presetChips(event.target.value);
+      $('#ai-analysis-request-count').textContent = `${event.target.value.length}/1000`;
     }
     if (event.target.id === 'ai-object-search') { objectSearch = event.target.value; $('#ai-object-list').innerHTML = objectList(state, objectView()); return; }
     if (event.target.id === 'ai-log-search') {
@@ -1294,6 +1295,11 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
         // again clears the field, and editing the text turns it into 自定义.
         field.value = analysisRequestState(field.value) === button.dataset.aiAnalysisPreset ? '' : presetRequest(button.dataset.aiAnalysisPreset);
         rememberDraft(); render(); return;
+      }
+      if ('aiAnalysisOther' in button.dataset) {
+        const field = $('#ai-analysis-form [name=request]'); if (!field) return;
+        if (analysisRequestState(field.value) !== 'custom') field.value = '';
+        rememberDraft(); render(); $('#ai-analysis-form [name=request]')?.focus(); return;
       }
       if (busy && !['cancel'].includes(action)) throw new Error('请等待当前操作完成，或先取消');
       if (action === 'analysis-use-chat') { await execute('analysis-use-chat', {}, '分析报告已改用聊天模型'); return; }

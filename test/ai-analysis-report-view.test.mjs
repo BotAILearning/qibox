@@ -10,8 +10,11 @@ test('分析要求可以留空，仍保留用户自定义要求字段', () => {
   assert.equal(value.request, '');
 });
 
-test('快捷分析首项是分析报告，运行记录始终显示联系人或内容搜索框', () => {
-  assert.match(presetChips(''), /data-ai-analysis-preset="summary"[^>]*>分析报告/);
+test('分析要求显示三项常用方向和其他问题，运行记录保留搜索框', () => {
+  const chips = presetChips('');
+  for (const direction of ['review', 'todo', 'relation']) assert.match(chips, new RegExp(`data-ai-analysis-preset="${direction}"`));
+  assert.match(chips, /data-ai-analysis-other/);
+  assert.equal((chips.match(/<button/g) || []).length, 4);
   assert.match(activityPage({ contacts: [], activity: [], profiles: [] }), /id="ai-log-search" type="search"/);
 });
 
@@ -20,7 +23,8 @@ test('聊天分析重排后仍保留选择、搜索、时间筛选、分析、�
   const draft = { contacts: ['contact-1'], request: '', from: '', to: '' };
   const result = { reports: [{ label: '联系人', status: 'complete', count: 2, metrics: { total: 2 }, report: '分析内容', excerpts: [] }] };
   const html = analysisPage(state, draft, result, '联系人');
-  for (const token of ['id="ai-analysis-form"', 'id="ai-analysis-search"', 'id="ai-analysis-contacts"', 'name="contacts"', 'data-ai-date-range="analysis"', 'name="request"', '开始分析', 'data-analysis-report="0"', 'data-ai-copy-report="0"', '历史分析报告']) assert.ok(html.includes(token), `missing ${token}`);
+  for (const token of ['id="ai-analysis-form"', 'id="ai-analysis-search"', 'id="ai-analysis-contacts"', 'name="contacts"', 'name="request"', 'maxlength="1000"', 'id="ai-analysis-request-count"', '开始分析', 'data-analysis-report="0"', 'data-ai-copy-report="0"', '历史分析报告']) assert.ok(html.includes(token), `missing ${token}`);
+  assert.match(analysisPage(state, draft, null, '', null, 'custom'), /data-ai-date-range="analysis"/);
   assert.doesNotMatch(html, /聊天分析<br|你的聊天回顾，从这里开始|快捷方向会填入可继续编辑的内容/);
   assert.ok(html.indexOf('</form>') < html.indexOf('class="ai-analysis-reports"'), 'reports span the workspace beneath the setup form');
 });

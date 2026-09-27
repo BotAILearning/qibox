@@ -52,7 +52,7 @@ try {
   await page.locator('[name=request]').fill('分别总结约定');await page.locator('#ai-analysis-form [name=contacts]').first().check();
   assert.equal(await page.locator('[name=from]').inputValue(),'');await page.getByRole('button',{name:'开始分析',exact:true}).click();await settled();
   assert.equal(completed[0].input.from,'');assert.equal(await page.locator('[data-analysis-report]').count(),1);
-  await page.locator('[data-ai-date-range]').click();await page.locator('[data-mode=custom]').click();
+  await page.locator('[data-ai-analysis-range=custom]').click();await page.locator('[data-ai-date-range]').click();await page.locator('[data-mode=custom]').click();
   assert.equal(await page.locator('[data-day="2025-01-02"]').isEnabled(),false);
   await page.locator('[data-year]').selectOption('2026');await page.locator('[data-month]').selectOption('09');
   await page.locator('[data-day="2026-09-01"]').click();await page.locator('[data-day="2026-09-03"]').click();await shot('calendar');await page.locator('[data-apply]').click();
@@ -69,7 +69,7 @@ try {
     if(await page.locator('.ai-object-sidebar').isVisible())await page.locator('[data-ai-object]').first().click();
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
     const rows=await page.locator('.ai-option-card').evaluateAll(ns=>ns.map(n=>n.getBoundingClientRect().y));assert.ok(rows.every(y=>Math.abs(y-rows[0])<1));await shot('personal-'+width);
-    await page.locator('.ai-main-tabs [data-ai-nav=analysis]').click();await page.locator('[data-ai-date-range]').click();await page.locator('[data-mode=custom]').click();
+    await page.locator('.ai-main-tabs [data-ai-nav=analysis]').click();await page.locator('[data-ai-analysis-range=custom]').click();await page.locator('[data-ai-date-range]').click();await page.locator('[data-mode=custom]').click();
     assert.ok(await page.locator('.ai-calendar-dialog').evaluate(n=>n.scrollWidth<=n.clientWidth));await shot('calendar-'+width);await page.locator('[data-cancel]').click();
   }
   assert.equal(bridge.sent.length,0);assert.deepEqual(report.errors,[]);report.passed=true;
