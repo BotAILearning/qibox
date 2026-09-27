@@ -13,10 +13,19 @@ function minute(value) {
   if (typeof value !== 'string' || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value)) throw new AppError('执行时间应为 HH:mm');
   return Number(value.slice(0, 2)) * 60 + Number(value.slice(3));
 }
+function onceAt(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d$/.test(value)) throw new AppError('请选择有效的执行日期和时间');
+  const [date, time] = value.split('T');
+  const n = dateDay(date);
+  return n * DAY - OFFSET + minute(time) * 60000;
+}
 export function proactiveSchedule(value = {}, now = Date.now()) {
   if (!value || typeof value !== 'object' || Array.isArray(value) || !['once', 'daily', 'weekdays', 'weekly', 'custom'].includes(value.cycle)) throw new AppError('请选择执行周期');
-  // Immediate tasks deliberately ignore every hidden time field from the form.
-  if (value.cycle === 'once') return { cycle: 'once', mode: 'fixed', timezone: 'Asia/Shanghai' };
+  // Missing `at` is the legacy immediate form. Other hidden recurring fields are ignored.
+  if (value.cycle === 'once') {
+    if (Object.hasOwn(value, 'at')) onceAt(value.at);
+    return { cycle: 'once', mode: 'fixed', timezone: 'Asia/Shanghai', ...(Object.hasOwn(value, 'at') ? { at: value.at } : {}) };
+  }
   if (!['fixed', 'random'].includes(value.mode)) throw new AppError('请选择执行时间方式');
   const result = { cycle: value.cycle, mode: value.mode, timezone: 'Asia/Shanghai', startDate: value.startDate || dateOf(day(now)) };
   dateDay(result.startDate);
@@ -40,7 +49,7 @@ export function proactiveSchedule(value = {}, now = Date.now()) {
 // The occurrence belongs to the calendar day on which its window starts.
 // The persisted occurrenceDate prevents a cross-midnight window running twice.
 export function nextProactiveOccurrence(schedule, now, random, afterDate = null) {
-  if (schedule.cycle === 'once') return { nextAt: afterDate ? null : now, occurrenceDate: 'once' };
+  if (schedule.cycle === 'once') return { nextAt: afterDate ? null : schedule.at ? Math.max(now, onceAt(schedule.at)) : now, occurrenceDate: 'once' };
   const anchor = dateDay(schedule.startDate), after = afterDate && afterDate !== 'once' ? dateDay(afterDate) : -Infinity;
   const start = minute(schedule.mode === 'fixed' ? schedule.time : schedule.start);
   let end = schedule.mode === 'fixed' ? start : minute(schedule.end);

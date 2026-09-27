@@ -792,7 +792,7 @@ export class AIAssistant {
     const style = profile.style && (profile.learnedAt || profile.replyStyleSet || profile.replyConfiguredAt || profile.locked?.length)
       ? profile.style : { summary: '自然、简洁、礼貌；默认不加称呼，不推断关系。' };
     const strategy = { purpose: task.goal, content: task.goal, boundaries: task.requirements, facts: '', persona: '', maxRounds: 1 };
-    const multiTurn = task.sendMode !== 'single';
+    const multiTurn = true;
     const currentTime = new Date(this.now() + 8 * 3600000).toISOString().replace('Z', '+08:00');
     const emphasis = message => {
       const chars = Array.from(message.text || ''), truncated = chars.length > 360;

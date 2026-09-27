@@ -35,6 +35,7 @@ export class ProactiveTasks {
   init() {
     const a = this.ai, d = a.data;
     d.proactiveTasks ??= []; d.proactiveRecords ??= [];
+    for (const task of d.proactiveTasks) task.sendMode = 'segments';
     for (const record of d.proactiveRecords) if (['sending', 'uncertain'].includes(record.status)) {
       record.status = 'unknown'; record.reason = '旧版待核验记录已自动结清；为避免重复发送，本条不重发';
       delete record.body; delete record.text;
@@ -73,7 +74,7 @@ export class ProactiveTasks {
       const oldRequirements = [['旧内容要求', row.strategy?.content], ['已知信息', row.strategy?.facts], ['限制', row.strategy?.boundaries]].filter(([, text]) => text).map(([label, text]) => `${label}：${text}`).join('\n');
       const legacyScheduleText = row.text || (schedule ? `${row.repeat === 'daily' ? '每天' : `每周${row.weekday}`} ${schedule.mode === 'fixed' ? schedule.time : `${schedule.start}–${schedule.end} 随机`}` : row.legacyKind === 'queue' ? '旧单轮主动聊天队列' : '旧时间无法可靠转换，请重新选择执行周期');
       this.tasks.push({ id: randomUUID(), account: row.account, name: row.name || '旧主动聊天任务', taskType: 'custom', contacts,
-        goal: row.strategy?.purpose || '', requirements: oldRequirements, schedule: schedule || { cycle: 'once', mode: 'fixed', timezone: 'Asia/Shanghai' },
+        goal: row.strategy?.purpose || '', requirements: oldRequirements, sendMode: 'segments', schedule: schedule || { cycle: 'once', mode: 'fixed', timezone: 'Asia/Shanghai' },
         status: 'paused', nextAt: null, lastRunAt: row.lastRunAt || null, createdAt: row.createdAt || a.now(), revision: 1,
         migrationScheduleMapped: !!schedule, legacyScheduleText,
         migrationSummary: [`原安排：${legacyScheduleText}`, `原目标：${row.strategy?.purpose || '未设置'}`, oldRequirements, !schedule ? '无法可靠转换原执行时间，必须明确选择新周期后保存。' : '已预填可转换的周期，仍需人工核对后保存。'].filter(Boolean).join('\n'),
@@ -116,9 +117,7 @@ export class ProactiveTasks {
     if (!a.data.account || !Array.isArray(contacts) || !contacts.length || contacts.length > 200 || contacts.some(id => a.contacts.get(id)?.kind !== 'person')) throw new AppError('请选择当前账号检测到的联系人（最多 200 人）');
     const taskType = value.taskType ?? previous?.taskType ?? 'custom';
     if (!types.includes(taskType)) throw new AppError('任务类型无效');
-    const sendMode = value.sendMode ?? previous?.sendMode ?? 'segments';
-    if (!['single', 'segments'].includes(sendMode)) throw new AppError('发送方式无效');
-    const fields = { name: textField(value.name ?? previous?.name ?? '', 120, true), taskType, sendMode,
+    const fields = { name: textField(value.name ?? previous?.name ?? '', 120, true), taskType, sendMode: 'segments',
       goal: textField(value.goal ?? previous?.goal ?? '', 6000, true), requirements: textField(value.requirements ?? previous?.requirements ?? '', 6000),
       schedule: proactiveSchedule(value.schedule ?? previous?.schedule, a.now()) };
     fields.contacts = [...new Set(contacts)].map(contact => {
@@ -142,6 +141,8 @@ export class ProactiveTasks {
       if (value.revision !== undefined && value.revision !== task?.revision) throw new AppError('任务已被修改，请刷新后重试', 409);
       if (value.version !== undefined && value.version !== task?.revision) throw new AppError('任务已被修改，请刷新后重试', 409);
       const fields = ['create', 'edit'].includes(command) ? this.validate(value, task) : null;
+      if (fields?.schedule.cycle === 'once' && fields.schedule.at && fields.schedule.at !== task?.schedule?.at &&
+          Date.parse(`${fields.schedule.at}:00+08:00`) <= a.now()) throw new AppError('执行时间须晚于当前时间');
       if (command === 'edit' && task.migrationRequired && !task.migrationScheduleMapped && !Object.hasOwn(value, 'schedule')) throw new AppError('旧时间无法自动转换，请明确选择执行周期后保存');
       if (command === 'create' && this.tasks.filter(t => t.account === a.data.account && !t.deletedAt).length >= 200) throw new AppError('最多保留 200 个任务，请先删除不用的任务');
       if (['resume', 'retry'].includes(command) && task.migrationRequired) throw new AppError('请先核对并保存旧任务的联系人、目标和执行周期');
@@ -337,7 +338,7 @@ export class ProactiveTasks {
       this.record(task, item, 'skipped', '联系人要求停止联系；主动任务已跳过，5分钟内暂停自动发送');
       await a.save(); return null;
     }
-    let texts = messageSegments(result, { multiTurn: task.sendMode !== 'single', allowSkip: false });
+    let texts = messageSegments(result, { multiTurn: true, allowSkip: false });
     if (result.action !== 'send') {
       this.record(task, item, result.action === 'skip' ? 'skipped' : 'failed', result.action === 'skip' ? '模型判断本次无需发送' : result.action === 'stop' ? '对方要求停止联系，请人工核对' : '需要本人决定，请人工核对');
       // 只记录、不暂停：需要本人处理或对方要求停止都体现在运行记录与任务状态里，

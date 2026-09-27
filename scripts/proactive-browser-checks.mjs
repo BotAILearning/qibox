@@ -20,8 +20,8 @@ export async function proactiveDraftCheck(page) {
   await page.locator('[data-proactive-clear]').click();
   await page.locator('[data-proactive-picker-cancel]').last().click();
   assert.equal(await page.locator('#ai-proactive-selected .ap-chip').count(), 1);
-  await page.locator('#ai-proactive-form [name=cycle]').selectOption('weekly');
-  await page.locator('#ai-proactive-form [name=mode]').selectOption('random');
+  await page.locator('#ai-proactive-form [name=cycle][value=weekly]').check();
+  await page.locator('#ai-proactive-form [name=mode][value=random]').check();
   assert.equal(await page.locator('#ai-proactive-form [name=start]').isVisible(), true);
   assert.equal(await page.locator('#ai-proactive-form [name=weekdays]').count(), 7);
   await page.locator('[data-proactive-cancel]').click();

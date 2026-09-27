@@ -2,8 +2,19 @@ import { contactName } from './ai-contact-name.mjs';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const statuses = { running: '执行中', paused: '已暂停', ended: '已结束', failed: '执行失败' };
 const types = { custom: '自定义', greeting: '日常问候', relationship: '关系维护', work: '工作跟进', invitation: '邀约活动', holiday: '节日祝福' };
+const publishedAt = task => {
+  const value = task.createdAt;
+  return typeof value === 'number' && Number.isFinite(value) ? value : typeof value === 'string' ? Date.parse(value) : NaN;
+};
 export function renderProactiveTable(state, view = {}, { beijingTime, scheduleLabel }) {
-  const all = (state.proactiveTasks || []).filter(task => !task.deletedAt && !task.deleted);
+  const all = (state.proactiveTasks || []).filter(task => !task.deletedAt && !task.deleted)
+    .map((task, index) => ({ task, index }))
+    .sort((left, right) => {
+      const a = publishedAt(left.task), b = publishedAt(right.task);
+      if (!Number.isFinite(a)) return Number.isFinite(b) ? 1 : right.index - left.index;
+      if (!Number.isFinite(b)) return -1;
+      return b - a || right.index - left.index;
+    }).map(({ task }) => task);
   const tasks = all.filter(task => !view.filter || view.filter === 'all' || task.status === view.filter);
   const filters = [['all', '全部'], ...Object.entries(statuses)].map(([key, label]) => `<button type="button" data-proactive-filter="${key}" aria-pressed="${(view.filter || 'all') === key}">${label}</button>`).join('');
   const rows = tasks.map(task => {

@@ -11,7 +11,7 @@ export const taskTypes = [
   ['holiday', '节日祝福', '结合节日氛围发送自然、真诚的祝福。'],
 ];
 const statuses = { running: '执行中', paused: '已暂停', ended: '已结束', failed: '执行失败' };
-const cycles = [['once', '立即执行一次'], ['daily', '每天执行'], ['weekdays', '每个工作日执行'], ['weekly', '每周执行'], ['custom', '自定义周期']];
+const cycles = [['once', '执行一次'], ['daily', '每天执行'], ['weekdays', '每个工作日执行'], ['weekly', '每周执行'], ['custom', '自定义周期']];
 const days = [[1, '周一'], [2, '周二'], [3, '周三'], [4, '周四'], [5, '周五'], [6, '周六'], [0, '周日']];
 const requestId = () => {
   if (crypto.randomUUID) return crypto.randomUUID();
@@ -29,22 +29,22 @@ export function taskDraft(task, today = new Date().toLocaleDateString('sv-SE', {
   return {
     id: task?.id, version: task?.version, revision: task?.revision, requestId: task?.id ? undefined : requestId(), name: task?.name || '', taskType: task?.taskType || 'custom',
     contacts: (task?.contacts || []).map(c => typeof c === 'string' ? { id: c, label: c } : { ...c }),
-    goal: task?.goal || '', requirements: task?.requirements || '', sendMode: task?.sendMode || 'segments',
-    schedule: { cycle: 'once', mode: 'fixed', time: '14:40', start: '18:00', end: '21:00', weekdays: [1], intervalDays: 2, startDate: today, ...task?.schedule, ...(task?.schedule?.weekdays ? { weekdays: [...task.schedule.weekdays] } : {}), ...(task?.migrationRequired && !task.migrationScheduleMapped ? { cycle: '' } : {}) },
+    goal: task?.goal || '', requirements: task?.requirements || '',
+    schedule: { cycle: 'once', onceTiming: task?.schedule?.at ? 'at' : 'now', mode: 'fixed', time: '14:40', start: '18:00', end: '21:00', weekdays: [1], intervalDays: 2, startDate: today, ...task?.schedule, ...(task?.schedule?.weekdays ? { weekdays: [...task.schedule.weekdays] } : {}), ...(task?.migrationRequired && !task.migrationScheduleMapped ? { cycle: '' } : {}) },
   };
 }
 export function readTaskDraft(form, draft) {
   if (!form || !draft || form.querySelector('fieldset')?.disabled) return draft;
   const data = new FormData(form), next = { ...draft, schedule: { ...draft.schedule } };
-  for (const key of ['name', 'taskType', 'goal', 'requirements', 'sendMode']) if (data.has(key)) next[key] = data.get(key);
-  for (const key of ['cycle', 'mode', 'time', 'start', 'end', 'intervalDays', 'startDate']) if (data.has(key)) next.schedule[key] = data.get(key);
+  for (const key of ['name', 'taskType', 'goal', 'requirements']) if (data.has(key)) next[key] = data.get(key);
+  for (const key of ['cycle', 'onceTiming', 'at', 'mode', 'time', 'start', 'end', 'intervalDays', 'startDate']) if (data.has(key)) next.schedule[key] = data.get(key);
   if (form.querySelector('[name="weekdays"]')) next.schedule.weekdays = data.getAll('weekdays').map(Number);
   return next;
 }
 export function taskPayload(draft) {
   const value = { command: draft.id ? 'edit' : 'create', ...(draft.id ? { id: draft.id, ...(Number.isInteger(draft.version) ? { version: draft.version } : Number.isInteger(draft.revision) ? { revision: draft.revision } : {}) } : { requestId: draft.requestId }),
     name: draft.name.trim(), taskType: draft.taskType || 'custom', contacts: [...new Set(draft.contacts.map(c => c.id))],
-    goal: draft.goal.trim(), requirements: draft.requirements.trim(), sendMode: draft.sendMode || 'segments', schedule: { ...draft.schedule, weekdays: [...draft.schedule.weekdays], intervalDays: Number(draft.schedule.intervalDays) } };
+    goal: draft.goal.trim(), requirements: draft.requirements.trim(), schedule: { ...draft.schedule, weekdays: [...draft.schedule.weekdays], intervalDays: Number(draft.schedule.intervalDays) } };
   if (!value.name) throw new Error('请填写任务名称');
   if (!value.contacts.length) throw new Error('请至少选择一位联系人');
   if (value.contacts.length > 200) throw new Error('每个任务最多选择 200 位联系人');
@@ -52,6 +52,14 @@ export function taskPayload(draft) {
   if (value.name.length > 120 || value.goal.length > 6000 || value.requirements.length > 6000) throw new Error('任务名称限 120 字，目标和其他要求各限 6000 字');
   const s = value.schedule, validTime = time => /^([01]\d|2[0-3]):[0-5]\d$/.test(time || '');
   if (!cycles.some(([key]) => key === s.cycle)) throw new Error('请选择有效的执行周期');
+  if (s.cycle === 'once') {
+    if (!['now', 'at'].includes(s.onceTiming)) throw new Error('请选择执行方式');
+    if (s.onceTiming === 'at') {
+      if (!/^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d$/.test(s.at || '') || !Number.isFinite(Date.parse(`${s.at}:00+08:00`))) throw new Error('请选择有效的执行日期和时间');
+      value.schedule = { cycle: 'once', at: s.at };
+    } else value.schedule = { cycle: 'once' };
+    return value;
+  }
   if (s.cycle !== 'once') {
     if (!['fixed', 'random'].includes(s.mode)) throw new Error('请选择执行时间方式');
     if (s.mode === 'fixed' && !validTime(s.time)) throw new Error('请填写固定执行时间');
@@ -79,7 +87,7 @@ export function contactChoices(state, query = '', selected = []) {
     .sort((a, b) => a.rank - b.rank || a.label.localeCompare(b.label, 'zh-CN'));
 }
 export function scheduleLabel(schedule = {}) {
-  if (schedule.cycle === 'once') return '立即执行一次';
+  if (schedule.cycle === 'once') return schedule.at ? `执行一次 · ${schedule.at.replace('T', ' ')}（北京时间）` : '执行一次 · 立即执行';
   const cycle = { daily: '每天', weekdays: '周一至周五', weekly: `每${days.filter(([d]) => schedule.weekdays?.includes(d)).map(([, label]) => label).join('、')}`, custom: `每 ${schedule.intervalDays} 天` }[schedule.cycle] || '未设置';
   return `${cycle} · ${schedule.mode === 'random' ? `${schedule.start}–${schedule.start > schedule.end ? '次日 ' : ''}${schedule.end} 随机` : schedule.time || '未设置时间'}`;
 }
@@ -96,6 +104,25 @@ function replyOffContacts(state, contacts) {
     return !enabled;
   });
 }
+function scheduleEditor(s) {
+  const once = s.cycle === 'once', timing = s.onceTiming === 'at' ? 'at' : 'now';
+  const options = (name, label, entries, selected) => `<div class="ap-schedule-choices" role="radiogroup" aria-label="${label}">${entries.map(([value, title]) => `<label class="ap-schedule-choice ${selected === value ? 'selected' : ''}"><input type="radio" name="${name}" value="${value}" ${selected === value ? 'checked' : ''}><span>${title}</span></label>`).join('')}</div>`;
+  const cycleTitles = { weekdays: '工作日执行' };
+  return `<section class="ap-form-card ap-schedule-card"><div class="ap-schedule-heading"><h4>执行安排</h4><p>选择执行周期和时间</p></div>
+    <div class="ap-schedule-group"><h5>执行周期</h5>
+      <div class="ap-cycle-options" role="radiogroup" aria-label="执行周期">${cycles.map(([key, label]) => `<label class="ap-cycle-choice ${s.cycle === key ? 'selected' : ''}"><input type="radio" name="cycle" value="${key}" required ${s.cycle === key ? 'checked' : ''}><span>${cycleTitles[key] || label}</span></label>`).join('')}</div>
+      ${s.cycle === 'weekdays' ? '<p class="ap-schedule-inline-note">周一至周五执行，不随节假日调休变化。</p>' : ''}
+      ${s.cycle === 'weekly' ? `<div class="ap-weekdays" role="group" aria-label="每周执行日期">${days.map(([day, label]) => `<label><input type="checkbox" name="weekdays" value="${day}" ${s.weekdays.includes(day) ? 'checked' : ''}>${label}</label>`).join('')}</div>` : ''}
+      ${s.cycle === 'custom' ? `<div class="ap-time-range ap-custom-range"><label class="ai-field">每隔几天<input type="number" name="intervalDays" min="1" max="365" step="1" required value="${esc(s.intervalDays)}"></label><label class="ai-field">开始日期<input type="date" name="startDate" required value="${esc(s.startDate)}"></label></div>` : ''}
+    </div>${s.cycle ? `<div class="ap-schedule-group ap-schedule-time"><h5>执行时间</h5>
+      <div class="ap-schedule-controls ${once && timing === 'now' ? '' : 'has-detail'}">
+        ${once ? options('onceTiming', '执行方式', [['now', '立即执行'], ['at', '指定时间']], timing)
+          : options('mode', '执行时间方式', [['fixed', '固定时刻'], ['random', '时间段内随机']], s.mode)}
+        ${once ? timing === 'at' ? `<label class="ai-field ap-schedule-at">执行日期和时间<input type="datetime-local" name="at" required value="${esc(s.at || '')}"></label>` : ''
+          : s.mode === 'random' ? `<div class="ap-time-range"><label class="ai-field">开始时间<input type="time" name="start" required value="${esc(s.start)}"></label><label class="ai-field">结束时间<input type="time" name="end" required value="${esc(s.end)}"></label></div>` : `<label class="ai-field ap-schedule-at">执行时刻<input type="time" name="time" required value="${esc(s.time)}"></label>`}
+      </div>${once && timing === 'now' ? '<p class="ap-schedule-inline-note">任务创建后开始执行。</p>' : !once && s.mode === 'random' ? '<p class="ap-schedule-inline-note">每次在时间段内随机选择；结束时间早于开始时间时跨至次日。</p>' : ''}
+    </div>` : ''}</section>`;
+}
 function taskEditor(state, draft) {
   const task = draft.id && state.proactiveTasks?.find(t => t.id === draft.id), readonly = !!draft.id && (!task || task.status === 'ended'), s = draft.schedule;
   const heading = readonly ? '查看任务' : draft.id ? '编辑任务' : '新建任务';
@@ -104,12 +131,7 @@ function taskEditor(state, draft) {
     <section class="ap-form-card"><div class="ap-card-head"><div><h4>选择联系人</h4><p>已学习和已设置自动回复的联系人会优先显示。</p></div><button type="button" class="secondary" data-proactive-pick>＋ 添加联系人</button></div><div class="ap-contact-summary">从微信联系人中选择 <b id="ai-proactive-contact-count">已选 ${draft.contacts.length} 人</b></div><div class="ap-selected" id="ai-proactive-selected">${(() => { const off = new Set(replyOffContacts(state, draft.contacts).map(c => c.id)); return draft.contacts.map(c => `<span class="ap-chip">${contactName(c) || esc(c.id)}${off.has(c.id) ? '（未开自动回复）' : ''}<button type="button" data-proactive-remove="${esc(c.id)}" aria-label="移除 ${esc(c.label || c.id)}">×</button></span>`).join(''); })() || '<div class="ap-empty ap-empty-contacts">暂未选择联系人<br>点击右上角“添加联系人”开始选择</div>'}</div>${(() => { const off = replyOffContacts(state, draft.contacts); return off.length ? `<div class="ap-reply-hint"><p>${esc(off.map(c => contactName(c) || c.id).join('、'))} 未开启自动回复：任务仍会按计划发起，但对方此后的回复不会再被自动处理。</p><button type="button" class="secondary" data-proactive-enable-reply>为这些联系人开启自动回复</button></div>` : ''; })()}</section>
     <section class="ap-form-card"><h4>聊天目标</h4><p>告诉 AI 这次联系想达成什么。</p><label class="ai-field">任务类型<select name="taskType">${taskTypes.map(([key, label]) => option(key, label, draft.taskType === key)).join('')}</select></label><label class="ai-field"><span class="sr-only">聊天目标</span><textarea name="goal" rows="4" maxlength="6000" required placeholder="例如：自然问候近况，询问周末是否有空…">${esc(draft.goal)}</textarea></label></section>
     <section class="ap-form-card"><h4>其他要求 <small>（选填）</small></h4><p>可补充称呼、语气、禁用话题或必须提到的信息。</p><label class="ai-field"><span class="sr-only">其他要求</span><textarea name="requirements" rows="3" maxlength="6000" placeholder="例如：称呼对方小名；语气轻松；不要提及工作压力…">${esc(draft.requirements)}</textarea></label></section>
-    <section class="ap-form-card"><label class="ai-field">发送方式<select name="sendMode">${option('segments', '按内容自然分段（1–3 条）', draft.sendMode !== 'single')}${option('single', '只发一条', draft.sendMode === 'single')}</select></label><p>分段之间固定随机等待 15–60 秒。第一段发出后由自动回复承接对方回复；对方在剩余段落发出前回复时，将取消剩余段落并交给自动回复处理。</p></section>
-    <section class="ap-form-card"><h4>执行安排 <small></small></h4><label class="ai-field">执行周期<select name="cycle" required>${!s.cycle ? option('', '请选择执行周期', true) : ''}${cycles.map(([key, label]) => option(key, label, s.cycle === key)).join('')}</select></label>
-    ${s.cycle === 'weekdays' ? '<p>工作日指周一至周五，不按节假日调休调整。</p>' : ''}
-    ${s.cycle === 'weekly' ? `<div class="ap-weekdays" role="group" aria-label="每周执行日期">${days.map(([d, label]) => `<label><input type="checkbox" name="weekdays" value="${d}" ${s.weekdays.includes(d) ? 'checked' : ''}>${label}</label>`).join('')}</div>` : ''}
-    ${s.cycle === 'custom' ? `<div class="ap-time-range"><label class="ai-field">每隔几天<input type="number" name="intervalDays" min="1" max="365" step="1" required value="${esc(s.intervalDays)}"></label><label class="ai-field">开始日期<input type="date" name="startDate" required value="${esc(s.startDate)}"></label></div><p>从开始日期起，每 ${esc(s.intervalDays)} 天执行一次，以开始日为固定锚点。</p>` : ''}
-    ${!s.cycle ? '<p class="ap-time-summary">请先确认执行周期，再设置时间。</p>' : s.cycle === 'once' ? '<p class="ap-time-summary">创建后立即执行一次，无需设置时间。</p>' : `<div id="ai-proactive-time"><label class="ai-field">执行时间方式<select name="mode">${[['fixed', '固定时间'], ['random', '模糊时间']].map(([key, label]) => option(key, label, s.mode === key)).join('')}</select></label>${s.mode === 'random' ? `<div class="ap-time-range"><label class="ai-field">开始时间<input type="time" name="start" required value="${esc(s.start)}"></label><label class="ai-field">结束时间<input type="time" name="end" required value="${esc(s.end)}"></label></div><p class="ap-time-summary">每个周期在时间段内随机选择发送时刻，本次执行后再确定下一次时间。结束早于开始时跨至次日。</p>` : `<label class="ai-field">固定时刻<input type="time" name="time" required value="${esc(s.time)}"></label><p class="ap-time-summary">按固定时刻执行，不会在周期内随机变动。</p>`}</div>`}</section>
+    ${scheduleEditor(s)}
     </fieldset><p class="ap-time-summary">任务负责按计划主动发起联系；对方后续消息按该联系人的自动回复设置处理。</p><footer class="ap-editor-footer"><button type="button" class="secondary" data-proactive-cancel>${readonly ? '返回列表' : '取消'}</button>${readonly ? '' : `<button type="submit" class="primary" data-proactive-submit>${draft.id ? '保存修改' : '新建任务'}</button>`}</footer></form>`;
 }
 export function proactivePage(state, view = {}) {
@@ -221,7 +243,7 @@ export function createProactiveUI({ panel, getState, context, isBusy, mutate, re
       const template = taskTypes.find(([key]) => key === input.value)?.[2];
       if (template) { view.draft.goal = template; form().elements.goal.value = template; }
     }
-    if (['cycle', 'mode'].includes(input.name)) { render(); form()?.elements.namedItem(input.name)?.focus?.(); }
+    if (['cycle', 'mode', 'onceTiming'].includes(input.name)) { render(); form()?.querySelector(`[name="${input.name}"]:checked`)?.focus?.({ preventScroll: true }); }
     return true;
   }
   async function submit() {

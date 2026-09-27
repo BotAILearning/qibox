@@ -37,6 +37,39 @@ test('calendar: immediate ignores hidden time fields; explicit Shanghai dates in
   assert.equal(nextProactiveOccurrence(daily, at('2026-09-17T15:00:00'), low).nextAt, at('2026-09-18T14:40:00'));
 });
 
+test('one-time scheduled task waits until its Beijing time, survives restart, then runs only once', async t => {
+  const f = await fixture(t);
+  const atText = '2026-09-17T14:30';
+  const task = await create(f.a, f.bridge, { schedule: { cycle: 'once', at: atText } });
+  assert.equal(task.nextAt, at('2026-09-17T14:30:00'));
+  await ticks(f.a); assert.equal(f.bridge.sent.length, 0);
+  const b = await f.restart();
+  assert.equal(b.data.proactiveTasks[0].nextAt, task.nextAt);
+  f.advance(2.5 * 3600000);
+  await ticks(b);
+  assert.equal(f.bridge.sent.length, 1);
+  assert.equal(b.data.proactiveTasks[0].status, 'ended');
+  await ticks(b); assert.equal(f.bridge.sent.length, 1);
+});
+
+test('one-time scheduled task rejects past and malformed dates', async t => {
+  const { a, bridge } = await fixture(t);
+  await assert.rejects(a.proactiveTaskAction(input(bridge, { schedule: { cycle: 'once', at: '2026-09-17T11:00' } })), /晚于当前时间/);
+  for (const atText of ['2026-02-30T14:00', '2026-09-18T24:00']) {
+    assert.throws(() => proactiveSchedule({ cycle: 'once', at: atText }, baseTime));
+  }
+  assert.equal(a.data.proactiveTasks.length, 0);
+});
+
+test('old single-send tasks are normalized to natural segments on restart', async t => {
+  const f = await fixture(t);
+  const task = await create(f.a, f.bridge, { sendMode: 'single' });
+  assert.equal(task.sendMode, 'segments');
+  task.sendMode = 'single'; await f.a.save();
+  const restarted = await f.restart();
+  assert.equal(restarted.data.proactiveTasks[0].sendMode, 'segments');
+});
+
 test('calendar: weekdays are Monday-Friday, weekly supports multiple days, custom anchors every N days', () => {
   const weekday = proactiveSchedule({ cycle: 'weekdays', mode: 'fixed', time: '09:00' }, baseTime);
   assert.equal(nextProactiveOccurrence(weekday, at('2026-09-18T12:00:00'), low).nextAt, at('2026-09-21T09:00:00'));

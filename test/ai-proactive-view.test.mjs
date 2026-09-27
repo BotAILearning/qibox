@@ -15,6 +15,7 @@ test('create idempotency key stays with a draft; edit keeps goal and name indepe
   const value = taskPayload(taskDraft(task({ content: '不能用旧content代替goal' })));
   assert.equal(value.command, 'edit'); assert.equal(value.version, 7); assert.equal(value.goal, '确认下周安排'); assert.equal(value.name, '项目跟进');
   assert.equal(value.taskType, 'work'); assert.equal(value.requestId, undefined); assert.equal(value.status, undefined);
+  assert.equal(value.sendMode, undefined);
 });
 
 test('draft contacts and weekly selection do not mutate polled server objects', () => {
@@ -37,7 +38,30 @@ test('once ignores stale hidden inputs and does not render time controls', () =>
   const d = validDraft(); Object.assign(d.schedule, { cycle: 'once', mode: 'random', start: 'bad', end: 'bad', intervalDays: '', startDate: '' });
   assert.equal(proactiveSchedule(taskPayload(d).schedule).cycle, 'once');
   const html = proactivePage(state(), { editing: true, draft: d });
-  assert.doesNotMatch(html, /type="time"|name="mode"/); assert.match(html, /立即执行一次/);
+  assert.doesNotMatch(html, /type="time"|name="mode"/); assert.match(html, /立即执行/);
+});
+
+test('one-time editor switches between immediate and scheduled execution', () => {
+  const d = validDraft();
+  const immediate = proactivePage(state(), { editing: true, draft: d });
+  assert.match(immediate, /name="cycle" value="once" required checked/);
+  assert.match(immediate, /name="onceTiming" value="now" checked/);
+  assert.doesNotMatch(immediate, /name="at"/);
+  assert.deepEqual(taskPayload(d).schedule, { cycle: 'once' });
+  d.schedule.onceTiming = 'at'; d.schedule.at = '2026-09-18T20:00';
+  const scheduled = proactivePage(state(), { editing: true, draft: d });
+  assert.match(scheduled, /name="at" required value="2026-09-18T20:00"/);
+  assert.deepEqual(taskPayload(d).schedule, { cycle: 'once', at: '2026-09-18T20:00' });
+  assert.match(scheduleLabel({ cycle: 'once', at: d.schedule.at }), /2026-09-18 20:00/);
+  d.schedule.onceTiming = 'now';
+  assert.deepEqual(taskPayload(d).schedule, { cycle: 'once' });
+});
+
+test('proactive task editor does not offer a send mode', () => {
+  const d = taskDraft(task({ sendMode: 'single' }));
+  const html = proactivePage(state({ proactiveTasks: [task()] }), { editing: true, draft: d });
+  assert.doesNotMatch(html, /name="sendMode"|发送方式|只发一条/);
+  assert.equal(taskPayload(d).sendMode, undefined);
 });
 
 test('input and change during once-to-weekly keep default Monday until weekly DOM is rendered; clearing all stays empty', t => {
@@ -76,6 +100,20 @@ test('task list filters status, escapes content, shows requirements and never in
   const html = proactiveTable(s, { filter: 'paused', menu: 'task-1' });
   assert.match(html, /&lt;script&gt;/); assert.match(html, /真实要求/); assert.match(html, /data-proactive-command="resume"/); assert.match(html, /data-proactive-command="delete"/);
   assert.doesNotMatch(html, /旧生成假内容|data-proactive-task="running"|data-proactive-task="deleted"/);
+});
+
+test('task list shows newest published task first, even after an older task is edited', () => {
+  const rows = [
+    task({ id: 'older', createdAt: 1000, updatedAt: 9000, status: 'running' }),
+    task({ id: 'newest', createdAt: 3000, status: 'running' }),
+    task({ id: 'same-time-later', createdAt: 3000, status: 'running' }),
+    task({ id: 'middle', createdAt: 2000, status: 'paused' }),
+  ];
+  const s = state({ proactiveTasks: rows });
+  const order = html => [...html.matchAll(/<article class="ap-reference-task[^>]*data-proactive-task="([^"]+)"/g)].map(match => match[1]);
+  assert.deepEqual(order(proactiveTable(s)), ['same-time-later', 'newest', 'middle', 'older']);
+  assert.deepEqual(order(proactiveTable(s, { filter: 'running' })), ['same-time-later', 'newest', 'older']);
+  assert.deepEqual(s.proactiveTasks.map(row => row.id), ['older', 'newest', 'same-time-later', 'middle']);
 });
 
 test('ended editor is read-only, and unmapped migration cannot silently save as once', () => {
@@ -117,7 +155,7 @@ test('waiting requirements, weekday semantics and cross-midnight summaries are e
   const s = state({ proactiveRequirements: ['请先配置模型', '请打开微信'] });
   const d = validDraft(); d.schedule.cycle = 'weekdays';
   const html = proactivePage(s, { editing: true, draft: d });
-  assert.doesNotMatch(html, /请先配置模型|任务可保存/); assert.match(html, /不按节假日调休调整/);
+  assert.doesNotMatch(html, /请先配置模型|任务可保存/); assert.match(html, /不随节假日调休变化/);
   assert.match(html, /对方后续消息按该联系人的自动回复设置处理/);
   assert.match(scheduleLabel({ cycle: 'daily', mode: 'random', start: '23:00', end: '01:00' }), /次日/);
 });

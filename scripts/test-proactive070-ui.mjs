@@ -24,6 +24,7 @@ try {
   await proactiveDraftCheck(page);
   report.checks.push('Single-page draft retention, isolated picker cancellation, weekly and random controls');
   await page.locator('[data-proactive-new]').click();
+  assert.equal(await page.locator('[name=sendMode]').count(), 0);
   await page.locator('[name=name]').fill('春日问候计划');
   await page.locator('[data-proactive-pick]').click();
   await page.locator('[data-proactive-contact]').nth(0).check();
@@ -34,9 +35,9 @@ try {
   await page.locator('[name=taskType]').selectOption('relationship');
   await page.locator('[name=goal]').fill('询问最近是否有空喝咖啡');
   await page.locator('[name=requirements]').fill('语气轻松，不承诺具体时间。');
-  await page.locator('[name=cycle]').selectOption('weekly');
+  await page.locator('[name=cycle][value=weekly]').check();
   await page.locator('[name=weekdays][value="5"]').check();
-  await page.locator('[name=mode]').selectOption('random');
+  await page.locator('[name=mode][value=random]').check();
   await page.locator('[name=start]').fill('18:00'); await page.locator('[name=end]').fill('21:00');
   await shot('editor');
   await page.locator('[data-proactive-submit]').click(); await settled();
@@ -58,13 +59,41 @@ try {
   report.checks.push('Real HTTP create, all fields persist, full edit prefill, pause/save/resume keeps the same task and state');
   await shot('tasks');
 
-  // Immediate task is executed only by the fixture runner after UI saves it.
+  // One-time tasks can wait for a date or enter the queue immediately.
   await page.locator('[data-proactive-new]').click(); await page.locator('[name=name]').fill('立即联系测试');
   await page.locator('[data-proactive-pick]').click(); await page.locator('[data-proactive-contact]').first().check();
   await page.locator('[data-proactive-picker-confirm]').click(); await page.locator('[name=goal]').fill('确认周末安排');
   assert.equal(await page.locator('[name=time]').count(), 0);
+  await page.locator('[name=onceTiming][value=at]').check();
+  await page.locator('[name=at]').fill('2099-01-01T14:30');
+  await page.evaluate(() => document.activeElement?.blur());
+  assert.equal(await page.locator('.ap-schedule-preview').count(), 0);
+  assert.equal(await page.locator('.ap-schedule-heading').getByText('北京时间 UTC+8').count(), 0);
+  await page.locator('.ap-schedule-card').screenshot({ path: path.join(output, 'schedule-once-desktop.png') });
+  await shot('editor-once-scheduled');
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  await page.locator('.ap-schedule-card').screenshot({ path: path.join(output, 'schedule-once-390.png') });
+  await page.setViewportSize({ width: 320, height: 700 });
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  const targets = await page.locator('.ap-cycle-choice, .ap-schedule-choice').evaluateAll(nodes => nodes.map(node => Math.round(node.getBoundingClientRect().height)));
+  assert.ok(targets.every(height => height >= 44), `schedule choices below 44px: ${targets}`);
+  await page.locator('.ap-schedule-card').screenshot({ path: path.join(output, 'schedule-once-320.png') });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await shot('editor-once-scheduled-390');
+  await page.setViewportSize({ width: 1440, height: 960 });
   await page.locator('[data-proactive-submit]').click(); await settled();
-  const immediate = ai.data.proactiveTasks.at(-1); await ai.tick();
+  const immediate = ai.data.proactiveTasks.at(-1);
+  assert.equal(immediate.schedule.at, '2099-01-01T14:30');
+  assert.equal(await page.locator('[data-proactive-task]').first().getAttribute('data-proactive-task'), immediate.id);
+  ai.userBusyUntil = 0;
+  await ai.tick(); assert.equal(bridge.sent.length, 0);
+  await proactiveCommand(page, immediate.id, 'edit');
+  assert.equal(await page.locator('[name=at]').inputValue(), '2099-01-01T14:30');
+  await page.locator('[name=onceTiming][value=now]').check();
+  await page.locator('[data-proactive-submit]').click(); await settled();
+  ai.userBusyUntil = 0;
+  await ai.tick();
   assert.equal(immediate.status, 'ended'); assert.equal(bridge.sent.length, 1);
   await nav('activity');
   await page.locator('[data-ai-record-source="proactive"]').click(); await settled();
@@ -83,11 +112,15 @@ try {
   await page.locator('[data-proactive-record] [data-ai-open-conversation]').click();
   assert.equal(fixture.opened.at(-1), immediate.contacts[0].id);
   await page.locator('#ai-open').click(); await nav('proactive');
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(await page.locator('[data-proactive-task]').first().getAttribute('data-proactive-task'), immediate.id);
+  await shot('tasks-newest-390');
+  await page.setViewportSize({ width: 1440, height: 960 });
   await proactiveCommand(page, immediate.id, 'delete');
   await page.locator('[data-proactive-delete-confirm]').click(); await settled();
   assert.equal(await page.locator(`[data-proactive-task="${immediate.id}"]`).count(), 0);
   await nav('activity'); await page.locator('[data-ai-record-source="proactive"]').click(); await settled(); assert.equal(await page.locator('[data-proactive-record]').count(), 1);
-  report.checks.push('Immediate send fixture confirmed once; actual body in separate records; correct conversation opened; deletion retains history');
+  report.checks.push('Scheduled one-time task waits, edit prefills its time, changing to immediate sends once; records and deletion remain correct');
 
   for (const width of [1024, 768, 390]) {
     await page.setViewportSize({ width, height: 844 }); await nav('proactive');

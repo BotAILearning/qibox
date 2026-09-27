@@ -23,7 +23,7 @@ try {
   const shot = name => page.screenshot({ path: path.join(output, name + '.png') });
   await page.goto(fixture.url); await page.locator('[data-action=open]').first().click(); await page.locator('#ai-open').click();
   await nav('proactive'); assert.equal(await page.locator('#ai-proactive-readiness').count(), 0);
-  await page.locator('[data-proactive-new]').click(); await page.locator('[name=cycle]').selectOption('daily');
+  await page.locator('[data-proactive-new]').click(); await page.locator('[name=cycle][value=daily]').check();
   await page.locator('select[name=mode]').selectOption('random');
   await page.locator('[name=start]').fill('23:00'); await page.locator('[name=end]').fill('01:00');
   await page.locator('select[name=mode]').selectOption('fixed'); assert.equal(await page.locator('[name=start]').count(), 0);
