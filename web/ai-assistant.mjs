@@ -36,7 +36,8 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
     await ensure();
     return !!id;
   }
-  let id, state, tab = 'overview', timer, generation = 0, requestEpoch = 0, workToken = 0, analysisQueueToken = 0, analysisQueueAccount = null, polling = false, busy = false;
+  let id, state, tab = 'overview', timer, generation = 0, requestEpoch = 0, workToken = 0, analysisQueueToken = 0, analysisQueueAccount = null, polling = false, busy = false, attaching = false;
+  const loadingContent = '<div class="ai-entry-loading" role="status" aria-live="polite"><div class="ai-entry-loading-art" aria-hidden="true"><span class="ai-entry-loading-ring"></span><span class="ai-entry-loading-mark">AI</span></div><strong>正在打开 AI 辅助</strong><p>正在读取当前微信的设置…</p></div>';
   // Profiles carry a snapshot label; the WeChat nickname still lives in the
   // address book, so rows derived from a profile borrow it from there.
   // These must stay inside the closure: `state` is declared here, and a
@@ -794,11 +795,10 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
     message(state.notice || (target === 'memory' ? '聊天记忆学习完成，请在下方「聊天记忆」中确认后应用' : target === 'style' ? '聊天风格已更新' : '风格学习完成'), /失败/.test(state.notice || ''));
   }
   function show() {
-    panel.hidden = false; rail.querySelector('#ai-open').setAttribute('aria-expanded', 'true'); if (state) render(); $('#ai-close').focus();
+    panel.hidden = false; rail.querySelector('#ai-open').setAttribute('aria-expanded', 'true'); if (state) render(); (window.matchMedia?.('(max-width:860px)').matches ? $('#ai-mobile-back') : $('#ai-close')).focus();
     if (!state) {
-      // 入口常驻后，面板可能在挂载尚未完成（或曾失败）时被打开：这里补一次读取，避免空白面板。
-      $('#ai-content').innerHTML = '<p class="ai-help">正在读取设置…</p>';
-      if (id) { const current = generation; void call().then(result => { if (result && current === generation && !panel.hidden) render(); }).catch(error => { if (current === generation) message(error.message, true); }); }
+      if (!$('#ai-content .ai-entry-loading')) $('#ai-content').innerHTML = loadingContent;
+      if (id && !attaching) { const current = generation; void call().then(result => { if (result && current === generation && !panel.hidden) render(); }).catch(error => { if (current === generation) message(error.message, true); }); }
       return;
     }
     if (state.settings.reply && tab === 'overview' && needsContacts() && !busy) {
@@ -1463,13 +1463,15 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
       analysisDraft = { request: '', from: '', to: '', contacts: [] }; analysisRangeMode = 'all'; analysisSearch = ''; analysisHistoryReport = null; analysisHistoryEpoch++; learnRange = {from:'',to:''}; learnRangeMode = 'all'; learnScope='range'; learnTarget='both'; defaultStylePerspective = 'self'; analysisResult = null; proactiveUI.reset();
       reviewAlert.hidden = true;
       concealKey(true); modelDraft = null; learningDraft = null; renderedView = ''; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); summaryResults.clear(); selectedObject = ''; objectSearch = ''; objectKind = 'person'; editingReplyContact = null; contactSearch = ''; providerRevision++;
-      generation++; clearInterval(timer); id = instanceId; state = null; busy = false; polling = false; tab = 'overview'; replyDraft = null; editingProfile = null; contactsLoaded = false; contactsLoading = false; resultProfileIds = null;
+      generation++; clearInterval(timer); id = instanceId; state = null; busy = false; polling = false; attaching = true; tab = 'overview'; replyDraft = null; editingProfile = null; contactsLoaded = false; contactsLoading = false; resultProfileIds = null;
       const attachedGeneration = generation;
       selectedContacts.clear(); replyProfiles.clear(); panel.hidden = true; rail.hidden = false; panel.setAttribute('aria-busy', 'false');
       proactiveHistory = []; proactiveHistoryPage = null; proactiveRecordLoading = false; proactiveRecordEpoch++; errorHistory = []; errorPage = null; errorLoading = false; errorEpoch++;
       replyContactSearch = ''; logRecords = []; logLoading = false; logEpoch++; logSignature = ''; logFilters = { source: 'reply' }; lastAutoScanAt = 0;
-      $('#ai-content').innerHTML = '<p class="ai-help">正在读取设置…</p>'; message('');
-      try { const result = await call(); if (!result) return; restoreRecords(); modeTargets('reply').forEach(id => replyProfiles.add(id)); render(); } catch (e) { if (attachedGeneration !== generation) return; message(e.message, true); }
+      panel.querySelector(':scope > .ai-main-tabs')?.remove();
+      $('#ai-content').innerHTML = loadingContent; message('');
+      try { const result = await call(); if (!result) return; restoreRecords(); modeTargets('reply').forEach(id => replyProfiles.add(id)); render(); } catch (e) { if (attachedGeneration !== generation) return; $('#ai-content').innerHTML = '<div class="ai-entry-error" role="alert">设置读取失败，请返回后重试。</div>'; message(e.message, true); }
+      finally { if (attachedGeneration === generation) attaching = false; }
       if (attachedGeneration !== generation) return;
       const current = generation;
       timer = setInterval(async () => {
@@ -1481,6 +1483,6 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
         finally { if (current === generation) polling = false; }
       }, 2500);
     },
-    detach() { analysisQueueToken++; analysisQueueAccount = null; rememberRecords(); proactiveRecordEpoch++; proactiveRecordLoading = false; proactiveHistory = []; proactiveHistoryPage = null; errorEpoch++; errorLoading = false; errorHistory = []; errorPage = null; logEpoch++; analysisDraft = { request: '', from: '', to: '', contacts: [] }; analysisSearch = ''; analysisHistoryReport = null; analysisHistoryEpoch++; analysisResult = null; reviewAlert.hidden = true; concealKey(true); modelDraft = null; learningDraft = null; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); selectedObject = ''; objectSearch = ''; objectKind = 'person'; editingReplyContact = null; providerRevision++; generation++; clearInterval(timer); id = null; state = null; rail.hidden = true; panel.hidden = true; $('#ai-content').replaceChildren(); selectedContacts.clear(); replyProfiles.clear(); proactiveUI.reset(); replyDraft = null; },
+    detach() { analysisQueueToken++; analysisQueueAccount = null; rememberRecords(); proactiveRecordEpoch++; proactiveRecordLoading = false; proactiveHistory = []; proactiveHistoryPage = null; errorEpoch++; errorLoading = false; errorHistory = []; errorPage = null; logEpoch++; analysisDraft = { request: '', from: '', to: '', contacts: [] }; analysisSearch = ''; analysisHistoryReport = null; analysisHistoryEpoch++; analysisResult = null; reviewAlert.hidden = true; concealKey(true); modelDraft = null; learningDraft = null; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); selectedObject = ''; objectSearch = ''; objectKind = 'person'; editingReplyContact = null; providerRevision++; generation++; clearInterval(timer); id = null; state = null; attaching = false; rail.hidden = true; panel.hidden = true; panel.querySelector(':scope > .ai-main-tabs')?.remove(); $('#ai-content').replaceChildren(); selectedContacts.clear(); replyProfiles.clear(); proactiveUI.reset(); replyDraft = null; },
   };
 }

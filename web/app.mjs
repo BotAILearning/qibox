@@ -77,8 +77,10 @@ async function openAIEntry(id) {
     $('#ai-account-label').textContent = '当前微信：' + (entry.name || '微信');
     $('#desktop-view').classList.add('ai-only');
     assistant.detach(); assistantId = id;
-    await assistant.attach(id);
-    if (standaloneAI && desktopId === id) { assistant.show(); $('#desktop-view').hidden = false; }
+    const attachment = assistant.attach(id);
+    $('#desktop-view').hidden = false;
+    assistant.show();
+    await attachment;
     return;
   }
   if (standaloneAI) return;
