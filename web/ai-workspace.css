@@ -1184,15 +1184,15 @@
 #ai-panel .ai-analysis-intro{margin-bottom:22px}
 #ai-panel .ai-analysis-intro h4{margin:0;color:#172448;font-size:26px;font-weight:750;letter-spacing:-.02em}
 #ai-panel .ai-analysis-intro p{margin:5px 0 0;color:#7482a3;font-size:13px;line-height:1.6}
-#ai-panel .ai-analysis-directions{display:flex;align-items:center;gap:16px;margin-bottom:20px}
-#ai-panel .ai-analysis-directions>strong{flex:none;color:#1e2b4f;font-size:13px;font-weight:700;white-space:nowrap}
+#ai-panel .ai-analysis-directions{display:flex;align-items:flex-start;gap:16px;margin-bottom:20px}
+#ai-panel .ai-analysis-directions>strong{flex:none;padding-top:11px;color:#1e2b4f;font-size:13px;font-weight:700;white-space:nowrap}
 #ai-panel .ai-analysis-presets{display:flex;flex-wrap:wrap;gap:8px;min-width:0;margin:0}
 #ai-panel .ai-analysis-presets button{display:inline-flex;align-items:center;gap:8px;min-height:38px;padding:7px 13px;border:1px solid #e0e6f2;border-radius:999px;background:#f7f9fd;color:#243354;font-size:12px;font-weight:550;white-space:nowrap}
 #ai-panel .ai-analysis-presets button .ai-icon{width:18px;height:18px}
 #ai-panel .ai-analysis-presets button[aria-pressed=true]{border-color:#5265ed;background:#edf0ff;color:#344ce1}
 #ai-panel .ai-analysis-composer{border:1px solid #dce3f0;border-radius:10px;background:#fcfdff;overflow:hidden}
 #ai-panel .ai-analysis-composer:focus-within{outline:2px solid #aab6ff;outline-offset:1px}
-#ai-panel .ai-analysis-request textarea[name=request]{display:block;width:100%;min-height:145px;padding:18px 18px 8px;border:0;border-radius:0;background:transparent;color:#233253;font-size:14px;line-height:1.7;resize:vertical;outline:none;box-shadow:none}
+#ai-panel .ai-analysis-request textarea[name=request]{display:block;width:100%;min-height:76px;padding:18px 18px 8px;border:0;border-radius:0;background:transparent;color:#233253;font-size:14px;line-height:1.7;resize:none;outline:none;box-shadow:none}
 #ai-panel .ai-analysis-request textarea[name=request]::placeholder{color:#8995af;opacity:1}
 #ai-panel .ai-analysis-composer-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:4px 16px 12px;color:#8290ac;font-size:11px}
 #ai-panel .ai-analysis-composer-foot>span:first-child{display:inline-flex;align-items:center;gap:6px}
@@ -1211,5 +1211,125 @@
 #ai-panel .ai-analysis-submit{flex:none;display:inline-flex;align-items:center;justify-content:center;gap:9px;min-width:150px;min-height:44px;padding:9px 18px;border-radius:9px;background:#3d54ee;color:#fff;font-size:14px;font-weight:650;box-shadow:0 5px 14px #4359e72b}
 #ai-panel .ai-analysis-submit .ai-icon{width:19px;height:19px}
 @media(max-width:1100px){#ai-panel .ai-analysis-request{padding:22px}#ai-panel .ai-analysis-directions{align-items:flex-start;flex-direction:column;gap:9px}#ai-panel .ai-analysis-submit-row{flex-wrap:wrap}}
-@media(max-width:860px){#ai-panel .ai-analysis-request{padding:18px}#ai-panel .ai-analysis-intro h4{font-size:22px}#ai-panel .ai-analysis-directions{margin-bottom:15px}#ai-panel .ai-analysis-presets{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:100%}#ai-panel .ai-analysis-presets button{justify-content:center;min-height:44px;padding:7px 9px;font-size:12px}#ai-panel .ai-analysis-submit-row{flex-direction:column;align-items:stretch}#ai-panel .ai-analysis-time-entry{flex-direction:column;gap:6px}#ai-panel .ai-analysis-submit{width:100%;min-height:48px}}
+@media(max-width:860px){#ai-panel .ai-analysis-request{padding:18px}#ai-panel .ai-analysis-intro h4{font-size:22px}#ai-panel .ai-analysis-directions{margin-bottom:15px}#ai-panel .ai-analysis-directions>strong{padding-top:0}#ai-panel .ai-analysis-presets{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:100%}#ai-panel .ai-analysis-presets button{justify-content:center;min-height:44px;padding:7px 9px;font-size:12px}#ai-panel .ai-analysis-submit-row{flex-direction:column;align-items:stretch}#ai-panel .ai-analysis-time-entry{flex-direction:column;gap:6px}#ai-panel .ai-analysis-submit{width:100%;min-height:48px}}
 @media(max-width:380px){#ai-panel .ai-analysis-request{padding:14px}#ai-panel .ai-analysis-presets button{gap:5px;font-size:11px}}
+
+.ai-calendar-dialog-analysis{width:min(800px,calc(100vw - 24px));padding:0;border:1px solid #dce3f2;border-radius:18px;color:#1d2b50;box-shadow:0 24px 70px #18295835}
+.ai-calendar-dialog-analysis::backdrop{background:#14234477}
+.ai-calendar-dialog-analysis .ai-calendar-heading{padding:25px 30px 19px;border-bottom:1px solid #e7ebf4}
+.ai-calendar-dialog-analysis .ai-calendar-heading span{font-size:12px;font-weight:700;color:#5063d9}
+.ai-calendar-dialog-analysis .ai-calendar-heading h3{margin:5px 0 7px;font-size:24px;color:#172448}
+.ai-calendar-dialog-analysis .ai-calendar-heading p{margin:0;color:#7885a2;font-size:13px;line-height:1.5}
+.ai-calendar-dialog-analysis .ai-calendar-picks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:22px 30px 0}
+.ai-calendar-dialog-analysis .ai-calendar-picks button{display:flex;flex-direction:column;align-items:flex-start;gap:7px;border-color:#dce3f0;border-radius:11px;padding:13px 16px;background:#f8faff;color:#223255}
+.ai-calendar-dialog-analysis .ai-calendar-picks button[aria-pressed=true]{border-color:#5062ed;background:#eef1ff;color:#3048df;box-shadow:0 0 0 1px #5062ed}
+.ai-calendar-dialog-analysis .ai-calendar-picks small{color:#7d89a5;font-size:11px}
+.ai-calendar-dialog-analysis .ai-calendar-picks strong{font-size:15px}
+.ai-calendar-dialog-analysis .ai-calendar-nav{margin:18px 30px}
+.ai-calendar-dialog-analysis .ai-calendar-nav button,.ai-calendar-dialog-analysis .ai-calendar-nav select{border-color:#dce3f0;color:#3c4b70;background:#f8faff}
+.ai-calendar-dialog-analysis .ai-calendar-months{padding:0 30px 22px;gap:30px}
+.ai-calendar-dialog-analysis .ai-calendar-months section{padding:15px;border:1px solid #e3e8f3;border-radius:12px}
+.ai-calendar-dialog-analysis .ai-calendar-months strong{color:#223255;font-size:14px}
+.ai-calendar-dialog-analysis .ai-calendar-grid small{color:#8895af;font-size:11px}
+.ai-calendar-dialog-analysis .ai-calendar-grid button{min-width:0;padding:7px 0;border-radius:8px;color:#26365b;font-size:12px;white-space:nowrap}
+.ai-calendar-dialog-analysis .ai-calendar-grid button.in-range{background:#edf0ff}
+.ai-calendar-dialog-analysis .ai-calendar-grid button.selected{background:#4058ed;color:#fff}
+.ai-calendar-dialog-analysis .ai-calendar-empty{padding:24px 30px;color:#7482a0}
+.ai-calendar-dialog-analysis footer{margin:0;padding:17px 30px;border-top:1px solid #e7ebf4;background:#fcfdff}
+.ai-calendar-dialog-analysis footer button{min-width:88px}
+.ai-calendar-dialog-analysis footer button.primary{border-color:#4058ed;background:#4058ed;color:#fff}
+@media(max-width:600px){.ai-calendar-dialog-analysis .ai-calendar-heading{padding:20px 18px 16px}.ai-calendar-dialog-analysis .ai-calendar-picks{padding:18px 18px 0}.ai-calendar-dialog-analysis .ai-calendar-nav{margin:16px 18px}.ai-calendar-dialog-analysis .ai-calendar-months{padding:0 18px 18px}.ai-calendar-dialog-analysis .ai-calendar-months section:first-child{display:none}.ai-calendar-dialog-analysis .ai-calendar-months section:nth-child(2){display:block}.ai-calendar-dialog-analysis footer{padding:15px 18px}}
+
+/* Compact analysis flow for phones: choose people, write the request, then read results. */
+#ai-panel .ai-analysis-mobile-page-title,#ai-panel .ai-analysis-mobile-selection,#ai-panel .ai-analysis-mobile-done,#ai-panel .ai-analysis-mobile-kicker{display:none}
+@media(max-width:600px){
+ #ai-panel .ai-page-body:has(>.ai-analysis-setup){gap:16px;padding:18px 16px 96px;background:#f5f7fc}
+ #ai-panel .ai-analysis-mobile-page-title{display:block;grid-column:1;margin:0 0 2px;padding:0 3px}
+ #ai-panel .ai-analysis-mobile-page-title>span{color:#5061db;font-size:11px;font-weight:750;letter-spacing:.08em}
+ #ai-panel .ai-analysis-mobile-page-title h2{margin:4px 0 5px;color:#172448;font-size:28px;line-height:1.25;letter-spacing:-.02em}
+ #ai-panel .ai-analysis-mobile-page-title p{margin:0;color:#7482a0;font-size:13px;line-height:1.5}
+ #ai-panel .ai-analysis-selection,#ai-panel .ai-analysis-request{border:1px solid #e2e8f3;border-radius:18px;background:#fff;box-shadow:0 8px 24px #1b2b5a0a}
+ #ai-panel .ai-analysis-selection{padding:0}
+ #ai-panel .ai-analysis-mobile-selection{display:grid;grid-template-columns:40px minmax(0,1fr) auto;align-items:center;gap:10px;min-height:78px;padding:14px}
+ #ai-panel .ai-analysis-mobile-step{display:grid;place-items:center;width:40px;height:40px;border-radius:12px;background:#edf0ff;color:#4055de;font-size:13px;font-weight:750}
+ #ai-panel .ai-analysis-mobile-selection>div{min-width:0}
+ #ai-panel .ai-analysis-mobile-selection strong{display:block;color:#1b2a4d;font-size:15px;line-height:1.4}
+ #ai-panel .ai-analysis-mobile-selection small{display:block;margin-top:3px;color:#7b89a5;font-size:12px;line-height:1.4}
+ #ai-panel .ai-analysis-mobile-selection button{display:inline-flex;align-items:center;justify-content:center;gap:3px;min-width:66px;min-height:44px;padding:6px 9px;border:1px solid #dce3f6;border-radius:11px;background:#f8faff;color:#4055de;font-size:13px;font-weight:700}
+ #ai-panel .ai-analysis-mobile-selection button .ai-icon{width:15px;height:15px;transition:transform .2s}
+ #ai-panel .ai-analysis-selection.is-open .ai-analysis-mobile-selection button .ai-icon{transform:rotate(180deg)}
+ #ai-panel .ai-analysis-selection-details{display:none;padding:0 14px 14px;border-top:1px solid #edf0f6}
+ #ai-panel .ai-analysis-selection.is-open .ai-analysis-selection-details{display:block}
+ #ai-panel .ai-analysis-selection-details .ai-analysis-section-title{display:none}
+ #ai-panel .ai-analysis-selection-details .ai-analysis-search{margin-top:14px;min-height:48px}
+ #ai-panel .ai-analysis-selection-details .ai-analysis-search input{min-height:46px;font-size:16px}
+ #ai-panel .ai-analysis-contacts{max-height:min(42dvh,300px);margin:10px 0 14px;gap:5px}
+ #ai-panel .ai-analysis-contacts label{min-height:50px;padding:10px 11px;border-radius:10px;font-size:14px}
+ #ai-panel .ai-analysis-selection-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+ #ai-panel .ai-analysis-selection-actions button{min-width:0;min-height:46px;margin:0;font-size:13px}
+ #ai-panel .ai-analysis-mobile-done{display:block;border-radius:10px;background:#4058ed;color:#fff}
+ #ai-panel .ai-analysis-request{padding:20px 18px 18px}
+ #ai-panel .ai-analysis-intro{margin-bottom:19px}
+ #ai-panel .ai-analysis-mobile-kicker{display:block;margin-bottom:5px;color:#5364da;font-size:11px;font-weight:750;letter-spacing:.03em}
+ #ai-panel .ai-analysis-intro h4{font-size:23px}
+ #ai-panel .ai-analysis-intro p{margin-top:6px;font-size:13px;line-height:1.55}
+ #ai-panel .ai-analysis-directions{gap:10px;margin-bottom:17px}
+ #ai-panel .ai-analysis-directions>strong{font-size:14px}
+ #ai-panel .ai-analysis-presets{gap:8px}
+ #ai-panel .ai-analysis-presets button{justify-content:flex-start;gap:7px;min-width:0;min-height:50px;padding:8px 10px;border-color:#dfe6f3;border-radius:12px;background:#f8faff;color:#26375c;font-size:12.5px;font-weight:650;text-align:left;white-space:normal}
+ #ai-panel .ai-analysis-presets button .ai-icon{flex:none;width:18px;height:18px}
+ #ai-panel .ai-analysis-presets button[aria-pressed=true]{border-color:#4b60ec;background:#eef1ff;color:#344bdd;box-shadow:inset 0 0 0 1px #4b60ec}
+ #ai-panel .ai-analysis-composer{border-radius:12px}
+ #ai-panel .ai-analysis-request textarea[name=request]{padding:14px 14px 6px;font-size:16px;line-height:1.55}
+ #ai-panel .ai-analysis-composer-foot{padding:4px 13px 12px;font-size:11px}
+ #ai-panel .ai-analysis-submit-row{gap:16px;margin-top:19px;padding-top:17px}
+ #ai-panel .ai-analysis-time-entry{gap:10px}
+ #ai-panel .ai-analysis-time-entry>strong{padding:0;font-size:14px}
+ #ai-panel .ai-analysis-time-controls{width:100%}
+ #ai-panel .ai-reference-analysis-ranges{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;width:100%;padding:4px;border-radius:12px;overflow:visible}
+ #ai-panel .ai-reference-analysis-ranges button{min-width:0;min-height:44px;padding:6px 0;font-size:12px}
+ #ai-panel .ai-analysis-custom-date{min-height:44px;font-size:12px}
+ #ai-panel .ai-analysis-submit{min-height:52px;border-radius:12px;font-size:16px}
+ #ai-panel .ai-analysis-reports{margin-top:4px;scroll-margin-top:78px}
+ #ai-panel .ai-analysis-section-heading{margin-bottom:12px}
+ #ai-panel .ai-analysis-section-heading h3{font-size:20px}
+ #ai-panel .ai-analysis-section-heading p{font-size:12px;line-height:1.55}
+ #ai-panel .ai-analysis-report-grid>.ai-card{padding:18px;border-radius:16px}
+ #ai-panel .ai-analysis-report-grid .ai-card-heading h3{font-size:16px}
+ #ai-panel .ai-analysis-report-grid .ai-card-heading .ai-help{font-size:11px;line-height:1.5}
+ #ai-panel .ai-analysis-history{margin-top:10px;padding-top:22px}
+ #ai-panel .ai-analysis-history>.ai-page-heading h3{font-size:18px}
+}
+@media(max-width:360px){#ai-panel .ai-page-body:has(>.ai-analysis-setup){padding-right:12px;padding-left:12px}#ai-panel .ai-analysis-request{padding:18px 14px}#ai-panel .ai-analysis-presets button{padding:8px;font-size:11.5px}}
+
+/* Keep month navigation together; place the earliest-record shortcut separately. */
+.ai-calendar-dialog-analysis .ai-calendar-nav-analysis{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:14px}
+.ai-calendar-dialog-analysis .ai-calendar-nav-label{color:#7b88a4;font-size:12px;font-weight:650}
+.ai-calendar-dialog-analysis .ai-calendar-month-switch{display:grid;grid-template-columns:42px 92px 80px 42px;align-items:center;gap:8px;min-width:0}
+.ai-calendar-dialog-analysis .ai-calendar-month-switch select{width:100%;min-width:0;min-height:44px}
+.ai-calendar-dialog-analysis .ai-calendar-month-switch>button{width:42px;min-width:0;min-height:44px;padding:0;font-size:20px}
+@media(max-width:600px){
+ .ai-calendar-dialog-analysis .ai-calendar-nav-analysis{display:flex;flex-direction:column;align-items:stretch;gap:8px}
+ .ai-calendar-dialog-analysis .ai-calendar-nav-label{display:none}
+ .ai-calendar-dialog-analysis .ai-calendar-month-switch{grid-template-columns:36px minmax(0,1fr) minmax(0,1fr) 36px;gap:6px;width:100%}
+ .ai-calendar-dialog-analysis .ai-calendar-month-switch>button{width:36px}
+}
+@media(min-width:1101px){
+ #ai-panel .ai-analysis-directions{display:block}
+ #ai-panel .ai-analysis-directions>strong{display:block;margin:0 0 12px;padding:0}
+ #ai-panel .ai-analysis-presets{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+ #ai-panel .ai-analysis-presets button{justify-content:center;min-width:0;min-height:44px}
+}
+@media(min-width:900px){
+ .ai-calendar-dialog-analysis .ai-calendar-toolbar{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:16px;margin:22px 30px 18px}
+ .ai-calendar-dialog-analysis .ai-calendar-toolbar .ai-calendar-picks{gap:8px;padding:0}
+ .ai-calendar-dialog-analysis .ai-calendar-toolbar .ai-calendar-picks button{min-width:0;min-height:68px;padding:9px 12px}
+ .ai-calendar-dialog-analysis .ai-calendar-toolbar .ai-calendar-nav-analysis{display:flex;gap:8px;margin:0}
+ .ai-calendar-dialog-analysis .ai-calendar-nav-label{display:none}
+ .ai-calendar-dialog-analysis .ai-calendar-month-switch{grid-template-columns:36px 78px 68px 36px;gap:6px}
+ .ai-calendar-dialog-analysis .ai-calendar-month-switch>button{width:36px}
+}
+.ai-calendar-dialog-analysis .ai-calendar-pick-start{position:relative;min-width:0}
+.ai-calendar-dialog-analysis .ai-calendar-toolbar .ai-calendar-pick-start>button[data-pick]{width:100%;min-height:68px;justify-content:space-between}
+.ai-calendar-dialog-analysis .ai-calendar-toolbar .ai-calendar-pick-start>.ai-calendar-earliest{position:absolute;top:7px;right:8px;z-index:1;display:inline-flex;flex-direction:row;align-items:center;justify-content:center;min-height:30px;padding:3px 7px;border:0;border-radius:7px;background:transparent;color:#4056df;font-size:11px;font-weight:700;white-space:nowrap}
+.ai-calendar-dialog-analysis .ai-calendar-toolbar .ai-calendar-pick-start>.ai-calendar-earliest:hover{background:#dfe5ff}

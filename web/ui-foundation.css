@@ -1140,3 +1140,13 @@ dialog {
  #ai-panel .ai-object-reference .ai-object-action-row button{min-height:44px;white-space:nowrap}
  #ai-panel .ai-object-reference .ai-object-secondary-actions{min-width:0}
 }
+
+@media(max-width:600px){
+ #ai-panel .ai-page-body:has(>.ai-analysis-setup) :is(.ai-analysis-selection,.ai-analysis-request){border:1px solid #e2e8f3;border-radius:18px;background:#fff;box-shadow:0 8px 24px #1b2b5a0a;margin:0}
+ #ai-panel .ai-page-body:has(>.ai-analysis-setup) .ai-analysis-selection{padding:0}
+ #ai-panel .ai-page-body:has(>.ai-analysis-setup) .ai-analysis-request{padding:20px 18px 18px}
+ #ai-panel .ai-page-body:has(>.ai-analysis-setup) .ai-analysis-report-grid>.ai-card{padding:18px;border:1px solid #e2e8f3;border-radius:16px;box-shadow:0 8px 24px #1b2b5a0a}
+ #ai-panel .ai-page-body:has(>.ai-analysis-setup) .ai-analysis-history>.ai-page-heading h3{display:block}
+}
+@media(max-width:360px){#ai-panel .ai-page-body:has(>.ai-analysis-setup) .ai-analysis-request{padding:18px 14px}}
+.ai-calendar-dialog-analysis .ai-calendar-grid button:not(.icon-button):not(.ai-key-eye){min-height:40px;padding:7px 0;white-space:nowrap;line-height:1.2}

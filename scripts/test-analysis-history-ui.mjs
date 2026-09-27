@@ -11,6 +11,7 @@ import { rfbFixture } from '../test/rfb-fixture.mjs';
 const { chromium } = createRequire(import.meta.url)(playwrightPath);
 const dataRoot = await temp();
 const bridge = new ChatFixture();
+bridge.readDates = async ({ account, contact }) => ({ account, contact, dates: ['2026-09-01', '2026-09-02', '2026-09-28'] });
 for (let index = 0; index < 10; index++) bridge.contacts.push({ id: key(`analysis-ui-batch-${index}`), label: `批量测试对象${index + 1}`, kind: 'person' });
 const provider = new AIModelFixture();
 const contact = bridge.contacts[0];
@@ -99,6 +100,7 @@ try {
     const status = await page.locator('[data-analysis-report]').first().getAttribute('data-analysis-status');
     assert.equal(status, 'complete', await page.locator('[data-analysis-report]').first().innerText());
     assert.ok(provider.calls.length > before, '生成分析报告必须调用模型');
+    assert.equal(await page.locator('#ai-analysis-form [name=contacts]:checked').count(), 0, '完成报告后清空原联系人勾选');
     return before;
   };
   const historyCount = () => page.locator('.ai-analysis-history-list [data-ai-history-item]').count();
@@ -119,7 +121,7 @@ try {
   assert.ok(desktopLayout.selectionWidth >= 300, `联系人区宽度过窄: ${desktopLayout.selectionWidth}`);
   assert.ok(desktopLayout.requestWidth >= 500, `分析要求区宽度过窄: ${desktopLayout.requestWidth}`);
   assert.ok(desktopLayout.requestStartsAfterSelection, '分析要求区应位于联系人区右侧');
-  assert.equal(await page.locator('.ai-analysis-presets button').count(), 4, 'request composer shows four quick directions');
+  assert.equal(await page.locator('.ai-analysis-presets button').count(), 8, 'request composer shows original directions and custom question');
   await screenshot('00-analysis-request');
   await page.locator('[data-ai-analysis-preset=review]').click();
   assert.match(await page.locator('[name=request]').inputValue(), /重点事项/);
@@ -128,9 +130,13 @@ try {
   await page.locator('[name=request]').fill('请总结明确约定');
   assert.equal(await page.locator('#ai-analysis-request-count').textContent(), '7/1000');
   await page.locator('[name=request]').fill('');
+  await page.locator('#ai-analysis-form [name=contacts]').first().check();
   await page.locator('[data-ai-analysis-range=custom]').click();
-  assert.equal(await page.locator('[data-ai-date-range=analysis]').isVisible(), true, 'custom range exposes the date picker');
+  await page.locator('.ai-calendar-dialog-analysis').waitFor();
   await screenshot('00-analysis-custom-range');
+  await page.locator('.ai-calendar-dialog-analysis [data-cancel]').click();
+  await page.locator('.ai-calendar-dialog-analysis').waitFor({ state: 'detached' });
+  await page.locator('#ai-analysis-form [name=contacts]').first().uncheck();
   await page.locator('[data-ai-analysis-range=all]').click();
   report.checks.push('Desktop analysis layout keeps contact selection left and gives the request area the main width');
   const beforeFirst = await generate('总结具体约定');
@@ -192,7 +198,7 @@ try {
   assert.equal(await historyCount(), 1, 'confirmed deletion removes only the selected test report');
   report.checks.push('Confirmed deletion removes one test snapshot after second confirmation');
 
-  for (let index = 1; index < 11; index++) await page.locator('#ai-analysis-form [name=contacts]').nth(index).check();
+  for (let index = 0; index < 11; index++) await page.locator('#ai-analysis-form [name=contacts]').nth(index).check();
   let queuedModelCalls = 0;
   provider.complete = async (_config, system, input) => {
     provider.calls.push({ system, input });

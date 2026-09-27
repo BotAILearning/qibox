@@ -17,6 +17,7 @@ const output = path.join(root, process.argv[2] || 'reports/analysis-search-2026-
 const completed = [], report = { scope: 'Disposable local fixtures; no live model, NAS or WeChat messages.', checks: [], errors: [] };
 bridge.contacts[0].label = '陈小雨'; bridge.contacts[1].label = '林一'; bridge.contacts[2].label = '周末';
 bridge.contacts.push({ id: key('group'), label: '产品设计讨论', kind: 'group' });
+bridge.readDates = async ({ account, contact }) => ({ account, contact, dates: ['2026-09-01', '2026-09-14', '2026-09-28'] });
 bridge.readRange = async args => ({ account: args.account, contact: args.contact, rangeRevision: key(args.contact), messages: [{ id: key(args.contact), timestamp: args.from + 1, text: args.contact, direction: 'self' }] });
 provider.complete = async (config, _system, input) => { completed.push({ config, input }); return { report: `独立报告：${input.contact}\n\n事项与约定\n双方约定继续确认周末安排。`, excerptIds: [] }; };
 const peer = await rfbFixture(path.join(root, 'web/backgrounds/mist.jpg'));
@@ -58,6 +59,53 @@ try {
   assert.equal(await page.locator('#ai-analysis-count').textContent(), '2');
 
   assert.equal(await page.locator('#ai-analysis-form button[type=submit]').textContent(), '开始分析 · 2 位');
+  await page.locator('[data-ai-analysis-preset=review]').click();
+  const desktopPresetRows = await page.locator('.ai-analysis-presets button').evaluateAll(buttons => buttons.map(button => Math.round(button.getBoundingClientRect().top)));
+  assert.ok(desktopPresetRows.slice(0, 4).every(top => top === desktopPresetRows[0]) && desktopPresetRows.slice(4).every(top => top === desktopPresetRows[4]) && desktopPresetRows[4] > desktopPresetRows[0], 'desktop directions form two balanced rows of four');
+  await shot('desktop-analysis-request');
+  assert.equal(await page.locator('#ai-analysis-form button[type=submit] .ai-icon').count(), 1, 'analysis icon stays in the button');
+  await page.locator('[data-ai-analysis-range=week]').click();
+  assert.equal(await page.locator('#ai-analysis-form button[type=submit]').textContent(), '开始分析 · 2 位', 'range redraw keeps selected count');
+  assert.equal(await page.locator('#ai-analysis-form button[type=submit] .ai-icon').count(), 1, 'range redraw keeps the icon');
+  await page.locator('[data-ai-analysis-range=custom]').click();
+  await page.locator('.ai-calendar-dialog-analysis').waitFor();
+  await shot('custom-date-dialog');
+  assert.equal(await page.locator('.ai-calendar-dialog-analysis h3').textContent(), '自定义时间');
+  const desktopNav = await page.evaluate(() => {
+    const toolbar = document.querySelector('.ai-calendar-toolbar').getBoundingClientRect();
+    const picks = document.querySelector('.ai-calendar-picks').getBoundingClientRect();
+    const nav = document.querySelector('.ai-calendar-nav-analysis').getBoundingClientRect();
+    const start = document.querySelector('.ai-calendar-pick-start').getBoundingClientRect();
+    const earliest = document.querySelector('.ai-calendar-earliest').getBoundingClientRect();
+    return { sameRow: Math.abs(picks.top - nav.top) < 16, separate: picks.right < nav.left, insideStart: earliest.left >= start.left && earliest.right <= start.right && earliest.top >= start.top && earliest.bottom <= start.bottom, fits: toolbar.left <= picks.left && nav.right <= toolbar.right };
+  });
+  assert.ok(desktopNav.sameRow && desktopNav.separate && desktopNav.insideStart && desktopNav.fits, 'desktop puts month controls beside the date cards and earliest shortcut inside the start card');
+  await page.locator('.ai-calendar-dialog-analysis [data-day="2026-09-14"]').click();
+  await page.locator('.ai-calendar-dialog-analysis [data-earliest]').click();
+  assert.equal(await page.locator('.ai-calendar-dialog-analysis [data-pick=from] strong').textContent(), '2026-09-01', 'earliest shortcut selects the first available date');
+  await page.locator('.ai-calendar-dialog-analysis [data-cancel]').click();
+  await page.waitForFunction(() => document.querySelector('[data-ai-analysis-range=week]')?.getAttribute('aria-pressed') === 'true');
+  assert.equal(await page.locator('#ai-analysis-form button[type=submit]').textContent(), '开始分析 · 2 位', 'dialog cancel keeps selected count');
+  assert.equal(await page.locator('[data-ai-analysis-range=week]').getAttribute('aria-pressed'), 'true', 'dialog cancel restores previous range');
+  await page.locator('[data-ai-analysis-range=custom]').click();
+  await page.locator('.ai-calendar-dialog-analysis [data-day="2026-09-14"]').click();
+  await page.locator('.ai-calendar-dialog-analysis [data-day="2026-09-28"]').click();
+  await page.locator('.ai-calendar-dialog-analysis [data-apply]').click();
+  await page.waitForFunction(() => document.querySelector('#ai-analysis-form [name=from]')?.value === '2026-09-14');
+  assert.equal(await page.locator('#ai-analysis-form [name=from]').inputValue(), '2026-09-14');
+  assert.equal(await page.locator('#ai-analysis-form [name=to]').inputValue(), '2026-09-28');
+  assert.equal(await page.locator('#ai-analysis-form button[type=submit]').textContent(), '开始分析 · 2 位', 'custom range keeps selected count');
+  await page.locator('[data-ai-analysis-range=all]').click();
+  const requestField = page.locator('#ai-analysis-request-text');
+  await requestField.fill('简短要求');
+  const shortHeight = await requestField.evaluate(el => el.getBoundingClientRect().height);
+  await requestField.fill(Array.from({length: 45}, (_, i) => `第 ${i + 1} 行分析要求`).join('\n'));
+  const expanded = await requestField.evaluate(el => ({height: el.getBoundingClientRect().height, overflow: getComputedStyle(el).overflowY}));
+  assert.ok(expanded.height > shortHeight, 'request grows with its text');
+  assert.equal(expanded.overflow, 'auto', 'request scrolls after reaching the visible page');
+  await shot('expanded-request');
+  await requestField.fill('');
+  report.checks.push('时间切换保留人数和图标，自定义日期弹框与分析要求自适应');
   // 3) Search "林" -> only 林一 visible; filtered-out labels stay hidden but checked.
   await search.fill('林');
   assert.equal(await page.locator('#ai-analysis-contacts label[hidden]').count(), 2, 'two contacts hidden by search');
@@ -87,8 +135,14 @@ try {
   assert.ok(completed.every(call => !Array.isArray(call.input.contacts)), 'each provider call carries a single contact payload');
   assert.deepEqual(new Set(completed.map(c => c.input.contact)), new Set(['陈小雨', '周末']));
   assert.equal(await page.locator('[data-analysis-report]').count(), 2);
+  assert.equal(await page.locator('#ai-analysis-contacts [name=contacts]:checked').count(), 0, 'completed reports clear the old selection');
+  assert.equal(await page.locator('#ai-analysis-count').textContent(), '0');
+  assert.equal(await page.locator('#ai-analysis-form button[type=submit]').textContent(), '开始分析 · 0 位');
+  await page.locator('[data-ai-analysis-range=week]').click();
+  assert.equal(await page.locator('#ai-analysis-contacts [name=contacts]:checked').count(), 0, 'changing time after a report does not restore old contacts');
+  await page.locator('[data-ai-analysis-range=all]').click();
   await shot('search-reports');
-  report.checks.push('隐藏的已勾选联系人仍进入逐人队列并分别生成报告');
+  report.checks.push('隐藏的已勾选联系人仍进入逐人队列并分别生成报告，完成后清空旧勾选');
 
   assert.equal(bridge.sent.length, 0); assert.deepEqual(report.errors, []); report.passed = true;
 
@@ -96,19 +150,62 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator('.ai-main-tabs [data-ai-nav=analysis]').click(); await settled();
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), '390px body overflow');
+  const mobileLayout = await page.evaluate(() => ({
+    cardRadius: getComputedStyle(document.querySelector('.ai-analysis-request')).borderRadius,
+    rangeWidth: document.querySelector('.ai-reference-analysis-ranges').getBoundingClientRect().width,
+    timeWidth: document.querySelector('.ai-analysis-time-controls').getBoundingClientRect().width,
+  }));
+  assert.equal(mobileLayout.cardRadius, '18px', 'mobile request uses rounded card');
+  assert.ok(mobileLayout.rangeWidth > 300 && mobileLayout.rangeWidth <= mobileLayout.timeWidth + 1, 'mobile time range fills the card');
+  await shot('mobile-analysis-overview');
+  await page.locator('[data-ai-analysis-contacts-toggle]').click();
+  assert.equal(await page.locator('#ai-analysis-contacts').isVisible(), true, 'mobile contact card expands on demand');
+  await shot('mobile-contacts-open');
   await search.fill('周'); assert.equal(await page.locator('#ai-analysis-contacts label:not([hidden])').textContent(), '周末');
   await shot('search-mobile');
-  report.checks.push('390px 移动端无横向溢出，搜索仍可用');
   await search.fill('');
+  await page.locator('#ai-analysis-contacts [name=contacts]').first().check();
+  await page.locator('[data-ai-analysis-contacts-done]').click();
+  await page.locator('[data-ai-analysis-range=custom]').click();
+  await page.locator('.ai-calendar-dialog-analysis').waitFor();
+  assert.equal(await page.locator('.ai-calendar-dialog-analysis [data-day="2026-09-28"]').isVisible(), true, 'phone calendar shows the active month');
+  assert.equal(await page.locator('.ai-calendar-dialog-analysis [data-day="2026-09-10"]').evaluate(el => getComputedStyle(el).whiteSpace), 'nowrap', 'phone calendar keeps two-digit days on one line');
+  const mobileNav = await page.evaluate(() => {
+    const nav = document.querySelector('.ai-calendar-nav-analysis').getBoundingClientRect();
+    const month = document.querySelector('.ai-calendar-month-switch').getBoundingClientRect();
+    const start = document.querySelector('.ai-calendar-pick-start').getBoundingClientRect();
+    const earliest = document.querySelector('.ai-calendar-earliest').getBoundingClientRect();
+    return { monthFits: month.left >= nav.left && month.right <= nav.right, earliestInsideStart: earliest.left >= start.left && earliest.right <= start.right && earliest.top >= start.top && earliest.bottom <= start.bottom };
+  });
+  assert.ok(mobileNav.monthFits && mobileNav.earliestInsideStart, 'phone keeps month controls together and earliest shortcut inside the start card');
+  await shot('mobile-custom-date-dialog');
+  await page.locator('.ai-calendar-dialog-analysis [data-cancel]').click();
+  await page.locator('.ai-calendar-dialog-analysis').waitFor({ state: 'detached' });
+  await page.locator('[data-ai-analysis-contacts-toggle]').click();
+  await page.locator('#ai-analysis-contacts [name=contacts]').first().uncheck();
+  await page.locator('[data-ai-analysis-contacts-done]').click();
+  await page.locator('.ai-analysis-request').scrollIntoViewIfNeeded();
+  await shot('mobile-analysis-request');
+  await page.locator('.ai-analysis-reports').scrollIntoViewIfNeeded();
+  await shot('mobile-analysis-report');
+  await page.locator('[data-ai-analysis-contacts-toggle]').click();
+  await page.locator('#ai-analysis-contacts [name=contacts]').first().check();
+  await page.locator('[data-ai-analysis-contacts-done]').click();
+  await page.getByRole('button', { name: '开始分析', exact: true }).click(); await settled();
+  assert.equal(await page.locator('#ai-analysis-contacts [name=contacts]:checked').count(), 0, 'phone generation clears old contact selection');
+  await shot('mobile-after-generation');
+  report.checks.push('390px 移动端无横向溢出，联系人卡片可展开和收起，搜索与报告可用');
   for (const width of [320,360,375,390,414,480,768,850,860,1024,1440]) {
     await page.setViewportSize({width,height:900});
     assert.ok(await page.locator('#ai-content').evaluate(el=>el.scrollWidth<=el.clientWidth+1), width+' content overflow');
     const request=await page.locator('.ai-analysis-request').boundingBox();
     assert.ok(request.x>=0 && request.x+request.width<=width+1,width+' request fits screen');
+    if (width <= 600) await page.locator('[data-ai-analysis-contacts-toggle]').click();
     await page.locator('#ai-analysis-contacts [name=contacts]').nth(1).check();
     const count=await page.locator('#ai-analysis-contacts [name=contacts]:checked').count();
     assert.equal(await page.locator('#ai-analysis-form button[type=submit]').textContent(), '开始分析 · '+count+' 位');
     await page.locator('#ai-analysis-contacts [name=contacts]').nth(1).uncheck();
+    if (width <= 600) await page.locator('[data-ai-analysis-contacts-done]').click();
     await shot('responsive-'+width);
   }
   report.checks.push('320–1440px content bounds and selection/button synchronization passed');
