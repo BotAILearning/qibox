@@ -24,6 +24,9 @@ test('record lists expose confirmed deletion, summary ranges, and reply-needed a
   assert.match(html, /data-ai-summary-result="p1" role="status" hidden/);
   const refreshed = activityRows({ activity: [{ id: 'p1', label: '甲', kind: 'person', hasSent: true, at: Date.now() }] }, { source: 'reply', page: 0 }, [], false, new Map([['p1', { range: 'month', text: '已生成总结', pending: false }]]));
   assert.match(refreshed, /data-ai-record-expand="p1" open/);
+  assert.match(refreshed, /data-ai-collapse-record="p1"/);
+  const collapsed = activityRows({ activity: [{ id: 'p1', label: '甲', kind: 'person', hasSent: true, at: Date.now() }] }, { source: 'reply', page: 0, collapsed: ['p1'] }, [], false, new Map([['p1', { range: 'month', text: '已生成总结', pending: false }]]));
+  assert.doesNotMatch(collapsed, /data-ai-record-expand="p1" open/);
   assert.match(refreshed, /value="month" selected/);
   assert.match(refreshed, /data-ai-summary-result="p1" role="status"\s*>已生成总结/);
   assert.match(html, /ai-reply-history-list/);
