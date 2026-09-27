@@ -672,8 +672,6 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
       node.style.height = Math.min(Math.max(node.scrollHeight, 96), window.innerHeight * .5) + 'px';
       node.style.overflowY = 'auto';
     }
-    const back = $('#ai-mobile-back');
-    if (back) back.textContent = '← 返回';
   }
   function render() {
     if (!state) return;
@@ -815,13 +813,15 @@ export function aiAssistant({ api, onClose, onOpenChat, guard, ensure }) {
     panel.hidden ? show() : hide();
   };
   $('#ai-close').onclick = hide;
-  $('#ai-mobile-back').onclick = () => {
+  const goBack = () => {
     const content = $('#ai-content');
     const candidate = ['[data-ai-action="model-cancel"]', '[data-proactive-back]', '[data-ai-object-back]', '[data-ai-action="back-learning"]', '[data-ai-action="back-reply-contacts"]', '.ai-learning-back', '.ai-sticky-back button', '.ai-reference-learning-top [data-ai-nav]'].map(selector => content.querySelector(selector)).find(Boolean);
     if (candidate && (!candidate.hasAttribute('data-ai-object-back') || selectedObject)) candidate.click();
     else if (tab !== 'overview') void navigate('overview');
     else hide();
   };
+  $('#ai-mobile-back').onclick = goBack;
+  $('#ai-desktop-back').onclick = goBack;
   panel.addEventListener('input', event => { if (event.target.tagName === 'TEXTAREA') mobileLayout(); });
   window.addEventListener('resize', mobileLayout);
   panel.addEventListener('keydown', event => { if (event.key === 'Escape') { event.stopPropagation(); if (!proactiveUI.closeOverlay()) hide(); } });

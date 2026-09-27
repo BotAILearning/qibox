@@ -25,6 +25,7 @@
 #ai-panel .ai-icon{width:18px;height:18px;flex:none;vertical-align:middle;display:inline-block;stroke:currentColor}
 #ai-panel .ai-icon-sprite{position:absolute;width:0;height:0;overflow:hidden;pointer-events:none}
 #ai-panel .ai-panel-heading{margin-left:var(--ai-sidebar);height:58px;min-height:58px;padding:0 24px;background:#fff;color:var(--ai-text);border-bottom:1px solid var(--ai-border);flex-shrink:0;gap:14px}
+#ai-panel .ai-mobile-navigation{display:none}
 #ai-panel .ai-breadcrumb{display:flex;align-items:center;gap:9px;white-space:nowrap;color:var(--ai-hint);font-size:12.5px;min-width:0}
 #ai-panel .ai-panel-heading h2{font-size:13px;font-weight:600;color:var(--ai-text);margin:0;overflow:hidden;text-overflow:ellipsis}
 #ai-panel .ai-heading-actions{gap:14px;min-width:0}
@@ -1062,12 +1063,16 @@
 #ai-panel .ai-analysis-request .ai-analysis-section-title{flex-wrap:wrap}
 @media(max-width:860px){
  #ai-panel{--ai-sidebar:0px}
- #ai-panel .ai-main-tabs{position:static;inset:auto;width:100%;flex-direction:row;flex-shrink:0;overflow-x:auto;gap:4px;padding:6px 10px;white-space:nowrap;order:0}
+ #ai-panel .ai-main-tabs{position:static;inset:auto;width:100%;flex-direction:row;flex-shrink:0;overflow-x:auto;gap:4px;padding:6px 10px;white-space:nowrap;order:-1}
  #ai-panel .ai-main-tabs button{width:auto;min-width:64px;min-height:48px;flex-direction:column;gap:2px;padding:6px 10px;font-size:12px}
  #ai-panel .ai-main-tabs button>span{display:block}
  #ai-panel .ai-nav-brand,#ai-panel .ai-nav-caption{display:none}
  #ai-panel .ai-nav-master{margin:0 0 0 auto;min-width:80px;padding:6px;border:0;flex-shrink:0}
- #ai-panel .ai-panel-heading{margin:0;padding:0 12px;min-height:50px;height:50px}
+ #ai-panel .ai-panel-heading{display:none}
+ #ai-panel .ai-mobile-navigation{display:flex;flex-shrink:0;padding:10px 14px 4px;background:var(--ai-bg)}
+ #ai-panel #ai-mobile-back{display:inline-flex;align-items:center;gap:9px;min-height:44px;padding:6px 14px 6px 9px;border:1px solid #dfe2f4;border-radius:999px;background:#fff;color:#3949a2;font-size:14px;font-weight:600;box-shadow:0 2px 8px #24243b0b}
+ #ai-panel #ai-mobile-back svg{width:28px;height:28px;flex:none;padding:5px;border-radius:50%;background:#eef0ff}
+ #ai-panel #ai-mobile-back:focus-visible{outline:2px solid var(--ai-primary);outline-offset:2px}
  #ai-panel #ai-content{margin:0;min-height:0;flex:1;width:100%}
  #ai-panel .ai-page-body{padding:14px 12px 24px;min-width:0;width:100%}
  #ai-panel .ai-page-body:has(>.ai-analysis-setup){grid-template-columns:minmax(0,1fr);gap:14px}

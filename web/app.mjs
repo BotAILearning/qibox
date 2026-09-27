@@ -76,10 +76,9 @@ async function openAIEntry(id) {
     desktopId = id; standaloneAI = true;
     $('#ai-account-label').textContent = '当前微信：' + (entry.name || '微信');
     $('#desktop-view').classList.add('ai-only');
-    $('#desktop-view').hidden = false;
     assistant.detach(); assistantId = id;
     await assistant.attach(id);
-    if (standaloneAI && desktopId === id) assistant.show();
+    if (standaloneAI && desktopId === id) { assistant.show(); $('#desktop-view').hidden = false; }
     return;
   }
   if (standaloneAI) return;
