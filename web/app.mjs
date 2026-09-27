@@ -69,8 +69,20 @@ async function openAIEntry(id) {
   if (!entry || (entry.appId || 'wechat') !== 'wechat') return;
   const hint = aiBlockedHint(entry.runtime, true);
   if (hint) return aiBlockedDialog(hint);
+  if (mobile()) {
+    if (standaloneAI && desktopId === id) { assistant.show(); return; }
+    if (standaloneAI) disconnect();
+    stopMobileLoginChecks(); mobileLoginId = null;
+    desktopId = id; standaloneAI = true;
+    $('#ai-account-label').textContent = '当前微信：' + (entry.name || '微信');
+    $('#desktop-view').classList.add('ai-only');
+    $('#desktop-view').hidden = false;
+    assistant.detach(); assistantId = id;
+    await assistant.attach(id);
+    if (standaloneAI && desktopId === id) assistant.show();
+    return;
+  }
   if (standaloneAI) return;
-  if (mobile()) return pcHint();
   if (desktopId !== id || $('#desktop-view').hidden || !desktopConnected) await openDesktop(id, false, false, true);
   if (assistantId === id && !$('#desktop-view').hidden) assistant.show();
 }
@@ -190,8 +202,8 @@ function renderMobileAI() {
     const runtimeAvailable = aiAvailable(item.runtime, true), settings = mobileAISettings.get(item.id);
     const checked = settings?.enabled === true;
     const disabled = !runtimeAvailable || !settings?.available || mobileAISettingsLoading.has(item.id);
-    const hint = !runtimeAvailable ? '微信登录后可使用' : mobileAISettingsLoading.has(item.id) ? '正在读取开关状态' : !settings ? `<button type="button" class="quiet" data-mobile-ai-retry="${esc(item.id)}">重试读取</button>` : !settings.available ? '请在电脑端登录微信并完成 AI 模型配置' : '';
-    return `<article class="mobile-ai-card"><div class="mobile-ai-instance-name"><strong>${esc(item.name)}</strong><small>手机端可切换总开关；自动回复规则请在电脑端设置</small></div><label class="mobile-ai-master"><span>AI 总开关</span><input type="checkbox" role="switch" data-mobile-ai-master="${esc(item.id)}" aria-label="${esc(item.name)} AI 总开关" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}></label>${hint ? `<div class="mobile-ai-status">${hint}</div>` : ''}</article>`;
+    const hint = runtimeAvailable && !mobileAISettingsLoading.has(item.id) && !settings ? `<button type="button" class="quiet" data-mobile-ai-retry="${esc(item.id)}">重试读取开关</button>` : '';
+    return `<article class="mobile-ai-card"><button type="button" class="mobile-ai-open" data-mobile-ai-open="${esc(item.id)}" aria-label="打开${esc(item.name)}的 AI 辅助设置" ${runtimeAvailable ? '' : 'disabled'}>${esc(item.name)}</button><input type="checkbox" role="switch" data-mobile-ai-master="${esc(item.id)}" aria-label="${esc(item.name)} AI 总开关" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}>${hint ? `<div class="mobile-ai-status">${hint}</div>` : ''}</article>`;
   }).join('');
   if (markup !== lastMobileAIMarkup) { $('#mobile-ai-list').innerHTML = markup; lastMobileAIMarkup = markup; }
   $('#mobile-ai').hidden = !entries.length;
@@ -325,7 +337,7 @@ function renderDesktop() {
           : ['logged-out', 'relogin-required'].includes(runtime.loginStatus) ? '微信二维码已显示，请扫码登录。'
             : '正在检测微信登录状态…';
   }
-  if (standaloneAI) { if (!aiAvailable(runtime, true)) { disconnect(); notify('请先在电脑端登录微信'); } return; }
+  if (standaloneAI) { if (!aiAvailable(runtime, true)) { disconnect(); notify('请先登录微信'); } return; }
   // 登录确认且桌面已连接时显示入口；短暂未知状态沿用 aiEntryAvailable。
   const wechatEntry = !!(entry && (entry.appId || 'wechat') === 'wechat');
   const showAI = aiAvailable(runtime, desktopConnected);
@@ -602,6 +614,7 @@ document.addEventListener('click', async event => {
   const button = event.target.closest('button'); if (!button || button.disabled) return;
   try {
     if (button.hasAttribute('data-close')) return closeModal();
+    if (button.dataset.mobileAiOpen) { await openAIEntry(button.dataset.mobileAiOpen); return; }
     if (button.dataset.mobileAiRetry) { mobileAISettings.delete(button.dataset.mobileAiRetry); await loadMobileAISettings(button.dataset.mobileAiRetry); return; }
     if (button.dataset.mobileLogin) { const id = button.dataset.mobileLogin; closeModal(); await openMobileLogin(id); return; }
     if (button.dataset.mobileStop) {
