@@ -41,6 +41,30 @@ class VoiceMapping(unittest.TestCase):
         rows[-1]['direction'] = 'self'
         with self.assertRaises(ValueError): voice.align(rows, messages, 'b')
 
+    def test_matches_scrolled_window_only_with_unique_text_anchor(self):
+        messages = [
+            {'id':'a','direction':'self','text':'较早锚点'},
+            {'id':'b','direction':'other','text':'[语音]','type':'voice'},
+            {'id':'c','direction':'other','text':'后续锚点'},
+            {'id':'d','direction':'other','text':'最新消息'},
+        ]
+        rows = [
+            {'direction':'self','text':'较早锚点'},
+            {'direction':'other','text':'语音3秒','type':'voice'},
+            {'direction':'other','text':'后续锚点'},
+        ]
+        self.assertEqual(voice.align(rows, messages, 'b'), 1)
+        with self.assertRaisesRegex(ValueError, 'after viewport'):
+            voice.align(rows, [*messages[:-1], {'id':'new','direction':'other','text':'[语音]','type':'voice'}], 'new')
+
+    def test_offscreen_qt_rows_do_not_become_visible_evidence(self):
+        baseline = [
+            {'direction':'self','text':'唯一锚点','obj':1},
+            {'direction':'other','text':'语音3秒','type':'voice','obj':2},
+        ]
+        rows = [('唯一锚点',(0,100,800,50)),('语音3秒',(0,150,800,50)),('屏幕外旧行',(0,320,800,50))]
+        self.assertEqual(voice.rebase_visible_rows(rows, baseline, 1, 80, [1,2,3], 300), 1)
+
     def test_virtualized_voice_growth_allows_only_verified_head_truncation(self):
         baseline = [
             {'direction':'self', 'text':'较早内容', 'obj':0},

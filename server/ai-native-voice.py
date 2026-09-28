@@ -71,7 +71,7 @@ def incoming_bubble_point(frame, bounds, incoming_color):
 
 
 def align(rows, messages, target):
-    """Require the complete visible suffix and a unique retained text anchor."""
+    """Require one exact visible window and a unique retained text anchor."""
     if not isinstance(messages, list) or not 2 <= len(messages) <= 60: raise ValueError('voice context unavailable')
     messages = [m for m in messages if m.get('direction') != 'system']
     candidates = [i for i, m in enumerate(messages) if m.get('id') == target and m.get('type') == 'voice' and m.get('direction') == 'other']
@@ -81,17 +81,20 @@ def align(rows, messages, target):
     if len(rows) > len(messages) or len(rows) < 2: raise ValueError('voice context unavailable')
     def signature(m): return (m['direction'], '[语音]' if m.get('type') == 'voice' else m['text'])
     visible = [signature(m) for m in rows]
-    start = len(messages) - len(rows)
-    if visible != [signature(m) for m in messages[start:]]: raise ValueError('voice context changed')
+    starts = [start for start in range(len(messages) - len(rows) + 1)
+              if visible == [signature(m) for m in messages[start:start + len(rows)]]]
+    if len(starts) != 1: raise ValueError('voice context changed')
+    start = starts[0]
     anchor = [m['text'] for m in rows if m.get('type') != 'voice' and m.get('direction') in ('self', 'other')]
     if not anchor or not any(sum(x.get('text') == text and x.get('type') != 'voice' for x in messages) == 1 for text in anchor):
         raise ValueError('voice context ambiguous')
     index = candidates[0] - start
-    if index < 0: raise ValueError('voice outside viewport')
+    if index < 0: raise ValueError('voice before viewport')
+    if index >= len(rows): raise ValueError('voice after viewport')
     return index
 
 
-def rebase_visible_rows(rows, baseline, target_index, viewport_top, row_objects):
+def rebase_visible_rows(rows, baseline, target_index, viewport_top, row_objects, viewport_bottom=None):
     """Allow only leading history to leave a virtualized viewport.
 
     The target and every retained row must still form an unchanged suffix of
@@ -103,8 +106,11 @@ def rebase_visible_rows(rows, baseline, target_index, viewport_top, row_objects)
         raise ValueError('voice context changed')
     current = []
     for index, (name, bounds) in enumerate(rows):
-        if index == 0 and bounds[1] < viewport_top: continue
+        if bounds[1] < viewport_top or viewport_bottom is not None and bounds[1] + bounds[3] > viewport_bottom:
+            continue
         current.append({'index': index, 'text': name, 'obj': row_objects[index]})
+    if any(right['index'] != left['index'] + 1 for left, right in zip(current, current[1:])):
+        raise ValueError('voice context changed')
     if not current or len(current) > len(baseline): raise ValueError('voice context changed')
     start = len(baseline) - len(current)
     if target_index < start: raise ValueError('voice target left viewport')
@@ -146,19 +152,40 @@ def convert(adapter, request, account, contact):
     if not adapter.session_identity: raise ValueError('voice requires background identity')
     adapter.verify_session(); layout = ins.locate()
     if layout['label'] != contact['label'] or ins._visible_roots(layout['app'], layout['frame']): raise ValueError('voice target changed')
-    viewport = ins.bounds(layout['message_list']); native = adapter.rows(layout)
-    visible, baseline = [], []
-    with adapter.render.DesktopFrame(viewport) as frame:
-        for i, (name, bounds) in enumerate(native):
-            ins.check()
-            if i == 0 and bounds[1] < viewport[1]: continue
-            voice = voice_row(name)
-            direction = frame.direction('语音消息' if voice else name, bounds)
-            item = {'text': name, 'direction': direction, **({'type': 'voice'} if voice else {}),
-                    'index': i, 'obj': ins.call('get_child_at_index', c.c_void_p, layout['message_list'], i)}
-            baseline.append(item)
-            if direction != 'system': visible.append(item)
-    target_visible_index = align(visible, request.get('messages'), request.get('messageId'))
+    viewport = ins.bounds(layout['message_list'])
+    previous = None
+    for search in range(8):
+        ins.check(); adapter.verify_session()
+        fresh = ins.locate()
+        if any(fresh[k] != layout[k] for k in ('app', 'frame', 'message_list', 'label')) or ins.bounds(fresh['message_list']) != viewport:
+            raise ValueError('voice viewport changed')
+        native = adapter.rows(fresh)
+        visible, baseline = [], []
+        with adapter.render.DesktopFrame(viewport) as frame:
+            for i, (name, bounds) in enumerate(native):
+                ins.check()
+                if bounds[1] < viewport[1] or bounds[1] + bounds[3] > viewport[1] + viewport[3]:
+                    continue
+                voice = voice_row(name)
+                direction = frame.direction('语音消息' if voice else name, bounds)
+                item = {'text': name, 'direction': direction, **({'type': 'voice'} if voice else {}),
+                        'index': i, 'obj': ins.call('get_child_at_index', c.c_void_p, layout['message_list'], i)}
+                baseline.append(item)
+                if direction != 'system': visible.append(item)
+        if any(right['index'] != left['index'] + 1 for left, right in zip(baseline, baseline[1:])):
+            raise ValueError('voice context changed')
+        try:
+            target_visible_index = align(visible, request.get('messages'), request.get('messageId'))
+            break
+        except ValueError as error:
+            if str(error) not in ('voice before viewport', 'voice after viewport') or search == 7:
+                raise
+            direction = 'up' if str(error) == 'voice before viewport' else 'down'
+            signature = (direction, tuple((row['direction'], row['text']) for row in visible))
+            if signature == previous: raise ValueError('voice scrolling stopped')
+            previous = signature
+            ins.scroll_directory(direction, {**layout, 'contact_list': layout['message_list']})
+    else: raise ValueError('voice outside viewport')
     index = visible[target_visible_index]['index']
     target_baseline_index = next(i for i, item in enumerate(baseline) if item['index'] == index)
     row = ins.call('get_child_at_index', c.c_void_p, layout['message_list'], index)
@@ -191,7 +218,7 @@ def convert(adapter, request, account, contact):
         if ins.bounds(fresh['message_list']) != viewport: raise ValueError('voice viewport changed')
         rows = adapter.rows(fresh)
         row_objects = [ins.call('get_child_at_index', c.c_void_p, fresh['message_list'], i) for i in range(len(rows))]
-        index = rebase_visible_rows(rows, baseline, target_baseline_index, viewport[1], row_objects)
+        index = rebase_visible_rows(rows, baseline, target_baseline_index, viewport[1], row_objects, viewport[1] + viewport[3])
         row = ins.call('get_child_at_index', c.c_void_p, fresh['message_list'], index)
         if not voice_row(ins.string('get_name', row)): raise ValueError('voice row changed')
     unchanged()

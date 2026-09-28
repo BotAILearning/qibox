@@ -76,29 +76,29 @@ export async function analyzeContacts(assistant, value) {
       check();
       const material = await readStableRange(a.bridge, { account, contact: contact.id, from: options.from, to: options.to, signal, skipUnparsed: true }, check);
       const sourceMessages = material.messages.filter(message => typeof message.text === 'string' && message.text.trim());
-       const selection = tailWithinLimit(sourceMessages), selectedMessages = selection.messages;
-       const resolved = options.includeVoice || options.includeVisual
-         ? await resolveAnalysisMedia({ assistant: a, config, account, contact: contact.id, messages: selectedMessages, includeVoice: options.includeVoice, includeVisual: options.includeVisual, signal, check })
-         : null;
-       const finalSelection = resolved ? tailWithinLimit(resolved.messages) : selection;
-       const messages = finalSelection.messages, mediaCoverage = resolved?.coverage;
-       const contentParsedCount = messages.filter(message => !/^\[(?:语音|图片|视频|表情|位置|通话|名片)\]$/.test(message.text.trim())).length;
-       const extraChars = resolved ? resolved.messages.reduce((sum, message, index) => sum + Array.from(message.text).length - Array.from(selectedMessages[index].text).length, 0) : 0;
-       const coverage = resolved ? { ...finalSelection.coverage,
+      const selection = tailWithinLimit(sourceMessages), selectedMessages = selection.messages;
+      const resolved = options.includeVoice || options.includeVisual
+        ? await resolveAnalysisMedia({ assistant: a, config, account, contact: contact.id, messages: selectedMessages, includeVoice: options.includeVoice, includeVisual: options.includeVisual, signal, check })
+        : null;
+      const finalSelection = resolved ? tailWithinLimit(resolved.messages) : selection;
+      const messages = finalSelection.messages, mediaCoverage = resolved?.coverage;
+      const contentParsedCount = messages.filter(message => !/^\[(?:语音|图片|视频|表情|位置|通话|名片)\]$/.test(message.text.trim())).length;
+      const extraChars = resolved ? resolved.messages.reduce((sum, message, index) => sum + Array.from(message.text).length - Array.from(selectedMessages[index].text).length, 0) : 0;
+      const coverage = resolved ? { ...finalSelection.coverage,
          totalReadableMessages: selection.coverage.totalReadableMessages,
          totalChars: selection.coverage.totalChars + extraChars,
          omittedMessages: sourceMessages.length - messages.length,
          partialMessages: selection.coverage.partialMessages + finalSelection.coverage.partialMessages,
          truncated: selection.coverage.truncated || finalSelection.coverage.truncated,
-       } : selection.coverage;
-       if (mediaCoverage && messages.length < selectedMessages.length) {
-         const retained = new Set(messages.map(message => message.id));
-         for (const item of resolved.messages) {
-           if (retained.has(item.id) || !mediaCoverage[item.type]?.selected) continue;
-           const analyzed = item.type === 'voice' ? item.text !== '[语音]' : item.text.startsWith(item.type === 'video' ? '[视频画面识别]' : '[图片识别]');
-           if (analyzed) { mediaCoverage[item.type].analyzed--; mediaCoverage[item.type].limited++; }
-         }
-       }
+      } : selection.coverage;
+      if (mediaCoverage && messages.length < selectedMessages.length) {
+        const retained = new Set(messages.map(message => message.id));
+        for (const item of resolved.messages) {
+          if (retained.has(item.id) || !mediaCoverage[item.type]?.selected) continue;
+          const analyzed = item.type === 'voice' ? item.text !== '[语音]' : item.text.startsWith(item.type === 'video' ? '[视频画面识别]' : '[图片识别]');
+          if (analyzed) { mediaCoverage[item.type].analyzed--; mediaCoverage[item.type].limited++; }
+        }
+      }
       const sourceTruncated = material.truncated === true, truncated = coverage.truncated || sourceTruncated;
       a.operation.completed = 1;
       if (!sourceMessages.length) {
@@ -106,7 +106,7 @@ export async function analyzeContacts(assistant, value) {
         reports.push({ ...head, status: 'empty', count: 0, rangeCount: material.count, skipped,
           report: skipped ? `所选时间范围内有 ${skipped} 条消息暂时无法解析，没有可供分析的文字。` : '所选时间范围内没有聊天记录。' });
       } else {
-        a.operation.phase = 'analysis-model';
+        Object.assign(a.operation, { phase: 'analysis-model', total: 1, completed: 0, skipped: 0, attempt: 0, startedAt: Date.now() });
         const inputMessages = messages.map(message => [
           message.direction === 'self' ? 's' : message.direction === 'other' ? 'o' : '?',
           message.timestamp, message.text]);
@@ -117,7 +117,7 @@ export async function analyzeContacts(assistant, value) {
           ...(mediaCoverage ? { contentParsedCount } : {}),
           actualRange: actualRange(messages), sourceRange: actualRange(sourceMessages),
           coverage: { ...coverage, sourceTruncated, truncated, reasons: [...(material.truncatedReasons || [])] },
-           metrics: reportMetrics(messages), ...(mediaCoverage ? { mediaCoverage } : {}), messages: inputMessages,
+          metrics: reportMetrics(messages), ...(mediaCoverage ? { mediaCoverage } : {}), messages: inputMessages,
         }, signal, { format: 'report', budget: 4096, validate: result => {
           const reportText = typeof result?.report === 'string' ? normalizeDefaultReport(result.report.trim(), options.request) : '';
           if (!reportText) throw new AppError('模型没有返回有效报告正文，请重试', 502, 'ai_model_schema');
@@ -133,7 +133,7 @@ export async function analyzeContacts(assistant, value) {
           totalChars: coverage.totalChars, omittedMessages: coverage.omittedMessages, partialMessages: coverage.partialMessages,
           skipped: Math.max(0, material.count - sourceMessages.length), scope: truncated ? 'truncated' : 'full', truncated,
           truncatedReasons: [...new Set([...(material.truncatedReasons || []), ...(coverage.truncated ? ['character_limit'] : []), ...(sourceTruncated ? ['source_read_truncated'] : [])])],
-           actualRange: actualRange(messages), sourceRange: actualRange(sourceMessages), metrics: reportMetrics(messages), ...(mediaCoverage ? { mediaCoverage } : {}), report: reportText };
+          actualRange: actualRange(messages), sourceRange: actualRange(sourceMessages), metrics: reportMetrics(messages), ...(mediaCoverage ? { mediaCoverage } : {}), report: reportText };
         try {
           const saved = await a.saveAnalysisReport(report, { account, request: options.request, requestedRange: { from: options.fromDate || null, to: options.toDate || null } });
           reports.push({ ...report, historyId: saved.id });

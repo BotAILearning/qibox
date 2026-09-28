@@ -63,9 +63,16 @@ export async function resolveAnalysisMedia({ assistant, config, account, contact
   if (includeVoice && voice.work.length) {
     phase(assistant.operation, 'analysis-voice', voice.work.length);
     const recent = await attempt(nextSignal => assistant.bridge.read?.({ account, contact, signal: nextSignal }), { signal, check, timeout: 40_000, deadline, operation: assistant.operation });
-    const recentIds = new Set(recent?.messages?.filter(row => row.type === 'voice' && row.direction === 'other').map(row => row.id) || []);
+    // The native converter verifies only the last 60 messages against the
+    // visible WeChat viewport. Open the authenticated contact before asking it
+    // to convert, and never try an older row that cannot be matched safely.
+    const recentIds = new Set(recent?.messages?.slice(-60).filter(row => row.type === 'voice' && row.direction === 'other').map(row => row.id) || []);
+    const hasRecentVoice = voice.work.some(message => message.direction === 'other' && recentIds.has(message.id));
+    const opened = hasRecentVoice && recent?.revision && typeof assistant.bridge.openChat === 'function'
+      ? await attempt(nextSignal => assistant.bridge.openChat({ account, contact, signal: nextSignal }), { signal, check, timeout: 35_000, deadline, operation: assistant.operation })
+      : null;
     for (const message of voice.work) {
-      const converted = message.direction === 'other' && recentIds.has(message.id) && recent?.revision
+      const converted = opened?.opened && message.direction === 'other' && recentIds.has(message.id) && recent?.revision
         ? await attempt(nextSignal => assistant.bridge.transcribe?.({ account, contact, revision: recent.revision, messageId: message.id, signal: nextSignal }), { signal, check, timeout: 25_000, deadline, operation: assistant.operation }) : null;
       const okay = converted?.source === 'wechat' && typeof converted.text === 'string' && !!converted.text.trim() && converted.text.length <= 20000;
       if (okay) { byId.get(message.id).text = converted.text.trim(); coverage.voice.analyzed++; }
@@ -77,7 +84,7 @@ export async function resolveAnalysisMedia({ assistant, config, account, contact
   if (includeVisual) {
     phase(assistant.operation, 'analysis-image', image.work.length);
     for (const message of image.work) {
-      const item = await attempt(nextSignal => assistant.bridge.readImage?.({ account, contact, messageId: message.id, signal: nextSignal }), { signal, check, timeout: 40_000, deadline, operation: assistant.operation });
+      const item = await attempt(nextSignal => assistant.bridge.readImage?.({ account, contact, messageId: message.id, timestamp: message.timestamp, signal: nextSignal }), { signal, check, timeout: 40_000, deadline, operation: assistant.operation });
       const okay = item && item.messageId === message.id && typeof item.data === 'string' && item.data.length <= 5_600_000;
       if (okay) visual.push({ id: message.id, messageId: message.id, mime: item.mime, data: item.data, type: 'image' });
       else coverage.image.skipped++;
@@ -85,7 +92,7 @@ export async function resolveAnalysisMedia({ assistant, config, account, contact
     }
     phase(assistant.operation, 'analysis-video', video.work.length);
     for (const message of video.work) {
-      const frames = await attempt(nextSignal => assistant.bridge.readVideoFrames?.({ account, contact, messageId: message.id, signal: nextSignal }), { signal, check, timeout: 42_000, deadline, operation: assistant.operation });
+      const frames = await attempt(nextSignal => assistant.bridge.readVideoFrames?.({ account, contact, messageId: message.id, timestamp: message.timestamp, signal: nextSignal }), { signal, check, timeout: 42_000, deadline, operation: assistant.operation });
       const okay = Array.isArray(frames) && frames.length > 0 && frames.length <= 3 && frames.every(frame => frame?.mime === 'image/jpeg' && typeof frame.data === 'string' && frame.data.length <= 5_600_000);
       if (okay) frames.forEach((frame, index) => visual.push({ id: `${message.id}#${index + 1}`, messageId: message.id, mime: frame.mime, data: frame.data, type: 'video', at: frame.at }));
       else coverage.video.skipped++;

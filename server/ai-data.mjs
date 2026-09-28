@@ -199,7 +199,9 @@ export class DataChatBridge extends NativeChatBridge {
     if (action === 'read-image') {
       const binding = this.binding(args);
       if (!key(args.messageId)) throw unavailable();
-      const result = await this.data('read-image', {account:binding.account,contact:binding.id,messageId:args.messageId},context);
+      if (args.timestamp !== undefined && (!Number.isSafeInteger(args.timestamp) || args.timestamp < 0 || args.timestamp >= 9999999999)) throw unavailable();
+      const result = await this.data('read-image', {account:binding.account,contact:binding.id,messageId:args.messageId,
+        ...(args.timestamp !== undefined ? { timestamp: args.timestamp } : {})},context);
       if (this.bindings.get(binding.id) !== binding || result.contact !== binding.id || result.messageId !== args.messageId) throw unavailable();
       const image=result.image;
       if (!image) return null;
@@ -209,7 +211,8 @@ export class DataChatBridge extends NativeChatBridge {
     if (action === 'read-video') {
       const binding = this.binding(args);
       if (!key(args.messageId)) throw unavailable();
-      const result = await this.data('read-video', { account: binding.account, contact: binding.id, messageId: args.messageId }, context);
+      if (!Number.isSafeInteger(args.timestamp) || args.timestamp < 0 || args.timestamp >= 9999999999) throw unavailable();
+      const result = await this.data('read-video', { account: binding.account, contact: binding.id, messageId: args.messageId, timestamp: args.timestamp }, context);
       if (this.bindings.get(binding.id) !== binding || result.contact !== binding.id || result.messageId !== args.messageId) throw unavailable();
       if (result.frames == null) return null;
       if (!Array.isArray(result.frames) || result.frames.length < 1 || result.frames.length > 3 || result.frames.some(frame => frame?.mime !== 'image/jpeg' || typeof frame.data !== 'string' || frame.data.length > 1_500_000 || !/^[A-Za-z0-9+/]+={0,2}$/.test(frame.data) || !Number.isFinite(frame.at) || frame.at < 0 || frame.at > 600)) throw unavailable();

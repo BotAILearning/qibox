@@ -28,6 +28,8 @@ test('selected media is tied to message ids, failures are skipped, and history s
   ];
   bridge.readRange = async args => ({ account: args.account, contact: args.contact, messages: structuredClone(rows) });
   bridge.read = async args => ({ account: args.account, contact: args.contact, revision: key('recent'), messages: structuredClone(rows) });
+  let opened = 0;
+  bridge.openChat = async () => { opened++; return { opened: true }; };
   bridge.transcribe = async args => ({ source: 'wechat', text: args.messageId === rows[0].id ? '下午三点见' : '' });
   bridge.readImage = async args => ({ messageId: args.messageId, mime: 'image/png', data: 'aGVsbG8=' });
   bridge.readVideoFrames = async () => null;
@@ -39,6 +41,7 @@ test('selected media is tied to message ids, failures are skipped, and history s
   const report = (await a.analyze({ contacts: [contact], includeVoice: true, includeVisual: true })).reports[0];
   assert.equal(report.status, 'complete', JSON.stringify(report));
   assert.deepEqual(report.mediaCoverage.voice, { selected: true, total: 1, analyzed: 1, skipped: 0, limited: 0 });
+  assert.equal(opened, 1);
   assert.equal(report.mediaCoverage.image.analyzed, 1);
   assert.equal(report.mediaCoverage.video.skipped, 1);
   assert.equal(report.contentParsedCount, 3);

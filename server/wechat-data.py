@@ -1005,6 +1005,14 @@ def session_activity(database, file, people):
 
 
 def read_bounds(request):
+    if request.get('action') in ('read-image', 'read-video') and 'timestamp' in request:
+        at = request['timestamp']
+        if type(at) is not int or not 0 <= at < 9999999999:
+            raise ValueError('invalid media timestamp')
+        # The message ID must still match the decoded row. This one-second
+        # index window lets an old report resolve its original attachment
+        # without scanning or silently selecting the newest 300 messages.
+        return (at, at + 1), None
     if request.get('action') != 'read-range': return None, None
     start, end = request.get('from'), request.get('to')
     if type(start) is not int or type(end) is not int or not 0 <= start < end <= 9999999999:
