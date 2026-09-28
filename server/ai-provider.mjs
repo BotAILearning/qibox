@@ -300,10 +300,11 @@ export class AIProvider {
       throw new AppError('无法拉取模型，请检查配置或手动填写对话模型');
     }
   }
-  async complete(config, system, input, signal, { format = 'json', budget: requestedBudget, retry = true, validate } = {}) {
+  async complete(config, system, input, signal, { format = 'json', budget: requestedBudget, retry = true, validate, requireImages = false } = {}) {
     const anthropic = config.protocol === 'anthropic', endpoint = providerEndpoints(config).complete;
     const {images = [], ...textInput} = input;
     const validImages = images.filter(x => x && ['image/png','image/jpeg','image/gif','image/webp'].includes(x.mime) && typeof x.data === 'string' && x.data.length <= 5600000).slice(0,3);
+    if (requireImages && (!images.length || validImages.length !== images.length)) throw new AppError('图片或视频帧不符合模型输入要求', 400);
     const text = JSON.stringify(textInput);
     const requestContent = validImages.length ? [{type:'text',text}, ...validImages.flatMap(x => [{type:'text',text:'图片对应消息 '+x.messageId}, anthropic ? {type:'image',source:{type:'base64',media_type:x.mime,data:x.data}} : {type:'image_url',image_url:{url:'data:'+x.mime+';base64,'+x.data}}])] : text;
     // Only Anthropic used to receive an output budget; elsewhere the server's
@@ -332,7 +333,10 @@ export class AIProvider {
           if (response.status === 400 || response.status === 413 || response.status === 422)
             console.warn('[ai-model-rejected]', JSON.stringify({ status: response.status, contextTooLarge,
               code: modelErrorCode, type: modelErrorType, messagePresent: !!modelError }));
-          if (validImages.length && [400,415,422].includes(response.status)) return textInput.onlyImages ? {action:'skip',mediaSkipped:true} : this.complete(config, currentSystem + ' 本次接口无法接受图片，图片已跳过；仅依据文字，不猜测图片内容。', {...textInput,capabilities:{...textInput.capabilities,receiveImages:false}},signal, { format, budget, retry, validate });
+          if (validImages.length && [400,415,422].includes(response.status)) {
+            if (requireImages) throw new AppError('当前模型不支持图片输入', 400, 'ai_model_vision_unsupported');
+            return textInput.onlyImages ? {action:'skip',mediaSkipped:true} : this.complete(config, currentSystem + ' 本次接口无法接受图片，图片已跳过；仅依据文字，不猜测图片内容。', {...textInput,capabilities:{...textInput.capabilities,receiveImages:false}},signal, { format, budget, retry, validate });
+          }
           // A host that rejects the budget parameter (or the value we asked for)
           // must not fail the call: retry once the way it used to be sent.
           if (budget && response.status === 400 && !droppedBudget && retry) { budget = 0; droppedBudget = true; continue; }

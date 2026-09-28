@@ -43,6 +43,7 @@ export function historySummary(report) {
     count: report.count,
     readableCount: report.readableCount,
     analyzedCount: report.analyzedCount,
+    contentParsedCount: report.contentParsedCount,
     analyzedChars: report.analyzedChars,
     totalChars: report.totalChars,
     omittedMessages: report.omittedMessages,
@@ -52,6 +53,7 @@ export function historySummary(report) {
     sampledCount: report.sampledCount,
     sampledRange: report.sampledRange,
     skipped: report.skipped,
+    ...(report.mediaCoverage ? { mediaCoverage: structuredClone(report.mediaCoverage) } : {}),
     truncated: report.truncated === true,
     summary: typeof report.report === 'string' ? report.report.replace(/\s+/g, ' ').trim().slice(0, 140) : '',
   };

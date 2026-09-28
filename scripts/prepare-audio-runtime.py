@@ -1,5 +1,5 @@
-"""Add private PulseAudio support from Debian indices; never install on host."""
-import concurrent.futures, hashlib, json, lzma, pathlib, re, urllib.request
+"""Add private runtime packages from Debian indices; never install on host."""
+import concurrent.futures, hashlib, json, lzma, pathlib, re, sys, urllib.request
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 CACHE=ROOT/'.cache/audio-resolver'; CACHE.mkdir(parents=True,exist_ok=True)
 def fetch(url,file,sha=None):
@@ -23,7 +23,7 @@ for arch,suffix,payload in [('amd64','', 'runtime'),('arm64','-arm64','runtime-a
   for item in lzma.decompress(data).decode().split('\n\n'):
    entry=fields(item)
    if 'Package' in entry:entry['url']=base+entry['Filename'];packages[entry['Package']]=entry
- existing={p['name'] for p in lock['packages']};host=set(lock['hostPackages']);selected={};pending=['pulseaudio']
+ existing={p['name'] for p in lock['packages']};host=set(lock['hostPackages']);selected={};pending=sys.argv[1:] or ['pulseaudio']
  providers={}
  for name,entry in packages.items():
   for item in entry.get('Provides','').split(','):
@@ -48,7 +48,7 @@ for arch,suffix,payload in [('amd64','', 'runtime'),('arm64','-arm64','runtime-a
   while pos+60<=len(data):
    member=data[pos:pos+16].decode().strip().rstrip('/');size=int(data[pos+48:pos+58]);content=data[pos+60:pos+60+size]
    if member.startswith('data.tar'):
-    filename=entry['Package']+'-'+member;(ROOT/'.cache'/payload/filename).write_bytes(content)
+    filename=entry['Package']+'-'+member;(ROOT/'.cache'/'payload').mkdir(parents=True,exist_ok=True);(ROOT/'.cache'/'payload'/filename).write_bytes(content)
     return dict(name=entry['Package'],version=entry['Version'],architecture=entry['Architecture'],url=entry['url'],debSha256=entry['SHA256'],file=filename,sha256=hashlib.sha256(content).hexdigest())
    pos+=60+size+size%2
   raise ValueError('Missing payload')

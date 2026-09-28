@@ -26,8 +26,12 @@ function linesFor(report) {
     .filter(([key]) => Number.isFinite(metrics[key])).map(([key, label]) => `${label} ${metrics[key]}`);
   if (values.length) lines.push({ text: values.join('  ·  '), kind: 'stats' });
   const analyzed = Number.isInteger(report.analyzedCount) ? report.analyzedCount : report.count;
-  if (Number.isInteger(analyzed)) lines.push({ text: `实际分析 ${analyzed} 条聊天记录${Number.isInteger(report.analyzedChars) ? `、${report.analyzedChars} 字` : ''}`, kind: 'note' });
+  if (Number.isInteger(analyzed)) lines.push({ text: report.mediaCoverage ? `本次使用 ${analyzed} 条记录，内容已解析 ${report.contentParsedCount ?? 0} 条` : `实际分析 ${analyzed} 条聊天记录${Number.isInteger(report.analyzedChars) ? `、${report.analyzedChars} 字` : ''}`, kind: 'note' });
   if (Number.isInteger(report.skipped) && report.skipped > 0) lines.push({ text: `已跳过 ${report.skipped} 条无法解析的记录。`, kind: 'note' });
+  for (const [type, name] of [['voice', '语音'], ['image', '图片'], ['video', '视频']]) {
+    const item = report.mediaCoverage?.[type];
+    if (item?.selected) lines.push({ text: `${name} ${item.total} 条：解析 ${item.analyzed}，跳过 ${(item.skipped || 0) + (item.limited || 0)}。`, kind: 'note' });
+  }
   const reasons = new Set(report.truncatedReasons || []);
   if (reasons.has('message_limit')) lines.push({ text: '微信聊天读取达到记录数量上限，未读取的历史不计入统计。', kind: 'warning' });
   if (reasons.has('analysis_sample')) lines.push({ text: `本次按记录顺序抽样 ${report.sampledCount ?? 0} 条，报告不代表未提供的记录。`, kind: 'warning' });

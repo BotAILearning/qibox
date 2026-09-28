@@ -89,6 +89,7 @@ export class DataChatBridge extends NativeChatBridge {
   read(args = {}) { return this.execute('read', args); }
   async currentAccount() { return this.execute('account', {}); }
   readImage(args = {}) { return this.execute('read-image', args); }
+  readVideoFrames(args = {}) { return this.execute('read-video', args); }
   readDates(args = {}) { return this.execute('read-dates', args); }
   readRange(args = {}) { return this.execute('read-range', args); }
   // New-message index: WeChat's own chat list, one row per conversation.
@@ -204,6 +205,15 @@ export class DataChatBridge extends NativeChatBridge {
       if (!image) return null;
       if (!['image/jpeg','image/png','image/gif','image/webp'].includes(image.mime) || typeof image.data !== 'string' || image.data.length > 5600000 || !/^[A-Za-z0-9+/]+={0,2}$/.test(image.data)) throw unavailable();
       return {messageId:args.messageId,mime:image.mime,data:image.data};
+    }
+    if (action === 'read-video') {
+      const binding = this.binding(args);
+      if (!key(args.messageId)) throw unavailable();
+      const result = await this.data('read-video', { account: binding.account, contact: binding.id, messageId: args.messageId }, context);
+      if (this.bindings.get(binding.id) !== binding || result.contact !== binding.id || result.messageId !== args.messageId) throw unavailable();
+      if (result.frames == null) return null;
+      if (!Array.isArray(result.frames) || result.frames.length < 1 || result.frames.length > 3 || result.frames.some(frame => frame?.mime !== 'image/jpeg' || typeof frame.data !== 'string' || frame.data.length > 1_500_000 || !/^[A-Za-z0-9+/]+={0,2}$/.test(frame.data) || !Number.isFinite(frame.at) || frame.at < 0 || frame.at > 600)) throw unavailable();
+      return result.frames;
     }
     if (action === 'read-dates') {
       const binding = this.binding(args), result = await this.data('read-dates', { account: binding.account, contact: binding.id }, context);
@@ -332,12 +342,12 @@ export class DataChatBridge extends NativeChatBridge {
       if (!key(message.id) || ids.has(message.id) || !['self', 'other', 'system'].includes(message.direction) ||
           typeof message.text !== 'string' || !Number.isSafeInteger(message.timestamp) || message.timestamp < 0) throw unavailable();
       ids.add(message.id);
-      if (message.type !== undefined && !['voice','image'].includes(message.type)) throw unavailable();
+      if (message.type !== undefined && !['voice','image','video'].includes(message.type)) throw unavailable();
       if (binding.kind === 'group' && (!key(message.sender) || !message.mentions || ['verified', 'self', 'all', 'others'].some(k => typeof message.mentions[k] !== 'boolean'))) throw unavailable();
       let text = message.text;
       const textChars = Array.from(text);
       if (textChars.length > 150000) { text = textChars.slice(0, 150000).join(''); clipped = true; truncatedReasons.add('message_length'); }
-      return { id: message.id, direction: message.direction, text, timestamp: message.timestamp, ...(['voice','image'].includes(message.type) ? { type: message.type } : {}),
+      return { id: message.id, direction: message.direction, text, timestamp: message.timestamp, ...(['voice','image','video'].includes(message.type) ? { type: message.type } : {}),
         ...(binding.kind === 'group' ? { sender: message.sender, mentions: Object.fromEntries(['verified', 'self', 'all', 'others'].map(k => [k, message.mentions[k]])) } : {}) };
     });
     // A range read is the complete bounded material for one contact. Its

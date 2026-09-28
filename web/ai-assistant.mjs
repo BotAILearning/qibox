@@ -56,7 +56,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   let learnRange = { from: '', to: '' }, learnScope = 'range', learnRangeMode = 'all', learnTarget = 'both', memoryPendingSignature = '';
   let defaultStylePerspective = 'self', defaultStyleMode = 'contacts';
   let defaultStyleReturn = 'settings';
-  let analysisDraft = { request: '', from: '', to: '', contacts: [] }, analysisRangeMode = 'all', analysisRangeBeforeCustom = null, analysisContactsExpanded = false, analysisResult = null, analysisSearch = '', analysisHistoryReport = null, analysisHistoryEpoch = 0;
+  let analysisDraft = { request: '', from: '', to: '', contacts: [], includeVoice: false, includeVisual: false }, analysisRangeMode = 'all', analysisRangeBeforeCustom = null, analysisContactsExpanded = false, analysisResult = null, analysisSearch = '', analysisHistoryReport = null, analysisHistoryEpoch = 0;
   let analysisExportSelecting = false, analysisExportSelected = new Set(), analysisExportDialog = null, analysisExportController = null;
   let objectKind = 'person', selectedObject = '', objectSection = 'reply', objectMemoryCategory = 'name', objectSearch = '', logFilters = { source: 'reply' };
   const acknowledgedReplyLimitOverflow = new WeakMap();
@@ -264,7 +264,14 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   const modeTargets = mode => state[`${mode}Targets`] || state.targets;
   const replyStrategy = () => state.replyStrategy || state.strategy;
   const needsContacts = () => !state.contacts?.length;
-  const operationText = operation => operation?.phase?.startsWith('analysis-') ? `正在${operation.phase === 'analysis-model' ? '分析' : '读取'}聊天记录 ${operation.completed}/${operation.total}` : operation ? operation.phase === 'contacts' ? operation.total ? `正在获取联系人 ${operation.completed}/${operation.total}` : '正在读取通讯录…' : operation.phase === 'memory' ? `正在学习聊天记忆 ${operation.completed}/${operation.total} 批，请勿关闭页面` : operation.phase === 'model' ? `正在分析 ${operation.total} 位联系人的聊天风格…` : `正在读取聊天 ${operation.completed}/${operation.total}` : '';
+  const operationText = operation => {
+    if (operation?.phase?.startsWith('analysis-')) {
+      const labels = { 'analysis-reading': '读取聊天记录', 'analysis-voice': '转写语音', 'analysis-image': '读取图片', 'analysis-video': '解析视频', 'analysis-vision': '理解图片和视频', 'analysis-model': '生成报告' };
+      const elapsed = operation.startedAt ? Math.max(0, Math.floor((Date.now() - operation.startedAt) / 1000)) : 0;
+      return `正在${labels[operation.phase] || '分析'}${operation.total ? ` ${operation.completed}/${operation.total}，成功 ${operation.completed - (operation.skipped || 0)}，跳过 ${operation.skipped || 0}` : ''}${operation.attempt ? `；第 ${operation.attempt}/2 次尝试，已等待 ${elapsed} 秒` : ''}`;
+    }
+    return operation ? operation.phase === 'contacts' ? operation.total ? `正在获取联系人 ${operation.completed}/${operation.total}` : '正在读取通讯录…' : operation.phase === 'memory' ? `正在学习聊天记忆 ${operation.completed}/${operation.total} 批，请勿关闭页面` : operation.phase === 'model' ? `正在分析 ${operation.total} 位联系人的聊天风格…` : `正在读取聊天 ${operation.completed}/${operation.total}` : '';
+  };
   const back = title => `<div class="ai-page-heading"><button type="button" class="quiet" data-ai-nav="overview">${icon('arrow-l')}返回自动回复</button><h3>${title}</h3></div>`;
   const steps = (labels, current) => `<ol class="ai-steps" aria-label="配置进度">${labels.map((label, i) => `<li ${i === current ? 'aria-current="step"' : ''} class="${i < current ? 'complete' : ''}"><span>${i + 1}</span>${label}</li>`).join('')}</ol>`;
   const noteActivity = () => {
@@ -672,7 +679,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   }
   function rememberDraft() {
     const analysis = $('#ai-analysis-form');
-    if (analysis) { const data = new FormData(analysis); analysisDraft = { request: data.get('request'), from: data.get('from'), to: data.get('to'), contacts: data.getAll('contacts') }; }
+    if (analysis) { const data = new FormData(analysis); analysisDraft = { request: data.get('request'), from: data.get('from'), to: data.get('to'), contacts: data.getAll('contacts'), includeVoice: data.has('includeVoice'), includeVisual: data.has('includeVisual') }; }
     const object = $('#ai-object-form');
     if (object) {
       const draft = { ...Object.fromEntries(new FormData(object)) };
@@ -943,6 +950,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       if (input.dataset.aiLearnDate) { learnRange = { ...learnRange, [input.dataset.aiLearnDate]: input.value }; return; }
       if (input.name === 'learnTarget') { rememberDraft(); learnTarget = LEARN_TARGETS.some(t => t.id === input.value) ? input.value : 'both'; render(); return; }
       if ('aiPanelMaster' in input.dataset) { await changeMaster(event); return; }
+      if (input.closest('#ai-analysis-form') && ['includeVoice', 'includeVisual'].includes(input.name)) { rememberDraft(); return; }
       if (input.closest('#ai-analysis-form') && input.name === 'contacts') {
         const checked = [...panel.querySelectorAll('#ai-analysis-form [name=contacts]:checked')];
         $('#ai-analysis-count').textContent = String(checked.length);
@@ -1595,7 +1603,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     attached: () => !!id,
     async attach(instanceId) {
       rememberRecords();
-      analysisDraft = { request: '', from: '', to: '', contacts: [] }; analysisRangeMode = 'all'; analysisRangeBeforeCustom = null; analysisContactsExpanded = false; analysisSearch = ''; analysisHistoryReport = null; analysisHistoryEpoch++; resetAnalysisExport(); learnRange = {from:'',to:''}; learnRangeMode = 'all'; learnScope='range'; learnTarget='both'; defaultStylePerspective = 'self'; analysisResult = null; proactiveUI.reset();
+      analysisDraft = { request: '', from: '', to: '', contacts: [], includeVoice: false, includeVisual: false }; analysisRangeMode = 'all'; analysisRangeBeforeCustom = null; analysisContactsExpanded = false; analysisSearch = ''; analysisHistoryReport = null; analysisHistoryEpoch++; resetAnalysisExport(); learnRange = {from:'',to:''}; learnRangeMode = 'all'; learnScope='range'; learnTarget='both'; defaultStylePerspective = 'self'; analysisResult = null; proactiveUI.reset();
       reviewAlert.hidden = true;
       concealKey(true); modelDraft = null; learningDraft = null; renderedView = ''; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); summaryResults.clear(); selectedObject = ''; objectSearch = ''; objectKind = 'person'; editingReplyContact = null; contactSearch = ''; providerRevision++;
       generation++; clearInterval(timer); id = instanceId; state = null; busy = false; polling = false; attaching = true; tab = 'overview'; replyDraft = null; editingProfile = null; contactsLoaded = false; contactsLoading = false; resultProfileIds = null;

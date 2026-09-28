@@ -29,6 +29,9 @@ spec.loader.exec_module(sql)
 image_spec = importlib.util.spec_from_file_location('qibox_images', pathlib.Path(__file__).with_name('wechat-images.py'))
 images = importlib.util.module_from_spec(image_spec)
 image_spec.loader.exec_module(images)
+video_spec = importlib.util.spec_from_file_location('qibox_videos', pathlib.Path(__file__).with_name('wechat-videos.py'))
+videos = importlib.util.module_from_spec(video_spec)
+video_spec.loader.exec_module(videos)
 USER = re.compile(r'[A-Za-z][A-Za-z0-9_.-]{2,127}')
 CONTACT_UID = re.compile(r'[A-Za-z0-9_.-]{3,128}')
 GROUP = re.compile(r'[A-Za-z0-9_-]{1,100}@chatroom')
@@ -687,6 +690,7 @@ def messages(db, shard, account, contact, self_name, target, selected=None, meta
                 text = text[:150000]
                 text_truncated = True
             if kind == 3: image_ref = images.image_reference(content)
+            if kind == 43: video_ref = videos.video_reference(content)
         except (ValueError, ET.ParseError):
             # An unreadable body keeps its identity and ordering so pagination
             # and the second snapshot stay verifiable. It no longer aborts the
@@ -710,6 +714,9 @@ def messages(db, shard, account, contact, self_name, target, selected=None, meta
             result[-1]['_image'] = image_ref
         if kind == 34:
             result[-1]['type'] = 'voice'
+        if kind == 43:
+            result[-1]['type'] = 'video'
+            if parsed: result[-1]['_video'] = video_ref
         if group:
             try: mentions = group_mentions(decode(source, source_compressed) if source is not None else None, self_name) if 'source' in columns else {'verified': False, 'self': False, 'all': False, 'others': False}
             except ValueError: mentions = {'verified': False, 'self': False, 'all': False, 'others': False}
@@ -1026,9 +1033,9 @@ def execute(request, pid, home, check, cache=None):
         if session_file is None:
             raise ValueError('session database unavailable')
         files.append(session_file)
-    elif request.get('action') in ('read', 'read-range', 'read-dates', 'read-image', 'keys'):
+    elif request.get('action') in ('read', 'read-range', 'read-dates', 'read-image', 'read-video', 'keys'):
         files += sorted(safe_file(root, p) for p in (root / 'message').glob('message_*.db') if re.fullmatch(r'message_\d+\.db', p.name))
-        if (request.get('action') in ('read', 'read-range', 'read-dates', 'read-image', 'keys') and len(files) < 2) or len(files) > 129:
+        if (request.get('action') in ('read', 'read-range', 'read-dates', 'read-image', 'read-video', 'keys') and len(files) < 2) or len(files) > 129:
             raise ValueError('message databases unavailable')
         if request.get('action') == 'keys':
             # The idle warm-up authenticates the chat-list index too, so the
@@ -1254,7 +1261,7 @@ def execute(request, pid, home, check, cache=None):
                     # reads, and a placeholder costs the model nothing.
                     if bounds or not message.get('_unparsable'): counted += 1
                 if not bounds: recent.reverse()
-                if request['action'] != 'read-image' and not recent and skipped_shards:
+                if request['action'] not in ('read-image', 'read-video') and not recent and skipped_shards:
                     # Every shard was unreadable (keys not loaded by WeChat yet),
                     # so an empty result would falsely mean "no messages". The
                     # contact may have real history in an unopened shard.
@@ -1264,9 +1271,13 @@ def execute(request, pid, home, check, cache=None):
                           'label': target['label'], 'native': target['native'],
                           'revision': digest(json.dumps(recent, ensure_ascii=False, sort_keys=True, separators=(',', ':')))}
                 if request['action'] == 'read-image':
-                    message = next((m for m in ordered if m['id'] == request.get('messageId') and m.get('type') == 'image' and m['direction'] == 'other'), None)
+                    message = next((m for m in ordered if m['id'] == request.get('messageId') and m.get('type') == 'image' and m['direction'] in ('self', 'other')), None)
                     image = images.read_image(root.parent, target['username'], message.get('_image'), message['timestamp'], check) if message else None
                     result = {'account': account, 'contact': target['id'], 'messageId': request.get('messageId'), 'image': image}
+                if request['action'] == 'read-video':
+                    message = next((m for m in ordered if m['id'] == request.get('messageId') and m.get('type') == 'video' and m['direction'] in ('self', 'other')), None)
+                    frames = videos.read_video_frames(root.parent, target['username'], message.get('_video'), message['timestamp'], check) if message else None
+                    result = {'account': account, 'contact': target['id'], 'messageId': request.get('messageId'), 'frames': frames}
                 if bounds:
                     result.update({'from': bounds[0], 'to': bounds[1],
                                    'rangeRevision': digest(repr(versions))})
@@ -1284,7 +1295,7 @@ def execute(request, pid, home, check, cache=None):
         # budget. Do not retain that body in the 15-minute snapshot cache; the
         # cache is for bounded recent reads and metadata, not a second copy of
         # long analysis material in the worker.
-        if cache is not None and request['action'] not in ('read-image', 'read-range'): cache.remember(cache_key, versions, result)
+        if cache is not None and request['action'] not in ('read-image', 'read-video', 'read-range'): cache.remember(cache_key, versions, result)
         return {**result, **({'sessionHint': session_hint} if request['action'] == 'read' else {})}
     finally:
         db.close()

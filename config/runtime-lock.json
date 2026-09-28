@@ -205,6 +205,15 @@
       "sha256": "f59ef465b49079b95843457bcd0c497d50cd159f0fd926f5062d4f3b1947218d"
     },
     {
+      "name": "ffmpeg",
+      "version": "7:5.1.9-0+deb12u1",
+      "architecture": "amd64",
+      "url": "https://security.debian.org/debian-security/pool/updates/main/f/ffmpeg/ffmpeg_5.1.9-0+deb12u1_amd64.deb",
+      "debSha256": "2ba8ead87657c123ce6de2de5ecdbc1fb4ead9a4b317b85b8ec41e16c890fe01",
+      "file": "ffmpeg-data.tar.xz",
+      "sha256": "76a0bda51d207e80412d636a6b704c8ea71bf1f2dac98e0f89b4f9b11a3a6cd8"
+    },
+    {
       "name": "fontconfig",
       "version": "2.14.1-4",
       "url": "https://deb.debian.org/debian/pool/main/f/fontconfig/fontconfig_2.14.1-4_amd64.deb",
@@ -343,6 +352,15 @@
       "sha256": "df202579a065f64acf6a5e062d3d2b581379ca12f3481a34ce1a21d44597a783"
     },
     {
+      "name": "libass9",
+      "version": "1:0.17.1-1+deb12u1",
+      "architecture": "amd64",
+      "url": "https://security.debian.org/debian-security/pool/updates/main/liba/libass/libass9_0.17.1-1+deb12u1_amd64.deb",
+      "debSha256": "8bfab4725e6f7d96e076992fe43ec3619a965ac2b5888bf1824c9d3b2080229a",
+      "file": "libass9-data.tar.xz",
+      "sha256": "1094f2195e386fe678bbc49cca62730422f069d275d128e0ae62573f7434e2e4"
+    },
+    {
       "name": "libasyncns0",
       "version": "0.8-6+b3",
       "architecture": "amd64",
@@ -424,6 +442,15 @@
       "sha256": "1001891a441879cceb1b33bedb27a919cf41ad66bc6c1f606e8a77e690b3ca49"
     },
     {
+      "name": "libavc1394-0",
+      "version": "0.5.4-5",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/liba/libavc1394/libavc1394-0_0.5.4-5_amd64.deb",
+      "debSha256": "f96e824b1a7e8d9ae1254c51dfaea40cdde45072be68e2025eb109faba10f3dc",
+      "file": "libavc1394-0-data.tar.xz",
+      "sha256": "ffcb071f3afc9342d64aca082d3e7ed5b4abc0510157e07c00176ff2383843dc"
+    },
+    {
       "name": "libavcodec59",
       "version": "7:5.1.9-0+deb12u1",
       "architecture": "amd64",
@@ -431,6 +458,33 @@
       "debSha256": "a1c6cfeefe7437ad3ff999d3dad39edb9cfd4d2068a944243fa4f313470b59b1",
       "file": "libavcodec59-data.tar.xz",
       "sha256": "86276b800e5452309fee1de40552eed6d9fd01b4cd2dbcfe91b99b317c57b636"
+    },
+    {
+      "name": "libavdevice59",
+      "version": "7:5.1.9-0+deb12u1",
+      "architecture": "amd64",
+      "url": "https://security.debian.org/debian-security/pool/updates/main/f/ffmpeg/libavdevice59_5.1.9-0+deb12u1_amd64.deb",
+      "debSha256": "d14e0e21ee3b18be7324db7ab1a98e42acdca61095cad8df4cbda96c514d0705",
+      "file": "libavdevice59-data.tar.xz",
+      "sha256": "7a7debefc059c3d7ba05f12f89f736aa676efb79c84cdc1e3e636956621cc839"
+    },
+    {
+      "name": "libavfilter8",
+      "version": "7:5.1.9-0+deb12u1",
+      "architecture": "amd64",
+      "url": "https://security.debian.org/debian-security/pool/updates/main/f/ffmpeg/libavfilter8_5.1.9-0+deb12u1_amd64.deb",
+      "debSha256": "9df19ac34117740af851af569c3df05c16e20a319cedd832eafb9abde950c384",
+      "file": "libavfilter8-data.tar.xz",
+      "sha256": "41d25050f65fdac3d387f89d4f5182e914ce39a415f6ac8161fe5022333b4a83"
+    },
+    {
+      "name": "libavformat59",
+      "version": "7:5.1.9-0+deb12u1",
+      "architecture": "amd64",
+      "url": "https://security.debian.org/debian-security/pool/updates/main/f/ffmpeg/libavformat59_5.1.9-0+deb12u1_amd64.deb",
+      "debSha256": "35216a7786f2bde3c9c00ffa0574ed27c63cb231726aa03ae3664a36946ef01c",
+      "file": "libavformat59-data.tar.xz",
+      "sha256": "9277780767f86872e2768bb8198dd12df4ea4c28ad1cb0d9454eae8da7438434"
     },
     {
       "name": "libavutil57",
@@ -442,12 +496,30 @@
       "sha256": "b589147dfa7bf534b6e4e1e4af6522c174f97501ed3c45e17189c5402dcb9c9a"
     },
     {
+      "name": "libblas3",
+      "version": "3.11.0-2",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/l/lapack/libblas3_3.11.0-2_amd64.deb",
+      "debSha256": "9aae8058b8d02b800bdafc5b340614df1442a2d2abbc2d351947c0fdd67aa08a",
+      "file": "libblas3-data.tar.xz",
+      "sha256": "92ec578e17d796b285e287ba8ebfe72eb460234c352487caa228d532cb2ceda4"
+    },
+    {
       "name": "libblkid1",
       "version": "2.38.1-5+deb12u3",
       "url": "https://deb.debian.org/debian/pool/main/u/util-linux/libblkid1_2.38.1-5+deb12u3_amd64.deb",
       "debSha256": "5a083377f29191cafcdf0f91ec124349b4a7895b531556633a136e43c6d53943",
       "file": "libblkid1-data.tar.xz",
       "sha256": "60adcdb0b13899a95da5a8fbdd1f9adfbacbc4d3b4dba8201841f85d70255846"
+    },
+    {
+      "name": "libbluray2",
+      "version": "1:1.3.4-1",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/libb/libbluray/libbluray2_1.3.4-1_amd64.deb",
+      "debSha256": "41781aa7af257a7c5083b2b9c4564e02a760361ce332dbc1313ffcf6a0958993",
+      "file": "libbluray2-data.tar.xz",
+      "sha256": "87990adbcd3fa10bd776fef413292836ea9e335748d0e02885193339512d3287"
     },
     {
       "name": "libboost-iostreams1.74.0",
@@ -466,12 +538,30 @@
       "sha256": "53cfc0cc4c8124c6afdf0016cb66eb04c238c26776025fb1a1dece6f59b65e10"
     },
     {
+      "name": "libbs2b0",
+      "version": "3.1.0+dfsg-7",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/libb/libbs2b/libbs2b0_3.1.0+dfsg-7_amd64.deb",
+      "debSha256": "f8629228d3aab164423b2e4304ac82787157a240ec2f3b33eebd31236322dcca",
+      "file": "libbs2b0-data.tar.xz",
+      "sha256": "e7c69ed4858b9676013be0c2d659f8c9ada67790c09031acebfd4609f1955ef6"
+    },
+    {
       "name": "libbsd0",
       "version": "0.11.7-2",
       "url": "https://deb.debian.org/debian/pool/main/libb/libbsd/libbsd0_0.11.7-2_amd64.deb",
       "debSha256": "bb31cc8b40f962a85b2cec970f7f79cc704a1ae4bad24257a822055404b2c60b",
       "file": "libbsd0-data.tar.xz",
       "sha256": "fe34260639f9e27cb02e5c4dfaffab8ee284f3564a73327e4e499afc91426012"
+    },
+    {
+      "name": "libcaca0",
+      "version": "0.99.beta20-3+deb12u1",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/libc/libcaca/libcaca0_0.99.beta20-3+deb12u1_amd64.deb",
+      "debSha256": "27ea6ccb669d30aef5da73e6f8e1e722752d8c9e20fbf603978ff48992b5e02a",
+      "file": "libcaca0-data.tar.xz",
+      "sha256": "1ec360c73fc467122bdee69512919fc802e74a105927c8a7414fdd036f04c0c8"
     },
     {
       "name": "libcairo-gobject2",
@@ -513,6 +603,51 @@
       "debSha256": "e7e14ebae53ef34c881a557e0a6d125b5e6721b692999045cf6af962daebe8d6",
       "file": "libcap2-bin-data.tar.xz",
       "sha256": "4d570d7268287ca83c56ec52e645f47477d3f17813c781df9b63b816fc97d905"
+    },
+    {
+      "name": "libcdio-cdda2",
+      "version": "10.2+2.0.1-1",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/libc/libcdio-paranoia/libcdio-cdda2_10.2+2.0.1-1_amd64.deb",
+      "debSha256": "eac7c87ae7118d29d55d497c8a3873dd1c0c062dd3df06ca74a4710ddcb950d9",
+      "file": "libcdio-cdda2-data.tar.xz",
+      "sha256": "d076807d6851bd0ed387b15f50bb86e0dc7027119f048546e40308b9c8325870"
+    },
+    {
+      "name": "libcdio-paranoia2",
+      "version": "10.2+2.0.1-1",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/libc/libcdio-paranoia/libcdio-paranoia2_10.2+2.0.1-1_amd64.deb",
+      "debSha256": "ef0610a344c1548c386868d7480bb4a7fc69b5bfb459e99df4c8f96c658c0088",
+      "file": "libcdio-paranoia2-data.tar.xz",
+      "sha256": "09ad42d6cae79c4c6e579c2616ef80e63f757b41e27e97ebc4e4c6f7518caa40"
+    },
+    {
+      "name": "libcdio19",
+      "version": "2.1.0-4",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/libc/libcdio/libcdio19_2.1.0-4_amd64.deb",
+      "debSha256": "c54f3910d77d933366cc8fde4a4a30681152d80a9e6df0231594dd8b2f5a048d",
+      "file": "libcdio19-data.tar.xz",
+      "sha256": "c26bad9ef79c51dcdea161f77e66ed5ad3b7ab526f85f015a134697258c73392"
+    },
+    {
+      "name": "libchromaprint1",
+      "version": "1.5.1-2+b1",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/c/chromaprint/libchromaprint1_1.5.1-2+b1_amd64.deb",
+      "debSha256": "2008659c3790890782feaa531134c5b20d96f9ad4a71d519b9de4450ff704fa7",
+      "file": "libchromaprint1-data.tar.xz",
+      "sha256": "3d4e16fba7c4dacd97458ffbc3f7117ee13c50e0984b6f43c3b537ccbe739dac"
+    },
+    {
+      "name": "libcjson1",
+      "version": "1.7.15-1+deb12u4",
+      "architecture": "amd64",
+      "url": "https://security.debian.org/debian-security/pool/updates/main/c/cjson/libcjson1_1.7.15-1+deb12u4_amd64.deb",
+      "debSha256": "ae043c62e2740072f3c5cc0324ec36659331208f2155de74c89a24801627338c",
+      "file": "libcjson1-data.tar.xz",
+      "sha256": "c9332c00d968e208ecdf636646c9698d1577f223c70396e0071c5f585a4dcc25"
     },
     {
       "name": "libcodec2-1.0",
@@ -580,6 +715,15 @@
       "sha256": "342eaac230d8bb09554788a0ed2321a40f9fc9bebe6a3f200353ce6075c38d24"
     },
     {
+      "name": "libdc1394-25",
+      "version": "2.2.6-4",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/libd/libdc1394/libdc1394-25_2.2.6-4_amd64.deb",
+      "debSha256": "5476bc64555a11b4fd60a97c1e5cf0516f94ae3de4570ecad2da2379794378c2",
+      "file": "libdc1394-25-data.tar.xz",
+      "sha256": "21a40a748cc8fc3782a5f26dea94aa86f911f3e18920530788e8a5c75cae8fd3"
+    },
+    {
       "name": "libdconf1",
       "version": "0.40.0-4",
       "url": "https://deb.debian.org/debian/pool/main/d/dconf/libdconf1_0.40.0-4_amd64.deb",
@@ -594,6 +738,15 @@
       "debSha256": "cef2a550eb3aa0f7d01799a3ab5d5c10b48d0184c41d23ebdefd2e43f0800f42",
       "file": "libde265-0-data.tar.xz",
       "sha256": "1878c781c97e32a03239217302271a5d59bf59e57353d53f8fbf7e04f29dd967"
+    },
+    {
+      "name": "libdecor-0-0",
+      "version": "0.1.1-2",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/libd/libdecor-0/libdecor-0-0_0.1.1-2_amd64.deb",
+      "debSha256": "e58d66cbd2e27703c80f4e89c25fe7619db0ca0175d1077850b838023e115904",
+      "file": "libdecor-0-0-data.tar.xz",
+      "sha256": "7ef2eec43c95d9e7e784aca5ca7002b97f4d08f0ffe0daaf37c3eac3f30d0922"
     },
     {
       "name": "libdeflate0",
@@ -815,6 +968,15 @@
       "sha256": "7b0efd9754f47f16f8e0b3c0b4c4caac0207d4b4c40098673148de6b67426089"
     },
     {
+      "name": "libflite1",
+      "version": "2.2-5",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/f/flite/libflite1_2.2-5_amd64.deb",
+      "debSha256": "bfa8c591f1b47730b30b372ec38e02918a1c9795eada67684e1746390ad2f061",
+      "file": "libflite1-data.tar.xz",
+      "sha256": "f6e48775a78db06859b9b1c5dd579d914d0a91246b88b11291c3afb2254690bd"
+    },
+    {
       "name": "libfontconfig1",
       "version": "2.14.1-4",
       "url": "https://deb.debian.org/debian/pool/main/f/fontconfig/libfontconfig1_2.14.1-4_amd64.deb",
@@ -879,6 +1041,15 @@
       "sha256": "ce6065e92fd21c345c2f157f324fa49d346703e6e94dd0da1ba0c9dc3937b3d2"
     },
     {
+      "name": "libgfortran5",
+      "version": "12.2.0-14+deb12u1",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/g/gcc-12/libgfortran5_12.2.0-14+deb12u1_amd64.deb",
+      "debSha256": "63d38775d20c425c1f00914b52167ae0e3b4639facdb0aa734877279fb716fbb",
+      "file": "libgfortran5-data.tar.xz",
+      "sha256": "af8520ed2f63e470d456cf3d6602d2816b6b8ed4574c0dcac9bb217d39dd80cb"
+    },
+    {
       "name": "libgif7",
       "version": "5.2.1-2.5+deb12u1",
       "url": "https://deb.debian.org/debian/pool/main/g/giflib/libgif7_5.2.1-2.5+deb12u1_amd64.deb",
@@ -941,6 +1112,15 @@
       "debSha256": "95f568df73dedf43ae66834a75502112e0d4f3ad7124f3dbfa790b739383b896",
       "file": "libglx0-data.tar.xz",
       "sha256": "fc60da482dbd6694cfa20cce244dd42573d93994ad5dfdfac36e0662b888f26c"
+    },
+    {
+      "name": "libgme0",
+      "version": "0.6.3-6",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/g/game-music-emu/libgme0_0.6.3-6_amd64.deb",
+      "debSha256": "3c6fc5488f702cc728ff25420cabd33688861de435e8a188aee6b75d8ed423bd",
+      "file": "libgme0-data.tar.xz",
+      "sha256": "c30514249efc397b8c4f56c3e59edb6b1b9ec643b20d4448391e3e22ca140f38"
     },
     {
       "name": "libgmp10",
@@ -1155,6 +1335,15 @@
       "sha256": "7eeb90673fe289b017d451735605b8bd4b80c60adc3d39b5189098d163c499d9"
     },
     {
+      "name": "libiec61883-0",
+      "version": "1.2.0-6+b1",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/libi/libiec61883/libiec61883-0_1.2.0-6+b1_amd64.deb",
+      "debSha256": "98d5901dc67a2df54ddfe8d417b0e2a9e47278b7614339f7522ef0b2bd709444",
+      "file": "libiec61883-0-data.tar.xz",
+      "sha256": "984ff7aa210c15d80c0c2826348ce4a4faa9030bb58d190015f482a85b89448e"
+    },
+    {
       "name": "libijs-0.35",
       "version": "0.35-15",
       "url": "https://deb.debian.org/debian/pool/main/i/ijs/libijs-0.35_0.35-15_amd64.deb",
@@ -1300,6 +1489,15 @@
       "sha256": "f7725d37234158bec643852985e72465d709b2b6192b596b28f07571e5de1700"
     },
     {
+      "name": "liblapack3",
+      "version": "3.11.0-2",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/l/lapack/liblapack3_3.11.0-2_amd64.deb",
+      "debSha256": "4cb4ba9c36ee0242d91c8bcd69286db59a6a0c86f8c522b72f5eb0053e127d7d",
+      "file": "liblapack3-data.tar.xz",
+      "sha256": "10388b380f6a8e90d2e5e46b7ce06099a91d9ce3c61113fbac1c23de792d388f"
+    },
+    {
       "name": "liblcms2-2",
       "version": "2.14-2+deb12u1",
       "url": "https://deb.debian.org/debian/pool/main/l/lcms2/liblcms2-2_2.14-2+deb12u1_amd64.deb",
@@ -1314,6 +1512,15 @@
       "debSha256": "771f5c47ca69f24ca61e4be0c98c5912b182ce442f921697d17a472f3ded5c9c",
       "file": "liblerc4-data.tar.xz",
       "sha256": "b99d85fc37695cbc7b81adfc791222c5b4c38cf210c73cde43cfe48384b7c2ec"
+    },
+    {
+      "name": "liblilv-0-0",
+      "version": "0.24.14-1",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/l/lilv/liblilv-0-0_0.24.14-1_amd64.deb",
+      "debSha256": "a28222c34d51cd28f69af9fc95eab77369b4daf98ae35328407864661e72a3d0",
+      "file": "liblilv-0-0-data.tar.xz",
+      "sha256": "e7de824a120745e060a29859030ed34a53892e87635d394a69450d49a736619a"
     },
     {
       "name": "libllvm15",
@@ -1347,6 +1554,15 @@
       "debSha256": "4f08e092c76e425295a498cd547dc9b8f6a595473f3020ab8c96309b29872636",
       "file": "liblzo2-2-data.tar.xz",
       "sha256": "096ae2b4b9dbf50b11289e83213dfdaf49547702f51fdff36d191809bcf81803"
+    },
+    {
+      "name": "libmbedcrypto7",
+      "version": "2.28.3-1",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/m/mbedtls/libmbedcrypto7_2.28.3-1_amd64.deb",
+      "debSha256": "af3295f80abf7e6ba2cba419134e29bde04192bf3614622ee53ce49de8d02abe",
+      "file": "libmbedcrypto7-data.tar.xz",
+      "sha256": "54748739893a0c0c9df293d87e44056109a7f561fa1a5dccb7feabd442bc2685"
     },
     {
       "name": "libmd0",
@@ -1416,6 +1632,15 @@
       "sha256": "510c204f61a79c7ba1c59258ea68c47bb4f3fcb715d1739945f9432593c9aca1"
     },
     {
+      "name": "libmysofa1",
+      "version": "1.3.1~dfsg0-1",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/libm/libmysofa/libmysofa1_1.3.1~dfsg0-1_amd64.deb",
+      "debSha256": "c4bd2b6d4352be2c0595974e4f62c2d16cfcde83b722be8fc96c0aee3e49c904",
+      "file": "libmysofa1-data.tar.xz",
+      "sha256": "a4be0624d49cb357ab5854912e3515d080cdc162c1308ae146f9284b481e33ee"
+    },
+    {
       "name": "libncursesw6",
       "version": "6.4-4",
       "url": "https://deb.debian.org/debian/pool/main/n/ncurses/libncursesw6_6.4-4_amd64.deb",
@@ -1430,6 +1655,15 @@
       "debSha256": "45922e6e289ffd92f0f92d2bb9159e84236ff202d552a461bf10e5335b3f0261",
       "file": "libnettle8-data.tar.xz",
       "sha256": "43f37a022d9f08532daef117c7de0912bf3fa99e334016c5b807bf3ec443bc75"
+    },
+    {
+      "name": "libnorm1",
+      "version": "1.5.9+dfsg-2",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/n/norm/libnorm1_1.5.9+dfsg-2_amd64.deb",
+      "debSha256": "a6388c8d460e86c7b76b08e82ecb09894d1d9c53b488850fb39702af85b6d159",
+      "file": "libnorm1-data.tar.xz",
+      "sha256": "afe5ce5ea762bbc7f8a6b6f923b7b11274796cadcf3bc6f7d089a1ed94f441f5"
     },
     {
       "name": "libnsl2",
@@ -1498,12 +1732,39 @@
       "sha256": "da0a7ccf31532a4633cf0ef8362dae51d32a3690db1140bf5ff2fd3c9a0d2c61"
     },
     {
+      "name": "libopenal-data",
+      "version": "1:1.19.1-2",
+      "architecture": "all",
+      "url": "https://deb.debian.org/debian/pool/main/o/openal-soft/libopenal-data_1.19.1-2_all.deb",
+      "debSha256": "695a650803f885459994bb921132d956c2b693759572005351a5b13773c754cd",
+      "file": "libopenal-data-data.tar.xz",
+      "sha256": "75c83c5672174bf3b70e9bd77ac2ec62d1d0c6c12fdde6e7edff476a01816aef"
+    },
+    {
+      "name": "libopenal1",
+      "version": "1:1.19.1-2",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/o/openal-soft/libopenal1_1.19.1-2_amd64.deb",
+      "debSha256": "b027d29d37786e4dacb21a7268e911566efb09f5a20facc66c57dd22a7c31e83",
+      "file": "libopenal1-data.tar.xz",
+      "sha256": "15f4abe2aa48293e3699a7d2ffdacd35db0bbbdd0ed93e9b14359ba97a510124"
+    },
+    {
       "name": "libopenjp2-7",
       "version": "2.5.0-2+deb12u3",
       "url": "https://deb.debian.org/debian/pool/main/o/openjpeg2/libopenjp2-7_2.5.0-2+deb12u3_amd64.deb",
       "debSha256": "a127e2f1741d66bdddb6393a718e3cbec327d53f88c89b859b1f8d73f64cf635",
       "file": "libopenjp2-7-data.tar.xz",
       "sha256": "ed168ab825d0e55eb8bcfa847d7978b3084dee3d4150ba58b96d2bc6b3d75ee7"
+    },
+    {
+      "name": "libopenmpt0",
+      "version": "0.6.9-1",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/libo/libopenmpt/libopenmpt0_0.6.9-1_amd64.deb",
+      "debSha256": "69c1de4890044359551e4874b230f7ff8b0568687988582ba996d41af602d711",
+      "file": "libopenmpt0-data.tar.xz",
+      "sha256": "3aa466a790e53f724e4af64a0a06bccb502037118084d67c01008d91b0b92e52"
     },
     {
       "name": "libopus0",
@@ -1635,6 +1896,15 @@
       "sha256": "1472016e67537bb2fc26ac8464a63e63b19d8e12351be6b7879fe86f1af00007"
     },
     {
+      "name": "libpgm-5.3-0",
+      "version": "5.3.128~dfsg-2",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/libp/libpgm/libpgm-5.3-0_5.3.128~dfsg-2_amd64.deb",
+      "debSha256": "3f124acd98fb6d9d78dff583061736bcb738d102f3bd1e0afca4c0f0435534af",
+      "file": "libpgm-5.3-0-data.tar.xz",
+      "sha256": "609fe6e7a185947ee61b058d13103005810aa5095a7a7d4407eb87cfc7857d97"
+    },
+    {
       "name": "libpixman-1-0",
       "version": "0.42.2-1",
       "url": "https://deb.debian.org/debian/pool/main/p/pixman/libpixman-1-0_0.42.2-1_amd64.deb",
@@ -1643,12 +1913,39 @@
       "sha256": "944d7072f579fd0fb0567d5836569027a09fe8d5300e31fb02d98a0ff5b973f3"
     },
     {
+      "name": "libplacebo208",
+      "version": "4.208.0-3",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/libp/libplacebo/libplacebo208_4.208.0-3_amd64.deb",
+      "debSha256": "f6ecc008ec62532ae51510fba32d388eb8d8bdef56ae6f11eb2511d58edcabd5",
+      "file": "libplacebo208-data.tar.xz",
+      "sha256": "82a409c3d1c0fda8713b6ccf82a7ff2dd45c0e79708426ba2969cd17163cf265"
+    },
+    {
       "name": "libpng16-16",
       "version": "1.6.39-2+deb12u5",
       "url": "https://deb.debian.org/debian/pool/main/libp/libpng1.6/libpng16-16_1.6.39-2+deb12u5_amd64.deb",
       "debSha256": "a56d64bfaa9da12aafb83347909e62e6fd5fd251e6b34c194065911a30359978",
       "file": "libpng16-16-data.tar.xz",
       "sha256": "ea7f653dd7b0806e6e2f2cb22dac5e2817ee4265a04e51e444b2ba657cc42c67"
+    },
+    {
+      "name": "libpocketsphinx3",
+      "version": "0.8+5prealpha+1-15",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/p/pocketsphinx/libpocketsphinx3_0.8+5prealpha+1-15_amd64.deb",
+      "debSha256": "6236ee6b8e542cc55e6da15f00e56ff06ef743d7e91c57e0180d07c642b0bc2e",
+      "file": "libpocketsphinx3-data.tar.xz",
+      "sha256": "a79992968860f6d9b564d45dceff7bec4696602d888ede58ead4286d5f724e83"
+    },
+    {
+      "name": "libpostproc56",
+      "version": "7:5.1.9-0+deb12u1",
+      "architecture": "amd64",
+      "url": "https://security.debian.org/debian-security/pool/updates/main/f/ffmpeg/libpostproc56_5.1.9-0+deb12u1_amd64.deb",
+      "debSha256": "c6ea1be8d11ee56ae2c9ae749edc2f38a3baaa949f882affdb859e1f69e6a168",
+      "file": "libpostproc56-data.tar.xz",
+      "sha256": "79353322603b5a2bb58afa6ea7b8934cc60a7309f0c758d4919a21d18d03b14a"
     },
     {
       "name": "libpulse0",
@@ -1813,6 +2110,24 @@
       "sha256": "8f781cc8e8cdb1df96ca9aa347133da708c48549c01094fae86e86e441317add"
     },
     {
+      "name": "libquadmath0",
+      "version": "12.2.0-14+deb12u1",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/g/gcc-12/libquadmath0_12.2.0-14+deb12u1_amd64.deb",
+      "debSha256": "3f0c9a4c730da2fdab001cae596625438598fd2996d29d888feeb4c1cdc9011f",
+      "file": "libquadmath0-data.tar.xz",
+      "sha256": "5b49ca6ae490b4e84a4924d81ad47b0e977706aa1852e6bab33526695689273f"
+    },
+    {
+      "name": "librabbitmq4",
+      "version": "0.11.0-1+deb12u3",
+      "architecture": "amd64",
+      "url": "https://security.debian.org/debian-security/pool/updates/main/libr/librabbitmq/librabbitmq4_0.11.0-1+deb12u3_amd64.deb",
+      "debSha256": "da461d734bf8a1d6a6d9c20e5d68d552aac7e87aa75274c7766c81bb0ca79017",
+      "file": "librabbitmq4-data.tar.xz",
+      "sha256": "b8575ec26de919a0c60ca510b2afe17bed02f0dda603ff47f4eeb373d7b5c09c"
+    },
+    {
       "name": "librav1e0",
       "version": "0.5.1-6",
       "architecture": "amd64",
@@ -1820,6 +2135,15 @@
       "debSha256": "c266adb3545b0b8ff6450dbd09f85f19361bf5bc9290ddf2e869f040cb9725b7",
       "file": "librav1e0-data.tar.xz",
       "sha256": "87e3811b6b4ca8c635fd1737495b3eb1d77b766cd86b2dbef02e3fa8faad2dd3"
+    },
+    {
+      "name": "libraw1394-11",
+      "version": "2.1.2-2",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/libr/libraw1394/libraw1394-11_2.1.2-2_amd64.deb",
+      "debSha256": "d8cb92f085d3b32ca23e31b2bf45f66d678f585fef8f8b85510bd41b8ff966ee",
+      "file": "libraw1394-11-data.tar.xz",
+      "sha256": "d6cc699bc1385156b7b39bd51850c870a7ca91fe61ec8214e87cc9e0e34c5fac"
     },
     {
       "name": "libre2-9",
@@ -1838,12 +2162,30 @@
       "sha256": "80d481fcbb09320382483dff1b5e1c2734b46309a081b7c2c31ff6455404961a"
     },
     {
+      "name": "librist4",
+      "version": "0.2.7+dfsg-1",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/libr/librist/librist4_0.2.7+dfsg-1_amd64.deb",
+      "debSha256": "dddb27f19810bc0bfe8e0d252e3a5c0dbf43bd7f2996756f42e2833bed6dbe5e",
+      "file": "librist4-data.tar.xz",
+      "sha256": "f81e5d5b6a779e51a6f9f0c0ceabf88deed028336fe4e9c7b78e25fb398ffb3e"
+    },
+    {
       "name": "librsvg2-2",
       "version": "2.54.7+dfsg-1~deb12u1",
       "url": "https://deb.debian.org/debian/pool/main/libr/librsvg/librsvg2-2_2.54.7+dfsg-1~deb12u1_amd64.deb",
       "debSha256": "090f2ffbedb57727ee9b264e6ea6e66fe09773629739dd406931264b1bf14dc8",
       "file": "librsvg2-2-data.tar.xz",
       "sha256": "9ad86c00d70b42eeda2911d82ade3a978cdbebfc97e7cb38f62049aef6229004"
+    },
+    {
+      "name": "librubberband2",
+      "version": "3.1.2+dfsg0-1",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/r/rubberband/librubberband2_3.1.2+dfsg0-1_amd64.deb",
+      "debSha256": "8bc1426b30a522886ce936b4f6b12c05dcd953b092d263cd58f20dd73fae4d74",
+      "file": "librubberband2-data.tar.xz",
+      "sha256": "a27175b1e37d59d2a088cfa044ff593b50cb0ac58a31fb6b73b630a0c901fd0d"
     },
     {
       "name": "libsamplerate0",
@@ -1871,6 +2213,15 @@
       "sha256": "34d62b4ae373d87c96ca792a495edde90e7e1211dc5519e33f5121ae2ccc4ec9"
     },
     {
+      "name": "libsdl2-2.0-0",
+      "version": "2.26.5+dfsg-1",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/libs/libsdl2/libsdl2-2.0-0_2.26.5+dfsg-1_amd64.deb",
+      "debSha256": "9f97f2ccf78573d5327ba34c9553952520f9d4da5af2b390d919eabdac69c546",
+      "file": "libsdl2-2.0-0-data.tar.xz",
+      "sha256": "57fc560f76e91c42b092f3c02d59e2d718e64f69e143afc9c59598123bf66476"
+    },
+    {
       "name": "libselinux1",
       "version": "3.4-1+b6",
       "url": "https://deb.debian.org/debian/pool/main/libs/libselinux/libselinux1_3.4-1+b6_amd64.deb",
@@ -1895,6 +2246,15 @@
       "sha256": "da5b492b96fae3a15416dbbcf658fb2c14a53ea21cee352ab58c08c42333db27"
     },
     {
+      "name": "libserd-0-0",
+      "version": "0.30.16-1",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/s/serd/libserd-0-0_0.30.16-1_amd64.deb",
+      "debSha256": "9fcf641b2e5e2b6705638a735692ad78c2e55bf4452636da1de80df17cd52fc8",
+      "file": "libserd-0-0-data.tar.xz",
+      "sha256": "f64c3fda5a21f5f07e80880656db6a8a0284c7649ae3546fa4a927202c0b6961"
+    },
+    {
       "name": "libshine3",
       "version": "3.1.1-2",
       "architecture": "amd64",
@@ -1902,6 +2262,15 @@
       "debSha256": "6b09f0d577f515feffc071048218a26cdde5346d6e2661f861009897db0204d2",
       "file": "libshine3-data.tar.xz",
       "sha256": "88af97fb3f30f91f315dffad48637d97a14d01a9e65635a8f8b56ef1aacc6cdb"
+    },
+    {
+      "name": "libslang2",
+      "version": "2.3.3-3",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/s/slang2/libslang2_2.3.3-3_amd64.deb",
+      "debSha256": "5b3cecc829ef229125b340ccd2ca45ced75d24e9aa191912105016b1af94413f",
+      "file": "libslang2-data.tar.xz",
+      "sha256": "60bc9d4d6fd8c750309843f187b35230c516cbac3460be8f88fa38291d0e24da"
     },
     {
       "name": "libsm6",
@@ -1927,6 +2296,33 @@
       "debSha256": "02dc3f08fe8476e82e005f412e3b7289ff641180f33a9be8073f4bde61c85e8e",
       "file": "libsndfile1-data.tar.xz",
       "sha256": "a60afe110422849286e2ca91f5e6adc367244f8507be6702598bd1a0c396a043"
+    },
+    {
+      "name": "libsndio7.0",
+      "version": "1.9.0-0.3+b2",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/s/sndio/libsndio7.0_1.9.0-0.3+b2_amd64.deb",
+      "debSha256": "c4cc979126cc558549db25d42e2849a9d5dcdf7928e0ece69c38c374021a078b",
+      "file": "libsndio7.0-data.tar.xz",
+      "sha256": "3afddfac6c2a8d9ca7b66d1ff0bc2aab1e6591bce2f9c84bf8c99dd36c3ec730"
+    },
+    {
+      "name": "libsodium23",
+      "version": "1.0.18-1+deb12u1",
+      "architecture": "amd64",
+      "url": "https://security.debian.org/debian-security/pool/updates/main/libs/libsodium/libsodium23_1.0.18-1+deb12u1_amd64.deb",
+      "debSha256": "bceae6943d6e11fb53ec3f81d9630ec9ed03e51f89364902b05ebe402ae946ec",
+      "file": "libsodium23-data.tar.xz",
+      "sha256": "3b3695906ac52bab3ecc19c008ba08f19d29c26b41d5c34cd956de19cc400d25"
+    },
+    {
+      "name": "libsord-0-0",
+      "version": "0.16.14+git221008-1",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/s/sord/libsord-0-0_0.16.14+git221008-1_amd64.deb",
+      "debSha256": "aa791ccd64deb45a39eba2798904b8ae93e3454d59a0fd1d1cf4da7577f0e6f7",
+      "file": "libsord-0-0-data.tar.xz",
+      "sha256": "ef39d3b33a062bf27be2f320eab3fd93acff06dff73a701354ed2c3e45501f49"
     },
     {
       "name": "libsoxr0",
@@ -1964,12 +2360,48 @@
       "sha256": "6ec976183205177c3c6ce59c51e0bfb2ec97f4edb23184799be71c179606476a"
     },
     {
+      "name": "libsphinxbase3",
+      "version": "0.8+5prealpha+1-16",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/s/sphinxbase/libsphinxbase3_0.8+5prealpha+1-16_amd64.deb",
+      "debSha256": "53d6c1be6a6ee167741f2a31861ad0f2a41c1bc4eef9405e1773d7c22b03ad7f",
+      "file": "libsphinxbase3-data.tar.xz",
+      "sha256": "2ead68b8053cd699747dec57d7aa8ef0d087004a09ad7fa65a17ca463dc04a33"
+    },
+    {
       "name": "libsqlite3-0",
       "version": "3.40.1-2+deb12u2",
       "url": "https://deb.debian.org/debian/pool/main/s/sqlite3/libsqlite3-0_3.40.1-2+deb12u2_amd64.deb",
       "debSha256": "a8d78b40e9b4e422224aeebfe0e4dfc243f6acf3532490b0c05480d4283d41e2",
       "file": "libsqlite3-0-data.tar.xz",
       "sha256": "99f11f1d90959e61b91ff7eae4c12397a05a99304b896982c2a403da643d5c3f"
+    },
+    {
+      "name": "libsratom-0-0",
+      "version": "0.6.14-1",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/s/sratom/libsratom-0-0_0.6.14-1_amd64.deb",
+      "debSha256": "d17581d7c34d01cdf1407f2eef63994ef6fdf8522bd9a06ca286ca6090e13b28",
+      "file": "libsratom-0-0-data.tar.xz",
+      "sha256": "0ad2af2beffcdf191670ad787630c540b703758dbc8c2bef807dc5e3c5ef14cf"
+    },
+    {
+      "name": "libsrt1.5-gnutls",
+      "version": "1.5.1-1+deb12u1",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/s/srt/libsrt1.5-gnutls_1.5.1-1+deb12u1_amd64.deb",
+      "debSha256": "7a785222cd985b93b675252c0a3510cfcd920f0d531ab674fd4b4878d6646581",
+      "file": "libsrt1.5-gnutls-data.tar.xz",
+      "sha256": "eef302b690842c5a9ea27b57bd9427e08ec74b84108113bd617aecb67ac9a03a"
+    },
+    {
+      "name": "libssh-gcrypt-4",
+      "version": "0.10.6-0+deb12u1",
+      "architecture": "amd64",
+      "url": "https://security.debian.org/debian-security/pool/updates/main/libs/libssh/libssh-gcrypt-4_0.10.6-0+deb12u1_amd64.deb",
+      "debSha256": "3e2b53d7b1a13dd6b781219901c7cd30fabc70e05f39bc6476ccafd962df0def",
+      "file": "libssh-gcrypt-4-data.tar.xz",
+      "sha256": "eef3d04a1b5d4448691c211f782453d19c92f83e46fc55372a7f4d1a4a636657"
     },
     {
       "name": "libssl3",
@@ -2012,6 +2444,15 @@
       "debSha256": "255406cbb7589751bc5b67efdbc21be01130b9551f5eff2dfe6db2f3e4888a6d",
       "file": "libswresample4-data.tar.xz",
       "sha256": "c84c89eace2c82da69abb8f577d619ebbf5ec11e7623335b3756a3c3dbbf3a6c"
+    },
+    {
+      "name": "libswscale6",
+      "version": "7:5.1.9-0+deb12u1",
+      "architecture": "amd64",
+      "url": "https://security.debian.org/debian-security/pool/updates/main/f/ffmpeg/libswscale6_5.1.9-0+deb12u1_amd64.deb",
+      "debSha256": "9ed5ebab74fc46bfb72f1e4d4cd7769cc98ac67a3320551958f8a507747df450",
+      "file": "libswscale6-data.tar.xz",
+      "sha256": "556cfe301197a840097ce41feb044dd4fe819278384611206e61f8f4771a74c0"
     },
     {
       "name": "libsystemd0",
@@ -2137,6 +2578,15 @@
       "sha256": "b1500072f3be662a26845338745e9416decd03e9ad483a66ef29c6bd7d23b33b"
     },
     {
+      "name": "libudfread0",
+      "version": "1.1.2-1",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/libu/libudfread/libudfread0_1.1.2-1_amd64.deb",
+      "debSha256": "93169ca95de3825c5ebda01db79f800fa1c5c4820ac5c760e1234e590d7b4c7b",
+      "file": "libudfread0-data.tar.xz",
+      "sha256": "9040e4b3ea55780ec7723691711baf36302fcfbb4e189cd1c6f90c0eb9449341"
+    },
+    {
       "name": "libunistring2",
       "version": "1.0-2",
       "url": "https://deb.debian.org/debian/pool/main/libu/libunistring/libunistring2_1.0-2_amd64.deb",
@@ -2151,6 +2601,15 @@
       "debSha256": "7b297868682836e4c87be349f17e4a56bc287586e3576503e84a5cb5485ce925",
       "file": "libunwind8-data.tar.xz",
       "sha256": "032ca9db85f7c3b6475911f00acf1cc03a5ac616b1e517391d59aef9fadaaf04"
+    },
+    {
+      "name": "libusb-1.0-0",
+      "version": "2:1.0.26-1",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/libu/libusb-1.0/libusb-1.0-0_1.0.26-1_amd64.deb",
+      "debSha256": "0a8a6c4a7d944538f2820cbde2a313f2fe6f94c21ffece9e6f372fc2ab8072e1",
+      "file": "libusb-1.0-0-data.tar.xz",
+      "sha256": "af73474a6526d784641c835456d17e78c91f143a24a4cf5227854c69858aa067"
     },
     {
       "name": "libuuid1",
@@ -2197,6 +2656,15 @@
       "sha256": "e2ee657a76a64923b6ae2c7c83919ca1a41979168112d4de28c26eb716558b22"
     },
     {
+      "name": "libvidstab1.1",
+      "version": "1.1.0-2+b1",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/libv/libvidstab/libvidstab1.1_1.1.0-2+b1_amd64.deb",
+      "debSha256": "5e0750b6eb5ad8d71e8241c38b0d757e42ee6f9eb6f6dfea64005c5ad4975a39",
+      "file": "libvidstab1.1-data.tar.xz",
+      "sha256": "e0537f52a0e33f8ca47cee939d2e3e9e5b9033b9b94879621c67ca291588aab0"
+    },
+    {
       "name": "libvncclient1",
       "version": "0.9.14+dfsg-1+deb12u2",
       "url": "https://deb.debian.org/debian/pool/main/libv/libvncserver/libvncclient1_0.9.14+dfsg-1+deb12u2_amd64.deb",
@@ -2231,12 +2699,30 @@
       "sha256": "1b7586f774f8a153a025d20c711d0e35400d45bafba7f151ada9caaaba9420a8"
     },
     {
+      "name": "libvorbisfile3",
+      "version": "1.3.7-1",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/libv/libvorbis/libvorbisfile3_1.3.7-1_amd64.deb",
+      "debSha256": "68f84034ae1c9fa0ab6a45f5b6c406a50faae4421f0d78874260aefa2df68efc",
+      "file": "libvorbisfile3-data.tar.xz",
+      "sha256": "e766c43b2f77c0bf8ab73d613d05dcd82a7e4212bc8d23d2eb9a55affb36d57c"
+    },
+    {
       "name": "libvpx7",
       "version": "1.12.0-1+deb12u5",
       "url": "https://deb.debian.org/debian/pool/main/libv/libvpx/libvpx7_1.12.0-1+deb12u5_amd64.deb",
       "debSha256": "7d8fada67fc9e11a08304499fe5beb7f809194d284202b9c9f1a0b8e54b90db4",
       "file": "libvpx7-data.tar.xz",
       "sha256": "6f6009c55517d5ebb3b57887fb79c830b0e342fa96019c9479ea69d587349af5"
+    },
+    {
+      "name": "libvulkan1",
+      "version": "1.3.239.0-1",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/v/vulkan-loader/libvulkan1_1.3.239.0-1_amd64.deb",
+      "debSha256": "622f28b807ba55a1f5ad1622ff83aa2c5b11fedbec074850e04c10a8f28b43d3",
+      "file": "libvulkan1-data.tar.xz",
+      "sha256": "89e8e59ec4d1fd19a80e0627423c5ea6b6e2828e6aac8f9e64023376fb001127"
     },
     {
       "name": "libwacom-common",
@@ -2762,6 +3248,15 @@
       "sha256": "0e0cfc0b4b86267e4363888638d45f64c5ee5c060e789995bae473fa3968f606"
     },
     {
+      "name": "libxv1",
+      "version": "2:1.0.11-1.1",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/libx/libxv/libxv1_1.0.11-1.1_amd64.deb",
+      "debSha256": "9ea0a9dc1ec12fff84e744ee4cd3e8eee7dc3d1e5141f61b09276a25cf1d6f00",
+      "file": "libxv1-data.tar.xz",
+      "sha256": "e338f6e4b87210f2c356059dce5e55246f3df7fb94c5acafeb6905acbfce0978"
+    },
+    {
       "name": "libxvidcore4",
       "version": "2:1.3.7-1",
       "architecture": "amd64",
@@ -2785,6 +3280,24 @@
       "debSha256": "6221ca25ad5abcfbe1965801029d85a88b4775320384b4b716de8fab7a4d2f7a",
       "file": "libz3-4-data.tar.xz",
       "sha256": "a09fe4a464f413edd36f063e78f57b68512c490e6834250407b713509035f81c"
+    },
+    {
+      "name": "libzimg2",
+      "version": "3.0.4+ds1-1",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/z/zimg/libzimg2_3.0.4+ds1-1_amd64.deb",
+      "debSha256": "61c902185365b5d6a2615f97e7c9baecdfb8e53b6c318396da3022c5b2e8734a",
+      "file": "libzimg2-data.tar.xz",
+      "sha256": "3c691d7bb76368d03543986650454d46661bfd986c68816d4cf1f9fefb228d8d"
+    },
+    {
+      "name": "libzmq5",
+      "version": "4.3.4-6",
+      "architecture": "amd64",
+      "url": "https://deb.debian.org/debian/pool/main/z/zeromq3/libzmq5_4.3.4-6_amd64.deb",
+      "debSha256": "45eaea8e29e6ff981943bc88906b1c6e29643b4a781eed9bc139f5af633c97c6",
+      "file": "libzmq5-data.tar.xz",
+      "sha256": "df727de9678d29db60ab6901a3abd99087e73a625aa8dbf8903af7f5a796925f"
     },
     {
       "name": "libzvbi-common",

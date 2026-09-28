@@ -25,6 +25,7 @@ test('聊天分析重排后仍保留选择、搜索、时间筛选、分析、�
   const result = { reports: [{ label: '联系人', status: 'complete', count: 2, metrics: { total: 2 }, report: '分析内容', excerpts: [] }] };
   const html = analysisPage(state, draft, result, '联系人');
   for (const token of ['id="ai-analysis-form"', 'id="ai-analysis-search"', 'id="ai-analysis-contacts"', 'name="contacts"', 'name="request"', 'maxlength="1000"', 'id="ai-analysis-request-count"', '开始分析', 'data-analysis-report="0"', 'data-ai-copy-report="0"', '历史分析报告']) assert.ok(html.includes(token), `missing ${token}`);
+  for (const token of ['name="includeVoice"', 'name="includeVisual"', '语音较多时需要更长时间', '需要模型支持图片输入']) assert.ok(html.includes(token), `missing ${token}`);
   assert.match(html, /<strong>分析方向<\/strong>/);
   assert.match(html, /开始分析 · 1 位/);
   assert.match(analysisPage(state, draft, null, '', null, 'custom'), /data-ai-date-range="analysis"/);

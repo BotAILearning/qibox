@@ -692,6 +692,7 @@ export class AIAssistant {
       count: result.count,
       ...(Number.isSafeInteger(result.readableCount) ? { readableCount: result.readableCount } : {}),
       ...(Number.isSafeInteger(result.analyzedCount) ? { analyzedCount: result.analyzedCount } : {}),
+      ...(Number.isSafeInteger(result.contentParsedCount) ? { contentParsedCount: result.contentParsedCount } : {}),
       ...(Number.isSafeInteger(result.analyzedChars) ? { analyzedChars: result.analyzedChars } : {}),
       ...(Number.isSafeInteger(result.totalChars) ? { totalChars: result.totalChars } : {}),
       ...(Number.isSafeInteger(result.omittedMessages) ? { omittedMessages: result.omittedMessages } : {}),
@@ -704,6 +705,7 @@ export class AIAssistant {
       truncated: result.truncated === true,
       truncatedReasons: Array.isArray(result.truncatedReasons) ? [...new Set(result.truncatedReasons.filter(value => typeof value === 'string').slice(0, 4))] : [],
       metrics: structuredClone(result.metrics || {}),
+      ...(result.mediaCoverage ? { mediaCoverage: structuredClone(result.mediaCoverage) } : {}),
       // Keep the old string report shape as the canonical body. Readers can
       // display newer metadata without requiring a new model protocol.
       report: textField(result.report, 24000, true),
