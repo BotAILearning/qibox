@@ -27,11 +27,11 @@ try {
   assert.equal(await page.locator('[name=sendMode]').count(), 0);
   await page.locator('[name=name]').fill('春日问候计划');
   await page.locator('[data-proactive-pick]').click();
-  await page.locator('[data-proactive-contact]').nth(0).check();
-  await page.locator('[data-proactive-contact]').nth(1).check();
-  await page.locator('[data-proactive-refresh]').click(); await settled();
-  assert.equal(await page.locator('[data-proactive-contact]:checked').count(), 2);
-  await page.locator('[data-proactive-picker-confirm]').click();
+  await page.locator('.ap-contact-dialog [data-picker-id]').nth(0).check();
+  await page.locator('.ap-contact-dialog [data-picker-id]').nth(1).check();
+  await page.locator('.ap-contact-dialog [data-picker-refresh]').click(); await settled();
+  assert.equal(await page.locator('.ap-contact-dialog [data-picker-id]:checked').count(), 2);
+  await page.locator('.ap-contact-dialog [data-picker-confirm]').click();
   await page.locator('[name=taskType]').selectOption('relationship');
   await page.locator('[name=goal]').fill('询问最近是否有空喝咖啡');
   await page.locator('[name=requirements]').fill('语气轻松，不承诺具体时间。');
@@ -61,8 +61,8 @@ try {
 
   // One-time tasks can wait for a date or enter the queue immediately.
   await page.locator('[data-proactive-new]').click(); await page.locator('[name=name]').fill('立即联系测试');
-  await page.locator('[data-proactive-pick]').click(); await page.locator('[data-proactive-contact]').first().check();
-  await page.locator('[data-proactive-picker-confirm]').click(); await page.locator('[name=goal]').fill('确认周末安排');
+  await page.locator('[data-proactive-pick]').click(); await page.locator('.ap-contact-dialog [data-picker-id]').first().check();
+  await page.locator('.ap-contact-dialog [data-picker-confirm]').click(); await page.locator('[name=goal]').fill('确认周末安排');
   assert.equal(await page.locator('[name=time]').count(), 0);
   await page.locator('[name=onceTiming][value=at]').check();
   await page.locator('[name=at]').fill('2099-01-01T14:30');
@@ -139,7 +139,7 @@ try {
     await page.locator('[data-proactive-pick]').click();
     assert.ok(await page.locator('.ai-proactive-dialog').evaluate(node => node.scrollWidth <= node.clientWidth + 1));
     await shot('picker-' + width);
-    await page.locator('[data-proactive-picker-cancel]').last().click();
+    await page.locator('.ap-contact-dialog [data-picker-cancel]').last().click();
     await page.locator('[data-proactive-cancel]').click();
   }
   report.checks.push('Desktop, tablet and phone: page/editor/contact dialog fit; task table is independently scrollable');

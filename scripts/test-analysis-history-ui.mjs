@@ -91,9 +91,16 @@ try {
     await page.locator('[data-ai-nav=analysis]').click();
     await settled();
   };
+  const chooseContacts = async indexes => {
+    await page.locator('[data-ai-analysis-pick]').click();
+    const picker = page.locator('.ai-contact-picker-dialog');
+    await picker.locator('[data-picker-clear]').click();
+    for (const index of indexes) await picker.locator('[data-picker-id]').nth(index).check();
+    await picker.locator('[data-picker-confirm]').click();
+  };
   const generate = async request => {
     await page.locator('[name=request]').fill(request);
-    await page.locator('#ai-analysis-form [name=contacts]').first().check();
+    await chooseContacts([0]);
     const before = provider.calls.length;
     await page.getByRole('button', { name: '开始分析', exact: true }).click();
     await settled();
@@ -101,7 +108,7 @@ try {
     const status = await page.locator('[data-analysis-report]').first().getAttribute('data-analysis-status');
     assert.equal(status, 'complete', await page.locator('[data-analysis-report]').first().innerText());
     assert.ok(provider.calls.length > before, '生成分析报告必须调用模型');
-    assert.equal(await page.locator('#ai-analysis-form [name=contacts]:checked').count(), 0, '完成报告后清空原联系人勾选');
+    assert.equal(await page.locator('#ai-analysis-form [name=contacts]').count(), 0, '完成报告后清空原联系人勾选');
     return before;
   };
   const historyCount = () => page.locator('.ai-analysis-history-list [data-ai-history-item]').count();
@@ -131,13 +138,13 @@ try {
   await page.locator('[name=request]').fill('请总结明确约定');
   assert.equal(await page.locator('#ai-analysis-request-count').textContent(), '7/1000');
   await page.locator('[name=request]').fill('');
-  await page.locator('#ai-analysis-form [name=contacts]').first().check();
+  await chooseContacts([0]);
   await page.locator('[data-ai-analysis-range=custom]').click();
   await page.locator('.ai-calendar-dialog-analysis').waitFor();
   await screenshot('00-analysis-custom-range');
   await page.locator('.ai-calendar-dialog-analysis [data-cancel]').click();
   await page.locator('.ai-calendar-dialog-analysis').waitFor({ state: 'detached' });
-  await page.locator('#ai-analysis-form [name=contacts]').first().uncheck();
+  await chooseContacts([]);
   await page.locator('[data-ai-analysis-range=all]').click();
   report.checks.push('Desktop analysis layout keeps contact selection left and gives the request area the main width');
   const beforeFirst = await generate('总结具体约定');
@@ -224,7 +231,7 @@ try {
   assert.equal(await historyCount(), 1, 'confirmed deletion removes only the selected test report');
   report.checks.push('Confirmed deletion removes one test snapshot after second confirmation');
 
-  for (let index = 0; index < 11; index++) await page.locator('#ai-analysis-form [name=contacts]').nth(index).check();
+  await chooseContacts(Array.from({length:11},(_,index)=>index));
   let queuedModelCalls = 0;
   provider.complete = async (_config, system, input) => {
     provider.calls.push({ system, input });
@@ -241,9 +248,7 @@ try {
   assert.equal(provider.calls.length - beforeModels, 11, 'each selected contact makes exactly one model call');
   report.checks.push('Eleven-contact queue posts one contact per request and continues after an individual model failure');
 
-  for (let index = 0; index < 11; index++) await page.locator('#ai-analysis-form [name=contacts]').nth(index).uncheck();
-  await page.locator('#ai-analysis-form [name=contacts]').nth(0).check();
-  await page.locator('#ai-analysis-form [name=contacts]').nth(1).check();
+  await chooseContacts([0,1]);
   provider.complete = async (_config, _system, _input, signal) => {
     provider.calls.push({ input: _input });
     await new Promise((resolve, reject) => {

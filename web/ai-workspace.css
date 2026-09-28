@@ -553,6 +553,55 @@
 @media(max-width:360px){#ai-panel .ap-schedule-card .ap-custom-range,#ai-panel .ap-schedule-controls .ap-time-range{grid-template-columns:1fr}#ai-panel .ap-schedule-card .ap-weekdays{grid-template-columns:repeat(3,minmax(0,1fr))}}
 #ai-panel .ap-editor-footer{display:flex;gap:10px;justify-content:flex-end;border-top:1px solid var(--ap-line);margin-top:16px;padding-top:16px}
 #ai-panel .ap-editor-footer button{min-width:104px}
+#ai-panel .ai-proactive-page{container:proactive-layout / inline-size}
+#ai-panel .ap-editor-heading{align-items:flex-start;flex-direction:column;gap:13px;max-width:1160px;margin:0 auto 22px}
+#ai-panel .ap-editor-heading>button{min-height:36px;padding:7px 10px;border-color:#e1dfee;background:#fff;color:#625b76}
+#ai-panel .ap-editor-heading h3{margin:3px 0 0;color:#26213c;font-size:27px;line-height:1.25}
+#ai-panel .ap-editor-heading p{margin-top:5px;font-size:13px}
+#ai-panel .ap-editor-kicker{color:#695cce;font-size:11px;font-weight:750;letter-spacing:.07em}
+#ai-panel .ap-editor{max-width:1160px}
+#ai-panel .ap-editor-layout>fieldset{grid-template-columns:minmax(0,1.06fr) minmax(360px,.94fr);gap:18px;align-items:start}
+#ai-panel .ap-editor-layout .ap-form-card{padding:24px 26px;border-color:#e5e3ef;border-radius:16px;box-shadow:0 8px 26px #352a6708}
+#ai-panel .ap-editor-layout .ap-editor-contacts{grid-column:1/-1}
+#ai-panel .ap-editor-layout .ap-editor-brief{grid-column:1}
+#ai-panel .ap-editor-layout .ap-editor-schedule{grid-column:2}
+#ai-panel .ap-editor-section-title{display:flex;align-items:flex-start;gap:12px;min-width:0}
+#ai-panel .ap-editor-step{display:grid;flex:none;place-items:center;width:34px;height:34px;border-radius:10px;background:#f0edff;color:#6453d0;font-size:12px;font-weight:800;letter-spacing:.02em}
+#ai-panel .ap-editor-section-title h4{margin:2px 0 0;color:#26213c;font-size:18px;line-height:1.3}
+#ai-panel .ap-editor-section-title p{margin:5px 0 0;font-size:12px}
+#ai-panel .ap-editor-contacts .ap-card-head{align-items:center;padding-bottom:19px}
+#ai-panel .ap-editor-contacts .ap-card-head button{min-height:40px;padding:8px 14px;border-radius:9px;font-size:12px;font-weight:700}
+#ai-panel .ap-editor-contacts .ap-contact-summary{align-items:center;padding:14px 0 12px;font-size:12px}
+#ai-panel .ap-editor-contacts .ap-selected{gap:8px;min-height:34px}
+#ai-panel .ap-editor-contacts .ap-chip{padding:7px 10px;border-radius:8px}
+#ai-panel .ap-editor-contacts .ap-empty-contacts{padding:24px 12px}
+#ai-panel .ap-editor-brief .ap-editor-section-title{margin-bottom:22px}
+#ai-panel .ap-editor-brief-fields{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(145px,.8fr);gap:12px}
+#ai-panel .ap-editor-brief .ai-field{display:flex;flex-direction:column;gap:7px;margin:0 0 18px;color:#423b53;font-size:12px;font-weight:700}
+#ai-panel .ap-editor-brief .ai-field small{font-size:11px;font-weight:400;color:#8a839a}
+#ai-panel .ap-editor-brief :is(input,select){min-height:46px}
+#ai-panel .ap-editor-brief textarea{min-height:145px;font-weight:400;resize:vertical}
+#ai-panel .ap-editor-brief textarea[name=requirements]{min-height:120px}
+#ai-panel .ap-editor-brief .ap-field-help{margin:-8px 0 0;font-size:11px}
+#ai-panel .ap-editor-layout .ap-form-card.ap-schedule-card{padding:24px 26px}
+#ai-panel .ap-editor-schedule .ap-schedule-heading{display:flex;align-items:flex-start;gap:12px;margin-bottom:22px}
+#ai-panel .ap-editor-schedule .ap-schedule-heading h4{font-size:18px}
+#ai-panel .ap-editor-schedule .ap-schedule-heading p{margin-top:5px}
+#ai-panel .ap-editor-schedule .ap-cycle-options{grid-template-columns:repeat(2,minmax(0,1fr))}
+#ai-panel .ap-editor-schedule .ap-cycle-choice:last-child{grid-column:1/-1}
+#ai-panel .ap-editor-schedule .ap-schedule-controls.has-detail{grid-template-columns:1fr;gap:14px}
+#ai-panel .ap-editor-schedule .ap-schedule-choices{max-width:none}
+#ai-panel .ap-editor-schedule .ap-weekdays{grid-template-columns:repeat(4,minmax(0,1fr))}
+#ai-panel .ap-editor-confirm{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-top:18px;padding:20px 24px;border:1px solid #e4e1ef;border-radius:14px;background:#f8f7fc}
+#ai-panel .ap-editor-confirm>div{min-width:0}
+#ai-panel .ap-editor-confirm-label{display:block;margin-bottom:5px;color:#695cce;font-size:11px;font-weight:750}
+#ai-panel .ap-editor-confirm strong{display:block;color:#322b45;font-size:14px;line-height:1.5;overflow-wrap:anywhere}
+#ai-panel .ap-editor-confirm p{margin:5px 0 0;color:#817b90;font-size:11px;line-height:1.6}
+#ai-panel .ap-editor-confirm .ap-editor-footer{flex:none;margin:0;padding:0;border:0}
+#ai-panel .ap-editor-confirm .ap-editor-footer button{min-height:42px}
+@container proactive-layout (max-width:900px){#ai-panel .ap-editor-layout>fieldset{grid-template-columns:minmax(0,1fr)}#ai-panel .ap-editor-layout .ap-editor-contacts,#ai-panel .ap-editor-layout .ap-editor-brief,#ai-panel .ap-editor-layout .ap-editor-schedule{grid-column:1}#ai-panel .ap-editor-schedule .ap-cycle-options{grid-template-columns:repeat(3,minmax(0,1fr))}#ai-panel .ap-editor-schedule .ap-cycle-choice:last-child{grid-column:auto}#ai-panel .ap-editor-schedule .ap-schedule-controls.has-detail{grid-template-columns:minmax(0,1fr) minmax(250px,.9fr)}}
+@container proactive-layout (max-width:620px){#ai-panel .ap-editor-heading h3{font-size:23px}#ai-panel .ap-editor-layout .ap-form-card,#ai-panel .ap-editor-layout .ap-form-card.ap-schedule-card{padding:19px 16px}#ai-panel .ap-editor-contacts .ap-card-head{align-items:flex-start}#ai-panel .ap-editor-brief-fields{grid-template-columns:1fr;gap:0}#ai-panel .ap-editor-schedule .ap-cycle-options{grid-template-columns:repeat(2,minmax(0,1fr))}#ai-panel .ap-editor-schedule .ap-cycle-choice:last-child{grid-column:1/-1}#ai-panel .ap-editor-schedule .ap-schedule-controls.has-detail{grid-template-columns:1fr}#ai-panel .ap-editor-confirm{align-items:stretch;flex-direction:column;gap:17px;padding:18px 16px}#ai-panel .ap-editor-confirm .ap-editor-footer{width:100%}#ai-panel .ap-editor-confirm .ap-editor-footer button{flex:1}}
+@container proactive-layout (max-width:390px){#ai-panel .ap-editor-contacts .ap-card-head{flex-direction:column;align-items:stretch}#ai-panel .ap-editor-contacts .ap-card-head button{align-self:flex-start}#ai-panel .ap-editor-schedule .ap-weekdays{grid-template-columns:repeat(3,minmax(0,1fr))}}
 #ai-panel .ap-readiness{padding:12px 16px;background:#fff8e8;border:1px solid #f1dfb9;border-radius:10px;margin-bottom:16px;font-size:12px;line-height:1.7;color:#795824}
 #ai-panel .ap-readiness p,#ai-panel .ap-readiness ul{margin:6px 0}
 #ai-panel .ap-migration-summary p{white-space:pre-wrap;overflow-wrap:anywhere}
@@ -1101,6 +1150,12 @@
 
 /* Responsive workspace: full-width phone content and a touch navigation strip. */
 #ai-panel .ai-analysis-contacts{height:clamp(380px,62vh,760px);max-height:none;align-content:start;overflow:auto;overscroll-behavior:contain}
+@media(min-width:861px){
+ #ai-panel .ai-page-body:has(>.ai-analysis-setup) .ai-analysis-selection{top:28px;height:min(860px,calc(100dvh - 108px));display:flex;flex-direction:column;min-height:0}
+ #ai-panel .ai-page-body:has(>.ai-analysis-setup) .ai-analysis-selection-details{display:flex;flex-direction:column;flex:1;min-height:0}
+ #ai-panel .ai-page-body:has(>.ai-analysis-setup) .ai-analysis-contacts{height:auto;max-height:none;min-height:0;flex:1 1 auto}
+ #ai-panel .ai-page-body:has(>.ai-analysis-setup) .ai-analysis-selection-actions{flex:none}
+}
 #ai-panel .ai-analysis-request .ai-analysis-section-title{flex-wrap:wrap}
 @media(max-width:860px){
  #ai-panel{--ai-sidebar:0px}
@@ -1413,3 +1468,87 @@
 .ai-analysis-media input{margin-top:3px;accent-color:#6654d9}
 .ai-analysis-media label span{display:grid;gap:2px}
 .ai-analysis-media small{color:var(--muted,#6b7280);line-height:1.5}
+#ai-panel .ai-contact-picker .ai-contact-picker-search{display:flex;align-items:center;gap:8px;border:1px solid #dfe3f4;border-radius:9px;background:#fff;padding:8px 11px;margin:0 0 12px;min-height:42px}
+#ai-panel .ai-contact-picker .ai-contact-picker-search:focus-within{border-color:#5969ed;box-shadow:0 0 0 3px #5969ed20}
+#ai-panel .ai-contact-picker .ai-contact-picker-search input{border:0;box-shadow:none;background:transparent;outline:0;min-width:0;width:100%;padding:0;font-size:13px}
+#ai-panel .ai-contact-picker-list{display:block;min-width:0;overflow:auto}
+#ai-panel .ai-contact-picker-list .ai-contact-picker-row{display:flex;align-items:center;gap:10px;width:100%;min-height:60px;padding:9px 10px;margin:0 0 3px;border:0;border-radius:9px;background:#fff;color:var(--ai-text);text-align:left;box-shadow:none;cursor:pointer}
+#ai-panel .ai-contact-picker-list .ai-contact-picker-row:hover{background:#f5f6fb}
+#ai-panel .ai-contact-picker-list .ai-contact-picker-row.selected,#ai-panel .ai-contact-picker-list .ai-contact-picker-row:has(input:checked){background:#eff1ff;color:#3d4db6}
+#ai-panel .ai-contact-picker-list .ai-contact-picker-row:focus-visible,#ai-panel .ai-contact-picker-list .ai-contact-picker-row:focus-within{outline:2px solid #5969ed;outline-offset:-2px}
+#ai-panel .ai-contact-picker-list .ai-contact-picker-row[hidden]{display:none}
+#ai-panel .ai-contact-picker-list .ai-contact-picker-row .ai-monogram{width:36px;height:36px;flex:none}
+#ai-panel .ai-contact-picker-list .ai-contact-picker-row .ai-contact-info{display:block;min-width:0;flex:1}
+#ai-panel .ai-contact-picker-list .ai-contact-picker-row .ai-contact-info b{display:block;overflow:visible;overflow-wrap:anywhere;white-space:normal;text-overflow:clip;font-size:13px;font-weight:500}
+#ai-panel .ai-contact-picker-list .ai-contact-picker-row .ai-contact-info small{display:block;margin-top:2px;font-size:10.5px}
+#ai-panel .ai-contact-picker-list .ai-contact-picker-multiple>input[type=checkbox]{appearance:none;display:grid;place-items:center;width:18px;height:18px;flex:none;margin:0;border:1.5px solid #9aa6c7;border-radius:4px;background:white;cursor:pointer}
+#ai-panel .ai-contact-picker-list .ai-contact-picker-multiple>input[type=checkbox]:checked{border-color:#4058ed;background:#4058ed}
+#ai-panel .ai-contact-picker-list .ai-contact-picker-multiple>input[type=checkbox]:checked::after{content:'✓';color:#fff;font-size:13px;font-weight:700;line-height:1}
+#ai-panel .ai-contact-picker-types{margin-bottom:12px}
+#ai-panel .ai-contact-picker-types button[aria-pressed=true]{background:#eff1ff;color:#3d4db6}
+#ai-panel .ai-reference-learning-tools .ai-contact-picker-types{width:100%;margin:0 0 4px}
+#ai-panel .ai-reference-learning-tools .ai-contact-picker-search{flex:1;min-width:180px;max-width:none;margin:0}
+#ai-panel .ai-reference-learning-choices.ai-contact-list{display:block;padding:10px 12px;max-height:520px}
+#ai-panel .ai-analysis-contacts.ai-contact-picker-list{display:block;padding:0;margin:9px 0 12px}
+#ai-panel .ai-analysis-contacts.ai-contact-picker-list .ai-contact-picker-row{min-height:60px;padding:9px 10px}
+#ai-panel .ai-analysis-selection .ai-contact-picker-search{margin-top:12px}
+#ai-panel .ai-proactive-dialog.ai-contact-picker-dialog[open]{display:flex;flex-direction:column;width:min(400px,calc(100vw - 28px));height:min(780px,calc(100dvh - 28px));max-height:calc(100dvh - 28px);overflow:hidden;border-radius:14px;box-shadow:0 24px 70px #10132155}
+#ai-panel .ai-contact-picker-dialog>header,#ai-panel .ai-contact-picker-dialog .ap-picker-tools,#ai-panel .ai-contact-picker-dialog .ap-picker-types,#ai-panel .ai-contact-picker-dialog .ap-picker-summary,#ai-panel .ai-contact-picker-dialog>footer{flex:none}
+#ai-panel .ai-contact-picker-dialog .ap-picker-tools{display:flex;flex-wrap:nowrap;align-items:center;gap:12px;padding:16px 20px 4px}
+#ai-panel .ai-contact-picker-dialog .ap-picker-tools .ai-contact-picker-search{display:flex;align-items:center;gap:8px;flex:1;min-width:0;margin:0;padding:9px 12px;border:1px solid #dfe3f4;border-radius:8px}
+#ai-panel .ai-contact-picker-dialog .ap-picker-tools .ai-contact-picker-search input{width:100%;min-width:0;border:0;padding:0;box-shadow:none;outline:0}
+#ai-panel .ai-contact-picker-dialog .ap-picker-tools>button{border:0;color:#4058ed;white-space:nowrap}
+#ai-panel .ai-contact-picker-dialog .ap-picker-types .ai-contact-picker-types{margin:8px 20px 0}
+#ai-panel .ai-contact-picker-dialog .ap-picker-summary{align-items:center;padding:5px 20px 8px}
+#ai-panel .ai-contact-picker-dialog .ap-picker-summary button{border:0;padding:4px 6px;color:#5969ed;font-size:11px}
+#ai-panel .ai-contact-picker-dialog .ap-picker-list{display:block;flex:1;min-height:0;max-height:none;overflow:auto;padding:0 20px 10px}
+#ai-panel .ai-contact-picker-dialog .ai-contact-picker-row{min-height:60px;margin:0 0 3px;border-radius:9px}
+#ai-panel .ai-contact-picker-dialog .ap-picker-error{flex:none;margin:0 20px}
+#ai-panel .ai-contact-picker-dialog .ap-picker-error:empty{display:none}
+#ai-panel .ai-contact-picker-dialog>footer{align-items:center;padding:14px 20px}
+#ai-panel .ai-contact-picker-dialog>footer>b{margin-right:auto;color:#303d65;font-size:13px}
+@media(max-width:680px){#ai-panel .ai-contact-picker-list .ai-contact-picker-row{min-height:60px}#ai-panel .ai-contact-picker-dialog .ap-picker-tools{padding:12px 14px 4px}#ai-panel .ai-contact-picker-dialog .ap-picker-list{padding:0 14px 10px}#ai-panel .ai-contact-picker-dialog>footer{padding:12px 14px;flex-wrap:wrap}#ai-panel .ai-contact-picker-dialog>footer>b{width:100%}}
+#ai-panel .ai-default-style-layout{grid-template-columns:minmax(280px,.42fr) minmax(0,.78fr)}
+#ai-panel .ai-default-material{padding:24px}
+#ai-panel .ai-default-material>h3{margin:0 0 5px;font-size:19px}
+#ai-panel .ai-default-material>.ai-help{margin:0 0 22px}
+#ai-panel .ai-default-source-tabs{display:grid;grid-template-columns:1fr 1fr;gap:12px;width:100%;padding:0;margin:0 0 22px;background:none}
+#ai-panel .ai-default-source-tabs button{display:grid;grid-template-columns:24px 1fr;column-gap:10px;min-height:76px;padding:13px;border:1px solid #dde2f0;border-radius:10px;background:#fff;text-align:left;box-shadow:none}
+#ai-panel .ai-default-source-tabs button.selected{border-color:#5369f4;background:#f4f6ff;box-shadow:0 0 0 1px #5369f4}
+#ai-panel .ai-default-source-tabs button .ai-icon{grid-row:1/3;width:21px;height:21px;color:#5369f4}
+#ai-panel .ai-default-source-tabs button strong{font-size:13px;color:#303957}
+#ai-panel .ai-default-source-tabs button small{font-size:11px;color:#7e89a3}
+#ai-panel .ai-default-current{position:sticky;top:12px;min-height:500px;padding:22px}
+#ai-panel .ai-default-current .ai-card-heading{display:flex;justify-content:space-between;align-items:center}
+#ai-panel .ai-default-current .ai-card-heading h4{font-size:17px}
+#ai-panel .ai-default-current textarea{min-height:285px}
+#ai-panel .ai-default-current .ai-actions{display:flex;flex-wrap:wrap}
+#ai-panel .ai-default-current .ai-actions .primary{flex:1}
+#ai-panel .ai-default-current.ai-default-empty{align-content:start;min-height:500px}
+#ai-panel .ai-default-count{display:block;text-align:right;color:#858da9;font-size:11px}
+#ai-panel .ai-default-source>.ai-learning-contacts{padding:0;margin:0 0 18px}
+#ai-panel .ai-default-source>.ai-learning-contacts .ai-card-heading{align-items:center}
+#ai-panel .ai-selected-contact-list{display:block;max-height:250px;overflow:auto;padding:6px 0}
+#ai-panel .ai-selected-contact-list .ai-contact-picker-row{min-height:48px}
+#ai-panel .ai-default-source .ai-selected-contact-list{max-height:180px}
+#ai-panel .ai-default-direction,#ai-panel .ai-default-range{padding:18px 0;border-top:1px solid #e8e9f1}
+#ai-panel .ai-default-direction h4,#ai-panel .ai-default-range h4,#ai-panel .ai-default-paste-form h4{margin:0 0 5px;font-size:15px}
+#ai-panel .ai-default-direction .ai-help,#ai-panel .ai-default-range .ai-help{margin:0 0 10px}
+#ai-panel .ai-default-perspectives{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+#ai-panel .ai-default-perspectives label{display:flex;align-items:flex-start;gap:9px;padding:8px 0;cursor:pointer}
+#ai-panel .ai-default-perspectives input{margin-top:3px;accent-color:#5369f4}
+#ai-panel .ai-default-perspectives strong,#ai-panel .ai-default-perspectives small{display:block}
+#ai-panel .ai-default-perspectives small{margin-top:4px;color:#8b92a8;font-size:11px}
+#ai-panel .ai-reference-learning-range-pills{display:flex;flex-wrap:wrap;gap:7px}
+#ai-panel .ai-reference-learning-range-pills button{flex:1;min-width:70px;border:1px solid #e1e5f1;border-radius:18px;background:#fff;color:#606c86;padding:7px 10px}
+#ai-panel .ai-reference-learning-range-pills button.active{border-color:#5369f4;background:#5369f4;color:#fff}
+#ai-panel .ai-default-learn,#ai-panel .ai-default-paste-form>.primary{display:flex;align-items:center;justify-content:center;gap:7px;margin:12px 0 0 auto;min-width:180px}
+#ai-panel .ai-default-paste-form textarea{min-height:190px}
+@media(max-width:1000px){#ai-panel .ai-default-style-layout{grid-template-columns:1fr}#ai-panel .ai-default-current{position:static;min-height:0}}
+@media(max-width:560px){#ai-panel .ai-default-material{padding:16px}#ai-panel .ai-default-source-tabs{gap:8px}#ai-panel .ai-default-source-tabs button{padding:10px;grid-template-columns:1fr;min-height:84px}#ai-panel .ai-default-source-tabs button .ai-icon{grid-row:auto}#ai-panel .ai-default-perspectives{grid-template-columns:1fr}}
+#ai-panel .ai-analysis-picked-list{display:block;flex:1 1 auto;min-height:0;overflow:auto;margin:12px 0;overscroll-behavior:contain}
+#ai-panel .ai-analysis-picked-row{display:flex;align-items:center;gap:10px;min-height:52px;padding:8px 10px;border-radius:9px;background:#f4f6ff;color:#303d65;font-size:13px}
+#ai-panel .ai-analysis-picked-row+.ai-analysis-picked-row{margin-top:4px}
+#ai-panel .ai-analysis-picked-row .ai-monogram{display:grid;place-items:center;flex:none;width:34px;height:34px;border-radius:9px}
+#ai-panel .ai-analysis-selection-actions [data-ai-analysis-pick].primary{border-color:#5369f4;background:#5369f4;color:#fff}
+@media(max-width:560px){#ai-panel .ai-analysis-picked-list{max-height:230px}#ai-panel .ai-analysis-selection.is-open .ai-analysis-selection-details{display:block}}

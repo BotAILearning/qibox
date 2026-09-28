@@ -319,8 +319,7 @@ for (const destination of ['learning', 'proactive']) {
     t.after(() => { controller.detach(); globalThis.document = originalDocument; });
     await controller.attach('instance-a'); await dom.navigate(destination); if (destination === 'proactive') await dom.click('new-proactive');
     assert.deepEqual(calls, [{ action: 'scan' }]);
-    assert.match(dom.node('#ai-content').innerHTML, destination === 'proactive' ? /data-proactive-pick/ : /data-ai-contact="contact"/);
-    assert.doesNotMatch(dom.node('#ai-content').innerHTML, /data-ai-contact(?:-proactive)?="contact" checked/);
+    assert.match(dom.node('#ai-content').innerHTML, destination === 'proactive' ? /data-proactive-pick/ : /data-ai-action="open-contact-picker"/);
   });
 }
 

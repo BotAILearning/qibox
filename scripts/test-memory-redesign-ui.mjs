@@ -30,8 +30,6 @@ try {
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   await page.goto(`http://127.0.0.1:${app.server.address().port}${app.prefix}/?dev=${app.devKey}`);
   await page.locator('[data-action=open]').first().click(); await page.locator('#ai-open').click();
-  assert.equal(await page.locator('#ai-desktop-back').count(), 0, 'PC 标题栏不再显示返回按钮');
-  assert.equal(await page.locator('#ai-close').isVisible(), true, 'PC 仍可收起 AI 辅助');
   const save = async () => {
     await page.locator('#ai-object-form button[type="submit"]').click();
     await page.waitForFunction(() => document.querySelector('#ai-panel').getAttribute('aria-busy') === 'false');
@@ -51,6 +49,9 @@ try {
   await category('school');
   const school = await add('school','school','龙海一中');
   assert.equal(await school.locator('.ai-wiki-school-name').count(), 0);
+  const degree = school.locator('[aria-label="学历"]');
+  assert.deepEqual(await degree.locator('option').allTextContents(), ['未选择学历', '小学', '初中', '高中', '中专', '职高', '技校', '大专', '本科', '硕士研究生', '博士研究生']);
+  await degree.selectOption('本科');
   const schoolBoxes = await school.evaluate(node => ({ text: node.querySelector('[aria-label="信息内容"]').getBoundingClientRect(), degree: node.querySelector('[aria-label="学历"]').getBoundingClientRect() }));
   assert.ok(Math.abs(schoolBoxes.text.top - schoolBoxes.degree.top) < 2);
   await category('date_info'); await add('date_info','birthday','农历正月初八'); await add('date_info','date','结婚纪念日');
@@ -60,6 +61,7 @@ try {
   await save();
   const personProfile = ai.profiles().find(profile => profile.contact === person);
   assert.deepEqual(readMemory(ai.vault, ai.data.profiles[personProfile.id]).entries.map(entry => entry.field).sort(), ['addressing','birthday','date','household','name','residence','school','shipping'].sort());
+  assert.equal(readMemory(ai.vault, ai.data.profiles[personProfile.id]).entries.find(entry => entry.field === 'school')?.degree, '本科');
   await page.locator('[data-ai-kind="group"]').click(); await page.locator(`[data-ai-object="${group.id}"]`).click();
   await page.locator('[data-ai-object-section="memory"]').click();
   assert.deepEqual(await page.locator('.ai-reference-memory-categories button span').allTextContents(), ['群概况','成员与分工','群内约定','话题与偏好','共同事项','重要活动','其他记忆']);

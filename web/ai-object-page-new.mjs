@@ -5,6 +5,7 @@ import { contactName } from './ai-contact-name.mjs';
 import { objectList } from './ai-object-view.mjs';
 import { replyLimitControl } from './ai-reply-limit.mjs';
 import { personReplyEnabled } from './ai-reply-state.mjs';
+import { contactPickerTabs, contactPickerSearch } from './ai-contact-picker.mjs';
 
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const avatar = contact => `<span class="ai-monogram" aria-hidden="true">${esc([...contact.label][0])}</span>`;
@@ -25,7 +26,7 @@ export function objectPage(state, view) {
   const isGroup = contact?.kind === 'group';
   const styles = [...(profile?.learnedStyle ? [{ id: 'learned', label: '已学习的风格' }] : []), { id: '', label: '默认风格' }, ...(state.schema?.replyPresets || []).map(p => ({ id: 'preset:' + p.id, label: p.label })), { id: 'custom', label: '自定义' }];
   const status = profile?.paused ? '已暂停' : isGroup ? group.realtime ? '实时回复已开启' : group.atMe || group.atAll ? '提及时回复' : '群聊回复已关闭' : opts.enabled ? '自动回复已开启' : '自动回复已关闭';
-  const side = `<aside class="ai-object-sidebar"><div class="ai-object-types" role="group" aria-label="对象类型">${[['person','联系人','user'],['group','群聊','users']].map(([kind,label,symbol]) => `<button type="button" data-ai-kind="${kind}" class="${view.kind === kind ? 'selected' : ''}">${icon(symbol)}${label}<em>${state.contacts.filter(c => c.kind === kind).length}</em></button>`).join('')}</div><label class="ai-object-search">${icon('search')}<span class="sr-only">搜索对象</span><input id="ai-object-search" type="search" placeholder="搜索名称" value="${esc(view.search)}"></label><div id="ai-object-list">${objectList(state, view)}</div><div class="ai-contact-footer"><button type="button" class="ai-soft-button" data-ai-nav="learning">批量学习风格与记忆</button><button type="button" class="quiet" data-ai-action="scan">${icon('refresh')}刷新列表</button></div></aside>`;
+  const side = `<aside class="ai-object-sidebar">${contactPickerTabs(state.contacts, view.kind, 'data-ai-kind')}${contactPickerSearch({ id: 'ai-object-search', value: view.search, label: '搜索对象' })}<div id="ai-object-list">${objectList(state, view)}</div><div class="ai-contact-footer"><button type="button" class="ai-soft-button" data-ai-nav="learning">批量学习风格与记忆</button><button type="button" class="quiet" data-ai-action="scan">${icon('refresh')}刷新列表</button></div></aside>`;
   if (!contact) return `<div class="ai-object-workspace ai-object-reference">${side}<section class="ai-object-detail"><div class="ai-object-empty">${icon('chat')}<h3>选择联系人或群聊</h3></div></section></div>`;
 
   const strategy = `<div class="ai-reference-strategy"><h4>回复策略</h4><div class="ai-reference-strategy-fields"><label class="ai-field"><span>回复要求</span><textarea name="replyGoal" maxlength="1200" rows="4" placeholder="明确回复目的与立场">${esc(value.replyGoal)}</textarea></label><label class="ai-field"><span>边界与注意事项</span><textarea name="boundaries" maxlength="1200" rows="4" placeholder="不能承诺或需要本人决定的事项">${esc(value.boundaries)}</textarea></label></div></div>`;

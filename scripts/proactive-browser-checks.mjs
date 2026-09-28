@@ -7,9 +7,9 @@ export async function proactiveDraftCheck(page) {
   assert.equal(await page.locator('.ai-steps').count(), 0);
   await page.locator('#ai-proactive-form [name=name]').fill('草稿保留验收');
   await page.locator('[data-proactive-pick]').click();
-  assert.equal(await page.locator('[data-proactive-contact]:checked').count(), 0);
-  await page.locator('[data-proactive-contact]').first().check();
-  await page.locator('[data-proactive-picker-confirm]').click();
+  assert.equal(await page.locator('.ap-contact-dialog [data-picker-id]:checked').count(), 0);
+  await page.locator('.ap-contact-dialog [data-picker-id]').first().check();
+  await page.locator('.ap-contact-dialog [data-picker-confirm]').click();
   await page.locator('#ai-proactive-form [name=goal]').fill('确认周末安排');
   await page.locator('#ai-proactive-form [name=requirements]').fill('不要承诺具体地点');
   await page.locator('[data-proactive-back]').click();
@@ -17,8 +17,8 @@ export async function proactiveDraftCheck(page) {
   assert.equal(await page.locator('#ai-proactive-form [name=goal]').inputValue(), '确认周末安排');
   assert.equal(await page.locator('#ai-proactive-selected .ap-chip').count(), 1);
   await page.locator('[data-proactive-pick]').click();
-  await page.locator('[data-proactive-clear]').click();
-  await page.locator('[data-proactive-picker-cancel]').last().click();
+  await page.locator('.ap-contact-dialog [data-picker-clear]').click();
+  await page.locator('.ap-contact-dialog [data-picker-cancel]').last().click();
   assert.equal(await page.locator('#ai-proactive-selected .ap-chip').count(), 1);
   await page.locator('#ai-proactive-form [name=cycle][value=weekly]').check();
   await page.locator('#ai-proactive-form [name=mode][value=random]').check();

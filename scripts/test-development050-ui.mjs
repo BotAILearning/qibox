@@ -170,7 +170,9 @@ try {
   await page.locator('[data-ai-kind=person]').click();
   await page.locator('[data-ai-nav=analysis]').click();
   await page.locator('#ai-analysis-form [name=request]').fill('分别总结约定');
-  for (const c of bridge.contacts.slice(0, 2)) await page.locator(`#ai-analysis-form [value="${c.id}"]`).check();
+  await page.locator('[data-ai-analysis-pick]').click();
+  for (const c of bridge.contacts.slice(0, 2)) await page.locator(`.ai-contact-picker-dialog [data-picker-id="${c.id}"]`).check();
+  await page.locator('.ai-contact-picker-dialog [data-picker-confirm]').click();
   provider.complete = async (_config, _system, input) => {
     analysisCalls.push(input);
     return { report: '独立报告 ' + input.contact, excerptIds: [] };

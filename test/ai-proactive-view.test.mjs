@@ -88,11 +88,12 @@ test('weekly empty selection, equal random bounds, bad anchor dates and interval
   d.goal += '长'; assert.throws(() => taskPayload(d), /6000/);
 });
 
-test('learned people sort before reply-enabled people; search and missing selected IDs retain identity', () => {
+test('reply-enabled people sort before learned people; search and missing selected IDs retain identity', () => {
   const s = state({ settings: { replyScope: 'selected' }, contacts: [{ id: 'plain', label: '普通', kind: 'person' }, { id: 'reply', label: '自动', kind: 'person' }, { id: 'learned', label: '已学', kind: 'person', nickname: '家人' }, { id: 'group', label: '群', kind: 'group' }], profiles: [{ contact: 'learned', id: 'p1', learnedAt: 1 }, { contact: 'reply', id: 'p2', replyOptions: { enabled: true } }] });
-  assert.deepEqual(contactChoices(s).map(c => c.id), ['learned', 'reply', 'plain']);
-  assert.equal(contactChoices(s).find(c => c.id === 'learned').tag, '未开启自动回复');
+  assert.deepEqual(contactChoices(s).map(c => c.id), ['reply', 'learned', 'plain']);
+  assert.equal(contactChoices(s).find(c => c.id === 'learned').tag, '已学习');
   assert.equal(contactChoices(s).find(c => c.id === 'reply').tag, '已设置自动回复');
+  assert.equal(contactChoices(s).find(c => c.id === 'plain').tag, '');
   assert.deepEqual(contactChoices(s, '家人').map(c => c.id), ['learned']);
   const missing = contactChoices(s, '保留', [{ id: 'offline', label: '保留选择' }]);
   assert.equal(missing[0].id, 'offline'); assert.equal(missing[0].missing, true);
@@ -105,7 +106,7 @@ test('proactive contact badge follows the saved auto-reply switch, including lea
     const choice = contactChoices(s)[0];
     const page = objectPage(s, { selected: 'c1', kind: 'person', section: 'reply', search: '' });
     assert.equal(choice.replyEnabled, enabled);
-    assert.equal(choice.tag, enabled ? '已设置自动回复' : '未开启自动回复');
+    assert.equal(choice.tag, enabled ? '已设置自动回复' : '已学习');
     assert.equal(/name="enabled"[^>]*\bchecked\b/.test(page), enabled);
     assert.match(page, enabled ? /class="ai-reference-children" ><div/ : /class="ai-reference-children" hidden>/);
     assert.match(page, enabled ? /class="ai-reference-reply-settings" >/ : /class="ai-reference-reply-settings" hidden>/);

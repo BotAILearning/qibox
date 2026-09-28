@@ -1,0 +1,29 @@
+{
+  "version": "0.9.41",
+  "buildId": "0.9.41-debug.001",
+  "package": "qibox-0.9.41-debug.001-all.fpk",
+  "bytes": 570817610,
+  "sha256": "4a716f5daa8efba4de2816ec72b7658d22d90cbe12a746d3979c02cb459e2590",
+  "packageFilesVerified": 2477,
+  "appCenterTaskId": "1790610919171396006-qibox",
+  "appCenterStatus": 2,
+  "appCenterProgress": 100,
+  "installedBuildId": "0.9.41-debug.001",
+  "instanceStatus": "running",
+  "usersIndexPreserved": true,
+  "wechatProcessesBefore": 2,
+  "wechatProcessesAfter": 2,
+  "installedCssMatchesPackage": true,
+  "deviceUi": {
+    "contactPickerDimensions": "400x780",
+    "analysisCancelAndConfirm": true,
+    "analysisMediaOptionsRetained": true,
+    "defaultStyleLayout": true,
+    "batchLearningPersonAndGroupTabs": true,
+    "newTaskPicker": true,
+    "degreeDropdown": true,
+    "pageErrors": [],
+    "passed": true
+  },
+  "deviceScope": "Installed fnOS UI and existing WeChat instance; no test chat messages sent or settings saved."
+}

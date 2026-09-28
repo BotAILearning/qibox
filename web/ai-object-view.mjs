@@ -1,12 +1,10 @@
 import { styleChoice } from './ai-style-view.mjs';
 import { icon } from './ai-icons.mjs';
-import { contactName, contactSearch } from './ai-contact-name.mjs';
 import { personReplyEnabled } from './ai-reply-state.mjs';
+import { contactPickerMatches, contactPickerRow } from './ai-contact-picker.mjs';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const avatar = (contact, index = 0) => `<span class="ai-monogram ai-avatar-${index % 6}" aria-hidden="true">${esc([...contact.label][0])}</span>`;
 export function objectList(state, view) {
-  const query = view.search.normalize('NFKC').toLocaleLowerCase();
-  return state.contacts.filter(c => c.kind === view.kind && (!query || contactSearch(c).includes(query))).map((c, i) => {
+  return contactPickerMatches(state.contacts, view.kind, view.search).map((c, i) => {
     const profile = state.profiles.find(p => p.contact === c.id), style = styleChoice(profile);
     const on = c.kind === 'group' ? !!(profile?.groupOptions?.atMe || profile?.groupOptions?.atAll || profile?.groupOptions?.realtime) : personReplyEnabled(state, profile);
     const draftStyleId = c.id === view.selected ? view.draft?.styleId : undefined;
@@ -15,7 +13,7 @@ export function objectList(state, view) {
     const maxRounds = profile?.replyStrategy?.maxRounds ?? state.replyRoundLimits?.[c.kind] ?? profile?.strategy?.maxRounds ?? state.replyStrategy?.maxRounds ?? state.strategy?.maxRounds ?? 50;
     const rounds = c.kind === 'group' ? profile?.mentionRounds || 0 : profile?.rounds || 0;
     const limited = maxRounds !== 'unlimited' && rounds >= maxRounds && (c.kind !== 'group' || profile?.groupOptions?.atMe || profile?.groupOptions?.atAll);
-    return `<button type="button" class="ai-object-row ${c.id === view.selected ? 'selected' : ''}" data-ai-object="${esc(c.id)}" aria-pressed="${c.id === view.selected}">${avatar(c, i)}<span class="ai-contact-info"><b>${contactName(c)}</b>${on ? `<small>${styleLabel}</small>` : ''}${limited ? `<small class="ai-contact-limit" role="status">${c.kind === 'group' ? '提及回复已达上限' : '已达自动回复上限'} ${rounds}/${maxRounds}</small>` : ''}</span>${profile?.paused ? '<span class="ai-contact-status">已暂停</span>' : ''}</button>`;
+    return contactPickerRow(c, { index: i, selected: c.id === view.selected, button: `data-ai-object="${esc(c.id)}"`, detail: `${on ? `<small>${styleLabel}</small>` : ''}${limited ? `<small class="ai-contact-limit" role="status">${c.kind === 'group' ? '提及回复已达上限' : '已达自动回复上限'} ${rounds}/${maxRounds}</small>` : ''}`, trailing: profile?.paused ? '<span class="ai-contact-status">已暂停</span>' : '' });
   }).join('') || '<p class="ai-empty">暂无匹配对象，请刷新列表。</p>';
 }
 export { objectPage } from './ai-object-page-new.mjs';

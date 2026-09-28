@@ -2,7 +2,7 @@ import { dateRangeField, chooseDateRange } from './ai-date-range.mjs';
 import { providerPage } from './ai-provider-view.mjs';
 import { icon, iconSprite, logoIcon } from './ai-icons.mjs';
 import { keyIcon } from './ai-key-icon.mjs';
-import { memoryFields, pendingMemoryFields, wikiEntryMarkup, sameWikiEntries } from './ai-memory-view.mjs';
+import { memoryFields, pendingMemoryFields, wikiEntryMarkup, sameWikiEntries, degreeOptions } from './ai-memory-view.mjs';
 import { objectPage, objectList } from './ai-object-view.mjs';
 import { replyLimitControl, syncReplyLimitControl, parseReplyLimit, replyLimitManualMax } from './ai-reply-limit.mjs';
 import { styleChoice, styleSummary as styleSummaryText } from './ai-style-view.mjs';
@@ -12,6 +12,7 @@ import { activityPage, activityEntries, activityRows, proactiveRecordRows, liveA
 import { beijingTime, createProactiveUI } from './ai-proactive-view.mjs';
 import { RecordCache, mergeRecordResults } from './ai-record-cache.mjs';
 import { contactName, contactSearch as searchableContact } from './ai-contact-name.mjs';
+import { contactPickerMatches, contactPickerRow, openContactPickerDialog } from './ai-contact-picker.mjs';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const eventLabels = { contacted: '已主动联系', replied: '已自动回复', manual: '已交由你回复', limit: '已达到回复上限', skip: '本轮无需回复', stop: '已收到停止联系要求', uncertain: '发送结果未知，本次不重发', error: '任务已暂停', failed: '对象不可读取，本次未发送' };
 const names = { formality: '正式程度', warmth: '亲切程度', length: '回复长度', directness: '表达方式', emoji: '表情使用', humor: '幽默程度' };
@@ -48,7 +49,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   let replyDraft = null, editingProfile = null, profileReturn = 'results';
   let contactsLoaded = false, contactsLoading = false, resultProfileIds = null;
   let lastAutoScanAt = 0;
-  let editingReplyContact = null, replyContactSearch = '', contactSearch = '';
+  let editingReplyContact = null, replyContactSearch = '', contactSearch = '', learnContactKind = 'person';
   let modelDraft = null, providerRevision = 0, revealRevision = 0, learningDraft = null, renderedView = '';
   const profileDrafts = new Map();
   const manualReplyDrafts = new Map();
@@ -56,6 +57,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   let learnRange = { from: '', to: '' }, learnScope = 'range', learnRangeMode = 'all', learnTarget = 'both', memoryPendingSignature = '';
   let defaultStylePerspective = 'self', defaultStyleMode = 'contacts';
   let defaultStyleReturn = 'settings';
+  let contactDialog = null;
   let analysisDraft = { request: '', from: '', to: '', contacts: [], includeVoice: false, includeVisual: false }, analysisRangeMode = 'all', analysisRangeBeforeCustom = null, analysisContactsExpanded = false, analysisResult = null, analysisSearch = '', analysisHistoryReport = null, analysisHistoryEpoch = 0;
   let analysisExportSelecting = false, analysisExportSelected = new Set(), analysisExportDialog = null, analysisExportController = null;
   let objectKind = 'person', selectedObject = '', objectSection = 'reply', objectMemoryCategory = 'name', objectSearch = '', logFilters = { source: 'reply' };
@@ -607,25 +609,24 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     return profiles.map(p => `<details class="ai-style-group" data-ai-result-profile="${esc(p.id)}" open><summary>${profileName(p)}</summary><h4>风格</h4>${styleSummary(p)}<h4>记忆</h4><p class="ai-result-memory">${esc(p.memory?.summary || '暂无明确记忆')}</p>${(p.replyStrategy?.replyGoal || p.strategy?.replyGoal) ? `<p class="ai-help">专属回复目的：${esc(p.replyStrategy?.replyGoal || p.strategy.replyGoal)}</p>` : ''}${edit(p)}</details>`).join('');
   }
   function contactPickerRows(contacts, query) {
-    const q = (query || '').trim().normalize('NFKC').toLocaleLowerCase();
-    const rows = contacts.filter(c => !q || searchableContact(c).includes(q)).map(c => `<label class="ai-check"><input type="checkbox" data-ai-contact="${esc(c.id)}" ${selectedContacts.has(c.id) ? 'checked' : ''} ${!['person', 'group'].includes(c.kind) ? 'disabled' : ''}><span class="ai-learning-avatar" aria-hidden="true">${esc([...String(c.label || c.name || '?')][0])}</span><span>${contactName(c)}${learnedProfiles().some(p => p.contact === c.id) ? '<small class="ai-badge blue">已学习</small>' : ''}${c.kind === 'group' ? '<small>群聊</small>' : ''}</span></label>`).join('');
+    const learned = new Set(learnedProfiles().map(p => p.contact));
+    const rows = contactPickerMatches(contacts, null, query).map((c, index) => contactPickerRow(c, { index, multiple: true, selected: selectedContacts.has(c.id), input: `data-ai-contact="${esc(c.id)}"`, disabled: !['person', 'group'].includes(c.kind), detail: learned.has(c.id) ? '<small>已学习</small>' : '' })).join('');
     if (rows) return rows;
-    if (q) return '<p class="ai-help">未找到匹配的联系人。</p>';
-    return `<p class="ai-help">${contactsLoading ? '正在获取联系人…' : '暂未获取到联系人，请确认微信已登录后刷新。'}</p>`;
+    if (String(query || '').trim()) return `<p class="ai-help">未找到匹配的${tab === 'learning' && learnContactKind === 'group' ? '群聊' : '联系人'}。</p>`;
+    return `<p class="ai-help">${contactsLoading ? '正在获取联系人…' : tab === 'learning' && learnContactKind === 'group' ? '暂无群聊，可以刷新列表。' : '暂未获取到联系人，请确认微信已登录后刷新。'}</p>`;
+  }
+  function selectedContactRows(kinds = ['person', 'group']) {
+    const chosen = (state.contacts || []).filter(c => kinds.includes(c.kind) && selectedContacts.has(c.id));
+    return chosen.length ? chosen.map((contact, index) => contactPickerRow(contact, { index, selected: true, button: `data-ai-remove-contact="${esc(contact.id)}"`, trailing: '<span aria-hidden="true">×</span>' })).join('') : '<p class="ai-help">还没有选择联系人。</p>';
   }
   function contactPicker(headingSide = '', note = '', kinds = null) {
-    const contacts = (state.contacts || []).filter(c => (kinds || ['person', 'group']).includes(c.kind));
-    const search = contacts.length ? `<label class="ai-analysis-search ai-contact-search">${icon('search')}<span class="sr-only">搜索联系人</span><input id="ai-contact-search" type="search" placeholder="搜索联系人…" value="${esc(contactSearch)}"></label>` : '';
-    return `<section class="ai-card ai-learning-contacts"><div class="ai-card-heading"><div><h4>选择联系人</h4><p>${note || '勾选要学习聊天风格的联系人或群聊。每位联系人单独学习并保存。'}</p></div>${headingSide}</div><div class="ai-actions ai-learning-contact-actions"><button type="button" class="secondary" data-ai-action="scan">${icon('refresh')}刷新联系人</button><button type="button" class="quiet" data-ai-action="select-contacts">选择未学习的联系人</button><button type="button" class="quiet" data-ai-action="clear-contacts">取消选择</button></div>${search}<div class="ai-contact-list" aria-label="选择联系人">${contactPickerRows(contacts, contactSearch)}</div><p id="ai-contact-count" class="ai-help ai-learning-count" aria-live="polite">已选择 ${selectedContacts.size} 位联系人</p></section>`;
+    return `<section class="ai-card ai-learning-contacts ai-contact-picker"><div class="ai-card-heading"><div><h4>选择联系人</h4><p>${note || '选择要学习聊天风格的联系人或群聊。'}</p></div><button type="button" class="secondary" data-ai-action="open-contact-picker">选择联系人</button></div><p id="ai-contact-count" class="ai-help ai-learning-count" aria-live="polite">已选择 ${selectedContacts.size} 位联系人</p><div class="ai-selected-contact-list ai-contact-picker-list">${selectedContactRows(kinds || ['person', 'group'])}</div>${headingSide}</section>`;
   }
   function learnTargetCards() {
     return `<div class="ai-learn-targets" role="radiogroup" aria-label="学习目标">${LEARN_TARGETS.map(t => `<label class="ai-learn-target${learnTarget === t.id ? ' selected' : ''}"><input type="radio" name="learnTarget" value="${esc(t.id)}" ${learnTarget === t.id ? 'checked' : ''}><span class="ai-learn-target-mark" aria-hidden="true"></span><span class="ai-learn-target-text"><strong>${esc(t.label)}</strong><small>${esc(t.hint)}</small></span></label>`).join('')}</div>`;
   }
   function learning() {
-    const contacts = state.contacts || [];
-    const people = contacts.filter(c => c.kind === 'person'), groups = contacts.filter(c => c.kind === 'group');
-    const choices = `${people.length ? `<h5>联系人</h5>${contactPickerRows(people, contactSearch)}` : ''}${groups.length ? `<h5>群聊</h5>${contactPickerRows(groups, contactSearch)}` : ''}` || '<p class="ai-help">暂未获取到联系人，请确认微信已登录后刷新。</p>';
-    return `<div class="ai-learning-page ai-reference-learning"><div class="ai-reference-learning-top"><button type="button" class="secondary" data-ai-nav="overview">← 返回</button><h3>批量学习风格与记忆</h3></div><div class="ai-reference-learning-shell"><section class="ai-card ai-reference-learning-list"><header><h4>选择联系人或群聊</h4><span id="ai-contact-count">已选 ${selectedContacts.size} 位</span></header><div class="ai-reference-learning-tools"><label class="ai-analysis-search ai-contact-search">${icon('search')}<span class="sr-only">搜索联系人或群聊</span><input id="ai-contact-search" type="search" placeholder="搜索联系人或群聊" value="${esc(contactSearch)}"></label><button type="button" class="secondary" data-ai-action="scan">刷新联系人</button><button type="button" class="secondary" data-ai-action="select-contacts">选择未学习</button><button type="button" class="secondary" data-ai-action="clear-contacts">清空</button></div><div class="ai-reference-learning-choices ai-contact-list" aria-label="选择联系人">${choices}</div></section><aside class="ai-card ai-reference-learning-config"><section><h4>学习目标</h4>${learnTargetCards()}</section><section><h4>聊天时间范围</h4><div class="ai-reference-range-pills"><button type="button" data-ai-learn-range="all" class="${learnRangeMode === 'all' ? 'active' : ''}">全部记录</button><button type="button" data-ai-learn-range="custom" class="${learnRangeMode === 'custom' ? 'active' : ''}">自定义日期</button></div>${learnRangeMode === 'custom' ? `<div class="ai-reference-learning-dates"><label>开始日期<input type="date" data-ai-learn-date="from" value="${esc(learnRange.from)}"></label><label>结束日期<input type="date" data-ai-learn-date="to" value="${esc(learnRange.to)}"></label></div>` : ''}</section><footer><button type="button" class="primary" data-ai-action="learn-selected" ${selectedContacts.size ? '' : 'disabled'}>开始学习 ${selectedContacts.size ? `(${selectedContacts.size})` : ''}</button><small>每位对象独立学习，结果逐位确认</small></footer></aside></div></div>`;
+    return `<div class="ai-learning-page ai-reference-learning"><div class="ai-reference-learning-top"><button type="button" class="secondary" data-ai-nav="overview">← 返回</button><h3>批量学习风格与记忆</h3></div><div class="ai-reference-learning-shell"><section class="ai-card ai-reference-learning-list ai-contact-picker"><header><h4>选择联系人或群聊</h4><span id="ai-contact-count">已选 ${selectedContacts.size} 位</span></header><div class="ai-reference-learning-tools"><button type="button" class="primary" data-ai-action="open-contact-picker">选择联系人或群聊</button><button type="button" class="secondary" data-ai-action="scan">刷新联系人</button><button type="button" class="secondary" data-ai-action="select-contacts">选择未学习（每次 20 位）</button><button type="button" class="secondary" data-ai-action="clear-contacts">清空</button></div><div class="ai-reference-learning-choices ai-selected-contact-list ai-contact-picker-list" aria-label="已选择的联系人或群聊">${selectedContactRows()}</div></section><aside class="ai-card ai-reference-learning-config"><section><h4>学习目标</h4>${learnTargetCards()}</section><section><h4>聊天时间范围</h4><div class="ai-reference-range-pills"><button type="button" data-ai-learn-range="all" class="${learnRangeMode === 'all' ? 'active' : ''}">全部记录</button><button type="button" data-ai-learn-range="custom" class="${learnRangeMode === 'custom' ? 'active' : ''}">自定义日期</button></div>${learnRangeMode === 'custom' ? `<div class="ai-reference-learning-dates"><label>开始日期<input type="date" data-ai-learn-date="from" value="${esc(learnRange.from)}"></label><label>结束日期<input type="date" data-ai-learn-date="to" value="${esc(learnRange.to)}"></label></div>` : ''}</section><footer><button type="button" class="primary" data-ai-action="learn-selected" ${selectedContacts.size ? '' : 'disabled'}>开始学习 ${selectedContacts.size ? `(${selectedContacts.size})` : ''}</button><small>每位对象独立学习，结果逐位确认</small></footer></aside></div></div>`;
   }
   function chooseLearnTarget(title) {
     return new Promise(resolve => {
@@ -643,19 +644,20 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     });
   }
   function pasteModule() {
-    return `<details class="ai-paste"><summary>${icon('plus')}粘贴聊天学习</summary><form id="ai-paste-form"><label class="ai-field">聊天内容<textarea name="text" required maxlength="90000" rows="7" placeholder="我：……&#10;对方：……"></textarea></label><p class="ai-help">学习结果将更新默认风格，用于没有单独风格的联系人自动回复。</p><button type="submit" class="primary">学习这段聊天</button></form></details>`;
+    return `<form id="ai-paste-form" class="ai-default-paste-form"><h4>粘贴聊天内容</h4><p class="ai-help">按聊天顺序粘贴，区分“我”和“对方”。</p><label class="ai-field"><span class="sr-only">聊天内容</span><textarea name="text" required maxlength="90000" rows="9" placeholder="我：你好，周五的会议时间可以调整吗？&#10;对方：可以的，改到下午三点吧。"></textarea></label><p class="ai-help">学习结果生成后，确认并保存才会生效。</p></form>`;
   }
   function defaultStyleLearning() {
     const ds = state.learnedDefaultStyle || null;
-    const perspective = defaultStylePerspective;
-    const perspectiveLabel = p => p === 'other' ? '对方的风格' : '自己与对方聊天的风格';
+    const perspectiveLabel = p => p === 'other' ? '对方的风格' : '我的风格';
     const meta = ds ? `${perspectiveLabel(ds.perspective)}${ds.source === 'paste' ? ' · 来自粘贴的聊天' : ` · 基于 ${ds.labels?.length || ds.contacts?.length || 0} 位联系人的聊天`}${ds.learnedAt ? ` · ${new Date(ds.learnedAt).toLocaleString('zh-CN', { hour12: false })}` : ''}` : '';
-    const current = ds ? `<section class="ai-card ai-default-current"><div class="ai-card-heading"><div><h4>当前风格</h4><p>${esc(meta)}，应用于没有单独风格设置的联系人和群聊。</p></div><span class="ai-badge blue">已保存</span></div><form id="ai-default-style-form"><label class="ai-field">风格总结（可修改）<textarea name="summary" maxlength="6000" rows="11" placeholder="用自然语言描述默认的口吻与表达习惯">${esc(ds.style?.summary || summaryText(ds.style))}</textarea></label><div class="ai-actions"><button type="submit" class="primary">保存</button><button type="button" class="secondary" data-ai-action="cancel-default-style">取消本次学习</button></div><p class="ai-help">保存后将同步给选择「默认风格」的对象。只有改动过说明文字才会变成该对象自己的自定义风格。取消会恢复学习前的默认风格；学习前没有默认风格时，取消会清除这次结果。</p></form></section>` : `<section class="ai-card ai-default-current ai-default-empty"><div><span class="ai-badge muted">尚未设置</span><h4>当前还没有默认风格</h4><p>从左侧联系人聊天或粘贴聊天内容开始学习。结果确认并保存后，才会应用于没有单独风格设置的对象。</p></div></section>`;
+    const current = ds ? `<section class="ai-card ai-default-current"><div class="ai-card-heading"><h4>当前默认风格</h4><span class="ai-badge blue">${state.defaultStyleUndoable ? '待确认' : '已保存'}</span></div><form id="ai-default-style-form"><label class="ai-field"><span class="sr-only">风格总结</span><textarea name="summary" maxlength="6000" rows="11" placeholder="用自然语言描述默认的口吻与表达习惯">${esc(ds.style?.summary || summaryText(ds.style))}</textarea></label><small class="ai-default-count">${String(ds.style?.summary || summaryText(ds.style)).length} / 6000</small><p class="ai-help">${esc(meta)}。这将作为后续自动回复的默认风格。</p><div class="ai-actions"><button type="submit" class="primary">保存修改</button>${state.defaultStyleUndoable ? '<button type="button" class="secondary" data-ai-action="cancel-default-style">取消当前学习</button>' : ''}</div></form></section>` : `<section class="ai-card ai-default-current ai-default-empty"><div><span class="ai-badge muted">尚未设置</span><h4>当前还没有默认风格</h4><p>选择联系人聊天或粘贴聊天内容开始学习。确认并保存后，才会应用于没有单独风格设置的对象。</p></div></section>`;
     const backLabel = ({ overview: '自动回复', settings: '系统设置', results: '学习结果', learning: '学习聊天风格', profile: '学习结果', 'manual-reply': '自动回复' })[defaultStyleReturn] || '系统设置';
-    const sourceTabs = `<div class="ai-default-source-tabs" role="tablist" aria-label="学习素材来源"><button type="button" role="tab" data-ai-default-mode="contacts" aria-selected="${defaultStyleMode === 'contacts'}" class="${defaultStyleMode === 'contacts' ? 'selected' : ''}">联系人聊天</button><button type="button" role="tab" data-ai-default-mode="paste" aria-selected="${defaultStyleMode === 'paste'}" class="${defaultStyleMode === 'paste' ? 'selected' : ''}">粘贴聊天</button></div>`;
-    const contacts = `<section class="ai-card ai-default-source" data-ai-default-source="contacts" ${defaultStyleMode === 'contacts' ? '' : 'hidden'}><div class="ai-card-heading"><div><h4>选择学习素材</h4><p>每位联系人单独学习后，再汇总为账号默认风格。</p></div></div>${contactPicker(`<div class="ai-learning-heading-tools"><button type="button" class="primary" data-ai-action="learn-default" ${selectedContacts.size ? '' : 'disabled'}>${icon('sparkle')}学习默认风格</button>${dateRangeField('learning',learnRange,{compact:true,label:'时间筛选'})}</div>`, '选择一位或多位联系人；仅读取所选联系人的聊天记录。', ['person'])}</section>`;
-    const paste = `<section class="ai-card ai-default-source" data-ai-default-source="paste" ${defaultStyleMode === 'paste' ? '' : 'hidden'}><div class="ai-card-heading"><div><h4>粘贴聊天内容</h4><p>整理为“我：… / 对方：…”后提交学习，不会自动保存结果。</p></div></div>${pasteModule()}</section>`;
-    return `<div class="ai-default-style-page"><div class="ai-page-heading ai-learning-page-heading"><div><button type="button" class="quiet ai-learning-back" data-ai-nav="${esc(defaultStyleReturn)}">${icon('arrow-l')}返回${esc(backLabel)}</button><h3>学习默认风格</h3><p>从联系人聊天或粘贴内容生成一份账号级风格，结果需确认并保存后生效。</p></div></div><div class="ai-default-style-layout"><section class="ai-default-material"><div class="ai-default-material-head"><div><h4>学习素材</h4><p>选择联系人聊天或粘贴内容</p></div>${sourceTabs}</div>${contacts}${paste}</section><aside class="ai-default-result">${current}</aside></div></div>`;
+    const sourceTabs = `<div class="ai-default-source-tabs" role="tablist" aria-label="学习素材来源"><button type="button" role="tab" data-ai-default-mode="contacts" aria-selected="${defaultStyleMode === 'contacts'}" class="${defaultStyleMode === 'contacts' ? 'selected' : ''}">${icon('chat')}<strong>联系人聊天</strong><small>选择与特定联系人的聊天记录</small></button><button type="button" role="tab" data-ai-default-mode="paste" aria-selected="${defaultStyleMode === 'paste'}" class="${defaultStyleMode === 'paste' ? 'selected' : ''}">${icon('file')}<strong>粘贴聊天</strong><small>直接粘贴聊天内容文本</small></button></div>`;
+    const direction = `<section class="ai-default-direction"><h4>学习方向</h4><p class="ai-help">确定以谁的聊天风格为主要参考</p><div class="ai-default-perspectives"><label><input type="radio" name="default-perspective" value="self" ${defaultStylePerspective === 'self' ? 'checked' : ''}><span><strong>我的风格</strong><small>学习我在聊天中的表达方式，作为默认风格</small></span></label><label><input type="radio" name="default-perspective" value="other" ${defaultStylePerspective === 'other' ? 'checked' : ''}><span><strong>对方的风格</strong><small>仅学习对方的说话方式和表达习惯</small></span></label></div></section>`;
+    const range = `<section class="ai-default-range ai-default-source" data-ai-default-source="contacts" ${defaultStyleMode === 'contacts' ? '' : 'hidden'}><h4>时间范围</h4><p class="ai-help">选择要用于学习的聊天记录时间范围</p><div class="ai-reference-learning-range-pills">${[['all','全部'],['day','近一天'],['week','近一周'],['month','近一月'],['custom','自定义']].map(([key,label])=>`<button type="button" data-ai-default-range="${key}" class="${learnRangeMode === key ? 'active' : ''}">${label}</button>`).join('')}</div>${learnRangeMode === 'custom' ? dateRangeField('learning',learnRange,{compact:true,label:'选择日期'}) : ''}</section>`;
+    const contacts = `<section class="ai-default-source" data-ai-default-source="contacts" ${defaultStyleMode === 'contacts' ? '' : 'hidden'}>${contactPicker('', '选择一位或多位联系人；仅读取所选联系人的聊天记录。', ['person'])}</section>`;
+    const paste = `<section class="ai-default-source" data-ai-default-source="paste" ${defaultStyleMode === 'paste' ? '' : 'hidden'}>${pasteModule()}</section>`;
+    return `<div class="ai-default-style-page"><div class="ai-page-heading ai-learning-page-heading"><div><button type="button" class="quiet ai-learning-back" data-ai-nav="${esc(defaultStyleReturn)}">${icon('arrow-l')}返回${esc(backLabel)}</button><h3>学习默认风格</h3><p>通过你的聊天素材，学习并建立默认的回复风格。</p></div></div><div class="ai-default-style-layout"><aside class="ai-default-result">${current}</aside><section class="ai-card ai-default-material"><h3>重新学习</h3><p class="ai-help">选择聊天素材和学习方向，基于真实聊天内容重新学习并更新默认风格。</p>${sourceTabs}${contacts}${paste}${direction}${range}<button type="button" class="primary ai-default-learn ai-default-source" data-ai-default-source="contacts" data-ai-action="learn-default" ${defaultStyleMode === 'contacts' ? '' : 'hidden'} ${selectedContacts.size ? '' : 'disabled'}>${icon('sparkle')}学习默认风格</button><button type="submit" form="ai-paste-form" class="primary ai-default-learn ai-default-source" data-ai-default-source="paste" ${defaultStyleMode === 'paste' ? '' : 'hidden'}>${icon('sparkle')}学习默认风格</button></section></div></div>`;
   }
   function results() {
     const profiles = learnedProfiles().filter(p => !resultProfileIds || resultProfileIds.has(p.id));
@@ -794,25 +796,9 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       const result = await execute('scan');
       if (!result || current !== generation || target !== id) return;
       contactsLoaded = true; state.operation = null; lastAutoScanAt = 0;
-      for (const selected of [selectedContacts]) for (const key of selected) if (!state.contacts.some(c => c.id === key && ['person', 'group'].includes(c.kind))) selected.delete(key);
+      if (!contactDialog) for (const key of selectedContacts) if (!state.contacts.some(c => c.id === key && ['person', 'group'].includes(c.kind))) selectedContacts.delete(key);
       contactsLoading = false; render(); message(state.notice || (state.contacts.length ? '联系人已更新' : '暂未获取到联系人，请确认微信已登录后重试'));
     } finally { if (current === generation && target === id) { contactsLoading = false; controls(); } }
-  }
-  function chooseDefaultPerspective() {
-    return new Promise(resolve => {
-      const dialog = document.createElement('dialog');
-      dialog.className = 'ai-calendar-dialog ai-perspective-dialog';
-      const option = (value, title, desc) => `<label class="ai-perspective"><input type="radio" name="default-perspective" value="${value}" ${defaultStylePerspective === value ? 'checked' : ''}><strong>${title}</strong><small>${desc}</small></label>`;
-      let confirmed = null;
-      dialog.innerHTML = `<h3>选择学习方向</h3><p class="ai-perspective-help">将把所选 ${selectedContacts.size} 位联系人的聊天记录合并读取，综合出一份通用默认风格。</p><div class="ai-perspective-options">${option('self', '自己与对方聊天的风格', '学习你与这些联系人聊天时的表达习惯，AI 以你的口吻回复')}${option('other', '对方的风格', '学习这些联系人在聊天中的表达习惯，AI 借鉴对方的口吻')}</div><footer class="ai-actions"><button type="button" class="secondary" data-cancel>取消</button><button type="button" class="primary" data-apply>开始学习</button></footer>`;
-      dialog.addEventListener('close', () => { dialog.remove(); resolve(confirmed); }, { once: true });
-      dialog.addEventListener('click', event => {
-        const button = event.target.closest('button'); if (!button) return;
-        if (button.hasAttribute('data-cancel')) dialog.close();
-        if (button.hasAttribute('data-apply')) { confirmed = dialog.querySelector('input[name=default-perspective]:checked')?.value || 'self'; defaultStylePerspective = confirmed; dialog.close(); }
-      });
-      document.body.append(dialog); dialog.showModal();
-    });
   }
   async function learn(value) {
     // 学习目标：默认「风格 + 记忆」（沿用原有行为）；仅风格不动记忆；仅记忆读取全量聊天并增量合并。
@@ -917,7 +903,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         if (calendar && !dateType) { dateType = document.createElement('label'); dateType.className = 'ai-wiki-date-type'; dateType.innerHTML = '历法<select aria-label="生日历法"><option value="">未确定</option><option value="solar">公历</option><option value="lunar">农历</option></select>'; wikiRow.insertBefore(dateType, wikiRow.querySelector('[data-ai-wiki-remove]')); }
         if (dateType) dateType.hidden = !calendar;
         let degree = wikiRow.querySelector('[aria-label="学历"]');
-        if (school && !degree) { degree = document.createElement('input'); degree.className = 'ai-wiki-degree'; degree.setAttribute('aria-label', '学历'); degree.maxLength = 120; degree.placeholder = '学历'; wikiRow.insertBefore(degree, wikiRow.querySelector('[data-ai-wiki-remove]')); }
+        if (school && !degree) { degree = document.createElement('select'); degree.className = 'ai-wiki-degree'; degree.setAttribute('aria-label', '学历'); degree.innerHTML = degreeOptions(); wikiRow.insertBefore(degree, wikiRow.querySelector('[data-ai-wiki-remove]')); }
         if (degree) degree.hidden = !school;
         wikiRow.classList.toggle('ai-wiki-school', school);
         if (school && !wikiRow.querySelector('[aria-label="信息内容"]').value) wikiRow.querySelector('[aria-label="信息内容"]').placeholder = '具体学校';
@@ -945,7 +931,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         minutes.querySelector('[name="minutes"]').disabled = !input.checked;
       }
       if (proactiveUI.change(input)) return;
-      if (input.name === 'default-perspective') { defaultStylePerspective = input.value; rememberDraft(); render(); return; }
+      if (input.name === 'default-perspective') { defaultStylePerspective = input.value; return; }
       if (input.id === 'ai-learning-scope') { rememberDraft(); learnScope = input.value; render(); return; }
       if (input.dataset.aiLearnDate) { learnRange = { ...learnRange, [input.dataset.aiLearnDate]: input.value }; return; }
       if (input.name === 'learnTarget') { rememberDraft(); learnTarget = LEARN_TARGETS.some(t => t.id === input.value) ? input.value : 'both'; render(); return; }
@@ -1070,7 +1056,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     if (event.target.id === 'ai-contact-search') {
       contactSearch = event.target.value;
       const list = $('.ai-contact-list');
-      if (list) list.innerHTML = contactPickerRows((state.contacts || []).filter(c => pickerKinds().includes(c.kind)), contactSearch);
+      if (list) list.innerHTML = contactPickerRows((state.contacts || []).filter(c => tab === 'learning' ? c.kind === learnContactKind : pickerKinds().includes(c.kind)), contactSearch);
       return;
     }
     if (event.target.closest('#ai-model-form')) {
@@ -1278,11 +1264,20 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         if (details) { details.open = false; details.querySelector('summary')?.focus(); }
         return;
       }
-      if ('aiAnalysisContactsToggle' in button.dataset || 'aiAnalysisContactsDone' in button.dataset) {
+      if (button.dataset.aiRemoveContact) { selectedContacts.delete(button.dataset.aiRemoveContact); render(); return; }
+      if ('aiAnalysisContactsToggle' in button.dataset || 'aiAnalysisPick' in button.dataset) {
         rememberDraft();
-        analysisContactsExpanded = 'aiAnalysisContactsToggle' in button.dataset ? !analysisContactsExpanded : false;
-        render();
-        $('#ai-analysis-form [data-ai-analysis-contacts-toggle]')?.focus();
+        const account = state.account, current = generation;
+        const selected = analysisDraft.contacts.map(key => state.contacts.find(c => c.id === key && c.kind === 'person') || { id: key, label: key, kind: 'person' });
+        contactDialog?.close();
+        contactDialog = openContactPickerDialog({ parent: panel, title: '选择分析对象', description: '可多选，逐位独立生成报告', kinds: ['person'], selected,
+          getContacts: retained => {
+            const contacts = new Map((state?.contacts || []).filter(c => c.kind === 'person').map(c => [c.id, c]));
+            for (const c of retained) if (!contacts.has(c.id)) contacts.set(c.id, { ...c, missing: true });
+            return [...contacts.values()];
+          },
+          onRefresh: refreshContacts, onClose: () => { contactDialog = null; },
+          onConfirm: contacts => { if (current !== generation || account !== state?.account) return; analysisDraft.contacts = contacts.map(c => c.id); analysisContactsExpanded = true; render(); $('#ai-analysis-form [data-ai-analysis-contacts-toggle]')?.focus(); } });
         return;
       }
       if (button.dataset.aiDefaultMode) {
@@ -1445,6 +1440,19 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         return;
       }
       if (button.dataset.aiLearnRange) { learnRangeMode = button.dataset.aiLearnRange; if (learnRangeMode === 'all') learnRange = { from: '', to: '' }; render(); return; }
+      if (button.dataset.aiDefaultRange) {
+        learnRangeMode = button.dataset.aiDefaultRange;
+        if (learnRangeMode === 'all') learnRange = { from: '', to: '' };
+        else if (learnRangeMode !== 'custom') {
+          const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' });
+          const start = new Date(`${today}T00:00:00Z`);
+          start.setUTCDate(start.getUTCDate() - ({ day: 0, week: 6, month: 29 })[learnRangeMode]);
+          learnRange = { from: start.toISOString().slice(0, 10), to: today };
+        }
+        render();
+        if (learnRangeMode === 'custom') $('[data-ai-date-range="learning"]')?.click();
+        return;
+      }
       if ('aiStyle' in button.dataset) {
         const form = $('#ai-object-form'), styleId = button.dataset.aiStyle;
         const profile = state.profiles.find(p => p.contact === selectedObject), preset = state.schema.replyPresets.find(p => 'preset:' + p.id === styleId);
@@ -1459,6 +1467,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       }
       if (button.dataset.aiNav) { await navigate(button.dataset.aiNav); return; }
       if (button.dataset.aiKind) { rememberDraft(); objectKind = button.dataset.aiKind; selectedObject = ''; objectSection = 'reply'; objectMemoryCategory = objectKind === 'group' ? 'group_info' : 'name'; objectSearch = ''; render(); return; }
+      if (button.dataset.aiLearnKind) { learnContactKind = button.dataset.aiLearnKind; render(); return; }
       if (button.dataset.aiObjectSection) { rememberDraft(); objectSection = button.dataset.aiObjectSection; render(); return; }
       if (button.dataset.aiMemoryCategory) { rememberDraft(); objectMemoryCategory = button.dataset.aiMemoryCategory; render(); return; }
       if (button.dataset.aiObject) { rememberDraft(); selectedObject = button.dataset.aiObject; objectSection = 'reply'; objectMemoryCategory = objectKind === 'group' ? 'group_info' : 'name'; render(); return; }
@@ -1551,13 +1560,11 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       if (action === 'learn-default') {
         const picked = [...selectedContacts].filter(id => state.contacts.find(c => c.id === id)?.kind === 'person');
         if (!picked.length) throw new Error('请先选择至少一位联系人');
-        const perspective = await chooseDefaultPerspective();
-        if (!perspective) return;
-        await learn({ contacts: picked, perspective, asDefault: true, ...(learnScope === 'range' ? {...learnRange, scope:'range'} : {}) });
+        await learn({ contacts: picked, perspective: defaultStylePerspective, asDefault: true, ...(learnScope === 'range' ? {...learnRange, scope:'range'} : {}) });
       }
       if (action === 'cancel-default-style') {
-        const undoable = !!state.defaultStyleUndoable;
-        if (!window.confirm(undoable ? '取消本次学习？默认风格将恢复为学习前的内容，联系人与群聊的设置不受影响。' : '没有可撤销的本次学习，取消将清除默认风格：没有单独风格的联系人回到通用回复口吻。确定清除？')) return;
+        if (!state.defaultStyleUndoable) return;
+        if (!window.confirm('取消本次学习？默认风格将恢复为学习前的内容，联系人与群聊的设置不受影响。')) return;
         const current = generation;
         const cancelled = await execute('cancel-default-style', {});
         if (!cancelled || current !== generation) return;
@@ -1573,9 +1580,35 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         }
         await execute('cancel', {}, '已取消未完成的操作');
       }
+      if (action === 'open-contact-picker') {
+        const kinds = pickerKinds(), account = state.account, current = generation;
+        contactDialog?.close();
+        contactDialog = openContactPickerDialog({ parent: panel, title: kinds.length > 1 ? '选择联系人或群聊' : '选择联系人', kinds,
+          description: tab === 'learning' ? '每位对象独立学习，支持多选' : '选择要用于学习默认风格的联系人',
+          selected: state.contacts.filter(c => kinds.includes(c.kind) && selectedContacts.has(c.id)),
+          getContacts: retained => {
+            const contacts = new Map((state?.contacts || []).filter(c => kinds.includes(c.kind)).map(c => [c.id, c]));
+            for (const c of retained) if (!contacts.has(c.id)) contacts.set(c.id, { ...c, missing: true });
+            return [...contacts.values()];
+          },
+          detail: c => `${learnedProfiles().some(p => p.contact === c.id) ? '<small>已学习</small>' : ''}${c.missing ? '<small>本次列表未读取到，保留原选择</small>' : ''}`,
+          onRefresh: refreshContacts, onClose: () => { contactDialog = null; },
+          onConfirm: contacts => { if (current !== generation || account !== state?.account) return; selectedContacts.clear(); contacts.forEach(c => selectedContacts.add(c.id)); render(); } });
+        return;
+      }
       if (['select-contacts', 'clear-contacts'].includes(action)) {
-        rememberDraft(); selectedContacts.clear();
-        if (action === 'select-contacts') state.contacts.filter(c => pickerKinds().includes(c.kind) && !learnedProfiles().some(p => p.contact === c.id)).forEach(c => selectedContacts.add(c.id));
+        rememberDraft();
+        if (action === 'clear-contacts' || tab !== 'learning') selectedContacts.clear();
+        if (action === 'select-contacts') {
+          const learned = new Set(learnedProfiles().map(p => p.contact));
+          let added = 0;
+          for (const contact of state.contacts) {
+            if (tab === 'learning' && added >= 20) break;
+            if (!pickerKinds().includes(contact.kind) || learned.has(contact.id) || selectedContacts.has(contact.id)) continue;
+            selectedContacts.add(contact.id);
+            added++;
+          }
+        }
         render(); message('');
       }
       if (action === 'back-learning') { editingProfile = null; tab = profileReturn; render(); }
@@ -1602,10 +1635,11 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     show,
     attached: () => !!id,
     async attach(instanceId) {
+      contactDialog?.close();
       rememberRecords();
       analysisDraft = { request: '', from: '', to: '', contacts: [], includeVoice: false, includeVisual: false }; analysisRangeMode = 'all'; analysisRangeBeforeCustom = null; analysisContactsExpanded = false; analysisSearch = ''; analysisHistoryReport = null; analysisHistoryEpoch++; resetAnalysisExport(); learnRange = {from:'',to:''}; learnRangeMode = 'all'; learnScope='range'; learnTarget='both'; defaultStylePerspective = 'self'; analysisResult = null; proactiveUI.reset();
       reviewAlert.hidden = true;
-      concealKey(true); modelDraft = null; learningDraft = null; renderedView = ''; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); summaryResults.clear(); selectedObject = ''; objectSearch = ''; objectKind = 'person'; editingReplyContact = null; contactSearch = ''; providerRevision++;
+      concealKey(true); modelDraft = null; learningDraft = null; renderedView = ''; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); summaryResults.clear(); selectedObject = ''; objectSearch = ''; objectKind = 'person'; learnContactKind = 'person'; editingReplyContact = null; contactSearch = ''; providerRevision++;
       generation++; clearInterval(timer); id = instanceId; state = null; busy = false; polling = false; attaching = true; tab = 'overview'; replyDraft = null; editingProfile = null; contactsLoaded = false; contactsLoading = false; resultProfileIds = null;
       const attachedGeneration = generation;
       selectedContacts.clear(); replyProfiles.clear(); panel.hidden = true; rail.hidden = false; panel.setAttribute('aria-busy', 'false');
@@ -1626,6 +1660,6 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         finally { if (current === generation) polling = false; }
       }, 2500);
     },
-    detach() { analysisQueueToken++; analysisQueueAccount = null; rememberRecords(); proactiveRecordEpoch++; proactiveRecordLoading = false; proactiveHistory = []; proactiveHistoryPage = null; errorEpoch++; errorLoading = false; errorHistory = []; errorPage = null; logEpoch++; analysisDraft = { request: '', from: '', to: '', contacts: [] }; analysisSearch = ''; analysisHistoryReport = null; analysisHistoryEpoch++; resetAnalysisExport(); analysisResult = null; reviewAlert.hidden = true; concealKey(true); modelDraft = null; learningDraft = null; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); selectedObject = ''; objectSearch = ''; objectKind = 'person'; editingReplyContact = null; providerRevision++; generation++; clearInterval(timer); id = null; state = null; attaching = false; rail.hidden = true; panel.hidden = true; panel.querySelector(':scope > .ai-main-tabs')?.remove(); $('#ai-content').replaceChildren(); selectedContacts.clear(); replyProfiles.clear(); proactiveUI.reset(); replyDraft = null; },
+    detach() { contactDialog?.close(); analysisQueueToken++; analysisQueueAccount = null; rememberRecords(); proactiveRecordEpoch++; proactiveRecordLoading = false; proactiveHistory = []; proactiveHistoryPage = null; errorEpoch++; errorLoading = false; errorHistory = []; errorPage = null; logEpoch++; analysisDraft = { request: '', from: '', to: '', contacts: [] }; analysisSearch = ''; analysisHistoryReport = null; analysisHistoryEpoch++; resetAnalysisExport(); analysisResult = null; reviewAlert.hidden = true; concealKey(true); modelDraft = null; learningDraft = null; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); selectedObject = ''; objectSearch = ''; objectKind = 'person'; editingReplyContact = null; providerRevision++; generation++; clearInterval(timer); id = null; state = null; attaching = false; rail.hidden = true; panel.hidden = true; panel.querySelector(':scope > .ai-main-tabs')?.remove(); $('#ai-content').replaceChildren(); selectedContacts.clear(); replyProfiles.clear(); proactiveUI.reset(); replyDraft = null; },
   };
 }

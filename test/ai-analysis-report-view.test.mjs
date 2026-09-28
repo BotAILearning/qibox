@@ -19,12 +19,12 @@ test('分析方向保留全部字段并使用统一短标签，运行记录保�
   assert.match(activityPage({ contacts: [], activity: [], profiles: [] }), /id="ai-log-search" type="search"/);
 });
 
-test('聊天分析重排后仍保留选择、搜索、时间筛选、分析、复制和历史功能', () => {
+test('聊天分析重排后仍保留弹窗选择、时间筛选、分析、复制和历史功能', () => {
   const state = { contacts: [{ id: 'contact-1', label: '联系人', kind: 'person' }], analysis: { history: [] } };
   const draft = { contacts: ['contact-1'], request: '', from: '', to: '' };
   const result = { reports: [{ label: '联系人', status: 'complete', count: 2, metrics: { total: 2 }, report: '分析内容', excerpts: [] }] };
   const html = analysisPage(state, draft, result, '联系人');
-  for (const token of ['id="ai-analysis-form"', 'id="ai-analysis-search"', 'id="ai-analysis-contacts"', 'name="contacts"', 'name="request"', 'maxlength="1000"', 'id="ai-analysis-request-count"', '开始分析', 'data-analysis-report="0"', 'data-ai-copy-report="0"', '历史分析报告']) assert.ok(html.includes(token), `missing ${token}`);
+  for (const token of ['id="ai-analysis-form"', 'data-ai-analysis-pick', 'id="ai-analysis-contacts"', 'name="contacts"', 'name="request"', 'maxlength="1000"', 'id="ai-analysis-request-count"', '开始分析', 'data-analysis-report="0"', 'data-ai-copy-report="0"', '历史分析报告']) assert.ok(html.includes(token), `missing ${token}`);
   for (const token of ['name="includeVoice"', 'name="includeVisual"', '语音较多时需要更长时间', '需要模型支持图片输入']) assert.ok(html.includes(token), `missing ${token}`);
   assert.match(html, /<strong>分析方向<\/strong>/);
   assert.match(html, /开始分析 · 1 位/);
