@@ -12,7 +12,7 @@ import { activityPage, activityEntries, activityRows, proactiveRecordRows, liveA
 import { beijingTime, createProactiveUI } from './ai-proactive-view.mjs';
 import { RecordCache, mergeRecordResults } from './ai-record-cache.mjs';
 import { contactName, contactSearch as searchableContact } from './ai-contact-name.mjs';
-import { contactPickerMatches, contactPickerRow, openContactPickerDialog } from './ai-contact-picker.mjs';
+import { contactPickerMatches, contactPickerRow, openContactPickerDialog, setContactAvatarInstance, resetContactAvatarFailures, noteContactAvatarFailure } from './ai-contact-picker.mjs';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const eventLabels = { contacted: '已主动联系', replied: '已自动回复', manual: '已交由你回复', limit: '已达到回复上限', skip: '本轮无需回复', stop: '已收到停止联系要求', uncertain: '发送结果未知，本次不重发', error: '任务已暂停', failed: '对象不可读取，本次未发送' };
 const names = { formality: '正式程度', warmth: '亲切程度', length: '回复长度', directness: '表达方式', emoji: '表情使用', humor: '幽默程度' };
@@ -28,6 +28,7 @@ const serviceIdentity = value => `${String(value?.protocol || 'openai')}|${Strin
 
 export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, guard, ensure }) {
   const rail = document.querySelector('#ai-rail'), panel = document.querySelector('#ai-panel');
+  panel.addEventListener('error', event => { noteContactAvatarFailure(event.target); }, true);
   // guard：入口常驻后，操作开关 / 打开面板前由外层判断可用性，不满足时弹窗提醒并返回 false。
   const pass = () => guard ? guard() !== false : true;
   // ensure：入口常驻后入口可能先于实例挂载出现，操作前补一次挂载，避免用空实例 id 发请求。
@@ -265,7 +266,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   const pickerKinds = () => tab === 'default-style' ? ['person'] : ['person', 'group'];
   const modeTargets = mode => state[`${mode}Targets`] || state.targets;
   const replyStrategy = () => state.replyStrategy || state.strategy;
-  const needsContacts = () => !state.contacts?.length;
+  const needsContacts = () => !state.contacts?.length || state.avatarReady === false;
   const operationText = operation => {
     if (operation?.phase?.startsWith('analysis-')) {
       const labels = { 'analysis-reading': '读取聊天记录', 'analysis-voice': '转写语音', 'analysis-image': '读取图片', 'analysis-video': '解析视频', 'analysis-vision': '理解图片和视频', 'analysis-model': '生成报告' };
@@ -796,6 +797,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       const result = await execute('scan');
       if (!result || current !== generation || target !== id) return;
       contactsLoaded = true; state.operation = null; lastAutoScanAt = 0;
+      resetContactAvatarFailures();
       if (!contactDialog) for (const key of selectedContacts) if (!state.contacts.some(c => c.id === key && ['person', 'group'].includes(c.kind))) selectedContacts.delete(key);
       contactsLoading = false; render(); message(state.notice || (state.contacts.length ? '联系人已更新' : '暂未获取到联系人，请确认微信已登录后重试'));
     } finally { if (current === generation && target === id) { contactsLoading = false; controls(); } }
@@ -851,7 +853,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       if (id && !attaching) { const current = generation; void call().then(result => { if (result && current === generation && !panel.hidden) render(); }).catch(error => { if (current === generation) message(error.message, true); }); }
       return;
     }
-    if (state.settings.reply && tab === 'overview' && needsContacts() && !busy) {
+    if (tab === 'overview' && needsContacts() && !busy) {
       const current = generation;
       void refreshContacts().catch(error => { if (current === generation) message(error.message, true); });
     }
@@ -1640,7 +1642,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       analysisDraft = { request: '', from: '', to: '', contacts: [], includeVoice: false, includeVisual: false }; analysisRangeMode = 'all'; analysisRangeBeforeCustom = null; analysisContactsExpanded = false; analysisSearch = ''; analysisHistoryReport = null; analysisHistoryEpoch++; resetAnalysisExport(); learnRange = {from:'',to:''}; learnRangeMode = 'all'; learnScope='range'; learnTarget='both'; defaultStylePerspective = 'self'; analysisResult = null; proactiveUI.reset();
       reviewAlert.hidden = true;
       concealKey(true); modelDraft = null; learningDraft = null; renderedView = ''; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); summaryResults.clear(); selectedObject = ''; objectSearch = ''; objectKind = 'person'; learnContactKind = 'person'; editingReplyContact = null; contactSearch = ''; providerRevision++;
-      generation++; clearInterval(timer); id = instanceId; state = null; busy = false; polling = false; attaching = true; tab = 'overview'; replyDraft = null; editingProfile = null; contactsLoaded = false; contactsLoading = false; resultProfileIds = null;
+      generation++; clearInterval(timer); id = instanceId; setContactAvatarInstance(instanceId); state = null; busy = false; polling = false; attaching = true; tab = 'overview'; replyDraft = null; editingProfile = null; contactsLoaded = false; contactsLoading = false; resultProfileIds = null;
       const attachedGeneration = generation;
       selectedContacts.clear(); replyProfiles.clear(); panel.hidden = true; rail.hidden = false; panel.setAttribute('aria-busy', 'false');
       proactiveHistory = []; proactiveHistoryPage = null; proactiveRecordLoading = false; proactiveRecordEpoch++; errorHistory = []; errorPage = null; errorLoading = false; errorEpoch++;
@@ -1660,6 +1662,6 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         finally { if (current === generation) polling = false; }
       }, 2500);
     },
-    detach() { contactDialog?.close(); analysisQueueToken++; analysisQueueAccount = null; rememberRecords(); proactiveRecordEpoch++; proactiveRecordLoading = false; proactiveHistory = []; proactiveHistoryPage = null; errorEpoch++; errorLoading = false; errorHistory = []; errorPage = null; logEpoch++; analysisDraft = { request: '', from: '', to: '', contacts: [] }; analysisSearch = ''; analysisHistoryReport = null; analysisHistoryEpoch++; resetAnalysisExport(); analysisResult = null; reviewAlert.hidden = true; concealKey(true); modelDraft = null; learningDraft = null; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); selectedObject = ''; objectSearch = ''; objectKind = 'person'; editingReplyContact = null; providerRevision++; generation++; clearInterval(timer); id = null; state = null; attaching = false; rail.hidden = true; panel.hidden = true; panel.querySelector(':scope > .ai-main-tabs')?.remove(); $('#ai-content').replaceChildren(); selectedContacts.clear(); replyProfiles.clear(); proactiveUI.reset(); replyDraft = null; },
+    detach() { contactDialog?.close(); analysisQueueToken++; analysisQueueAccount = null; rememberRecords(); proactiveRecordEpoch++; proactiveRecordLoading = false; proactiveHistory = []; proactiveHistoryPage = null; errorEpoch++; errorLoading = false; errorHistory = []; errorPage = null; logEpoch++; analysisDraft = { request: '', from: '', to: '', contacts: [] }; analysisSearch = ''; analysisHistoryReport = null; analysisHistoryEpoch++; resetAnalysisExport(); analysisResult = null; reviewAlert.hidden = true; concealKey(true); modelDraft = null; learningDraft = null; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); selectedObject = ''; objectSearch = ''; objectKind = 'person'; editingReplyContact = null; providerRevision++; generation++; clearInterval(timer); id = null; setContactAvatarInstance(null); state = null; attaching = false; rail.hidden = true; panel.hidden = true; panel.querySelector(':scope > .ai-main-tabs')?.remove(); $('#ai-content').replaceChildren(); selectedContacts.clear(); replyProfiles.clear(); proactiveUI.reset(); replyDraft = null; },
   };
 }

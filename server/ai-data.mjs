@@ -5,6 +5,7 @@ import { AppError } from './files.mjs';
 import { NativeChatBridge } from './ai-native.mjs';
 import { DataWorker } from './ai-data-worker.mjs';
 import { preparedSend } from './ai-prepared-send.mjs';
+import { safeAvatarUrl } from './ai-avatar.mjs';
 
 const key = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 const label = value => typeof value === 'string' && !!value.trim() && value.length <= 120 && !/[\x00-\x1f\x7f]/.test(value);
@@ -315,10 +316,12 @@ export class DataChatBridge extends NativeChatBridge {
     for (const contact of result.contacts) {
       if (!key(contact.id) || !label(contact.label) || !nicknameValue(contact.nickname) || !['person', 'group'].includes(contact.kind) || bindings.has(contact.id) ||
           !key(contact.native?.account) || !key(contact.native?.contact)) throw unavailable();
-      bindings.set(contact.id, { ...contact, account: result.account });
+      const avatarUrl = safeAvatarUrl(contact.avatarUrl);
+      bindings.set(contact.id, { ...contact, avatarUrl, account: result.account });
     }
-    const contacts = [...bindings.values()].map(({ id, label, nickname, kind, lastChatAt, contactOrder }) => ({ id, label, kind,
+    const contacts = [...bindings.values()].map(({ id, label, nickname, kind, lastChatAt, contactOrder, avatarUrl }) => ({ id, label, kind,
       ...(typeof nickname === 'string' && nickname.trim() ? { nickname: nickname.trim() } : {}),
+      ...(avatarUrl ? { avatarUrl } : {}),
       ...(Number.isSafeInteger(lastChatAt) && lastChatAt > 0 ? { lastChatAt } : {}),
       ...(Number.isSafeInteger(contactOrder) && contactOrder >= 0 ? { contactOrder } : {}) }));
     await onProgress?.({ completed: contacts.length, total: contacts.length });

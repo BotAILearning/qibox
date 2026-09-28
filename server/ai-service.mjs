@@ -110,7 +110,7 @@ export class AIAssistant {
     this.file = path.join(dataRoot, 'ai-assistant.json'); this.vault = new SecretStore(dataRoot);
     this.bridge = bridge; this.ready = ready; this.provider = provider; this.now = now; this.interval = interval; this.delay = delay; this.random = random;
     this.revision = 0; this.writes = Promise.resolve(); this.actions = Promise.resolve(); this.controller = new AbortController();
-    this.contacts = new Map(); this.cursors = new Map(); this.followUps = new Map(); this.manualHolds = new Map(); this.available = false; this.notice = ''; this.closed = false; this.operation = null; this.generatingProfile = null; this.manualActivityWindow = 300000; this.sendBlockedUntil = 0;
+    this.contacts = new Map(); this.avatarUrls = new Map(); this.avatarReady = false; this.cursors = new Map(); this.followUps = new Map(); this.manualHolds = new Map(); this.available = false; this.notice = ''; this.closed = false; this.operation = null; this.generatingProfile = null; this.manualActivityWindow = 300000; this.sendBlockedUntil = 0;
     // 会话表索引的比对基线：id → 该会话上次被读到的「未读 / 最后一条消息序号 / 排序时间」。
     // 它只决定「这一拍读谁」，不参与任何判断结论，所以只留在内存里；重启后按最新
     // 会话表重建一次基线即可，不写进任何持久化数据。
@@ -252,6 +252,9 @@ export class AIAssistant {
     // 还原扫描时间，避免刚扫完就重启时被当成「很久没扫描」而立刻再扫一次。
     this.lastScanAt = Number.isSafeInteger(this.data.lastScanAt) && this.data.lastScanAt > 0 && this.data.lastScanAt <= this.now() ? this.data.lastScanAt : null;
     if (!this.lastScanAt) this.data.lastScanAt = null;
+  }
+  avatarUrl(contactId) {
+    return this.contacts.has(contactId) ? this.avatarUrls.get(contactId) || null : null;
   }
   begin() {
     this.timer = setInterval(() => { void this.tick({ background: true }); }, 3000); this.timer.unref();
@@ -735,7 +738,7 @@ export class AIAssistant {
       activity: this.activitySummaries(), activityHistory: this.activitySummaries('unknown'),
       provider: this.publicProvider('chat'), models: this.publicModels(), assignments: { chat: this.assignmentFor('chat'), learningAnalysis: this.assignmentFor('learning') },
       analysis: { mode: this.data.analysisMode, provider: this.publicProvider('analysis'), effectiveProvider: this.publicProvider('analysis'), history: this.analysisHistory() },
-      queue: this.data.queue, schedules: this.data.schedules.filter(s => s.account === this.data.account), events: this.data.events.filter(e => e.account === this.data.account || !e.account && e.target && this.profiles().some(p => p.id === e.target)), skipRecords: activeSkipRecords.sort((a, b) => b.at - a.at).slice(0, 50), contacts: orderedContacts(this.contacts.values(), this.profiles()).map(x => ({ id: x.id, label: x.label, kind: x.kind, lastChatAt: x.lastChatAt, contactOrder: x.contactOrder, ...(x.nickname ? { nickname: x.nickname } : {}) })),
+      queue: this.data.queue, schedules: this.data.schedules.filter(s => s.account === this.data.account), events: this.data.events.filter(e => e.account === this.data.account || !e.account && e.target && this.profiles().some(p => p.id === e.target)), skipRecords: activeSkipRecords.sort((a, b) => b.at - a.at).slice(0, 50), contacts: orderedContacts(this.contacts.values(), this.profiles()).map(x => ({ id: x.id, label: x.label, kind: x.kind, lastChatAt: x.lastChatAt, contactOrder: x.contactOrder, ...(x.nickname ? { nickname: x.nickname } : {}), ...(this.avatarUrls.has(x.id) ? { avatar: true } : {}) })), avatarReady: this.avatarReady,
       available: this.available, notice: this.notice, waiting: this.data.settings.enabled && (!this.ready() || !this.available || !this.modelReady() || !!this.operation || !!this.scanOperation || this.now() < (this.retryAt || 0)), operation: this.operation || this.scanOperation || null, manualRecovery: false, labels: { available: false, groups: [] },
       live: this.liveStates(), recentErrors: errors.records, errorsPage: errors.page,
       learnedDefaultStyle: this.data.learnedDefaultStyle || null,
@@ -974,22 +977,24 @@ export class AIAssistant {
       } });
       if (revision !== this.revision) throw new AppError('检测已取消');
       this.scanOperation = null;
-      if (!result.available || !validKey(result.account)) { this.available = false; this.contacts.clear(); throw new AppError('暂时无法获取联系人，请打开微信并登录后重试', 409, 'ai_data_unavailable'); }
+      if (!result.available || !validKey(result.account)) { this.available = false; this.contacts.clear(); this.avatarUrls.clear(); this.avatarReady = false; throw new AppError('暂时无法获取联系人，请打开微信并登录后重试', 409, 'ai_data_unavailable'); }
       const migrated = this.migrateContactIdentities(result);
       if (this.data.account !== result.account) {
-        this.available = false; this.contacts.clear(); this.data.contacts = []; this.data.lastScanAt = null;
+        this.available = false; this.contacts.clear(); this.avatarUrls.clear(); this.avatarReady = false; this.data.contacts = []; this.data.lastScanAt = null;
         this.invalidate(); if (this.data.account) this.data.settings.enabled = false; this.data.replyTargets = migrated.replyTargets; this.data.proactiveTargets = migrated.proactiveTargets; this.syncTargets(); this.data.queue = { status: 'idle', items: [], nextAt: null }; this.forgetContext();
         this.data.account = result.account;
       }
-      const nextContacts = new Map();
+      const nextContacts = new Map(), nextAvatarUrls = new Map();
       for (const c of result.contacts || []) {
-        if (!validKey(c.id) || !['person', 'group'].includes(c.kind) || nextContacts.has(c.id)) { this.available = false; this.contacts.clear(); throw new AppError('会话对象不明确，请重新检测'); }
+        if (!validKey(c.id) || !['person', 'group'].includes(c.kind) || nextContacts.has(c.id)) { this.available = false; this.contacts.clear(); this.avatarUrls.clear(); this.avatarReady = false; throw new AppError('会话对象不明确，请重新检测'); }
         nextContacts.set(c.id, { id: c.id, label: textField(c.label, 120, true), kind: c.kind,
           ...(typeof c.nickname === 'string' && c.nickname.trim() ? { nickname: textField(c.nickname, 120) } : {}),
           lastChatAt: Number.isSafeInteger(c.lastChatAt) && c.lastChatAt > 0 ? c.lastChatAt : null,
           contactOrder: Number.isSafeInteger(c.contactOrder) && c.contactOrder >= 0 ? c.contactOrder : nextContacts.size });
+        if (typeof c.avatarUrl === 'string' && c.avatarUrl) nextAvatarUrls.set(c.id, c.avatarUrl);
       }
       this.contacts = nextContacts;
+      this.avatarUrls = nextAvatarUrls; this.avatarReady = true;
       this.lastScanAt = this.now(); this.ensureDefaultProfiles();
       this.data.contacts = [...nextContacts.values()]; this.data.lastScanAt = this.lastScanAt;
       for (const [id] of this.cursors) if (!this.contacts.has(this.data.profiles[id]?.contact)) this.cursors.delete(id);
@@ -1001,7 +1006,7 @@ export class AIAssistant {
         this.scanFailures = (this.scanFailures || 0) + 1;
         this.scanRetryAt = this.now() + Math.min(15 * 60000, 30000 * 2 ** Math.min(this.scanFailures - 1, 5));
         this.notice = error instanceof AppError ? error.message : '联系人刷新失败，请稍后重试';
-        if (error.code === 'ai_account_changed') { this.available = false; this.contacts.clear(); this.data.contacts = []; this.data.lastScanAt = null; this.data.settings.enabled = false; this.forgetContext(); }
+        if (error.code === 'ai_account_changed') { this.available = false; this.contacts.clear(); this.avatarUrls.clear(); this.avatarReady = false; this.data.contacts = []; this.data.lastScanAt = null; this.data.settings.enabled = false; this.forgetContext(); }
       }
       throw error;
     } finally { if (this.scanOperation === scanOperation) this.scanOperation = null; }
@@ -1026,7 +1031,7 @@ export class AIAssistant {
   }
   async read(profile, signal, { priority = false } = {}) {
     const snapshot = await this.bridge.read({ account: this.data.account, contact: profile.contact, signal, priority });
-    if (snapshot.account !== this.data.account) { this.invalidate(); this.data.settings.enabled = false; this.available = false; this.contacts.clear(); this.data.contacts = []; this.data.lastScanAt = null; this.pauseQueue(); this.forgetContext(); await this.save(); throw new AppError('微信账号已变化，请重新检测', 409); }
+    if (snapshot.account !== this.data.account) { this.invalidate(); this.data.settings.enabled = false; this.available = false; this.contacts.clear(); this.avatarUrls.clear(); this.avatarReady = false; this.data.contacts = []; this.data.lastScanAt = null; this.pauseQueue(); this.forgetContext(); await this.save(); throw new AppError('微信账号已变化，请重新检测', 409); }
     if (snapshot.contact !== profile.contact || !snapshot.revision || !Array.isArray(snapshot.messages) || snapshot.messages.length > 300) throw new AppError('无法确认聊天对象，请重新检测', 409);
     // 超限不再中断读取：单条过长就地截断，整包过大从最早的消息开始丢弃，两种情况都
     // 算截断并给出提醒，自动回复仍能正常进行。id / 方向 / 文本类型是可信边界，不变。
@@ -2080,7 +2085,7 @@ export class AIAssistant {
     return cursor;
   }
   async tickError(error, revision) {
-    if (error.code === 'ai_account_changed') { this.invalidate(); this.data.settings.enabled = false; this.available = false; this.contacts.clear(); this.data.contacts = []; this.data.lastScanAt = null; this.pauseQueue(); this.forgetContext(); this.notice = '微信账号已变化，请重新检测'; await this.save(); return; }
+    if (error.code === 'ai_account_changed') { this.invalidate(); this.data.settings.enabled = false; this.available = false; this.contacts.clear(); this.avatarUrls.clear(); this.avatarReady = false; this.data.contacts = []; this.data.lastScanAt = null; this.pauseQueue(); this.forgetContext(); this.notice = '微信账号已变化，请重新检测'; await this.save(); return; }
     const frames = String(error?.stack || '').split('\n').slice(1, 7).map(line => line.trim()).filter(Boolean);
     console.error('[ai-run-failure]', JSON.stringify({ name: error?.name || 'Error', code: error?.code || null, frames }));
     if (revision === this.revision || !this.available) { const message = error instanceof AppError ? error.message : 'AI 操作暂未完成，稍后重试'; this.notice = message; this.retryAt = this.now() + 30000; this.event('error', null, null, message); await this.save(); }

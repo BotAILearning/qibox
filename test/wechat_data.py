@@ -173,6 +173,14 @@ class DataTest(unittest.TestCase):
         self.assertEqual(len({person['id'] for person in distinct}), 2)
         self.assertEqual(len({person['native']['contact'] for person in distinct}), 2)
 
+    def test_contact_avatar_follows_verified_identity_without_exposing_other_hosts(self):
+        rows = [('wxid_self', '本人', '', '', 1, '', ''),
+                ('wxid_friend', '朋友', '', '', 1, 'http://wx.qlogo.cn/mmhead/friend/0', ''),
+                ('wxid_other', '其他', '', '', 1, 'https://wx.qlogo.cn.evil.test/picture', '')]
+        _, people, _ = data.contacts(rows, 'wxid_self')
+        self.assertEqual(people[0]['avatarUrl'], 'https://wx.qlogo.cn/mmhead/friend/0')
+        self.assertNotIn('avatarUrl', people[1])
+
     def test_alias_only_contact_is_listed_without_guessing_a_chat_database(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory, 'xwechat_files/long262802_a36b/db_storage')

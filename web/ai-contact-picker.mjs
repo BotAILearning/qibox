@@ -1,6 +1,21 @@
 import { icon } from './ai-icons.mjs';
 import { contactName, contactSearch, esc } from './ai-contact-name.mjs';
 
+let avatarInstance = null;
+const failedAvatars = new Set();
+const avatarPrefix = () => typeof __QIBOX_HOST__ !== 'undefined' && __QIBOX_HOST__ === 'ugos' ? '/api/qibox' : globalThis.location?.pathname?.replace(/\/$/, '') || '';
+export function setContactAvatarInstance(id) {
+  if (avatarInstance !== id) failedAvatars.clear();
+  avatarInstance = id;
+}
+export function resetContactAvatarFailures() { failedAvatars.clear(); }
+export function noteContactAvatarFailure(image) {
+  if (!image?.dataset?.aiAvatar) return false;
+  failedAvatars.add(image.dataset.aiAvatar);
+  image.remove();
+  return true;
+}
+
 // The automatic-reply sidebar is the base for every contact selection surface.
 // Callers own selection state and actions; this module owns the shared anatomy.
 export function contactPickerTabs(contacts, kind, attribute) {
@@ -11,9 +26,12 @@ export function contactPickerSearch({ id, value = '', label = '搜索联系人',
   return `<label class="ai-object-search ai-contact-picker-search ${className}">${icon('search')}<span class="sr-only">${esc(label)}</span><input id="${esc(id)}" type="search" aria-label="${esc(label)}" placeholder="${esc(placeholder)}" value="${esc(value)}"></label>`;
 }
 
-export function contactPickerAvatar(contact, index = 0) {
-  const initial = [...String(contact?.label || contact?.name || '?')][0];
-  return `<span class="ai-monogram ai-avatar-${index % 6}" aria-hidden="true">${esc(initial)}</span>`;
+export function contactPickerAvatar(contact, index = 0, className = 'ai-monogram') {
+  const key = `${avatarInstance}:${contact?.id}`;
+  const src = avatarInstance && /^[a-f0-9-]{36}$/.test(avatarInstance) && /^[a-f0-9]{64}$/.test(contact?.id || '') && contact?.avatar && !failedAvatars.has(key)
+    ? `${avatarPrefix()}/api/instances/${avatarInstance}/ai/avatar/${contact.id}` : null;
+  const fallback = '<svg viewBox="0 0 40 40" focusable="false" aria-hidden="true"><rect width="40" height="40" fill="#dedede"/><circle cx="20" cy="15" r="7" fill="#fff"/><path d="M6 40c0-9 6-15 14-15s14 6 14 15" fill="#fff"/></svg>';
+  return `<span class="${esc(className)} ai-avatar-${index % 6} ai-wechat-avatar" aria-hidden="true">${fallback}${src ? `<img src="${esc(src)}" data-ai-avatar="${esc(key)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">` : ''}</span>`;
 }
 
 export function contactPickerRow(contact, { index = 0, selected = false, multiple = false, input = '', button = '', detail = '', trailing = '', className = '', disabled = false, hidden = false } = {}) {

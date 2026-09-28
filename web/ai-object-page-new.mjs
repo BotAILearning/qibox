@@ -5,10 +5,10 @@ import { contactName } from './ai-contact-name.mjs';
 import { objectList } from './ai-object-view.mjs';
 import { replyLimitControl } from './ai-reply-limit.mjs';
 import { personReplyEnabled } from './ai-reply-state.mjs';
-import { contactPickerTabs, contactPickerSearch } from './ai-contact-picker.mjs';
+import { contactPickerTabs, contactPickerSearch, contactPickerAvatar } from './ai-contact-picker.mjs';
 
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const avatar = contact => `<span class="ai-monogram" aria-hidden="true">${esc([...contact.label][0])}</span>`;
+const avatar = contact => contactPickerAvatar(contact);
 const toggle = (key, title, hint, checked, disabled = false, main = false) => `<div class="ai-reference-toggle ${main ? 'main' : ''} ${disabled ? 'dim' : ''}"><span><b>${title}</b><small>${hint}</small></span><input type="checkbox" name="${key}" role="switch" data-object-option="${key}" ${key === 'atMe' || key === 'atAll' || key === 'realtime' ? 'data-group-option' : ''} aria-label="${title}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}></div>`;
 const tab = (id, title, current) => `<button type="button" data-ai-object-section="${id}" class="${current === id ? 'active' : ''}" aria-current="${current === id ? 'page' : 'false'}">${title}</button>`;
 

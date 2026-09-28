@@ -69,6 +69,18 @@ test('contacts and history use data only, preserving duplicate labels and true m
   assert.deepEqual(calls.map(x => x.action), ['contacts', 'read', 'read']);
   bridge.clearContext(); assert.equal(bridge.snapshots.size, 0);
 });
+test('WeChat avatar addresses stay in memory and never enter AI settings on disk', async t => {
+  const avatarUrl = 'https://wx.qlogo.cn/mmhead/example/0';
+  const root = await temp(), { bridge } = fixture(action => action === 'contacts'
+    ? { available: true, account, contacts: [{ ...person, avatarUrl }] } : undefined);
+  const assistant = new AIAssistant({ dataRoot: root, bridge }); await assistant.init();
+  t.after(async () => { await assistant.close(); await cleanup(root); });
+  await assistant.scan();
+  assert.equal(assistant.avatarUrl(contact), avatarUrl);
+  assert.equal(assistant.publicState().contacts[0].avatar, true);
+  assert.equal(assistant.publicState().avatarReady, true);
+  assert.equal((await readFile(path.join(root, 'ai-assistant.json'), 'utf8')).includes(avatarUrl), false);
+});
 test('a partial contact scan reports unreadable identities while keeping verified contacts', async () => {
   const { bridge } = fixture(action => action === 'contacts'
     ? { available: true, account, contacts: [person], unreadableCount: 2 } : undefined);

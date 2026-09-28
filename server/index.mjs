@@ -20,6 +20,7 @@ import { RfbInputGate } from './rfb-input.mjs';
 import { streamAudio } from './audio.mjs';
 import { proxyWebApp } from './web-app.mjs';
 import { exportAnalysisReports } from './ai-report-export.mjs';
+import { readWechatAvatar } from './ai-avatar.mjs';
 
 const moduleRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const equal = (a, b) => typeof a === 'string' && typeof b === 'string' && Buffer.byteLength(a) === Buffer.byteLength(b) && timingSafeEqual(Buffer.from(a), Buffer.from(b));
@@ -83,12 +84,24 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
         if (req.method === 'GET' && route === '/api/session') return send(res, 200, { user, product, dev, host, capabilities: { nasPicker: host === 'fnos' }, csrf: token(user.uid), consent: space.consent });
         if (req.method === 'GET' && route === '/api/state') return send(res, 200, { catalog: marketState({ wechat: library }), library: library.publicState(), ...space.list() });
         const aiMatch = /^\/api\/instances\/([a-f0-9-]{36})\/ai$/.exec(route);
+        const aiAvatarMatch = /^\/api\/instances\/([a-f0-9-]{36})\/ai\/avatar\/([a-f0-9]{64})$/.exec(route);
         const aiMasterMatch = /^\/api\/instances\/([a-f0-9-]{36})\/ai\/master$/.exec(route);
         const aiReportMatch = /^\/api\/instances\/([a-f0-9-]{36})\/ai\/reports\/([a-f0-9-]{36})$/.exec(route);
         const aiReportExportMatch = /^\/api\/instances\/([a-f0-9-]{36})\/ai\/reports\/export$/.exec(route);
         if (req.method === 'GET' && aiMasterMatch) {
           space.requireConsent(); const item = space.get(aiMasterMatch[1]); if (item.meta.appId !== 'wechat') throw new AppError('此应用不支持 AI', 409);
           return send(res, 200, await item.ai.mobileMasterState(item.meta.id));
+        }
+        if (req.method === 'GET' && aiAvatarMatch) {
+          space.requireConsent(); const item = space.get(aiAvatarMatch[1]); if (item.meta.appId !== 'wechat') throw new AppError('此应用不支持 AI', 409);
+          const controller = new AbortController();
+          res.once('close', () => { if (!res.writableEnded) controller.abort(); });
+          const url = item.ai.avatarUrl(aiAvatarMatch[2]);
+          const avatar = url ? await readWechatAvatar(url, { signal: controller.signal }) : null;
+          if (controller.signal.aborted) return;
+          if (!avatar) { res.writeHead(404, { 'Cache-Control': 'no-store' }); res.end(); return; }
+          res.writeHead(200, { 'Content-Type': avatar.mime, 'Content-Length': avatar.bytes.length, 'Cache-Control': 'private, no-store, max-age=0' });
+          res.end(avatar.bytes); return;
         }
         if (req.method === 'GET' && (aiMatch || aiReportMatch)) {
           space.requireConsent(); const item = space.get((aiMatch || aiReportMatch)[1]); if (item.meta.appId !== 'wechat') throw new AppError('此应用不支持 AI', 409);

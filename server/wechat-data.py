@@ -21,6 +21,7 @@ import signal
 import struct
 import sys
 import time
+from urllib.parse import urlsplit, urlunsplit
 import xml.etree.ElementTree as ET
 
 spec = importlib.util.spec_from_file_location('qibox_sqlite', pathlib.Path(__file__).with_name('wechat-sqlite.py'))
@@ -494,13 +495,29 @@ def self_username(root, rows):
     return matches.pop()
 
 
+AVATAR_HOSTS = {'wx.qlogo.cn', 'mmhead.c2c.wechat.com', 'mmhead.hk.wechat.com'}
+
+
+def avatar_url(value):
+    """Accept only WeChat's avatar hosts; old contact rows may use HTTP."""
+    if not isinstance(value, str) or len(value) > 2048 or re.search(r'[\x00-\x20\x7f]', value):
+        return ''
+    try:
+        parsed = urlsplit(value)
+        if parsed.scheme not in ('http', 'https') or parsed.hostname not in AVATAR_HOSTS or parsed.username or parsed.password or parsed.port not in (None, 80, 443):
+            return ''
+        return urlunsplit(('https', parsed.netloc.split(':')[0], parsed.path, parsed.query, ''))
+    except ValueError:
+        return ''
+
+
 def contacts(rows, username):
     account = digest('wechat-data-account\0' + username)
     own = [row for row in rows if row[0] == username]
     if len(own) != 1:
         raise ValueError('ambiguous account')
     own_alias = own[0][3] or username
-    identities, unreadable = OrderedDict(), 0
+    identities, avatars, unreadable = OrderedDict(), {}, 0
     for row in rows:
         name, nickname, remark, alias = row[:4]
         local_type = row[4] if len(row) > 4 else 2 if isinstance(name, str) and GROUP.fullmatch(name) else 1
@@ -514,6 +531,10 @@ def contacts(rows, username):
             unreadable += 1
             continue
         identities.setdefault(identity, []).append((name, nickname, remark, alias))
+        if len(row) > 5 and identity not in avatars:
+            candidate = avatar_url(row[5]) or (avatar_url(row[6]) if len(row) > 6 else '')
+            if candidate:
+                avatars[identity] = candidate
 
     # A row without a UID may duplicate a UID-backed contact. Never expose a
     # second selectable identity when its WeChat ID already belongs to one.
@@ -561,6 +582,7 @@ def contacts(rows, username):
             native_target = proposed if proposed and len(uid_alias_owners[proposed]) == 1 and (proposed not in uid_names or proposed == identity) else identity
         result.append({'id': contact_id(account, identity) if source == 'uid' else wechat_id_contact_id(account, identity),
                        'label': label, 'nickname': display_nickname, 'kind': 'group' if group_chat else 'person',
+                       **({'avatarUrl': avatars[(source, identity)]} if (source, identity) in avatars else {}),
                        'username': identity if source == 'uid' else None, 'native': native_route(own_alias, native_target)})
     return account, result, unreadable
 
@@ -1126,7 +1148,8 @@ def execute(request, pid, home, check, cache=None):
             check_versions(files, versions)
             check()
             return result
-        rows = db.query('SELECT username, nick_name, remark, alias, local_type FROM contact WHERE (local_type = 1' + groups + ')' + active + ' ORDER BY ' + order)
+        avatar_columns = ", small_head_url, big_head_url" if {'small_head_url', 'big_head_url'} <= columns else ", '', ''"
+        rows = db.query('SELECT username, nick_name, remark, alias, local_type' + avatar_columns + ' FROM contact WHERE (local_type = 1' + groups + ')' + active + ' ORDER BY ' + order)
         self_name = self_username(root, rows)
         account, people, unreadable_count = contacts(rows, self_name)
         if request.get('account') and request['account'] != account:

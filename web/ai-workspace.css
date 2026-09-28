@@ -128,6 +128,8 @@
 #ai-panel .ai-object-row:hover{background:#f5f6fb}
 #ai-panel .ai-object-row.selected{background:var(--ai-soft);color:var(--ai-text);box-shadow:none}
 #ai-panel .ai-monogram{display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:#5b8def;color:#fff;font-size:14px;font-weight:600;flex:none}
+#ai-panel .ai-wechat-avatar{position:relative;overflow:hidden;background:#dedede;color:transparent}
+#ai-panel .ai-wechat-avatar svg,#ai-panel .ai-wechat-avatar img{position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:cover}
 #ai-panel .ai-avatar-1{background:#8e7ce8}#ai-panel .ai-avatar-2{background:#e88b7c}#ai-panel .ai-avatar-3{background:#5bbfa5}#ai-panel .ai-avatar-4{background:#d98bc4}#ai-panel .ai-avatar-5{background:#c9a45c}
 #ai-panel .ai-contact-info{min-width:0;flex:1}
 #ai-panel .ai-contact-info b{display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:13px;font-weight:500}
