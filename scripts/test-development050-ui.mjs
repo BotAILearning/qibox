@@ -62,9 +62,8 @@ try {
   assert.equal(Math.round(memoryLayout.nav.width), 132, '聊天记忆分类栏使用紧凑宽度');
   assert.equal(await page.locator('.ai-reference-memory-content > h4, .ai-reference-memory-content > .ai-memory-history').count(), 0);
   assert.equal(await page.locator('.ai-reference-memory-head .ai-memory-history').count(), 0, '没有修改记录时不展示历史入口');
-  const categoryLabels = await page.locator('.ai-reference-memory-categories button span').evaluateAll(nodes => nodes.map(node => ({ text: node.textContent, width: node.getBoundingClientRect().width })));
-  assert.ok(categoryLabels.every(item => Math.abs(item.width - categoryLabels[0].width) < 1), '分类按四字宽度对齐');
-  assert.ok(categoryLabels.some(item => item.text === '其他日期') && categoryLabels.some(item => item.text === '其他记忆'));
+  const categoryLabels = await page.locator('.ai-reference-memory-categories button span').allTextContents();
+  assert.deepEqual(categoryLabels, ['姓名','手机号码','日期','学校','地址','工作信息','其他记忆']);
   await page.screenshot({ path: path.join(output, 'chat-memory.png') });
   await page.locator('[data-ai-object-section=reply]').click();
   assert.equal(await page.locator('.ai-reference-strategy h4').textContent(), '回复策略');

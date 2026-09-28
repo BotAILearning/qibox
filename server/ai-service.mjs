@@ -1,6 +1,6 @@
 import { learningPrompt, learningPromptFor, learningWithMemoryPrompt, defaultLearningSummaryPrompt, conversationPrompt, addressingPrompt, generationPrompt, generationProtocol, proactivePrompt, proactiveBackgroundPrompt, proactiveBackgroundTtl, messageSegments } from './ai-prompts.mjs';
 import path from 'node:path';
-import { chatMemoryPrompt, mergeMemory, editMemory as changeMemory, pointInTimeMemory } from './ai-wiki.mjs';
+import { chatMemoryPrompt, groupMemoryInstruction, mergeMemory, editMemory as changeMemory, pointInTimeMemory } from './ai-wiki.mjs';
 import { defaultTakeover, takeoverValue, effectiveTakeover, identityPrompt, asksIdentity } from './ai-reply-rules.mjs';
 import { activityMessages, isDeletedActivityRecord, recordSource } from './ai-activity-records.mjs';
 import { memoryPrompt, memoryLearningPrompt, memoryMergePrompt, memoryValue, readMemory, learnedMemory, replaceMemory } from './ai-memory.mjs';
@@ -1224,13 +1224,14 @@ export class AIAssistant {
               const memory = validatedLearnedMemory(result?.memory);
               return { ...result, memory };
             };
-            let parsed = await this.provider.complete(this.modelFor('learning'), memoryLearningPrompt, memoryInputData,
+            const memoryPromptForKind = profile.kind === 'group' ? `${memoryLearningPrompt}\n${groupMemoryInstruction}` : memoryLearningPrompt;
+            let parsed = await this.provider.complete(this.modelFor('learning'), memoryPromptForKind, memoryInputData,
               signal, { budget: 16384, validate: validateMemoryResult });
             if (revision !== this.revision) throw new AppError('学习已取消');
             let parsedMemory = memoryValue(parsed?.memory);
             if (!parsedMemory) throw new AppError('模型未返回有效聊天记忆，未保存空结果');
             if (!parsedMemory.entries.length && memoryInput.some(message => message.text.trim())) {
-              const recheckPrompt = `${memoryLearningPrompt}\n这是对同一份材料的补充核查。上一轮没有返回任何条目，请重新检查材料前段和后段，留意明确的个人资料、稳定偏好、关系、重要经历、已确认约定与待办；有依据的事实分别列出，不要因为聊天很多或范围截断就整体留空。不得编造，也不要凑数；确实没有符合条件的事实时才返回空 entries。`;
+              const recheckPrompt = `${memoryPromptForKind}\n这是对同一份材料的补充核查。上一轮没有返回任何条目，请重新检查材料前段和后段，留意有明确依据的稳定事实、重要经历、已确认约定与待办；有依据的事实分别列出，不要因为聊天很多或范围截断就整体留空。不得编造，也不要凑数；确实没有符合条件的事实时才返回空 entries。`;
               parsed = await this.provider.complete(this.modelFor('learning'), recheckPrompt, memoryInputData,
                 signal, { budget: 16384, validate: validateMemoryResult });
               if (revision !== this.revision) throw new AppError('学习已取消');
@@ -1270,7 +1271,7 @@ export class AIAssistant {
         this.operation.phase = target === 'style' ? 'model' : 'memory';
         const input = { styleOwner: perspective, styleOwnerText: styleOwnerText(perspective), contact: profile.contact, kind: profile.kind, material,
           ...(target !== 'style' ? { memoryCoverage, previousMemory: readMemory(this.vault, profile) } : {}) };
-        const prompt = target === 'style' ? learningPrompt : learningWithMemoryPrompt + memoryPrompt;
+        const prompt = target === 'style' ? learningPrompt : learningWithMemoryPrompt + memoryPrompt + (profile.kind === 'group' ? groupMemoryInstruction : '');
         const entry = await this.provider.complete(this.modelFor('learning'), prompt, input, signal,
           target === 'style' ? { validate: result => ({ ...result, style: validatedLearnedStyleFields(result?.style) }) } : { budget: 16384, validate: result => {
             const style = validatedLearnedStyleFields(result?.style), memory = validatedLearnedMemory(result?.memory);
@@ -1600,7 +1601,7 @@ export class AIAssistant {
       if (!profile) return;
       const current = readMemory(this.vault, profile), incoming = this.pendingMemoryOf(profile);
       if (!incoming) throw new AppError('待确认的记忆已不存在');
-      const result = await this.provider.complete(this.modelFor('learning'), memoryMergePrompt,
+      const result = await this.provider.complete(this.modelFor('learning'), memoryMergePrompt + (profile.kind === 'group' ? groupMemoryInstruction : ''),
         { kind: profile.kind, label: profile.label, timezone: 'Asia/Shanghai',
           current: { entries: current.entries.map(memoryMergeEntry) },
           incoming: { entries: incoming.entries.map(memoryMergeEntry) } },
@@ -2370,7 +2371,7 @@ export class AIAssistant {
       for (let attempt = 0; attempt < 2; attempt++) {
         result = onlyImages && !images.length && profile.kind !== 'group' ? { action: 'skip', mediaSkipped: true } : await this.provider.complete(
           this.modelFor('chat'),
-          `${generationPrompt}${chatMemoryPrompt}${identityPrompt(this.data.settings.acknowledgeAI)}${conversationPrompt}${replySummaryContext} 当前只能发送纯文字，不能发送、读取或下载文件，不能拨打或接听电话，仅能理解实际附带的图片；未附带图片或图片无法读取时，应如实说明无法查看并请对方转成文字，不猜测图片内容。${groupTriggerInstruction}${currentTask}${currentStyle}${profile.kind === 'group' ? groupPrompt(trigger, multiTurn, profile.groupOptions?.realtimeMode) : ''}${generationProtocol({ multiTurn, group: profile.kind === 'group', followUpAllowed: profile.kind !== 'group' && !followUp, updateStyle: this.data.settings.updateStyle, allowSkip: !mustReply, allowStop: profile.kind !== 'group' || requiredGroupReply })}`,
+          `${generationPrompt}${chatMemoryPrompt}${profile.kind === 'group' ? groupMemoryInstruction : ' 单聊中，对方姓名写入 name；只有用户确实直接这样称呼对方且对象明确时，才把称呼写入 addressing。'}${identityPrompt(this.data.settings.acknowledgeAI)}${conversationPrompt}${replySummaryContext} 当前只能发送纯文字，不能发送、读取或下载文件，不能拨打或接听电话，仅能理解实际附带的图片；未附带图片或图片无法读取时，应如实说明无法查看并请对方转成文字，不猜测图片内容。${groupTriggerInstruction}${currentTask}${currentStyle}${profile.kind === 'group' ? groupPrompt(trigger, multiTurn, profile.groupOptions?.realtimeMode) : ''}${generationProtocol({ multiTurn, group: profile.kind === 'group', followUpAllowed: profile.kind !== 'group' && !followUp, updateStyle: this.data.settings.updateStyle, allowSkip: !mustReply, allowStop: profile.kind !== 'group' || requiredGroupReply })}`,
           { images: textOnlyRetry ? [] : images, onlyImages: textOnlyRetry ? false : onlyImages, capabilityConcern: reason, mode, continuation, multiTurn, followUp, followUpAllowed: profile.kind !== 'group' && !followUp, kind: profile.kind, conversation, addressing, memory: readMemory(this.vault, profile), groupState, capabilities: { sendText: true, wechatVoiceText: true, files: false, calls: false, receiveImages: !textOnlyRetry && images.length > 0, sendMedia: false }, strategy, style, styleOwner: 'self', judgeReply: profile.kind === 'group' ? trigger === 'realtime' : followUp || this.replyOptions(profile).judgeReply, updateStyle: this.data.settings.updateStyle, messages: modelMessages.map(message => ({ ...message, aiGenerated: message.aiGenerated === true || (profile.generatedIds || []).includes(message.id) })) }, signal
         );
         if (retryGroupMedia && result?.mediaSkipped && attempt === 0) { textOnlyRetry = true; continue; }

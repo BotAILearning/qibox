@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {AIAssistant} from '../server/ai-service.mjs';
 import {readMemory,mergeMemory,editMemory,memoryValue,memoryMergePrompt} from '../server/ai-wiki.mjs';
-import {ChatFixture,AIModelFixture,modelConfig,strategy} from './ai-fixtures.mjs';
+import {ChatFixture,AIModelFixture,modelConfig,strategy,key} from './ai-fixtures.mjs';
 import {temp,cleanup} from './fixtures.mjs';
 import {validateClipboardFiles} from '../server/clipboard.mjs';
 import {wikiEntryMarkup,memoryFields,sameWikiEntries} from '../web/ai-memory-view.mjs';
@@ -47,7 +47,7 @@ test('memory learning preserves model field assignments as grouped pending Wiki 
  assert.deepEqual(pending.entries.map(entry=>entry.field),['name','phone','birthday','school','household','other']);
  assert.equal(pending.entries[2].calendar,'lunar');assert.equal(pending.entries[3].degree,'本科');
  const markup=memoryFields({memory:{entries:pending.entries}});
- for(const field of ['name','phone','birthday','school','household','other']) assert.match(markup,new RegExp(`data-ai-wiki-field="${field}"[\\s\\S]*?${field==='name'?'林女士':field==='phone'?'13800000001':field==='birthday'?'正月初八':field==='school'?'浙江大学':field==='household'?'杭州市':'喜欢徒步'}`));
+ for(const [field,text] of [['name','林女士'],['phone','13800000001'],['date_info','正月初八'],['school','浙江大学'],['address','杭州市'],['other','喜欢徒步']]) assert.match(markup,new RegExp(`data-ai-wiki-field="${field}"[\\s\\S]*?${text}`));
 });
 test('legacy wiki text migrates to other and typed facts preserve calendar and period',()=>{
  const old=memoryValue({summary:'旧版学校记忆\n旧版住址'});
@@ -134,17 +134,46 @@ test('wiki address fields use one recorded time and unchanged edits ignore audit
 test('chat memory renders a fixed empty field template, groups addresses and keeps legacy text under other',()=>{
  const markup=memoryFields({kind:'person',memory:{summary:'旧版自由文本'}});
  assert.match(markup,/<h4>聊天记忆<\/h4>/);
- for(const field of ['name','phone','birthday','date','school','household','residence','work','shipping','other']) assert.match(markup,new RegExp(`data-ai-wiki-field="${field}"`));
+ for(const field of ['name','phone','date_info','school','address','work','other']) assert.match(markup,new RegExp(`data-ai-wiki-field="${field}"`));
  assert.doesNotMatch(markup,/data-ai-wiki-field="workplace"|data-ai-wiki-field="employer"/);
- assert.match(markup,/相识、确定关系或结婚纪念日/);
+ assert.match(markup,/添加生日[\s\S]*添加其他日期/);
+ assert.match(markup,/添加户籍地[\s\S]*添加居住地址[\s\S]*添加收货地址/);
+ assert.match(markup,/添加姓名[\s\S]*添加对对方的称呼/);
  assert.match(markup,/data-ai-wiki-field="other"[\s\S]*旧版自由文本/);
  assert.match(markup,/兴趣爱好、稳定偏好，以及双方其他聊天中值得保留的内容/);
  assert.match(markup,/data-ai-wiki-add data-ai-wiki-add-field="other">添加信息/);
  assert.doesNotMatch(markup,/每条信息单独编辑和删除/);
- const names=memoryFields({memory:{entries:[{field:'name',text:'小王'},{field:'name',text:'王女士'}]}});
+ const names=memoryFields({memory:{entries:[{field:'name',text:'小王'},{field:'addressing',text:'王女士'}]}});
  assert.equal((names.match(/data-ai-wiki-field="name"/g)||[]).length,1);
  assert.equal((names.match(/aria-label="信息内容"/g)||[]).length,2);
  assert.match(wikiEntryMarkup({field:'other',text:'喜欢徒步'}),/<textarea[^>]*aria-label="信息内容"/);
+ const school=wikiEntryMarkup({field:'school',text:'龙海一中'});
+ assert.doesNotMatch(school,/学历未注明|ai-wiki-school-name/);
+ assert.match(school,/class="ai-wiki-bubble ai-wiki-school"/);
+});
+test('group chat memory uses group facts and retains legacy personal entries',()=>{
+ const group=memoryFields({kind:'group',memory:{entries:[{field:'group_member',text:'小李负责对接场地'},{field:'group_plan',text:'周六一起布置'},{field:'name',text:'旧版姓名'}]}});
+ for(const field of ['group_info','group_member','group_rule','group_topic','group_plan','group_event','other','legacy']) assert.match(group,new RegExp(`data-ai-wiki-field="${field}"`));
+ assert.match(group,/data-ai-wiki-field="group_member"[\s\S]*小李负责对接场地/);
+ assert.match(group,/data-ai-wiki-field="legacy"[\s\S]*旧版姓名/);
+ assert.doesNotMatch(group,/data-ai-wiki-field="school"/);
+ assert.equal(memoryValue({entries:[{field:'group_member',text:'小李负责对接场地'},{field:'addressing',text:'阿姨'}]}).entries[0].field,'group_member');
+ assert.equal(memoryValue({entries:[{field:'addressing',text:'阿姨'}]}).entries[0].field,'addressing');
+});
+test('group memory learning keeps group field types and uses group extraction rules',async t=>{
+ const {a,bridge,provider}=await fixture(t),group={id:key('group-memory-learning'),label:'活动筹备群',kind:'group'};
+ bridge.contacts.push(group);
+ bridge.messages.set(group.id,[{id:'group-1',direction:'other',sender:'小李',text:'我负责对接场地'}]);
+ await a.scan();
+ provider.complete=async(_config,prompt,input)=>{
+  assert.equal(input.kind,'group');
+  assert.match(prompt,/当前对象是整个群聊/);
+  assert.match(prompt,/成员信息必须注明是谁/);
+  return {memory:{entries:[{field:'group_member',text:'小李负责对接场地'}]}};
+ };
+ await a.learn({contacts:[group.id],target:'memory',perspective:'other'});
+ const profile=a.profiles().find(item=>item.contact===group.id);
+ assert.deepEqual(a.pendingMemoryOf(profile).entries.map(entry=>entry.field),['group_member']);
 });
 test('empty pending learning result explains that saved memory stays and cannot be applied',()=>{
  const markup=memoryFields({id:'profile-1',memory:{entries:[{field:'other',text:'已有记忆'}]},pendingMemory:{entries:[],summary:''}});

@@ -742,7 +742,8 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       dialog?.showModal();
     }
     panel.append($('#ai-content .ai-main-tabs'));
-    for (const node of panel.querySelectorAll('.ai-reference-memory [data-ai-wiki-field]')) node.hidden = node.dataset.aiWikiField !== objectMemoryCategory;
+    const activeMemoryCategory = panel.querySelector(`.ai-reference-memory-categories button[data-ai-memory-category="${objectMemoryCategory}"]`)?.dataset.aiMemoryCategory || panel.querySelector('.ai-reference-memory-categories button')?.dataset.aiMemoryCategory;
+    for (const node of panel.querySelectorAll('.ai-reference-memory [data-ai-wiki-field]')) node.hidden = node.dataset.aiWikiField !== activeMemoryCategory;
     for (const textarea of $('#ai-content').querySelectorAll('.ai-wiki-bubble textarea[aria-label="信息内容"]')) resizeWikiTextarea(textarea);
     if ($('#ai-object-list')) { $('#ai-object-list').innerHTML = objectList(state, objectView()); $('#ai-object-list').scrollTop = objectScroll; }
     panel.classList.toggle('object-selected', !!selectedObject && tab === 'overview');
@@ -877,7 +878,6 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     else hide();
   };
   $('#ai-mobile-back').onclick = goBack;
-  $('#ai-desktop-back').onclick = goBack;
   panel.addEventListener('input', event => { if (event.target.tagName === 'TEXTAREA') mobileLayout(); });
   window.addEventListener('resize', mobileLayout);
   panel.addEventListener('keydown', event => { if (event.key === 'Escape') { event.stopPropagation(); if (!proactiveUI.closeOverlay()) hide(); } });
@@ -912,24 +912,22 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         let degree = wikiRow.querySelector('[aria-label="学历"]');
         if (school && !degree) { degree = document.createElement('input'); degree.className = 'ai-wiki-degree'; degree.setAttribute('aria-label', '学历'); degree.maxLength = 120; degree.placeholder = '学历'; wikiRow.insertBefore(degree, wikiRow.querySelector('[data-ai-wiki-remove]')); }
         if (degree) degree.hidden = !school;
-        let schoolName = wikiRow.querySelector('.ai-wiki-school-name');
-        if (school && !schoolName) { schoolName = document.createElement('small'); schoolName.className = 'ai-wiki-school-name'; wikiRow.insertBefore(schoolName, wikiRow.querySelector('[aria-label="信息内容"]')); }
-        if (schoolName) schoolName.hidden = !school;
+        wikiRow.classList.toggle('ai-wiki-school', school);
         if (school && !wikiRow.querySelector('[aria-label="信息内容"]').value) wikiRow.querySelector('[aria-label="信息内容"]').placeholder = '具体学校';
         let recorded = wikiRow.querySelector('.ai-wiki-recorded');
         if (temporal && !recorded) { recorded = document.createElement('small'); recorded.className = 'ai-wiki-recorded'; wikiRow.insertBefore(recorded, wikiRow.querySelector('[data-ai-wiki-remove]')); }
         if (recorded) { const rawTime = wikiRow.querySelector('[data-ai-wiki-recorded]')?.value, stamp = Number(rawTime); recorded.hidden = !temporal; if (temporal) recorded.textContent = `时间：${Number.isSafeInteger(stamp) && stamp ? new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', dateStyle: 'medium', timeStyle: 'short' }).format(stamp) : '未知'}`; }
         const remarkAction = wikiRow.querySelector('[data-ai-wiki-remark]');
         if (remarkAction) remarkAction.hidden = !state.capabilities?.writeContactRemark || !['name'].includes(input.value);
-        const content = wikiRow.querySelector('[aria-label="信息内容"]'), isOther = input.value === 'other';
+        const content = wikiRow.querySelector('[aria-label="信息内容"]'), isOther = input.value === 'other' || input.value.startsWith('group_');
         if (content && (content.tagName === 'TEXTAREA') !== isOther) {
           const replacement = document.createElement(isOther ? 'textarea' : 'input');
           replacement.setAttribute('aria-label', '信息内容'); replacement.maxLength = 2000; replacement.value = content.value;
-          replacement.placeholder = isOther ? '兴趣爱好、偏好或其他记忆' : '填写已确认的信息';
+          replacement.placeholder = input.value.startsWith('group_') ? '记录有依据的群聊事实' : isOther ? '兴趣爱好、偏好或其他记忆' : '填写已确认的信息';
           if (isOther) { replacement.rows = 1; resizeWikiTextarea(replacement); }
           content.replaceWith(replacement);
         }
-        const targetField = ['workplace', 'employer'].includes(input.value) ? 'work' : input.value;
+        const targetField = ['workplace', 'employer'].includes(input.value) ? 'work' : ['birthday', 'date'].includes(input.value) ? 'date_info' : ['household', 'residence', 'shipping'].includes(input.value) ? 'address' : input.value === 'addressing' ? 'name' : input.value;
         const target = wikiRow.closest('[data-ai-wiki-entities]')?.querySelector(`[data-ai-wiki-field="${targetField}"] .ai-wiki-field-values`);
         if (target && wikiRow.parentElement !== target) target.append(wikiRow);
         return;
@@ -1025,10 +1023,6 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     }
     if (event.target?.matches?.('.ai-wiki-bubble textarea[aria-label="信息内容"]')) resizeWikiTextarea(event.target);
     const wikiRow = event.target?.closest?.('.ai-wiki-bubble');
-    if (wikiRow && (event.target.matches('[aria-label="信息内容"]') || event.target.matches('[aria-label="学历"]'))) {
-      const label = wikiRow.querySelector('.ai-wiki-school-name');
-      if (label) label.textContent = `${wikiRow.querySelector('[aria-label="学历"]')?.value.trim() || '学历未注明'}：${wikiRow.querySelector('[aria-label="信息内容"]')?.value.trim() || '具体学校'}`;
-    }
     if (event.target.closest('#ai-object-form') && event.target.name === 'summary') {
       const form = event.target.form;
       form.elements.styleId.value = 'custom';
@@ -1311,7 +1305,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         const section=button.closest('[data-ai-wiki-field]') || entities?.querySelector(`[data-ai-wiki-field="${field}"]`);
         const list = section?.querySelector('.ai-wiki-field-values');
         if (!list) return;
-        list.insertAdjacentHTML('beforeend', wikiEntryMarkup({ field, text: '', ...(field === 'school' ? { degree: '' } : {}) }, state.capabilities?.writeContactRemark === true));
+        list.insertAdjacentHTML('beforeend', wikiEntryMarkup({ field, text: '', ...(field === 'school' ? { degree: '' } : {}) }, state.capabilities?.writeContactRemark === true, button.closest('#ai-object-form') ? objectKind : 'person'));
         const added = list.lastElementChild; const content = added.querySelector('[aria-label="信息内容"]');
         if (content?.tagName === 'TEXTAREA') resizeWikiTextarea(content);
         content?.focus(); return;
@@ -1456,10 +1450,10 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         render(); $('[data-ai-dirty]').hidden = false; return;
       }
       if (button.dataset.aiNav) { await navigate(button.dataset.aiNav); return; }
-      if (button.dataset.aiKind) { rememberDraft(); objectKind = button.dataset.aiKind; selectedObject = ''; objectSection = 'reply'; objectMemoryCategory = 'name'; objectSearch = ''; render(); return; }
+      if (button.dataset.aiKind) { rememberDraft(); objectKind = button.dataset.aiKind; selectedObject = ''; objectSection = 'reply'; objectMemoryCategory = objectKind === 'group' ? 'group_info' : 'name'; objectSearch = ''; render(); return; }
       if (button.dataset.aiObjectSection) { rememberDraft(); objectSection = button.dataset.aiObjectSection; render(); return; }
       if (button.dataset.aiMemoryCategory) { rememberDraft(); objectMemoryCategory = button.dataset.aiMemoryCategory; render(); return; }
-      if (button.dataset.aiObject) { rememberDraft(); selectedObject = button.dataset.aiObject; objectSection = 'reply'; objectMemoryCategory = 'name'; render(); return; }
+      if (button.dataset.aiObject) { rememberDraft(); selectedObject = button.dataset.aiObject; objectSection = 'reply'; objectMemoryCategory = objectKind === 'group' ? 'group_info' : 'name'; render(); return; }
       if ('aiObjectBack' in button.dataset) { rememberDraft(); selectedObject = ''; render(); return; }
       if ('aiLogPage' in button.dataset) { logFilters.page = Number(button.dataset.aiLogPage); logLoading = true; logRequestScope = ''; render(); await loadActivity(); return; }
       if (button.dataset.aiMemoryRestore) { const current=generation;const result=await execute('memory', {id:button.dataset.profile,value:{restoreId:button.dataset.aiMemoryRestore}}, '已恢复记忆'); if(!result || current!==generation)return;objectDrafts.delete(selectedObject); render(); return; }
@@ -1478,7 +1472,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         const entities=form.querySelector('[data-ai-wiki-entities]');
         for(const section of entities.querySelectorAll('[data-ai-wiki-field]')) {
           const field=section.dataset.aiWikiField;
-          section.querySelector('.ai-wiki-field-values').innerHTML=entries.filter(entry=>(entry.field||'other')===field).map(entry=>wikiEntryMarkup({...entry,field},state.capabilities?.writeContactRemark===true)).join('');
+          section.querySelector('.ai-wiki-field-values').innerHTML=entries.filter(entry=>field === 'legacy' ? ['name','addressing','phone','birthday','date','school','household','residence','workplace','employer','shipping'].includes(entry.field) : (['birthday','date'].includes(entry.field) ? 'date_info' : ['household','residence','shipping'].includes(entry.field) ? 'address' : ['workplace','employer'].includes(entry.field) ? 'work' : entry.field === 'addressing' ? 'name' : entry.field || 'other')===field).map(entry=>wikiEntryMarkup(entry,state.capabilities?.writeContactRemark===true,form.id === 'ai-object-form' ? objectKind : 'person')).join('');
         }
         rememberDraft();return;
       }

@@ -701,15 +701,19 @@
 #ai-panel .ai-wiki-bubble>input[aria-label="信息内容"]{grid-column:2;padding:7px 9px}
 #ai-panel .ai-wiki-bubble>.ai-wiki-degree,#ai-panel .ai-wiki-bubble>.ai-wiki-date-type,#ai-panel .ai-wiki-bubble>.ai-wiki-date-range,#ai-panel .ai-wiki-bubble>.ai-wiki-recorded,#ai-panel .ai-wiki-bubble>[data-ai-wiki-remark]{grid-column:1/-1;min-width:0}
 #ai-panel .ai-wiki-bubble>.ai-wiki-degree{width:100%;margin:0}
-#ai-panel .ai-wiki-bubble>.ai-wiki-school-name{grid-column:1/-1;font-size:12px;font-weight:600;color:var(--muted,#667085)}
+#ai-panel .ai-wiki-bubble.ai-wiki-school{grid-template-columns:118px minmax(0,1fr) minmax(130px,.72fr)}
+#ai-panel .ai-wiki-bubble.ai-wiki-school>.ai-wiki-degree{grid-column:3;grid-row:1;min-width:0}
+#ai-panel .ai-wiki-add-actions{display:flex;flex-wrap:wrap;gap:8px}
 #ai-panel .ai-wiki-date-type{display:flex;align-items:center;gap:8px;font-size:12px}
 #ai-panel .ai-wiki-date-type select{width:110px;max-width:110px;min-height:36px;padding:5px 8px}
 #ai-panel .ai-wiki-remove{position:absolute;right:9px;top:11px;width:28px;height:28px;min-width:28px;border-radius:50%;font-size:20px;line-height:1;padding:0}
 #ai-panel .ai-wiki-remove:hover{color:#a32948;background:#fff0f2}
 .ai-contact-limit{display:inline-flex!important;align-self:flex-start;margin-top:3px;padding:2px 7px;border-radius:999px;background:#fff0e7;color:#ad4b24;font-size:11px;font-weight:600}.ai-limits-row{display:flex;align-items:flex-end;flex-wrap:wrap;gap:10px}.ai-limits-row>.ai-field{flex:0 1 230px}.ai-limits-row>button{min-height:40px}
 #ai-panel .ai-wiki-recorded{font-size:11px;color:var(--muted,#667085)}
-#ai-panel .ai-wiki-date-type[hidden],#ai-panel .ai-wiki-degree[hidden],#ai-panel [data-ai-wiki-remark][hidden],#ai-panel .ai-wiki-school-name[hidden]{display:none}
-@media(max-width:420px){#ai-panel .ai-wiki-field{padding:9px}#ai-panel .ai-wiki-bubble{grid-template-columns:minmax(0,1fr)}#ai-panel .ai-wiki-bubble>select,#ai-panel .ai-wiki-bubble>input[aria-label="信息内容"]{grid-column:1}#ai-panel .ai-wiki-bubble>.ai-wiki-degree,#ai-panel .ai-wiki-bubble>.ai-wiki-date-type,#ai-panel .ai-wiki-bubble>.ai-wiki-recorded,#ai-panel .ai-wiki-bubble>.ai-wiki-school-name{grid-column:1}}
+#ai-panel .ai-wiki-date-type[hidden],#ai-panel .ai-wiki-degree[hidden],#ai-panel [data-ai-wiki-remark][hidden]{display:none}
+@media(max-width:600px){#ai-panel .ai-wiki-bubble.ai-wiki-school{grid-template-columns:118px minmax(0,1fr)}#ai-panel .ai-wiki-bubble.ai-wiki-school>.ai-wiki-degree{grid-column:2;grid-row:auto}}
+@media(max-width:420px){#ai-panel .ai-wiki-field{padding:9px}#ai-panel .ai-wiki-bubble{grid-template-columns:minmax(0,1fr)}#ai-panel .ai-wiki-bubble>select,#ai-panel .ai-wiki-bubble>input[aria-label="信息内容"]{grid-column:1}#ai-panel .ai-wiki-bubble>.ai-wiki-degree,#ai-panel .ai-wiki-bubble>.ai-wiki-date-type,#ai-panel .ai-wiki-bubble>.ai-wiki-recorded{grid-column:1}}
+@media(max-width:420px){#ai-panel .ai-wiki-bubble.ai-wiki-school{grid-template-columns:minmax(0,1fr)}#ai-panel .ai-wiki-bubble.ai-wiki-school>.ai-wiki-degree{grid-column:1}}
 #ai-panel .ap-task-table th{height:52px;padding:8px 12px;line-height:1.45;white-space:normal}
 #ai-panel .ap-task-table td{padding:14px 12px;min-height:88px;height:auto;line-height:1.65}
 #ai-panel .ap-filters button{min-height:40px;padding:8px 13px}
@@ -964,7 +968,7 @@
 #ai-panel .ai-reference-memory-head .ai-memory-history button{display:block;margin:7px 0 0 auto;white-space:nowrap}
 #ai-panel .ai-reference-memory-categories{display:grid;align-content:start;gap:2px;padding:14px 10px;border-right:1px solid #e8e9f1;background:#fafbff}
 #ai-panel .ai-reference-memory-categories button{width:100%;border:0;border-radius:8px;background:transparent;color:#6d758c;text-align:left;padding:10px 12px;font-size:11.5px}
-#ai-panel .ai-reference-memory-categories button span{display:block;width:4em;white-space:nowrap;text-align:justify;text-align-last:justify}
+#ai-panel .ai-reference-memory-categories button span{display:block;white-space:nowrap;text-align:left}
 #ai-panel .ai-reference-memory-categories button.active{background:#eef0ff;color:#5261c9;font-weight:700}
 #ai-panel .ai-reference-memory-content{padding:18px 20px;min-width:0}
 #ai-panel .ai-reference-memory-content .ai-wiki-entities{display:block}
