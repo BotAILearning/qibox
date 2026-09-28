@@ -1,13 +1,14 @@
 import { styleChoice } from './ai-style-view.mjs';
 import { icon } from './ai-icons.mjs';
 import { contactName, contactSearch } from './ai-contact-name.mjs';
+import { personReplyEnabled } from './ai-reply-state.mjs';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const avatar = (contact, index = 0) => `<span class="ai-monogram ai-avatar-${index % 6}" aria-hidden="true">${esc([...contact.label][0])}</span>`;
 export function objectList(state, view) {
   const query = view.search.normalize('NFKC').toLocaleLowerCase();
   return state.contacts.filter(c => c.kind === view.kind && (!query || contactSearch(c).includes(query))).map((c, i) => {
     const profile = state.profiles.find(p => p.contact === c.id), style = styleChoice(profile);
-    const on = c.kind === 'group' ? !!(profile?.groupOptions?.atMe || profile?.groupOptions?.atAll || profile?.groupOptions?.realtime) : !!(profile?.replyOptions?.enabled ?? (state.settings.replyScope === 'all' || (state.replyTargets || []).includes(profile?.id)));
+    const on = c.kind === 'group' ? !!(profile?.groupOptions?.atMe || profile?.groupOptions?.atAll || profile?.groupOptions?.realtime) : personReplyEnabled(state, profile);
     const draftStyleId = c.id === view.selected ? view.draft?.styleId : undefined;
     const currentStyleId = draftStyleId !== undefined ? draftStyleId : style.styleId;
     const styleLabel = currentStyleId === 'custom' ? '自定义' : currentStyleId === 'learned' ? '已学习风格' : currentStyleId?.startsWith('preset:') ? '已设置风格' : currentStyleId ? '已设置风格' : '使用默认风格';

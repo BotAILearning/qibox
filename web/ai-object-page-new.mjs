@@ -4,6 +4,7 @@ import { icon } from './ai-icons.mjs';
 import { contactName } from './ai-contact-name.mjs';
 import { objectList } from './ai-object-view.mjs';
 import { replyLimitControl } from './ai-reply-limit.mjs';
+import { personReplyEnabled } from './ai-reply-state.mjs';
 
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const avatar = contact => `<span class="ai-monogram" aria-hidden="true">${esc([...contact.label][0])}</span>`;
@@ -17,7 +18,7 @@ export function objectPage(state, view) {
   const choice = styleChoice(profile);
   const value = { ...choice, summary: choice.styleId ? choice.summary : styleSummary(state.learnedDefaultStyle?.style), replyGoal: '', facts: '', boundaries: '', maxRounds: state.replyRoundLimits?.[contact?.kind] ?? state.replyStrategy?.maxRounds ?? state.strategy?.maxRounds ?? 50, ...profile?.replyStrategy, ...view.draft };
   const draftOn = key => view.draft?.[key] !== undefined ? view.draft[key] === 'on' || view.draft[key] === true : null;
-  const enabled = draftOn('enabled') ?? profile?.replyOptions?.enabled ?? (state.settings.replyScope === 'all' || (state.replyTargets || []).includes(profile?.id));
+  const enabled = draftOn('enabled') ?? personReplyEnabled(state, profile);
   const opts = { enabled, multiTurn: draftOn('multiTurn') ?? profile?.replyOptions?.multiTurn ?? state.settings.multiTurn, judgeReply: draftOn('judgeReply') ?? profile?.replyOptions?.judgeReply ?? state.settings.judgeReply };
   const group = { atMe: draftOn('atMe') ?? profile?.groupOptions?.atMe ?? false, atAll: draftOn('atAll') ?? profile?.groupOptions?.atAll ?? false, realtime: draftOn('realtime') ?? profile?.groupOptions?.realtime ?? false };
   const realtimeMode = ['normal', 'proactive'].includes(view.draft?.realtimeMode ?? profile?.groupOptions?.realtimeMode) ? (view.draft?.realtimeMode ?? profile?.groupOptions?.realtimeMode) : 'normal';
@@ -32,8 +33,8 @@ export function objectPage(state, view) {
   const realtimeModes = `<fieldset class="ai-reference-realtime-modes"><legend>回复参与方式（开启后生效）</legend><div class="ai-reference-mode-options"><label><input type="radio" name="realtimeMode" value="normal" ${realtimeMode === 'normal' ? 'checked' : ''}><span><b>正常回复</b><small>有合适的回应理由时参与</small></span></label><label><input type="radio" name="realtimeMode" value="proactive" ${realtimeMode === 'proactive' ? 'checked' : ''}><span><b>积极主动</b><small>有价值的讨论中更主动接话</small></span></label></div></fieldset>`;
   const replyChoices = isGroup
     ? `<div class="ai-reference-dependency ai-reference-group-dependency"><h4 class="ai-reference-group-title">提及回复</h4><div class="ai-reference-group-options">${toggle('atMe', '@我时回复', '被提及时回复', group.atMe)}${toggle('atAll', '@所有人时回复', '提及所有人时回复', group.atAll)}${limit}</div><div class="ai-reference-realtime-block ${group.realtime ? 'on' : 'off'}">${toggle('realtime', 'AI 实时回复', '处理未提及的群消息', group.realtime, false, true)}${group.realtime ? realtimeModes : ''}</div></div>`
-    : `<div class="ai-reference-dependency ${opts.enabled ? 'on' : 'off'}">${toggle('enabled', '自动回复', '新消息到达时处理', opts.enabled, false, true)}<div class="ai-reference-children"><div class="ai-reference-child-grid">${toggle('multiTurn', '多轮交流', '自然延续对话', opts.multiTurn)}${toggle('judgeReply', '智能判断是否回复', '避免过度打扰', opts.judgeReply)}${limit}</div></div></div>`;
-  const reply = `<section class="ai-reference-panel" data-ai-object-panel="reply" ${section !== 'reply' ? 'hidden' : ''}><div class="ai-reference-reply-main">${replyChoices}</div><div class="ai-reference-reply-settings">${strategy}</div></section>`;
+    : `<div class="ai-reference-dependency ${opts.enabled ? 'on' : 'off'}">${toggle('enabled', '自动回复', '新消息到达时处理', opts.enabled, false, true)}<div class="ai-reference-children" ${opts.enabled ? '' : 'hidden'}><div class="ai-reference-child-grid">${toggle('multiTurn', '多轮交流', '自然延续对话', opts.multiTurn)}${toggle('judgeReply', '智能判断是否回复', '避免过度打扰', opts.judgeReply)}${limit}</div></div></div>`;
+  const reply = `<section class="ai-reference-panel" data-ai-object-panel="reply" ${section !== 'reply' ? 'hidden' : ''}><div class="ai-reference-reply-main">${replyChoices}</div><div class="ai-reference-reply-settings" ${!isGroup && !opts.enabled ? 'hidden' : ''}>${strategy}</div></section>`;
   const style = `<section class="ai-reference-panel ai-reference-style" data-ai-object-panel="style" ${section !== 'style' ? 'hidden' : ''}><div class="ai-reference-style-head"><h4>聊天风格</h4></div><div class="ai-reference-style-body"><div class="ai-style-pills" role="group" aria-label="选择聊天风格">${styles.map(p => `<button type="button" data-ai-style="${esc(p.id)}" aria-pressed="${value.styleId === p.id}">${esc(p.label)}</button>`).join('')}</div><input type="hidden" name="styleId" value="${esc(value.styleId)}"><label class="ai-field"><span>风格说明</span><textarea name="summary" maxlength="6000" rows="6">${esc(value.summary)}</textarea></label>${value.styleId ? '' : `<p class="ai-help">当前跟随账号默认风格。<button type="button" class="quiet" data-ai-nav="default-style">学习默认风格</button></p>`}</div></section>`;
   const memoryTypes = isGroup ? [...groupMemoryTypes, ...(profile?.memory?.entries?.some(entry => ['name','addressing','phone','birthday','date','school','household','residence','workplace','employer','shipping'].includes(entry.field)) ? [['legacy','旧版记忆']] : [])] : personMemoryTypes;
   const memoryCategory = memoryTypes.some(([id]) => id === view.memoryCategory) ? view.memoryCategory : memoryTypes[0][0];

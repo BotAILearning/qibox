@@ -1,5 +1,6 @@
 import { contactName, contactSearch } from './ai-contact-name.mjs';
 import { renderProactiveTable } from './ai-proactive-table-new.mjs';
+import { personReplyEnabled } from './ai-reply-state.mjs';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const option = (value, label, selected) => `<option value="${esc(value)}" ${selected ? 'selected' : ''}>${esc(label)}</option>`;
 export const taskTypes = [
@@ -81,8 +82,8 @@ export function contactChoices(state, query = '', selected = []) {
   const q = query.trim().normalize('NFKC').toLocaleLowerCase();
   return [...contacts.values()].map(c => {
     const p = profiles.get(c.id), learned = !!p?.learnedAt;
-    const reply = p?.replyOptions?.enabled ?? (state.settings?.replyScope === 'all' || (state.replyTargets || []).includes(p?.id));
-    return { ...c, label: c.label || c.id, profileId: p?.id || c.profileId, rank: learned ? 0 : reply ? 1 : 2, tag: learned ? '已学习' : reply ? '已设置自动回复' : '未设置' };
+    const reply = personReplyEnabled(state, p, p?.id || c.profileId);
+    return { ...c, label: c.label || c.id, profileId: p?.id || c.profileId, rank: learned ? 0 : reply ? 1 : 2, learned, replyEnabled: reply, tag: reply ? '已设置自动回复' : '未开启自动回复' };
   }).filter(c => !q || contactSearch(c).includes(q))
     .sort((a, b) => a.rank - b.rank || a.label.localeCompare(b.label, 'zh-CN'));
 }
@@ -100,7 +101,7 @@ export function proactiveTable(state, view = {}) { return renderProactiveTable(s
 function replyOffContacts(state, contacts) {
   return (contacts || []).filter(c => {
     const p = (state.profiles || []).find(x => x.id === c.profileId || x.contact === c.id);
-    const enabled = p?.replyOptions?.enabled ?? (state.settings?.replyScope === 'all' || (state.replyTargets || []).includes(p?.id || c.profileId));
+    const enabled = personReplyEnabled(state, p, p?.id || c.profileId);
     return !enabled;
   });
 }
@@ -128,7 +129,7 @@ function taskEditor(state, draft) {
   const heading = readonly ? '查看任务' : draft.id ? '编辑任务' : '新建任务';
   return `<header class="ap-heading ap-editor-heading"><button type="button" class="secondary" data-proactive-back>← 返回任务列表</button><div><h3>${heading}</h3><p>${readonly ? '已结束或删除的任务仅供查看。' : draft.id ? '调整联系人和执行规则，保存后保持当前任务状态。' : '设置联系人和执行规则，任务建立后会自动执行。'}</p></div></header>${task?.migrationRequired ? `<div class="ap-readiness ap-migration-summary"><b>旧任务已暂停，请核对后再继续。</b><p>${esc(task.migrationSummary || task.legacyScheduleText || task.legacySchedule?.text || '原安排未记录')}</p><p>${task.migrationScheduleMapped ? '已预填可识别的原执行周期，请核对时间和联系人。' : '原周期无法可靠转换，请明确选择下方执行周期；不会自动按一次任务保存。'}</p></div>` : ''}<form id="ai-proactive-form" class="ap-editor"><fieldset ${readonly ? 'disabled' : ''}>
     <section class="ap-form-card"><label class="ai-field">任务名称<input name="name" maxlength="120" required value="${esc(draft.name)}" placeholder="例如：春日问候计划"></label></section>
-    <section class="ap-form-card"><div class="ap-card-head"><div><h4>选择联系人</h4><p>已学习和已设置自动回复的联系人会优先显示。</p></div><button type="button" class="secondary" data-proactive-pick>＋ 添加联系人</button></div><div class="ap-contact-summary">从微信联系人中选择 <b id="ai-proactive-contact-count">已选 ${draft.contacts.length} 人</b></div><div class="ap-selected" id="ai-proactive-selected">${(() => { const off = new Set(replyOffContacts(state, draft.contacts).map(c => c.id)); return draft.contacts.map(c => `<span class="ap-chip">${contactName(c) || esc(c.id)}${off.has(c.id) ? '（未开自动回复）' : ''}<button type="button" data-proactive-remove="${esc(c.id)}" aria-label="移除 ${esc(c.label || c.id)}">×</button></span>`).join(''); })() || '<div class="ap-empty ap-empty-contacts">暂未选择联系人<br>点击右上角“添加联系人”开始选择</div>'}</div>${(() => { const off = replyOffContacts(state, draft.contacts); return off.length ? `<div class="ap-reply-hint"><p>${esc(off.map(c => contactName(c) || c.id).join('、'))} 未开启自动回复：任务仍会按计划发起，但对方此后的回复不会再被自动处理。</p><button type="button" class="secondary" data-proactive-enable-reply>为这些联系人开启自动回复</button></div>` : ''; })()}</section>
+    <section class="ap-form-card"><div class="ap-card-head"><div><h4>选择联系人</h4><p>已学习和已开启自动回复的联系人会优先显示。</p></div><button type="button" class="secondary" data-proactive-pick>＋ 添加联系人</button></div><div class="ap-contact-summary">从微信联系人中选择 <b id="ai-proactive-contact-count">已选 ${draft.contacts.length} 人</b></div><div class="ap-selected" id="ai-proactive-selected">${(() => { const off = new Set(replyOffContacts(state, draft.contacts).map(c => c.id)); return draft.contacts.map(c => `<span class="ap-chip">${contactName(c) || esc(c.id)}${off.has(c.id) ? '（未开自动回复）' : ''}<button type="button" data-proactive-remove="${esc(c.id)}" aria-label="移除 ${esc(c.label || c.id)}">×</button></span>`).join(''); })() || '<div class="ap-empty ap-empty-contacts">暂未选择联系人<br>点击右上角“添加联系人”开始选择</div>'}</div>${(() => { const off = replyOffContacts(state, draft.contacts); return off.length ? `<div class="ap-reply-hint"><p>${esc(off.map(c => contactName(c) || c.id).join('、'))} 未开启自动回复：任务仍会按计划发起，但对方此后的回复不会再被自动处理。</p><button type="button" class="secondary" data-proactive-enable-reply>为这些联系人开启自动回复</button></div>` : ''; })()}</section>
     <section class="ap-form-card"><h4>聊天目标</h4><p>告诉 AI 这次联系想达成什么。</p><label class="ai-field">任务类型<select name="taskType">${taskTypes.map(([key, label]) => option(key, label, draft.taskType === key)).join('')}</select></label><label class="ai-field"><span class="sr-only">聊天目标</span><textarea name="goal" rows="4" maxlength="6000" required placeholder="例如：自然问候近况，询问周末是否有空…">${esc(draft.goal)}</textarea></label></section>
     <section class="ap-form-card"><h4>其他要求 <small>（选填）</small></h4><p>可补充称呼、语气、禁用话题或必须提到的信息。</p><label class="ai-field"><span class="sr-only">其他要求</span><textarea name="requirements" rows="3" maxlength="6000" placeholder="例如：称呼对方小名；语气轻松；不要提及工作压力…">${esc(draft.requirements)}</textarea></label></section>
     ${scheduleEditor(s)}
@@ -162,13 +163,13 @@ export function createProactiveUI({ panel, getState, context, isBusy, mutate, re
     const choices = contactChoices(getState(), picker.query, selected), list = dialog.querySelector('#ai-proactive-picker-list');
     for (const c of choices) picker.contacts.set(c.id, c);
     const scroll = list.scrollTop;
-    list.innerHTML = choices.map(c => `<label class="ap-person ${picker.ids.has(c.id) ? 'selected' : ''}"><input type="checkbox" data-proactive-contact="${esc(c.id)}" ${picker.ids.has(c.id) ? 'checked' : ''}><span class="ap-avatar">${esc([...c.label][0])}</span><span><b>${contactName(c)}</b><small class="ap-contact-tag rank-${c.rank}">${c.tag}</small>${c.missing ? '<small>本次列表未读取到，保留原选择</small>' : ''}</span></label>`).join('') || '<p class="ap-empty">没有匹配联系人，可尝试刷新列表。</p>';
+    list.innerHTML = choices.map(c => `<label class="ap-person ${picker.ids.has(c.id) ? 'selected' : ''}"><input type="checkbox" data-proactive-contact="${esc(c.id)}" ${picker.ids.has(c.id) ? 'checked' : ''}><span class="ap-avatar">${esc([...c.label][0])}</span><span><b>${contactName(c)}</b>${c.learned ? '<small class="ap-contact-tag rank-0">已学习</small>' : ''}<small class="ap-contact-tag ${c.replyEnabled ? 'rank-1' : ''}">${c.tag}</small>${c.missing ? '<small>本次列表未读取到，保留原选择</small>' : ''}</span></label>`).join('') || '<p class="ap-empty">没有匹配联系人，可尝试刷新列表。</p>';
     list.scrollTop = scroll;
     dialog.querySelector('[data-proactive-picked-count]').textContent = `已选 ${picker.ids.size} 人`;
   }
   function pickContacts() {
     remember();
-    const node = openDialog(`<header><div><h3>添加联系人</h3><p>已学习 → 已设置自动回复 → 未设置，按优先级排列</p></div><button type="button" data-proactive-picker-cancel aria-label="关闭">×</button></header><div class="ap-picker-tools"><input id="ai-proactive-contact-search" type="search" aria-label="搜索联系人" placeholder="搜索姓名或备注"><button type="button" data-proactive-select-all>全选</button><button type="button" data-proactive-clear>清空</button><button type="button" data-proactive-refresh>刷新</button></div><div class="ap-picker-summary"><span>全选作用于当前搜索结果</span><b data-proactive-picked-count></b></div><div id="ai-proactive-picker-list" class="ap-picker-list"></div><p class="ap-picker-error" role="alert"></p><footer><button type="button" class="secondary" data-proactive-picker-cancel>取消</button><button type="button" class="primary" data-proactive-picker-confirm>确定</button></footer>`, '选择主动聊天联系人');
+    const node = openDialog(`<header><div><h3>添加联系人</h3><p>已学习 → 自动回复已开启 → 其他联系人，按优先级排列</p></div><button type="button" data-proactive-picker-cancel aria-label="关闭">×</button></header><div class="ap-picker-tools"><input id="ai-proactive-contact-search" type="search" aria-label="搜索联系人" placeholder="搜索姓名或备注"><button type="button" data-proactive-select-all>全选</button><button type="button" data-proactive-clear>清空</button><button type="button" data-proactive-refresh>刷新</button></div><div class="ap-picker-summary"><span>全选作用于当前搜索结果</span><b data-proactive-picked-count></b></div><div id="ai-proactive-picker-list" class="ap-picker-list"></div><p class="ap-picker-error" role="alert"></p><footer><button type="button" class="secondary" data-proactive-picker-cancel>取消</button><button type="button" class="primary" data-proactive-picker-confirm>确定</button></footer>`, '选择主动聊天联系人');
     picker = { ids: new Set(view.draft.contacts.map(c => c.id)), query: '', contacts: new Map(contactChoices(getState(), '', view.draft.contacts).map(c => [c.id, c])) };
     const current = context();
     node.addEventListener('input', event => { event.stopPropagation(); if (event.target.id === 'ai-proactive-contact-search') { picker.query = event.target.value; drawPicker(); } });
