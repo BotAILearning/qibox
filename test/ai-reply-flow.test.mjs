@@ -47,5 +47,7 @@ test('unsubmitted reply is shown as failure while the incoming remains pending',
   assert.equal(profile.replyFlow.phase, 'failed');
   assert.equal(f.assistant.cursors.get(profile.id).pending, true);
   assert.equal(profile.delivery.segmentsSent, 0);
+  assert.deepEqual(profile.delivery.diagnostic, { phase: 'native-prepare', code: 'controls-unavailable' });
+  assert.match(profile.replyFlow.detail, /准备微信输入区微信控件不可用/);
   assert.ok(f.assistant.liveStates().some(row => row.id === profile.id && row.reason === '发送失败，等待重试'));
 });

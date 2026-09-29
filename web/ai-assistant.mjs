@@ -217,11 +217,15 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       if (valid()) { logLoading = false; drawRecords(); rememberRecords(); }
     }
   }
-  async function openConversation(profileId) {
+  async function openConversation(profileId, button) {
     const current = generation, target = id;
+    const original = button?.textContent;
+    if (button) { button.disabled = true; button.textContent = '正在打开聊天…'; }
+    message('正在按联系人身份定位微信聊天…');
     let result;
     try { result = await api(`/instances/${target}/ai`, { action: 'open-conversation', id: profileId }, 30000); }
     catch (error) { if (current !== generation || target !== id) return; throw error; }
+    finally { if (button?.isConnected && current === generation) { button.disabled = false; button.textContent = original; } }
     if (current !== generation || target !== id) return;
     if (!result.opened) throw new Error('尚未确认打开目标聊天');
     panel.hidden = true;
@@ -346,7 +350,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       return;
     }
     const open = event.target.closest('[data-ai-open-conversation]');
-    if (open) { event.preventDefault(); void openConversation(open.dataset.aiOpenConversation).catch(error => message(error.message, true)); return; }
+    if (open) { event.preventDefault(); if (!open.disabled) void openConversation(open.dataset.aiOpenConversation, open).catch(error => message(error.message, true)); return; }
   });
   const message = (text, error = false) => { const node = $('#ai-feedback'); node.textContent = text; node.classList.toggle('error', error); node.hidden = !text; };
   function confirmAnalysisDelete() {

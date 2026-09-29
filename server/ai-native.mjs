@@ -63,7 +63,7 @@ export class NativeChatBridge {
     await this.runtime.foregroundRequested?.(); this.check(context);
     // The private NAS desktop may have no browser viewer and its WeChat window
     // may be hidden. Restore this owned instance before checking native identity.
-    await this.runtime.showWindow?.(); this.check(context);
+    await this.runtime.showWindow?.({ activate: true }); this.check(context);
   }
   async execute(action, { signal, ...args }) {
     const runtime = this.runtime;

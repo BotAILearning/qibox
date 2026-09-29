@@ -23,6 +23,15 @@ PROFILES = {
         'map': 0x18, 'map_first': 0x10, 'map_size': 0x18, 'node_key': 0x10,
         'vector_begin': 0x28, 'vector_end': 0x30,
     },
+    'ce28c3471d532eeb1f136482eeb4d0bdfd59c06e': {
+        'sha256': '2ca28ea56b1a400543d0128ebaf0b93f88172dd66dc0426d3d74fdb971eab959',
+        'machine': 62, 'manager_vtable': 0xa6a7d78,
+        'manager_key': 0x178, 'controller': 0x1a8,
+        'inner': 0xf8, 'current': 0x40, 'mirror_current': 0x48,
+        'username': 0x148, 'map': 0x18, 'map_first': 0x10,
+        'map_size': 0x18, 'node_key': 0x10,
+        'vector_begin': 0x28, 'vector_end': 0x30,
+    },
 }
 
 # Cross-build discovery. A rebuild moves every RVA, so the vtable address above
@@ -406,6 +415,19 @@ class SessionIdentity:
         current = struct.unpack('<Q', self._read(inner + p['current'], 8))[0]
         if current and (current < 0x10000 or current >= MAX_ADDRESS or current % 8):
             raise ValueError('session pointer unavailable')
+        mirror = None
+        if 'mirror_current' in p:
+            # This exact WeChat build keeps two independently allocated current
+            # session objects. Both must identify the same account contact.
+            # Neither is a member of its normal_key history vector, so the
+            # old pointer-membership rule alone rejects a valid selected chat.
+            mirrored = self._pointer(inner + p['mirror_current'])
+            if not current or mirrored == current:
+                raise ValueError('session mirror unavailable')
+            first_name = self._string(current + p['username'])
+            mirror = (mirrored, self._string(mirrored + p['username']))
+            if not first_name[0] or not USERNAME.fullmatch(first_name[0]) or first_name != mirror[1]:
+                raise ValueError('session mirror changed')
         # The supported binary's unordered_map insertion at RVA 0x48f8992
         # reads size at map+0x18; bucket/first-node fields precede it. An empty
         # map is accepted only when its count and current selection are zero.
@@ -415,7 +437,7 @@ class SessionIdentity:
         if not node:
             if current or map_size:
                 raise ValueError('session vector unavailable')
-            return (manager, controller, inner, current, manager_key, map_header, (), (None, b'', b''))
+            return (manager, controller, inner, current, manager_key, map_header, (), mirror, (None, b'', b''))
         if node < 0x10000 or node >= MAX_ADDRESS or node % 8 or not 0 < map_size <= 128:
             raise ValueError('session vector unavailable')
         seen, vectors = set(), []
@@ -439,7 +461,7 @@ class SessionIdentity:
                     entries = self._read(begin, end - begin)
                     pointers = [struct.unpack_from('<Q', entries, offset)[0] for offset in range(0, len(entries), 16)]
                     if (len(set(pointers)) != len(pointers) or any(pointer < 0x10000 or pointer >= MAX_ADDRESS or pointer % 8 for pointer in pointers)
-                            or current and pointers.count(current) != 1):
+                            or current and pointers.count(current) != 1 and mirror is None):
                         raise ValueError('selected session is not a unique live member')
                     vectors.append((node, begin, end, entries))
             node = struct.unpack('<Q', self._read(node, 8))[0]
@@ -448,7 +470,9 @@ class SessionIdentity:
         if len(vectors) != 1 or len(seen) != map_size:
             raise ValueError('session vector ambiguous or unavailable')
         username = self._string(current + p['username']) if current else (None, b'', b'')
-        return (manager, controller, inner, current, manager_key, map_header, tuple(vectors), username)
+        if mirror is not None and username != mirror[1]:
+            raise ValueError('session mirror changed')
+        return (manager, controller, inner, current, manager_key, map_header, tuple(vectors), mirror, username)
 
     def current(self):
         started = time.monotonic()
