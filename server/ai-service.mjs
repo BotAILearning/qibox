@@ -1,4 +1,5 @@
-import { learningPrompt, learningPromptFor, learningWithMemoryPrompt, defaultLearningSummaryPrompt, conversationPrompt, addressingPrompt, generationPrompt, naturalChatPrompt, generationProtocol, proactivePrompt, proactiveBackgroundPrompt, proactiveBackgroundTtl, messageSegments } from './ai-prompts.mjs';
+import { learningPrompt, learningPromptFor, learningWithMemoryPrompt, defaultLearningSummaryPrompt, conversationPrompt, addressingPrompt, generationPrompt, naturalChatPrompt, longTermMemoryPrompt, generationProtocol, proactivePrompt, proactiveBackgroundPrompt, proactiveBackgroundTtl, messageSegments } from './ai-prompts.mjs';
+import { selectMemoryForChat } from './ai-memory-context.mjs';
 import path from 'node:path';
 import { chatMemoryPrompt, groupMemoryInstruction, mergeMemory, editMemory as changeMemory, pointInTimeMemory } from './ai-wiki.mjs';
 import { defaultTakeover, takeoverValue, effectiveTakeover, identityPrompt, asksIdentity } from './ai-reply-rules.mjs';
@@ -34,10 +35,17 @@ function validatedLearnedStyleFields(value) {
   return value;
 }
 const validatedLearnedStyle = value => composeLearnedStyle(validatedLearnedStyleFields(value));
-function validatedLearnedMemory(value) {
+function validatedLearnedMemory(value, material) {
   try {
     const memory = memoryValue(value);
-    if (memory) return memory;
+    if (memory) {
+      const sourceTimes = new Set((Array.isArray(material) ? material : []).filter(row => Number.isSafeInteger(row?.timestamp)).map(row => row.timestamp * 1000));
+      memory.entries = memory.entries.map(entry => {
+        const { observedAt, evidence: _unverifiedEvidence, ...safe } = entry;
+        return sourceTimes.has(observedAt) ? { ...safe, observedAt } : safe;
+      });
+      return memory;
+    }
   } catch { /* malformed or oversized model structure is a retryable schema failure */ }
   throw new AppError('模型未返回有效聊天记忆结构，请重试', 502, 'ai_model_schema');
 }
@@ -70,6 +78,9 @@ const memoryMergeEntry = entry => ({
   ...(entry.degree ? { degree: entry.degree } : {}), ...(entry.calendar ? { calendar: entry.calendar } : {}),
   ...(Number.isSafeInteger(entry.from) ? { from: entry.from } : {}), ...(Number.isSafeInteger(entry.to) ? { to: entry.to } : {}),
   ...(Number.isSafeInteger(entry.recordedAt) ? { recordedAt: entry.recordedAt } : {}),
+  ...(Number.isSafeInteger(entry.observedAt) ? { observedAt: entry.observedAt } : {}),
+  ...(['historical', 'uncertain'].includes(entry.status) ? { status: entry.status } : {}),
+  ...(Array.isArray(entry.evidence) ? { evidence: entry.evidence } : {}),
 });
 const asksDirectQuestion = text => /[?？]|(?:吗|呢|么)[。！!…]*$|(?:怎么|如何|是否|要不要|该不该|能不能|可不可以|是不是|有没有|为什么|什么|哪一个|哪个|几时|什么时候)/u.test(String(text || '').trim());
 function skipIncomingMessages(profile, messages = [], anchorId = null) {
@@ -951,11 +962,11 @@ export class AIAssistant {
     };
     const recentSelfMessages = snapshot.messages.filter(message => message.direction === 'self').slice(-8).map(emphasis);
     const latestIncoming = snapshot.messages.findLast(message => message.direction === 'other');
-    return this.provider.complete(this.modelFor('proactive'), `${generationPrompt}${naturalChatPrompt}${conversationPrompt}${addressingPrompt}${identityPrompt(this.data.settings.acknowledgeAI)}${proactivePrompt(strategy)} 当前只能发送纯文字，不承诺发送媒体、文件或执行付款。本次是独立主动聊天任务，不自动续聊，不更新风格或记忆。${generationProtocol({ multiTurn, followUpAllowed: false, memoryUpdates: false, allowSkip: false })}${extra}`, {
+    return this.provider.complete(this.modelFor('proactive'), `${generationPrompt}${naturalChatPrompt}${longTermMemoryPrompt}${conversationPrompt}${addressingPrompt}${identityPrompt(this.data.settings.acknowledgeAI)}${proactivePrompt(strategy)} 当前只能发送纯文字，不承诺发送媒体、文件或执行付款。本次是独立主动聊天任务，不自动续聊，不更新风格或记忆。${generationProtocol({ multiTurn, followUpAllowed: false, memoryUpdates: false, allowSkip: false })}${extra}`, {
       mode: 'proactive', continuation: false, multiTurn, followUp: false, followUpAllowed: false, updateStyle: false, judgeReply: false,
       kind: profile.kind, strategy, style, styleOwner: 'self', addressing: { styleScope: 'current-chat', currentStyle: style },
       currentTime, timezone: 'Asia/Shanghai',
-      memory: readMemory(this.vault, profile), capabilities: { sendText: true, sendMedia: false, files: false, calls: false },
+      memory: selectMemoryForChat(readMemory(this.vault, profile), { query: `${task.goal}\n${latestIncoming?.text || ''}`, now: this.now() }), capabilities: { sendText: true, sendMedia: false, files: false, calls: false },
       conversation: { latestIncomingId: latestIncoming?.id || null, lastSelfId: recentSelfMessages.length ? snapshot.messages.filter(message => message.direction === 'self').at(-1)?.id || null : null,
         recentSelfMessages, latestIncoming: latestIncoming ? emphasis(latestIncoming) : null },
       messages: snapshot.messages.map(m => ({ ...m, aiGenerated: (profile.generatedIds || []).includes(m.id) }))
@@ -1377,21 +1388,21 @@ export class AIAssistant {
               coverage: memoryCoverage, material: memoryInput,
             };
             const validateMemoryResult = result => {
-              const memory = validatedLearnedMemory(result?.memory);
+              const memory = validatedLearnedMemory(result?.memory, memoryInput);
               return { ...result, memory };
             };
             const memoryPromptForKind = profile.kind === 'group' ? `${memoryLearningPrompt}\n${groupMemoryInstruction}` : memoryLearningPrompt;
             let parsed = await this.provider.complete(this.modelFor('learning'), memoryPromptForKind, memoryInputData,
               signal, { budget: 16384, validate: validateMemoryResult });
             if (revision !== this.revision) throw new AppError('学习已取消');
-            let parsedMemory = memoryValue(parsed?.memory);
+            let parsedMemory = validatedLearnedMemory(parsed?.memory, memoryInput);
             if (!parsedMemory) throw new AppError('模型未返回有效聊天记忆，未保存空结果');
             if (!parsedMemory.entries.length && memoryInput.some(message => message.text.trim())) {
               const recheckPrompt = `${memoryPromptForKind}\n这是对同一份材料的补充核查。上一轮没有返回任何条目，请重新检查材料前段和后段，留意有明确依据的稳定事实、重要经历、已确认约定与待办；有依据的事实分别列出，不要因为聊天很多或范围截断就整体留空。不得编造，也不要凑数；确实没有符合条件的事实时才返回空 entries。`;
               parsed = await this.provider.complete(this.modelFor('learning'), recheckPrompt, memoryInputData,
                 signal, { budget: 16384, validate: validateMemoryResult });
               if (revision !== this.revision) throw new AppError('学习已取消');
-              parsedMemory = memoryValue(parsed?.memory);
+              parsedMemory = validatedLearnedMemory(parsed?.memory, memoryInput);
               if (!parsedMemory) throw new AppError('模型未返回有效聊天记忆，未保存空结果');
             }
             const entries = parsedMemory.entries;
@@ -1430,7 +1441,7 @@ export class AIAssistant {
         const prompt = target === 'style' ? learningPrompt : learningWithMemoryPrompt + memoryPrompt + (profile.kind === 'group' ? groupMemoryInstruction : '');
         const entry = await this.provider.complete(this.modelFor('learning'), prompt, input, signal,
           target === 'style' ? { validate: result => ({ ...result, style: validatedLearnedStyleFields(result?.style) }) } : { budget: 16384, validate: result => {
-            const style = validatedLearnedStyleFields(result?.style), memory = validatedLearnedMemory(result?.memory);
+            const style = validatedLearnedStyleFields(result?.style), memory = validatedLearnedMemory(result?.memory, material);
             return { ...result, style, memory };
           } });
         signal.throwIfAborted();
@@ -1438,7 +1449,7 @@ export class AIAssistant {
         const style = styleValue(validatedLearnedStyle(entry.style)), learnedStyle = structuredClone(style);
         if (profile.style) { for (const field of [...(profile.locked || []), 'customTone', 'customAvoid']) style[field] = profile.style[field]; }
         // 仅学习风格时不读写聊天记忆，已保存的内容原样保留。
-        const memory = target === 'style' ? {} : learnedMemory(this.vault, profile, entry.memory, this.now());
+        const memory = target === 'style' ? {} : learnedMemory(this.vault, profile, entry.memory === undefined ? undefined : validatedLearnedMemory(entry.memory, material), this.now());
         if (target !== 'style' && entry.memory === undefined) memoryMissing++;
         if (memoryCoverage && (memoryCoverage.truncated || memoryCoverage.sourceTruncated)) memoryCoverageTruncated++;
         const updated = { ...profile, ...memory, ...(memoryCoverage ? { memoryCoverage, memoryCoverageAt: this.now() } : {}), style, learnedStyle, styleId: JSON.stringify(style) === JSON.stringify(learnedStyle) ? 'learned' : 'custom', replyStyleSet: true, source, learnedAt: this.now(), paused: profile.paused || false, rounds: profile.rounds || 0,
@@ -1764,8 +1775,15 @@ export class AIAssistant {
         signal, { budget: 16384 });
       const merged = memoryValue(result?.memory);
       if (!merged) throw new AppError('模型返回的记忆格式不正确');
-      const recordedAtById = new Map([...current.entries, ...incoming.entries].filter(entry => Number.isSafeInteger(entry.recordedAt)).map(entry => [entry.id, entry.recordedAt]));
-      merged.entries = merged.entries.map(entry => Number.isSafeInteger(recordedAtById.get(entry.id)) ? { ...entry, recordedAt: recordedAtById.get(entry.id) } : entry);
+      const metadataById = new Map([...current.entries, ...incoming.entries].map(entry => [entry.id, entry]));
+      merged.entries = merged.entries.map(entry => {
+        const prior = metadataById.get(entry.id);
+        return prior ? { ...entry,
+          ...(Number.isSafeInteger(prior.recordedAt) ? { recordedAt: prior.recordedAt } : {}),
+          ...(Number.isSafeInteger(prior.observedAt) ? { observedAt: prior.observedAt } : {}),
+          ...(['historical', 'uncertain'].includes(prior.status) ? { status: prior.status } : {}),
+          ...(prior.evidence?.length ? { evidence: prior.evidence } : {}) } : entry;
+      });
       const stored = this.data.profiles[id];
       if (!stored || revision !== this.revision) return;
       // 合并结果不直接写入：它替换掉待确认内容，等用户再确认一次。
@@ -2541,8 +2559,8 @@ export class AIAssistant {
       for (let attempt = 0; attempt < 2; attempt++) {
         result = onlyImages && !images.length && profile.kind !== 'group' ? { action: 'skip', mediaSkipped: true } : await this.provider.complete(
           this.modelFor('chat'),
-          `${generationPrompt}${naturalChatPrompt}${chatMemoryPrompt}${profile.kind === 'group' ? groupMemoryInstruction : ' 单聊中，对方姓名写入 name；只有用户确实直接这样称呼对方且对象明确时，才把称呼写入 addressing。'}${identityPrompt(this.data.settings.acknowledgeAI)}${conversationPrompt}${replySummaryContext} 当前只能发送纯文字，不能发送、读取或下载文件，不能拨打或接听电话，仅能理解实际附带的图片；未附带图片或图片无法读取时，应如实说明无法查看并请对方转成文字，不猜测图片内容。${groupTriggerInstruction}${currentTask}${currentStyle}${profile.kind === 'group' ? groupPrompt(trigger, multiTurn, profile.groupOptions?.realtimeMode) : ''}${generationProtocol({ multiTurn, group: profile.kind === 'group', followUpAllowed: profile.kind !== 'group' && !followUp, updateStyle: this.data.settings.updateStyle, allowSkip: !mustReply, allowStop: profile.kind !== 'group' || requiredGroupReply })}`,
-          { images: textOnlyRetry ? [] : images, onlyImages: textOnlyRetry ? false : onlyImages, capabilityConcern: reason, mode, continuation, multiTurn, followUp, followUpAllowed: profile.kind !== 'group' && !followUp, kind: profile.kind, conversation, addressing, memory: readMemory(this.vault, profile), groupState, capabilities: { sendText: true, wechatVoiceText: true, files: false, calls: false, receiveImages: !textOnlyRetry && images.length > 0, sendMedia: false }, strategy, style, styleOwner: 'self', judgeReply: profile.kind === 'group' ? trigger === 'realtime' : followUp || this.replyOptions(profile).judgeReply, updateStyle: this.data.settings.updateStyle, messages: modelMessages.map(message => ({ ...message, aiGenerated: message.aiGenerated === true || (profile.generatedIds || []).includes(message.id) })) }, signal
+          `${generationPrompt}${naturalChatPrompt}${longTermMemoryPrompt}${chatMemoryPrompt}${profile.kind === 'group' ? groupMemoryInstruction : ' 单聊中，对方姓名写入 name；只有用户确实直接这样称呼对方且对象明确时，才把称呼写入 addressing。'}${identityPrompt(this.data.settings.acknowledgeAI)}${conversationPrompt}${replySummaryContext} 当前只能发送纯文字，不能发送、读取或下载文件，不能拨打或接听电话，仅能理解实际附带的图片；未附带图片或图片无法读取时，应如实说明无法查看并请对方转成文字，不猜测图片内容。${groupTriggerInstruction}${currentTask}${currentStyle}${profile.kind === 'group' ? groupPrompt(trigger, multiTurn, profile.groupOptions?.realtimeMode) : ''}${generationProtocol({ multiTurn, group: profile.kind === 'group', followUpAllowed: profile.kind !== 'group' && !followUp, updateStyle: this.data.settings.updateStyle, allowSkip: !mustReply, allowStop: profile.kind !== 'group' || requiredGroupReply })}`,
+          { images: textOnlyRetry ? [] : images, onlyImages: textOnlyRetry ? false : onlyImages, capabilityConcern: reason, mode, continuation, multiTurn, followUp, followUpAllowed: profile.kind !== 'group' && !followUp, kind: profile.kind, conversation, addressing, memory: selectMemoryForChat(readMemory(this.vault, profile), { query: pendingMessages.map(message => message.text || "").join(" ") || (strategy.replyGoal || strategy.purpose || ""), now: this.now() }), currentTime: new Date(this.now() + 8 * 3600000).toISOString().replace("Z", "+08:00"), timezone: "Asia/Shanghai", groupState, capabilities: { sendText: true, wechatVoiceText: true, files: false, calls: false, receiveImages: !textOnlyRetry && images.length > 0, sendMedia: false }, strategy, style, styleOwner: 'self', judgeReply: profile.kind === 'group' ? trigger === 'realtime' : followUp || this.replyOptions(profile).judgeReply, updateStyle: this.data.settings.updateStyle, messages: modelMessages.map(message => ({ ...message, aiGenerated: message.aiGenerated === true || (profile.generatedIds || []).includes(message.id) })) }, signal
         );
         if (retryGroupMedia && result?.mediaSkipped && attempt === 0) { textOnlyRetry = true; continue; }
         if (result?.mediaSkipped && !retryGroupMedia) break;
@@ -2644,9 +2662,11 @@ export class AIAssistant {
         const evidenceMessages = modelMessages.filter(m => m.id && !m.aiGenerated && !(profile.generatedIds || []).includes(m.id));
         const evidenceById = new Map(evidenceMessages.map(message => [message.id, message]));
         const memoryUpdates = result.memoryUpdates.map(entry => {
-          if (!['residence','workplace','employer','shipping'].includes(entry.field) || Number.isSafeInteger(entry.recordedAt)) return entry;
-          const source = (Array.isArray(entry.evidence) ? entry.evidence : []).map(id => evidenceById.get(id)).find(message => Number.isSafeInteger(message?.timestamp));
-          return source ? { ...entry, recordedAt: source.timestamp * 1000 } : entry;
+          const sources = (Array.isArray(entry.evidence) ? entry.evidence : []).map(id => evidenceById.get(id)).filter(message => Number.isSafeInteger(message?.timestamp));
+          const observedAt = sources.length ? Math.max(...sources.map(message => message.timestamp * 1000)) : undefined;
+          const { observedAt: _modelObservedAt, ...safeEntry } = entry;
+          return { ...safeEntry, ...(observedAt !== undefined ? { observedAt } : {}),
+            ...(['residence','workplace','employer','shipping'].includes(entry.field) && !Number.isSafeInteger(entry.recordedAt) && observedAt !== undefined ? { recordedAt: observedAt } : {}) };
         });
         Object.assign(profile, mergeMemory(this.vault, profile, { entries: memoryUpdates }, this.now(), { evidence: new Set(evidenceMessages.map(m => m.id)) }));
       }
