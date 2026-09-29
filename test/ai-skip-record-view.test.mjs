@@ -16,6 +16,7 @@ test('unreplied review shows each actual sender and message independently from i
   assert.match(html, /2 条消息/);
   assert.match(html, /成员乙：&lt;img src=x onerror=alert\(1\)&gt;/);
   assert.match(skipRecordsView({ ...state({ incomingMessages: [{ id: 'm1', text: '一' }, { id: 'm2', text: '二' }] }), skipMessageExpanded: ['skip-1'] }), /data-ai-skip-messages="skip-1" open/);
+  assert.match(skipRecordsView({ skipRecords: [{ target: 'group-p', at: 1, incomingMessages: [{ text: '一' }, { text: '二' }] }] }), /data-ai-skip-messages="group-p:1"/);
 });
 test('unknown group identities never use the group name as sender; unavailable and media states are explicit', () => {
   const html = skipRecordsView(state({ incomingMessages: [{ id: 'm', text: '', type: 'voice', senderId: '0123456789abcdef' }] }));
