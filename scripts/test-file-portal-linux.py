@@ -33,7 +33,11 @@ value=fn(g,'g_dbus_connection_call_sync',p,[p,s,s,s,s,p,p,c.c_int,c.c_int,p,p])(
 assert value,'D-Bus call failed'
 '''
     iface,member=method.rsplit('.',1)
-    params="('', '保存', {'current_name': <'测试.txt'>})" if member=='SaveFile' else '('+args[0]+", '')"
+    if member == 'SaveFile':
+        title, options = (args[1], args[2]) if len(args)>2 else ('保存', "{'current_name': <'测试.txt'>}")
+        params = "('', '"+title+"', "+options+")"
+    else:
+        params = '('+args[0]+", '')"
     result=subprocess.run([str(runtime/'usr/bin/python3.11'),'-c',code,interface,object_path,iface,member,params],env=env,capture_output=True,timeout=8)
     if result.returncode: raise RuntimeError(result.stderr.decode()[-400:])
     return result.stdout
@@ -60,6 +64,14 @@ try:
     child.stdin.write((json.dumps({'id':request['id'],'response':0,'uris':[target.as_uri()],'watch':str(target)})+'\n').encode());child.stdin.flush();time.sleep(.15)
     with target.open('wb') as out:out.write(b'EXACT_BYTES')
     saved=event(child,'saved');assert saved['id']==request['id']
+    call('org.freedesktop.portal.Desktop','org.freedesktop.portal.FileChooser.SaveFile',['','保存图片',"{'current_name': <''>}"])
+    image_request=event(child,'request')
+    assert image_request['operation']=='save' and image_request['name']=='微信图片.png'
+    child.stdin.write((json.dumps({'id':image_request['id'],'response':1})+'\n').encode());child.stdin.flush()
+    call('org.freedesktop.portal.Desktop','org.freedesktop.portal.FileChooser.SaveFile',['','保存图片',"{'current_name': <''>, 'current_filter': <('JPEG', [(uint32 0, '*.jpg')])>}"])
+    jpeg_request=event(child,'request')
+    assert jpeg_request['operation']=='save' and jpeg_request['name']=='微信图片.jpg'
+    child.stdin.write((json.dumps({'id':jpeg_request['id'],'response':1})+'\n').encode());child.stdin.flush()
     call('org.freedesktop.FileManager1','org.freedesktop.FileManager1.ShowItems',["['"+target.as_uri()+"']",''], '/org/freedesktop/FileManager1')
     folder=event(child,'request');assert folder['operation']=='folder' and folder['uris']==[target.as_uri()]
     clipcode='''import ctypes as c,sys,os
@@ -82,7 +94,7 @@ fn(g,'gtk_main',None,[])()
 '''
     copy=launch([str(runtime/'usr/bin/python3.11'),'-c',clipcode,target.as_uri()])
     copied=event(child,'request');assert copied['operation']=='copy' and copied['uris']==[target.as_uri()]
-    print(json.dumps({'isolatedDesktop':True,'saveRequest':True,'closeWriteCompletion':True,'fileManagerRequest':True,'copiedFileUris':True,'realWechatSend':False}))
+    print(json.dumps({'isolatedDesktop':True,'saveRequest':True,'unnamedImageHasExtension':True,'selectedImageFilterPreserved':True,'closeWriteCompletion':True,'fileManagerRequest':True,'copiedFileUris':True,'realWechatSend':False}))
 finally:
     for p in reversed(processes):
         p.terminate()
