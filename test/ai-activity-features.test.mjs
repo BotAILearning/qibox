@@ -37,6 +37,13 @@ test('record lists expose confirmed deletion, summary ranges, and reply-needed a
   assert.doesNotMatch(skips, /data-ai-locate-message|定位触发消息|定位到该消息/);
   assert.match(skips, /data-ai-mark-reply="p1"/);
   assert.match(skips, /data-ai-delete-source="skip"/);
+  const marked = skipRecordsView({ profiles: [{ id: 'p1', contact: 'c1', label: '甲' }], skipRecords: [{ id: 'e1', target: 'p1', at: Date.now(), messageId: 'incoming-1', markedForReply: true }] });
+  assert.match(marked, /data-ai-mark-reply="p1"[^>]+disabled>已标记为需回复/);
+  assert.match(marked, /下一次自动回复前总结/);
+  const marking = skipRecordsView({ profiles: [{ id: 'p1', contact: 'c1', label: '甲' }], skipRecords: [{ id: 'e1', target: 'p1', at: Date.now(), messageId: 'incoming-1', markingForReply: true }] });
+  assert.match(marking, /data-ai-mark-reply="p1"[^>]+disabled>正在标记…/);
+  const failed = skipRecordsView({ profiles: [{ id: 'p1', contact: 'c1', label: '甲' }], skipRecords: [{ id: 'e1', target: 'p1', at: Date.now(), messageId: 'incoming-1', markReplyError: '标记失败' }] });
+  assert.match(failed, /ai-skip-mark-status error" role="status">标记失败/);
 });
 
 test('opening the exact chat never waits for history reads or requests a message location', async t => {
@@ -69,7 +76,8 @@ test('marked replies persist, summarize before reply, and then remove the raw sk
   const original = bridge.push(profile.contact, 'other', '请确认周五是否可以交付？');
   a.event('skip', profile.id, 'system-skip', '需要后续回复', { messageId: original.id, reasonCode: 'model-no-reply' });
   const eventId = a.data.skipLog[0].id;
-  await a.markReplyNeeded({ profileId: profile.id, eventId, messageId: original.id });
+  const markedState = await a.markReplyNeeded({ profileId: profile.id, eventId, messageId: original.id });
+  assert.equal(markedState.skipRecords.find(row => row.id === eventId)?.markedForReply, true);
   assert.equal(a.data.pendingReplySummaries.length, 1);
   assert.equal(JSON.stringify(a.data.pendingReplySummaries).includes('请确认周五'), false);
   await a.save(); await a.close();
@@ -77,6 +85,7 @@ test('marked replies persist, summarize before reply, and then remove the raw sk
   await restored.init(); await restored.scan();
   try {
     assert.equal(restored.data.pendingReplySummaries.length, 1);
+    assert.equal(restored.publicState().skipRecords.find(row => row.id === eventId)?.markedForReply, true);
     const restoredProfile = restored.profile(profile.id), snapshot = await restored.read(restoredProfile, restored.controller.signal);
     provider.complete = async (_config, system, input) => { assert.match(system, /聊天内容/); assert.match(input.excerpts[0].text, /周五/); return { summary: '需确认周五交付时间' }; };
     const context = await restored.summarizePendingReplies(restoredProfile, snapshot.messages, restored.controller.signal);

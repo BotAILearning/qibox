@@ -27,6 +27,23 @@ test('concurrent refreshes share one scan; transient failure keeps verified cont
   bridge.scan = async () => ({ available: true, account: bridge.account, contacts: bridge.contacts });
   await a.scan(); assert.equal(a.scanFailures, 0); assert.equal(a.scanRetryAt, 0);
 });
+test('database writes and login transitions retry contact recovery within 30 seconds', async t => {
+  const { a, bridge, advance } = await fixture(t);
+  for (const code of ['ai_data_database_changed', 'ai_wechat_logged_out']) {
+    bridge.scan = async () => { throw new AppError('temporary', 409, code); };
+    for (let attempt = 0; attempt < 4; attempt++) {
+      await assert.rejects(a.scan(), /temporary/);
+      assert.equal(a.scanRetryAt - a.now(), 30000);
+      assert.equal(a.scanFailures, 0);
+      assert.equal(a.available, false);
+      advance(30000);
+    }
+  }
+  bridge.scan = async () => ({ available: true, account: bridge.account, contacts: bridge.contacts });
+  await a.tick();
+  assert.equal(a.available, true);
+  assert.equal(a.scanRetryAt, 0);
+});
 test('one undecodable sender does not invalidate the address book or block other conversations', async t => {
   const { a, bridge, p, advance } = await fixture(t); bridge.stableMessageIds = true;
   const read = bridge.read.bind(bridge), reads = [];
