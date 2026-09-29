@@ -69,9 +69,10 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   let logRecords = [], logLoading = false, logEpoch = 0, logSignature = '';
   let skipLoading = false, skipEpoch = 0;
   const skipContent = new Map();
+  const markReplyStatus = new Map();
   function skipState() {
     const rows = new Map([...(state?.events || []).filter(row => row.code === 'skip'), ...(state?.skipRecords || [])].map(row => [row.id, row]));
-    return { ...state, skipRecordsLoading: skipLoading, skipRecords: [...rows.values()].map(row => ({ ...row, ...(skipContent.get(row.id) || {}) })) };
+    return { ...state, skipRecordsLoading: skipLoading, skipRecords: [...rows.values()].map(row => ({ ...row, ...(skipContent.get(row.id) || {}), markedForReply: row.markedForReply === true, ...(markReplyStatus.get(row.id) || {}) })) };
   }
   function drawSkips() {
     const box = tab === 'activity' && $('#ai-skip-records');
@@ -417,7 +418,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     if (state && state.account !== result.account) {
       analysisHistoryEpoch++; analysisHistoryReport = null; analysisResult = null; resetAnalysisExport();
       summaryResults.clear();
-      skipContent.clear(); skipEpoch++; skipLoading = false;
+      skipContent.clear(); markReplyStatus.clear(); skipEpoch++; skipLoading = false;
       recordCache.delete(id); logEpoch++; proactiveRecordEpoch++; errorEpoch++;
       logRecords = []; proactiveHistory = []; proactiveHistoryPage = null; errorHistory = []; errorPage = null; errorLoading = false; logLoading = false; proactiveRecordLoading = false; logSignature = '';
     }
@@ -1359,8 +1360,24 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       if ('aiRetryRecords' in button.dataset) { await loadActivity(); return; }
       if ('aiRetrySkips' in button.dataset) { await loadSkipContent(true); return; }
       if ('aiMarkReply' in button.dataset) {
-        await call('mark-reply-needed', { value: { profileId: button.dataset.aiMarkReply, eventId: button.dataset.eventId, messageId: button.dataset.messageId } });
-        message('已暂存；下一次自动回复前会先总结这条消息'); render(); return;
+        const current = generation, target = id, account = state?.account;
+        const eventId = button.dataset.eventId, profileId = button.dataset.aiMarkReply, messageId = button.dataset.messageId;
+        if (!target || !account || !eventId || !profileId || !messageId) throw new Error('未回复记录已变化，请刷新后重试');
+        const valid = () => current === generation && target === id && account === state?.account;
+        markReplyStatus.set(eventId, { markingForReply: true }); drawSkips();
+        try {
+          const result = await api(`/instances/${target}/ai`, { action: 'mark-reply-needed', value: { profileId, eventId, messageId } }, 130000);
+          if (!valid()) return;
+          if (result?.account !== account) throw new Error('微信账号已变化，请刷新后重试');
+          state = { ...state, skipRecords: result.skipRecords, events: result.events };
+          markReplyStatus.delete(eventId);
+          drawSkips(); message('已标记；下一次自动回复前会先总结这条消息');
+        } catch (error) {
+          if (!valid()) return;
+          markReplyStatus.set(eventId, { markReplyError: error.message || '标记失败，请重试' });
+          drawSkips(); message(error.message || '标记失败，请重试', true);
+        }
+        return;
       }
       if ('aiSummaryProfile' in button.dataset) {
         const profileId = button.dataset.aiSummaryProfile, row = button.closest('[data-ai-reply-card]'), output = row?.querySelector(`[data-ai-summary-result="${CSS.escape(profileId)}"]`);
@@ -1683,7 +1700,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       analysisDraft = { request: '', from: '', to: '', contacts: [], includeVoice: false, includeVisual: false }; analysisRangeMode = 'all'; analysisRangeBeforeCustom = null; analysisContactsExpanded = false; analysisSearch = ''; analysisHistoryReport = null; analysisHistoryEpoch++; resetAnalysisExport(); learnRange = {from:'',to:''}; learnRangeMode = 'all'; learnScope='range'; learnTarget='both'; defaultStylePerspective = 'self'; analysisResult = null; proactiveUI.reset();
       reviewAlert.hidden = true;
       concealKey(true); modelDraft = null; learningDraft = null; renderedView = ''; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); summaryResults.clear(); selectedObject = ''; objectSearch = ''; objectKind = 'person'; learnContactKind = 'person'; editingReplyContact = null; contactSearch = ''; providerRevision++;
-      generation++; skipEpoch++; skipLoading = false; skipContent.clear(); clearInterval(timer); id = instanceId; setContactAvatarInstance(instanceId); state = null; busy = false; polling = false; attaching = true; tab = 'overview'; replyDraft = null; editingProfile = null; contactsLoaded = false; contactsLoading = false; resultProfileIds = null;
+      generation++; skipEpoch++; skipLoading = false; skipContent.clear(); markReplyStatus.clear(); clearInterval(timer); id = instanceId; setContactAvatarInstance(instanceId); state = null; busy = false; polling = false; attaching = true; tab = 'overview'; replyDraft = null; editingProfile = null; contactsLoaded = false; contactsLoading = false; resultProfileIds = null;
       const attachedGeneration = generation;
       selectedContacts.clear(); replyProfiles.clear(); panel.hidden = true; rail.hidden = false; panel.setAttribute('aria-busy', 'false');
       proactiveHistory = []; proactiveHistoryPage = null; proactiveRecordLoading = false; proactiveRecordEpoch++; errorHistory = []; errorPage = null; errorLoading = false; errorEpoch++;
@@ -1703,6 +1720,6 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         finally { if (current === generation) polling = false; }
       }, 2500);
     },
-    detach() { contactDialog?.close(); analysisQueueToken++; analysisQueueAccount = null; rememberRecords(); proactiveRecordEpoch++; proactiveRecordLoading = false; proactiveHistory = []; proactiveHistoryPage = null; errorEpoch++; errorLoading = false; errorHistory = []; errorPage = null; logEpoch++; analysisDraft = { request: '', from: '', to: '', contacts: [] }; analysisSearch = ''; analysisHistoryReport = null; analysisHistoryEpoch++; resetAnalysisExport(); analysisResult = null; reviewAlert.hidden = true; concealKey(true); modelDraft = null; learningDraft = null; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); selectedObject = ''; objectSearch = ''; objectKind = 'person'; editingReplyContact = null; providerRevision++; generation++; clearInterval(timer); id = null; setContactAvatarInstance(null); state = null; attaching = false; rail.hidden = true; panel.hidden = true; panel.querySelector(':scope > .ai-main-tabs')?.remove(); $('#ai-content').replaceChildren(); selectedContacts.clear(); replyProfiles.clear(); proactiveUI.reset(); replyDraft = null; },
+    detach() { contactDialog?.close(); analysisQueueToken++; analysisQueueAccount = null; rememberRecords(); proactiveRecordEpoch++; proactiveRecordLoading = false; proactiveHistory = []; proactiveHistoryPage = null; errorEpoch++; errorLoading = false; errorHistory = []; errorPage = null; logEpoch++; analysisDraft = { request: '', from: '', to: '', contacts: [] }; analysisSearch = ''; analysisHistoryReport = null; analysisHistoryEpoch++; resetAnalysisExport(); analysisResult = null; reviewAlert.hidden = true; concealKey(true); modelDraft = null; learningDraft = null; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); selectedObject = ''; objectSearch = ''; objectKind = 'person'; editingReplyContact = null; providerRevision++; generation++; skipEpoch++; skipLoading = false; skipContent.clear(); markReplyStatus.clear(); clearInterval(timer); id = null; setContactAvatarInstance(null); state = null; attaching = false; rail.hidden = true; panel.hidden = true; panel.querySelector(':scope > .ai-main-tabs')?.remove(); $('#ai-content').replaceChildren(); selectedContacts.clear(); replyProfiles.clear(); proactiveUI.reset(); replyDraft = null; },
   };
 }

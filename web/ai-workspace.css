@@ -796,6 +796,8 @@
 #ai-panel .ai-skip-sender{display:block;color:var(--ai-text);font-size:13px}
 #ai-panel .ai-skip-message time{display:block;color:var(--ap-muted);font-size:11px;margin-top:2px}
 #ai-panel .ai-skip-message .ap-record-text{margin:5px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
+#ai-panel .ai-skip-mark-status{display:block;color:var(--ap-muted);font-size:11px;line-height:1.5;overflow-wrap:anywhere}
+#ai-panel .ai-skip-mark-status.error{color:#b03a3a}
 @media(max-width:1199px){#ai-panel .ai-activity-page #ai-skip-records .ap-skip-record-table td[data-label="消息内容"]{display:block;grid-column:1/-1}#ai-panel .ai-activity-page #ai-skip-records .ap-skip-record-table td[data-label="消息内容"]:before{display:block;margin-bottom:8px}}
 #ai-panel .ai-activity-page .ap-record-table button:not(.ai-record-message){min-height:38px;padding:8px 10px;margin:4px 4px 4px 0;white-space:normal;line-height:1.35}
 #ai-panel .ai-activity-page .ap-record-table details{max-width:none}
@@ -949,6 +951,7 @@
 #ai-panel .ai-object-execution>div{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
 #ai-panel .ai-object-execution-label{font-size:12px;font-weight:700;color:#687186}
 #ai-panel .ai-object-execution-label.waiting{color:#a9651f}
+#ai-panel .ai-object-execution-label.unavailable{color:#a9651f}
 #ai-panel .ai-object-execution-label.generating{color:#5261c9}
 #ai-panel .ai-object-execution-detail{font-size:12px;color:#687186}
 #ai-panel .ai-object-execution button{padding:5px 10px;font-size:12px}

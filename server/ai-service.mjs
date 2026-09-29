@@ -322,6 +322,8 @@ export class AIAssistant {
   }
   publicSkipRecord(row) {
     const { incomingSnapshot, ...publicRow } = row;
+    publicRow.markedForReply = (this.data.pendingReplySummaries || []).some(pending =>
+      pending.account === this.data.account && pending.profileId === row.target && pending.messageId === row.messageId);
     if (incomingSnapshot) {
       const value = this.readSkipSnapshot(row);
       if (value) {
@@ -1146,8 +1148,12 @@ export class AIAssistant {
       await this.save(); return this.publicState();
     } catch (error) {
       if (revision === this.revision) {
-        this.scanFailures = (this.scanFailures || 0) + 1;
-        this.scanRetryAt = this.now() + Math.min(15 * 60000, 30000 * 2 ** Math.min(this.scanFailures - 1, 5));
+        const transient = ['ai_data_database_changed', 'ai_wechat_logged_out'].includes(error.code);
+        // A database write or a brief login transition can clear on the next
+        // poll. Do not let repeated transient failures defer recovery for 15 min.
+        this.scanFailures = transient ? 0 : (this.scanFailures || 0) + 1;
+        this.scanRetryAt = this.now() + (transient ? 30000 : Math.min(15 * 60000, 30000 * 2 ** Math.min(this.scanFailures - 1, 5)));
+        if (transient) this.available = false;
         this.notice = error instanceof AppError ? error.message : '联系人刷新失败，请稍后重试';
         if (error.code === 'ai_account_changed') { this.available = false; this.contacts.clear(); this.avatarUrls.clear(); this.avatarReady = false; this.data.contacts = []; this.data.lastScanAt = null; this.data.settings.enabled = false; this.forgetContext(); }
       }

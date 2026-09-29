@@ -18,3 +18,9 @@ test('generating and non-skippable waits do not offer skip action', () => {
  assert.doesNotMatch(objectExecutionStatus(state([{ id: 'p1', phase: 'generating' }]), 'c1'), /data-ai-skip-reply-wait/);
  assert.doesNotMatch(objectExecutionStatus(state([{ id: 'p1', phase: 'waiting', reason: '追问等待' }]), 'c1'), /data-ai-skip-reply-wait/);
 });
+test('enabled reply reports a temporary data outage instead of idle', () => {
+ const html = objectExecutionStatus({ ...state([]), available: false, waiting: true, notice: '微信聊天数据库正在写入，请稍后重试' }, 'c1');
+ assert.match(html, /暂不可用/);
+ assert.match(html, /微信聊天数据库正在写入/);
+ assert.doesNotMatch(html, /当前没有正在执行的自动回复/);
+});
