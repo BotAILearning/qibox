@@ -753,6 +753,7 @@
 #ai-panel .ai-wiki-bubble>.ai-wiki-degree,#ai-panel .ai-wiki-bubble>.ai-wiki-date-type,#ai-panel .ai-wiki-bubble>.ai-wiki-date-range,#ai-panel .ai-wiki-bubble>.ai-wiki-recorded,#ai-panel .ai-wiki-bubble>[data-ai-wiki-remark]{grid-column:1/-1;min-width:0}
 #ai-panel .ai-wiki-bubble>.ai-wiki-degree{width:100%;margin:0}
 #ai-panel .ai-wiki-bubble.ai-wiki-school{grid-template-columns:118px minmax(0,1fr) minmax(130px,.72fr)}
+#ai-panel .ai-wiki-bubble.ai-wiki-school>input[aria-label="信息内容"],#ai-panel .ai-wiki-bubble.ai-wiki-school>.ai-wiki-degree{align-self:stretch;box-sizing:border-box}
 #ai-panel .ai-wiki-bubble.ai-wiki-school>.ai-wiki-degree{grid-column:3;grid-row:1;min-width:0}
 #ai-panel .ai-wiki-add-actions{display:flex;flex-wrap:wrap;gap:8px}
 #ai-panel .ai-wiki-date-type{display:flex;align-items:center;gap:8px;font-size:12px}

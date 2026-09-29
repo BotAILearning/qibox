@@ -1,5 +1,6 @@
-import { learningPrompt, learningPromptFor, learningWithMemoryPrompt, defaultLearningSummaryPrompt, conversationPrompt, addressingPrompt, generationPrompt, naturalChatPrompt, longTermMemoryPrompt, generationProtocol, proactivePrompt, proactiveBackgroundPrompt, proactiveBackgroundTtl, messageSegments } from './ai-prompts.mjs';
+import { learningPrompt, learningPromptFor, learningWithMemoryPrompt, defaultLearningSummaryPrompt, conversationPrompt, addressingPrompt, generationPrompt, naturalChatPrompt, longTermMemoryPrompt, timelinePrompt, generationProtocol, proactivePrompt, proactiveBackgroundPrompt, proactiveBackgroundTtl, messageSegments } from './ai-prompts.mjs';
 import { selectMemoryForChat } from './ai-memory-context.mjs';
+import { guardFinancialCommitment } from './ai-commitment-guard.mjs';
 import path from 'node:path';
 import { chatMemoryPrompt, groupMemoryInstruction, mergeMemory, editMemory as changeMemory, pointInTimeMemory } from './ai-wiki.mjs';
 import { defaultTakeover, takeoverValue, effectiveTakeover, identityPrompt, asksIdentity } from './ai-reply-rules.mjs';
@@ -962,7 +963,7 @@ export class AIAssistant {
     };
     const recentSelfMessages = snapshot.messages.filter(message => message.direction === 'self').slice(-8).map(emphasis);
     const latestIncoming = snapshot.messages.findLast(message => message.direction === 'other');
-    return this.provider.complete(this.modelFor('proactive'), `${generationPrompt}${naturalChatPrompt}${longTermMemoryPrompt}${conversationPrompt}${addressingPrompt}${identityPrompt(this.data.settings.acknowledgeAI)}${proactivePrompt(strategy)} 当前只能发送纯文字，不承诺发送媒体、文件或执行付款。本次是独立主动聊天任务，不自动续聊，不更新风格或记忆。${generationProtocol({ multiTurn, followUpAllowed: false, memoryUpdates: false, allowSkip: false })}${extra}`, {
+    return this.provider.complete(this.modelFor('proactive'), `${generationPrompt}${naturalChatPrompt}${longTermMemoryPrompt}${timelinePrompt}${conversationPrompt}${addressingPrompt}${identityPrompt(this.data.settings.acknowledgeAI)}${proactivePrompt(strategy)} 当前只能发送纯文字，不承诺发送媒体、文件或执行付款。本次是独立主动聊天任务，不自动续聊，不更新风格或记忆。${generationProtocol({ multiTurn, followUpAllowed: false, memoryUpdates: false, allowSkip: false })}${extra}`, {
       mode: 'proactive', continuation: false, multiTurn, followUp: false, followUpAllowed: false, updateStyle: false, judgeReply: false,
       kind: profile.kind, strategy, style, styleOwner: 'self', addressing: { styleScope: 'current-chat', currentStyle: style },
       currentTime, timezone: 'Asia/Shanghai',
@@ -1456,7 +1457,8 @@ export class AIAssistant {
         if (target !== 'style' && entry.memory === undefined) memoryMissing++;
         if (memoryCoverage && (memoryCoverage.truncated || memoryCoverage.sourceTruncated)) memoryCoverageTruncated++;
         const updated = { ...profile, ...memory, ...(memoryCoverage ? { memoryCoverage, memoryCoverageAt: this.now() } : {}), style, learnedStyle, styleId: JSON.stringify(style) === JSON.stringify(learnedStyle) ? 'learned' : 'custom', replyStyleSet: true, source, learnedAt: this.now(), paused: profile.paused || false, rounds: profile.rounds || 0,
-          ...(previewOnly ? { pendingStyle: style, style: profile.style || structuredClone(defaultStyle), styleId: profile.styleId || '', replyStyleSet: profile.replyStyleSet ?? false } : {}) };
+          ...(previewOnly ? { pendingStyle: style, style: profile.style || structuredClone(defaultStyle), styleId: profile.styleId || '', replyStyleSet: profile.replyStyleSet ?? false,
+            learnedStyle: profile.learnedStyle, learnedAt: profile.learnedAt || null, source: profile.source || 'manual' } : {}) };
         this.data.profiles[updated.id] = updated;
         if (target === 'both' && previewOnly) this.setPendingMemory(updated, learnedEntries || { entries: [] }, { source: 'combined', coverage: memoryCoverage });
         else if (target === 'style' && updated.pendingMemorySource === 'combined') { delete updated.pendingStyle; this.clearPendingMemory(updated); }
@@ -1637,7 +1639,9 @@ export class AIAssistant {
       this.invalidate();
       this.data.profiles[id] = Object.assign(previous || {}, { id, account: this.data.account, contact, label: target.label, kind: target.kind,
         style, styleId: selectedStyleId(previous, style, styleId, styleSet ?? true, this.data.learnedDefaultStyle?.style), replyStrategy, source: previous?.source || 'manual', preparedAt: previous?.preparedAt || this.now(),
-        learnedAt: previous?.learnedAt || null, replyWatchSince: previous?.replyWatchSince || previous?.replyConfiguredAt || this.now(), replyConfiguredAt: this.now(), replyStyleSource: 'manual', locked: [], paused: previous?.paused || false, rounds: previous?.rounds || 0 });
+        learnedAt: applyCombinedLearning ? this.now() : previous?.learnedAt || null,
+        ...(applyCombinedLearning ? { learnedStyle: structuredClone(previous.pendingStyle), source: previous.source === 'paste' ? 'paste' : 'learned' } : {}),
+        replyWatchSince: previous?.replyWatchSince || previous?.replyConfiguredAt || this.now(), replyConfiguredAt: this.now(), replyStyleSource: 'manual', locked: [], paused: previous?.paused || false, rounds: previous?.rounds || 0 });
       const profile = this.data.profiles[id];
       if (replyEnabled !== undefined) {
         if (typeof replyEnabled !== 'boolean') throw new AppError('自动回复状态无效');
@@ -2579,7 +2583,7 @@ export class AIAssistant {
       for (let attempt = 0; attempt < 2; attempt++) {
         result = onlyImages && !images.length && profile.kind !== 'group' ? { action: 'skip', mediaSkipped: true } : await this.provider.complete(
           this.modelFor('chat'),
-          `${generationPrompt}${naturalChatPrompt}${longTermMemoryPrompt}${chatMemoryPrompt}${profile.kind === 'group' ? groupMemoryInstruction : ' 单聊中，对方姓名写入 name；只有用户确实直接这样称呼对方且对象明确时，才把称呼写入 addressing。'}${identityPrompt(this.data.settings.acknowledgeAI)}${conversationPrompt}${replySummaryContext} 当前只能发送纯文字，不能发送、读取或下载文件，不能拨打或接听电话，仅能理解实际附带的图片；未附带图片或图片无法读取时，应如实说明无法查看并请对方转成文字，不猜测图片内容。${groupTriggerInstruction}${currentTask}${currentStyle}${profile.kind === 'group' ? groupPrompt(trigger, multiTurn, profile.groupOptions?.realtimeMode) : ''}${generationProtocol({ multiTurn, group: profile.kind === 'group', followUpAllowed: profile.kind !== 'group' && !followUp, updateStyle: this.data.settings.updateStyle, allowSkip: !mustReply, allowStop: profile.kind !== 'group' || requiredGroupReply })}`,
+          `${generationPrompt}${naturalChatPrompt}${longTermMemoryPrompt}${timelinePrompt}${chatMemoryPrompt}${profile.kind === 'group' ? groupMemoryInstruction : ' 单聊中，对方姓名写入 name；只有用户确实直接这样称呼对方且对象明确时，才把称呼写入 addressing。'}${identityPrompt(this.data.settings.acknowledgeAI)}${conversationPrompt}${replySummaryContext} 当前只能发送纯文字，不能发送、读取或下载文件，不能拨打或接听电话，仅能理解实际附带的图片；未附带图片或图片无法读取时，应如实说明无法查看并请对方转成文字，不猜测图片内容。${groupTriggerInstruction}${currentTask}${currentStyle}${profile.kind === 'group' ? groupPrompt(trigger, multiTurn, profile.groupOptions?.realtimeMode) : ''}${generationProtocol({ multiTurn, group: profile.kind === 'group', followUpAllowed: profile.kind !== 'group' && !followUp, updateStyle: this.data.settings.updateStyle, allowSkip: !mustReply, allowStop: profile.kind !== 'group' || requiredGroupReply })}`,
           { images: textOnlyRetry ? [] : images, onlyImages: textOnlyRetry ? false : onlyImages, capabilityConcern: reason, mode, continuation, multiTurn, followUp, followUpAllowed: profile.kind !== 'group' && !followUp, kind: profile.kind, conversation, addressing, memory: selectMemoryForChat(readMemory(this.vault, profile), { query: pendingMessages.map(message => message.text || "").join(" ") || (strategy.replyGoal || strategy.purpose || ""), now: this.now() }), currentTime: new Date(this.now() + 8 * 3600000).toISOString().replace("Z", "+08:00"), timezone: "Asia/Shanghai", groupState, capabilities: { sendText: true, wechatVoiceText: true, files: false, calls: false, receiveImages: !textOnlyRetry && images.length > 0, sendMedia: false }, strategy, style, styleOwner: 'self', judgeReply: profile.kind === 'group' ? trigger === 'realtime' : followUp || this.replyOptions(profile).judgeReply, updateStyle: this.data.settings.updateStyle, messages: modelMessages.map(message => ({ ...message, aiGenerated: message.aiGenerated === true || (profile.generatedIds || []).includes(message.id) })) }, signal
         );
         if (retryGroupMedia && result?.mediaSkipped && attempt === 0) { textOnlyRetry = true; continue; }
@@ -2607,6 +2611,7 @@ export class AIAssistant {
       }
       throw error;
     } finally { this.generatingProfiles.delete(profile.id); }
+    if (mode === 'reply') result = guardFinancialCommitment(pendingText, result, strategy);
     if (assumedProactiveRows.length) {
       for (const row of assumedProactiveRows) { row.assumedPresent = false; row.handedToReplyAt = this.now(); }
       await this.save();

@@ -249,8 +249,8 @@
 #ai-panel .ai-reference-memory { grid-template-columns: 120px minmax(0,1fr); }
 #ai-panel .ai-reference-memory-content { padding: 20px; }
 #ai-panel .ai-wiki-bubble { grid-template-columns: 116px minmax(0,1fr); gap: 10px; }
-#ai-panel .ai-wiki-bubble.ai-wiki-school { grid-template-columns: 116px minmax(0,1fr); }
-#ai-panel .ai-wiki-bubble.ai-wiki-school>.ai-wiki-degree { grid-column: 2; grid-row: auto; }
+#ai-panel .ai-wiki-bubble.ai-wiki-school { grid-template-columns: 116px minmax(0,1fr) minmax(130px,.72fr); }
+#ai-panel .ai-wiki-bubble.ai-wiki-school>.ai-wiki-degree { grid-column: 3; grid-row: 1; }
 #ai-panel .ai-object-reference .ai-object-save { padding: 14px 18px; border-radius: 12px; }
 #ai-panel .ai-object-reference .ai-object-action-row { flex-wrap: wrap; gap: 10px; }
 #ai-panel .ai-contact-footer { flex-wrap: wrap; gap: 8px; }

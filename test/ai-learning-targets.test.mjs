@@ -251,6 +251,8 @@ test('combined learning applies style and memory together, and keeps both pendin
   const profile = f.profile(), activeStyle = structuredClone(profile.style);
   assert.ok(profile.pendingStyle);
   assert.equal(profile.pendingMemorySource, 'combined');
+  assert.equal(profile.learnedAt, null, 'preview must not mark a new style as applied');
+  assert.equal(profile.learnedStyle, undefined, 'preview must not expose the new style as active');
   assert.equal(readMemory(f.a.vault, profile).summary, '');
   assert.notDeepEqual(profile.pendingStyle, activeStyle);
   await assert.rejects(f.a.applyPendingMemory(profile.id), /一起应用/);
@@ -259,6 +261,8 @@ test('combined learning applies style and memory together, and keeps both pendin
     strategy: profile.replyStrategy || f.a.data.replyStrategy, applyCombinedLearning: true, combinedLearningId: profile.pendingMemoryId });
   assert.equal(readMemory(f.a.vault, profile).summary, '对方喜欢看展');
   assert.equal(profile.style.summary, composedSummary);
+  assert.ok(profile.learnedAt);
+  assert.equal(profile.learnedStyle.summary, composedSummary);
   assert.equal(profile.pendingStyle, undefined);
   assert.equal(profile.pendingMemory, undefined);
 });

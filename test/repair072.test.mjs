@@ -64,7 +64,7 @@ test('independent proactive sends every segment with encrypted confirmed receipt
   assert.ok(f.p.sentMessages.every(m => f.a.vault.open(m.body).text));
   assert.doesNotMatch(await readFile(f.a.file, 'utf8'), /首段秘密|第二段秘密|第三段秘密/);
   const call = f.provider.calls.at(-1); assert.equal(call.input.multiTurn, true); assert.equal(call.input.followUpAllowed, false);
-  assert.match(call.system, /不是继续回答聊天历史里的旧问题/); assert.doesNotMatch(call.system, /可同时返回 memoryUpdates/);
+  assert.match(call.system, /不是继续回答聊天历史里的旧问题/); assert.match(call.system, /比较 messages 的时间戳与 currentTime/); assert.doesNotMatch(call.system, /可同时返回 memoryUpdates/);
 });
 for (const interruption of ['incoming', 'manual', 'pause', 'account', 'not-sent', 'uncertain']) test(`proactive ${interruption} after confirmed prefix never retries prefix or remaining suffix`, async t => {
   let f, task, once = false;
