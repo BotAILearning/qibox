@@ -137,11 +137,11 @@
 /* 备注后面括号里的是微信名：多个联系人可能共用同一个备注，靠它区分即可，颜色要更浅不抢主名。 */
 .ai-contact-nick{font-weight:400;font-size:.92em;color:var(--ai-hint,#98a0ad)}
 #ai-panel .ai-contact-status{font-size:10.5px;color:#b27b26;white-space:nowrap}
-#ai-panel .ai-contact-footer{border-top:1px solid var(--ai-border);padding:13px 4px 0;display:flex;flex-direction:column;gap:9px;flex-shrink:0;margin-top:6px}
+#ai-panel .ai-contact-footer{border-top:1px solid var(--ai-border);padding:10px 4px 0;display:flex;align-items:center;flex-wrap:wrap;gap:4px 10px;flex-shrink:0;margin-top:6px}
 #ai-panel .ai-scope-field{display:flex;align-items:center;gap:8px;color:var(--ai-muted);font-size:11.5px}
 #ai-panel .ai-scope-field>span{white-space:nowrap}
 #ai-panel .ai-scope-field select{flex:1;min-width:0;font-size:12px;padding:6px 8px;min-height:32px}
-#ai-panel .ai-contact-footer button{font-size:12px;padding:6px 10px;min-height:32px}
+#ai-panel .ai-contact-footer button{width:auto;flex:none;font-size:12px;padding:6px 8px;min-height:36px}
 #ai-panel .ai-object-detail{background:#fff;border:1px solid var(--ai-border);border-radius:12px;padding:20px 22px 0;min-width:0;max-height:100%;overflow-y:auto;box-shadow:0 4px 20px #1e213014;scrollbar-gutter:auto}
 #ai-panel .ai-person-head{display:flex;align-items:center;gap:14px;padding-bottom:16px;border-bottom:1px solid var(--ai-border)}
 #ai-panel .ai-person-head>.ai-monogram{width:50px;height:50px;border-radius:13px;font-size:20px}
@@ -1526,7 +1526,7 @@
 #ai-panel .ai-default-current textarea{min-height:285px}
 #ai-panel .ai-default-current .ai-actions{display:flex;flex-wrap:wrap}
 #ai-panel .ai-default-current .ai-actions .primary{flex:1}
-#ai-panel .ai-default-current.ai-default-empty{align-content:start;min-height:500px}
+#ai-panel .ai-default-current.ai-default-empty{align-content:start;min-height:0}
 #ai-panel .ai-default-count{display:block;text-align:right;color:#858da9;font-size:11px}
 #ai-panel .ai-default-source>.ai-learning-contacts{padding:0;margin:0 0 18px}
 #ai-panel .ai-default-source>.ai-learning-contacts .ai-card-heading{align-items:center}
@@ -1561,14 +1561,14 @@
 #ai-panel .ai-page-body:has(>.ai-analysis-setup) .ai-analysis-reports{grid-column:1/-1;grid-row:2;margin-top:8px}
 #ai-panel .ai-page-body:has(>.ai-analysis-setup) .ai-analysis-history{grid-column:1/-1;grid-row:3;margin-top:8px}
 #ai-panel .ai-analysis-selection,#ai-panel .ai-analysis-request{border-color:#e3e8f4;border-radius:18px;box-shadow:0 8px 24px #1b2b5a0a}
-#ai-panel .ai-analysis-selection .ai-analysis-section-title{display:flex;align-items:flex-start;margin-bottom:19px}
+#ai-panel .ai-analysis-selection .ai-analysis-section-title{display:flex;align-items:flex-start;margin-bottom:16px}
 #ai-panel .ai-analysis-eyebrow{display:block;margin-bottom:9px;color:#5367de;font-size:11px;font-weight:800;letter-spacing:.05em}
 #ai-panel .ai-analysis-selection .ai-analysis-section-title h4{font-size:18px;line-height:1.35;color:#192749}
 #ai-panel .ai-analysis-selection .ai-analysis-section-title p{margin-top:5px;font-size:12px;color:#7886a3}
 #ai-panel .ai-analysis-selection .ai-analysis-section-title>small{font-size:22px;line-height:1;color:#4d5fe1}
-#ai-panel .ai-analysis-add{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;min-height:48px;border-radius:11px;background:#5369f4;color:#fff;font-size:14px;font-weight:700}
+#ai-panel .ai-analysis-add{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:max-content;max-width:100%;min-height:44px;padding:8px 13px;border-radius:9px;font-size:13px;font-weight:600}
 #ai-panel .ai-analysis-add .ai-icon{width:19px;height:19px}
-#ai-panel .ai-analysis-picked-list{display:grid;gap:7px;max-height:300px;min-height:0;margin:17px 0 0;overflow:auto}
+#ai-panel .ai-analysis-picked-list{display:grid;gap:7px;max-height:300px;min-height:0;margin:12px 0 0;overflow:auto}
 #ai-panel .ai-analysis-picked-row{min-height:46px;padding:6px 9px;border:1px solid #e9edf8;border-radius:9px;background:#f7f9ff;color:#29385b}
 #ai-panel .ai-analysis-picked-row+.ai-analysis-picked-row{margin-top:0}
 #ai-panel .ai-analysis-choose-hint{margin:0;color:#8390aa;font-size:12px;line-height:1.6}

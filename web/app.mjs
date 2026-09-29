@@ -287,7 +287,7 @@ function renderMarket(app) {
     actions.dataset.state = signature;
     actions.innerHTML = installed
       ? `<button ${id('add-instance')} data-market-action="add" class="primary pc-only" ${pending ? 'disabled' : ''}>添加到桌面</button><button data-market-action="add" class="primary mobile-only" ${pending ? 'disabled' : ''}>添加实例</button>`
-      : `<button ${id('download')} data-market-action="download" class="primary" ${pending ? 'disabled' : ''}>下载安装${esc(app.name)}</button><button ${id('import-open')} data-market-action="import" class="secondary" ${pending ? 'disabled' : ''}>导入安装包</button>`;
+      : `<button ${id('download')} data-market-action="download" class="primary" ${pending ? 'disabled' : ''}>下载安装${esc(app.name)}</button><button ${id('import-open')} data-market-action="import" class="quiet" ${pending ? 'disabled' : ''}>导入安装包</button>`;
   }
   part('status').textContent = pending ? job.message
     : installed ? `已安装 · ${installed.version}${installed.support === 'unknown' ? ' · 版本未适配' : ''}`

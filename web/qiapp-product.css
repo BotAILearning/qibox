@@ -82,6 +82,7 @@
 .qiapp-product .topbar { height: var(--qi-header); min-height: var(--qi-header); border-color: var(--qi-border); background: var(--qi-surface); }
 .qiapp-product .content { max-width: var(--qi-content-max); padding: var(--qi-space-8); }
 .qiapp-product .workspace { grid-template-columns: var(--qi-sidebar) minmax(0,1fr); gap: var(--qi-space-6); }
+.qiapp-product .market-panel { align-self: start; }
 .qiapp-product :is(.market-panel,.desktop-panel) { padding: var(--qi-space-6); border-color: var(--qi-border); border-radius: var(--qi-radius-lg); background: var(--qi-surface); box-shadow: none; }
 .qiapp-product :is(.store-card,.mobile-ai-card) { padding: var(--qi-space-4); border-color: var(--qi-border); border-radius: var(--qi-radius-md); background: var(--qi-surface-muted); box-shadow: none; }
 .qiapp-product .panel-heading { margin-bottom: var(--qi-space-6); }
@@ -90,6 +91,7 @@
 .qiapp-product .store-card :is(.primary,.secondary) { min-height: var(--qi-control-md); font-size: var(--qi-font-button); }
 .qiapp-product .store-card .install-actions { display: grid; grid-template-columns: minmax(0,1fr); }
 .qiapp-product .store-card .install-actions button { width: 100%; min-width: 0; flex: none; white-space: normal; line-height: 1.35; }
+.qiapp-product .store-card .install-actions button[data-market-action="import"] { width: max-content; max-width: 100%; justify-self: start; padding-inline: 0; }
 .qiapp-product .market-tools { gap: var(--qi-space-3); }
 .qiapp-product .empty-state { color: var(--qi-text-secondary); }
 .qiapp-product :is(.status,.app-description,.install-format,.field-help) { color: var(--qi-text-secondary); font-size: var(--qi-font-small); }
@@ -122,13 +124,14 @@
 #ai-panel .ai-page-heading h3 { font-size: var(--qi-font-h3); }
 #ai-panel h4 { font-size: var(--qi-font-h4); }
 #ai-panel :is(.ai-help,small) { color: var(--qi-text-secondary); font-size: var(--qi-font-caption); }
+#ai-panel .ai-contact-footer button.qi-btn { padding-inline: var(--qi-space-2); }
 #ai-panel .ai-analysis-selection { background: var(--qi-surface); }
 #ai-panel .ai-analysis-time-entry { background: var(--qi-surface-muted); }
 #ai-panel .ai-contact-picker-dialog { border-color: var(--qi-border); border-radius: var(--qi-radius-lg); box-shadow: var(--qi-shadow-modal); }
 #ai-panel .ai-contact-picker-dialog>footer { gap: var(--qi-space-3); border-color: var(--qi-border); }
 #ai-panel .ai-contact-picker-dialog .ai-contact-picker-row { border-radius: var(--qi-radius-md); }
 #ai-panel .ai-analysis-presets button { border-radius: var(--qi-radius-full); }
-#ai-panel .ai-analysis-add.qi-btn { min-height: var(--qi-control-lg); }
+#ai-panel button.ai-analysis-add.qi-btn { min-height: var(--qi-touch-target); height: var(--qi-touch-target); }
 
 @media(max-width:860px) {
   .qiapp-product .content { padding: var(--qi-space-4); }

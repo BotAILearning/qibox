@@ -28,7 +28,7 @@ test('聊天分析重排后仍保留弹窗选择、时间筛选、分析、复�
   for (const token of ['name="includeVoice"', 'name="includeVisual"', '语音较多时需要更长时间', '需要模型支持图片输入']) assert.ok(html.includes(token), `missing ${token}`);
   assert.match(html, /<strong>分析方向<\/strong>/);
   assert.match(html, /开始分析 · 1 位/);
-  assert.match(html, /添加或更换联系人/);
+  assert.match(html, /添加联系人/);
   assert.doesNotMatch(html, /刷新联系人|ai-analysis-mobile-selection|ai-analysis-selection-actions/);
   assert.match(analysisPage(state, draft, null, '', null, 'custom'), /data-ai-date-range="analysis"/);
   assert.doesNotMatch(html, /聊天分析<br|你的聊天回顾，从这里开始|快捷方向会填入可继续编辑的内容/);

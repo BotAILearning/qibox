@@ -114,13 +114,13 @@ export function analysisPage(state, draft, result, search = '', report = null, r
   if (report) return historyView(state, report, exportState);
   const selected = new Set(draft.contacts || []);
   const chosen = state.contacts.filter(c => c.kind === 'person' && selected.has(c.id));
-  const chosenRows = chosen.length ? chosen.map((c, index) => `<div class="ai-analysis-picked-row">${contactPickerAvatar(c, index)}<span>${contactName(c)}</span></div>`).join('') : '<p class="ai-analysis-choose-hint">添加联系人后，可为每位联系人独立生成报告。</p>';
+  const chosenRows = chosen.length ? chosen.map((c, index) => `<div class="ai-analysis-picked-row">${contactPickerAvatar(c, index)}<span>${contactName(c)}</span></div>`).join('') : '<p class="ai-analysis-choose-hint">尚未选择联系人</p>';
   const rangeButtons = [['all','全部'],['day','近一天'],['week','近一周'],['month','近一月'],['custom','自定义']].map(([id,label]) => `<button type="button" data-ai-analysis-range="${id}" aria-pressed="${rangeMode === id}">${label}</button>`).join('');
   return `<header class="ai-analysis-mobile-page-title"><span>栖盒 AI</span><h2>分析报告</h2><p>选择联系人、分析方向与时间范围，生成聊天回顾。</p></header>
   <form id="ai-analysis-form" class="ai-analysis-setup">
     <section class="ai-analysis-selection ai-contact-picker" aria-label="分析对象">
-      <div class="ai-analysis-section-title"><div><span class="ai-analysis-eyebrow">01 / 分析对象</span><h4>要分析谁的聊天？</h4><p>每位联系人单独生成报告</p></div><small id="ai-analysis-count" aria-label="已选择人数">${selected.size}</small></div>
-      <button type="button" class="primary ai-analysis-add" data-ai-analysis-pick>${icon('users')}<span>${selected.size ? '添加或更换联系人' : '添加联系人'}</span></button>
+      <div class="ai-analysis-section-title"><div><span class="ai-analysis-eyebrow">01 / 分析对象</span><h4>联系人</h4></div><small id="ai-analysis-count" aria-label="已选择人数">${selected.size}</small></div>
+      <button type="button" class="secondary ai-analysis-add" data-ai-analysis-pick>${icon('users')}<span>添加联系人</span></button>
       <div id="ai-analysis-contacts" class="ai-analysis-picked-list" aria-live="polite">${chosenRows}${(draft.contacts || []).map(id => `<input type="hidden" name="contacts" value="${esc(id)}">`).join('')}</div>
     </section>
     <section class="ai-analysis-request">
