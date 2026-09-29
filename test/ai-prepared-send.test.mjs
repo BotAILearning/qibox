@@ -62,6 +62,19 @@ test('prepared native pipe sends no text until the final database check permits 
   assert.equal(memory.closed, 1);
 });
 
+test('a complete native no-submit report stays retryable after commit, while an attempted send stays uncertain', async () => {
+  for (const status of ['not-sent', 'uncertain']) {
+    const value = controlledFixture({ onCommit: ({ child }) => queueMicrotask(() => {
+      child.stdout.write(JSON.stringify({ status, draftCleanup: 'cleared' }) + '\n');
+      child.emit('close', 0);
+    }) });
+    const result = await preparedSend(value.bridge, { account: 'a', contact: 'b' }, '测试内容', value.context, async () => true);
+    assert.equal(result.status, status);
+    assert.equal(value.context.delivery.started, true);
+    assert.equal(value.context.draftSafe, true);
+  }
+});
+
 test('changed data revision cancels without committing or requiring uncertain-send review', async () => {
   const { bridge, context, input, cleanup } = fixture();
   assert.equal((await preparedSend(bridge, { account: 'a', contact: 'b' }, '测试内容', context, async () => false)).status, 'stale');

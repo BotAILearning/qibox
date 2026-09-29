@@ -468,6 +468,14 @@ def main():
                 cleanup = adapter.close()
                 if request.get('action') in ('send', 'send-guard', 'prepare-send'):
                     result['draftCleanup'] = cleanup
+                    # A completed cleanup and no Send press prove this attempt
+                    # never submitted a message. Let the caller retry it instead
+                    # of consuming the incoming message as an unknown delivery.
+                    if (result.get('status') == 'uncertain' and not adapter.send_pressed
+                            and cleanup in ('cleared', 'not-needed')):
+                        result['status'] = 'not-sent'
+                        result.setdefault('diagnostic', {'phase': 'native-prepare',
+                                                         'code': 'controls-unavailable'})
             except Exception:
                 result = {'status': 'uncertain'} if adapter.possibly_written else {'available': False, 'error': 'unsupported'}
                 if request.get('action') in ('send', 'send-guard', 'prepare-send'):

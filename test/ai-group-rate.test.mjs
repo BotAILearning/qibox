@@ -120,6 +120,7 @@ test('uncertain group reply is audited, not retried or presented for review; lat
   await a.tick();advance(60000);await a.tick();
   assert.equal(profile.delivery.status,'unknown');assert.equal(profile.paused,false);assert.equal(profile.handledIncomingId,first.id);
   assert.equal(a.cursors.get(profile.id).pending,false);assert.equal(a.data.queue.status,'idle');
+  assert.match(a.errorRecords().records[0].message, /发送结果无法确认/);
   const summary=a.activitySummaries('reply').find(row=>row.id===profile.id);
   assert.equal(summary?.needsReview || false,false);assert.equal(summary?.needsHelp || false,false);
   bridge.delivery=null;

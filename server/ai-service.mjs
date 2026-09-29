@@ -2720,7 +2720,8 @@ export class AIAssistant {
         // 发送受阻只暂停"发送"：联系人与聊天数据仍然可用，学习与分析不受影响。
         this.sendBlockedUntil = this.now() + 30000 * Math.min(item?.attempts || 1, 3);
         this.retryAt = this.sendBlockedUntil;
-        this.notice = item?.reason || '暂时无法发送，稍后重试'; this.event('error', profile.id);
+        this.notice = item?.reason || `${this.nameFields(profile).label}：消息尚未发送，稍后重试`;
+        this.event('error', profile.id, mode, this.notice);
         await this.save(); return sent ? 'partial' : 'pending';
       }
       if (delivery.status !== 'sent' || !delivery.messageId) {
@@ -2736,7 +2737,9 @@ export class AIAssistant {
           if (groupReply) delete profile.groupWait;
         }
         this.settleQueue();
-          this.event('uncertain', profile.id);
+          this.notice = `${this.nameFields(profile).label}：发送结果无法确认；为避免重复发送，本条不会自动重发`;
+          this.event('uncertain', profile.id, source, this.notice);
+          this.event('error', profile.id, mode, this.notice);
         }
         await this.save(); return delivery.status === 'stale' && sent ? 'partial' : 'pending';
       }
