@@ -140,13 +140,15 @@ try {
   await page.locator('.ai-main-tabs [data-ai-nav=analysis]').click();
   await page.locator('[data-ai-analysis-pick]').waitFor();
   assert.equal(await page.locator('.ai-analysis-eyebrow:visible').count(), 0, 'analysis should not display numbered steps');
+  assert.equal(await page.locator('#ai-analysis-form .ai-analysis-selection').count(), 0, 'analysis has no standalone contact card');
+  assert.equal(await page.locator('.ai-analysis-request .ai-analysis-create-heading [data-ai-analysis-pick]').count(), 1, 'add-contact belongs to the creation card heading');
   for (const width of report.widths) {
     await page.setViewportSize({ width, height: 900 });
-    const action = await size('[data-ai-analysis-pick]', '.ai-analysis-selection');
-    const card = await size('.ai-analysis-selection', '.ai-analysis-selection');
+    const action = await size('[data-ai-analysis-pick]', '.ai-analysis-request');
+    const heading = await size('.ai-analysis-create-heading', '.ai-analysis-request');
     assert.ok(action.ratio < .72, `${width}px: add-contact occupies ${action.ratio.toFixed(2)} of card`);
     assert.ok(action.height >= 43.5, `${width}px: add-contact touch target is too short: ${JSON.stringify(action)}`);
-    assert.ok(card.height < 220, `${width}px: empty contact card too tall (${card.height}px)`);
+    assert.ok(heading.height < 140, `${width}px: creation heading too tall (${heading.height}px)`);
     if (width <= 390) {
       const fold = await page.evaluate(() => ({ toolbar: document.querySelector('.qbx-mobile-toolbar').getBoundingClientRect().height, actionTop: document.querySelector('[data-ai-analysis-pick]').getBoundingClientRect().top, reportTop: document.querySelector('.ai-analysis-request').getBoundingClientRect().top }));
       assert.ok(fold.toolbar <= 60, `${width}px: mobile toolbar too tall: ${JSON.stringify(fold)}`);
@@ -164,8 +166,8 @@ try {
       // The form may use display:contents, so measure its visible cards against
       // their actual workspace instead of relying on the form's empty rectangle.
       const workspace = form.closest('.ai-page-body'), outer = workspace.getBoundingClientRect();
-      const sections = [...form.querySelectorAll('.ai-analysis-selection,.ai-analysis-request,.ai-analysis-main-fields,.ai-analysis-presets,.ai-analysis-time-entry')];
-      const outside = sections.flatMap(node => { const rect = node.getBoundingClientRect(); return rect.left < outer.left - 1 || rect.right > outer.right + 1 || node.scrollWidth > node.clientWidth + 1 ? [{ name: node.className, width: rect.width, overflow: node.scrollWidth - node.clientWidth }] : []; });
+      const sections = [...form.querySelectorAll('.ai-analysis-create-heading,#ai-analysis-contacts,.ai-analysis-request,.ai-analysis-main-fields,.ai-analysis-presets,.ai-analysis-time-entry')];
+      const outside = sections.flatMap(node => { const rect = node.getBoundingClientRect(); return rect.width && (rect.left < outer.left - 1 || rect.right > outer.right + 1 || node.scrollWidth > node.clientWidth + 1) ? [{ name: node.className, width: rect.width, overflow: node.scrollWidth - node.clientWidth }] : []; });
       const time = form.querySelector('.ai-analysis-time-entry'), timeBox = time.getBoundingClientRect();
       const content = [...time.querySelectorAll('strong,p,button')].map(node => node.getBoundingClientRect()).filter(rect => rect.width > 0 && rect.height > 0);
       return { overflow: workspace.scrollWidth - workspace.clientWidth, outside, time: { height: timeBox.height,
@@ -184,9 +186,9 @@ try {
   await page.locator('.ai-contact-picker-dialog [data-picker-id]').first().check();
   await page.locator('.ai-contact-picker-dialog [data-picker-confirm]').click();
   assert.equal(await page.locator('#ai-analysis-count').innerText(), '1');
-  assert.ok((await size('[data-ai-analysis-pick]', '.ai-analysis-selection')).ratio < .72);
+  assert.ok((await size('[data-ai-analysis-pick]', '.ai-analysis-request')).ratio < .72);
   await page.screenshot({ path: path.join(output, 'analysis-selected-390.png') });
-  report.checks.push(`Analysis: compact contact entry at ${report.widths.join('/')}px; eight readable single-line direction labels, unclipped form and content-sized time card at ${desktopWidths.join('/')}px; picker still selects a person.`);
+  report.checks.push(`Analysis: contact entry inside the compact creation heading at ${report.widths.join('/')}px; eight readable single-line direction labels, unclipped form and content-sized time card at ${desktopWidths.join('/')}px; picker still selects a person.`);
 
   await page.locator('.ai-main-tabs [data-ai-nav=settings]').click();
   for (const width of [320, 390, 1440]) {

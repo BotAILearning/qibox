@@ -16,6 +16,7 @@ await mkdir(output,{recursive:true});
 const completed=[],report={scope:'Disposable local fixtures; no live model, NAS or WeChat messages.',checks:[],errors:[]};
 bridge.contacts[0].label='陈小雨';bridge.contacts[0].nickname='小雨同学';
 bridge.contacts[1].label='林一';bridge.contacts[2].label='周末';
+for(let index=0;index<4;index++)bridge.contacts.push({id:key(`analysis-layout-${index}`),label:`需要完整展示的联系人${index+1}`,kind:'person'});
 bridge.contacts.push({id:key('group'),label:'产品设计讨论',kind:'group'});
 bridge.readDates=async({account,contact})=>({account,contact,dates:['2026-09-01','2026-09-14','2026-09-28']});
 bridge.readRange=async args=>({account:args.account,contact:args.contact,rangeRevision:key(args.contact),messages:[{id:key(args.contact),timestamp:args.from+1,text:args.contact,direction:'self'}]});
@@ -33,10 +34,31 @@ try{
   const page=await browser.newPage({viewport:{width:1440,height:960}});
   page.setDefaultTimeout(15000);page.on('pageerror',error=>report.errors.push(error.message));
   const settled=()=>page.waitForFunction(()=>document.querySelector('#ai-panel').getAttribute('aria-busy')!=='true');
+  const draft=()=>page.locator('#ai-analysis-form').evaluate(form=>Object.fromEntries(['request','from','to'].map(name=>[name,form.elements.namedItem(name).value])));
+  const createLayout=async(width,expectWrap=false)=>{
+    await page.setViewportSize({width,height:960});
+    assert.equal(await page.locator('#ai-analysis-form .ai-analysis-selection').count(),0,'联系人不能再独立占据左侧卡片');
+    assert.equal(await page.locator('#ai-analysis-form .ai-analysis-request .ai-analysis-create-heading [data-ai-analysis-pick]').count(),1,'添加联系人位于创建分析卡片标题栏内');
+    const layout=await page.locator('#ai-analysis-form .ai-analysis-request').evaluate(card=>{
+      const box=card.getBoundingClientRect(),contacts=card.querySelector('#ai-analysis-contacts');
+      const nodes=[card,...card.querySelectorAll('.ai-analysis-create-heading,[data-ai-analysis-pick],#ai-analysis-contacts,.ai-analysis-picked-row,.ai-analysis-main-fields,.ai-analysis-time-entry,.ai-analysis-submit-row')];
+      const outside=nodes.flatMap(node=>{const rect=node.getBoundingClientRect();return rect.width&&(rect.left<box.left-1||rect.right>box.right+1||node.scrollWidth>node.clientWidth+1)?[{name:node.className,overflow:node.scrollWidth-node.clientWidth}]:[];});
+      return{outside,bodyOverflow:document.documentElement.scrollWidth-innerWidth,contactsInside:!!contacts,rows:new Set([...card.querySelectorAll('.ai-analysis-picked-row')].map(node=>Math.round(node.getBoundingClientRect().top))).size};
+    });
+    assert.ok(layout.contactsInside,'已选联系人应保留在创建分析卡片内');
+    assert.ok(layout.bodyOverflow<=1&&!layout.outside.length,`${width}px 创建分析卡片溢出: ${JSON.stringify(layout)}`);
+    if(expectWrap)assert.ok(layout.rows>1,`${width}px 多联系人应换行: ${JSON.stringify(layout)}`);
+    return layout;
+  };
   await page.goto(`http://127.0.0.1:${app.server.address().port}${app.prefix}/?dev=${app.devKey}`);
   await page.locator('[data-action=open]').first().click();
   await page.locator('#ai-open').click();
   await page.locator('.ai-main-tabs [data-ai-nav=analysis]').click();await settled();
+  await createLayout(1440);
+  await page.screenshot({path:path.join(output,'desktop-create-analysis-empty.png')});
+  await page.locator('#ai-analysis-request-text').fill('分别总结约定');
+  await page.locator('[data-ai-analysis-range=week]').click();
+  const originalDraft=await draft();
   await page.locator('[data-ai-analysis-pick]').click();
   const dialog=page.locator('.ai-contact-picker-dialog');
   assert.equal(await dialog.locator('[data-picker-kind]').count(),0,'analysis only shows people');
@@ -53,7 +75,16 @@ try{
   assert.equal(await page.locator('#ai-analysis-contacts [name=contacts]').count(),2);
   assert.equal(await page.locator('.ai-analysis-picked-row').count(),2);
   assert.equal(await page.locator('#ai-analysis-count').innerText(),'2');
-  report.checks.push('弹窗搜索备注与微信名，过滤后保留多选，确认后左侧完整展示');
+  assert.deepEqual(await draft(),originalDraft,'确认联系人应保留分析要求和时间范围');
+  assert.deepEqual(await page.locator('#ai-analysis-contacts .ai-analysis-picked-row').allTextContents(),['陈小雨（小雨同学）','周末']);
+  await page.locator('[data-ai-analysis-pick]').click();
+  await page.locator('.ai-contact-picker-dialog [data-picker-clear]').click();
+  await page.locator('.ai-contact-picker-dialog footer [data-picker-cancel]').click();
+  assert.equal(await page.locator('#ai-analysis-count').innerText(),'2','取消修改应保留原联系人');
+  assert.deepEqual(await draft(),originalDraft,'取消联系人选择应保留分析要求和时间范围');
+  for(const width of [320,390,1180,1440])await createLayout(width);
+  await page.screenshot({path:path.join(output,'desktop-create-analysis.png')});
+  report.checks.push('创建分析内添加联系人；搜索备注与微信名后保留多选、卡内名单和人数；确认与取消均保留分析要求和时间范围草稿');
 
   await page.locator('[data-ai-analysis-range=week]').click();
   assert.match(await page.locator('#ai-analysis-form [name=from]').inputValue(),/^\d{4}-\d{2}-\d{2}$/);
@@ -79,14 +110,22 @@ try{
   await page.locator('.ai-main-tabs [data-ai-nav=analysis]').click();await settled();
   await page.locator('[data-ai-analysis-pick]').click();
   const mobileDialog=page.locator('.ai-contact-picker-dialog');
-  await mobileDialog.locator('[data-picker-id]').first().check();
+  await mobileDialog.locator('[data-picker-all]').click();
   const bounds=await mobileDialog.evaluate(node=>{const d=node.getBoundingClientRect(),f=node.querySelector('footer').getBoundingClientRect();return{width:d.width,bottom:d.bottom,footerBottom:f.bottom};});
   assert.ok(bounds.width<=390&&bounds.bottom<=844&&bounds.footerBottom<=844);
   await mobileDialog.locator('[data-picker-confirm]').click();
-  assert.equal(await page.locator('#ai-analysis-contacts [name=contacts]').count(),1);
-  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  const people=bridge.contacts.filter(contact=>contact.kind==='person');
+  assert.equal(await page.locator('#ai-analysis-contacts [name=contacts]').count(),people.length);
+  assert.equal(await page.locator('#ai-analysis-count').innerText(),String(people.length));
+  assert.deepEqual(new Set(await page.locator('#ai-analysis-contacts .ai-analysis-picked-row').allTextContents()),new Set(['陈小雨（小雨同学）',...people.slice(1).map(contact=>contact.label)]));
+  await createLayout(320,true);
+  await page.screenshot({path:path.join(output,'mobile-contact-selection-320.png')});
+  await createLayout(390,true);
   await page.screenshot({path:path.join(output,'mobile-contact-selection.png')});
-  report.checks.push('390px 手机弹窗和左侧选择区域无横向溢出，底部按钮可见');
+  const lastContact=page.locator('#ai-analysis-contacts .ai-analysis-picked-row').last();
+  await lastContact.scrollIntoViewIfNeeded();
+  assert.ok(await lastContact.evaluate(node=>{const row=node.getBoundingClientRect(),list=node.parentElement.getBoundingClientRect();return row.top>=list.top-1&&row.bottom<=list.bottom+1;}),'多联系人列表的最后一项可滚动完整显示');
+  report.checks.push('320/390/1180/1440px 创建分析无横向溢出；手机多联系人标签自动换行，弹窗底部按钮可见');
   assert.equal(bridge.sent.length,0);assert.deepEqual(report.errors,[]);report.passed=true;
 }catch(error){report.failure=error.stack;throw error;}
 finally{await writeFile(path.join(output,'report.json'),JSON.stringify(report,null,2));await browser?.close();await app.close();await peer.close();await cleanup(dataRoot);}

@@ -116,24 +116,19 @@ try {
   await openAnalysis();
   const desktopLayout = await page.evaluate(() => {
     const form = document.querySelector('#ai-analysis-form');
-    const selection = document.querySelector('.ai-analysis-selection')?.getBoundingClientRect();
     const request = document.querySelector('.ai-analysis-request')?.getBoundingClientRect();
     const requestFields = document.querySelector('.ai-analysis-request-fields')?.getBoundingClientRect();
     const time = document.querySelector('.ai-analysis-time-entry')?.getBoundingClientRect();
     return {
-      formDisplay: getComputedStyle(form).display,
-      selectionWidth: selection?.width || 0,
-      selectionHeight: selection?.height || 0,
+      standaloneSelection: form.querySelectorAll('.ai-analysis-selection').length,
+      integratedPicker: form.querySelectorAll('.ai-analysis-request .ai-analysis-create-heading [data-ai-analysis-pick]').length,
       requestWidth: request?.width || 0,
-      requestStartsAfterSelection: (request?.x || 0) > (selection?.right || 0),
       timeStartsAfterRequest: (time?.x || 0) > (requestFields?.right || 0),
     };
   });
-  assert.equal(desktopLayout.formDisplay, 'contents', '分析表单应展开到外层工作区网格');
-  assert.ok(desktopLayout.selectionWidth >= 220, `联系人入口宽度过窄: ${desktopLayout.selectionWidth}`);
-  assert.ok(desktopLayout.selectionHeight < 400, `联系人入口仍占据整屏: ${desktopLayout.selectionHeight}`);
+  assert.equal(desktopLayout.standaloneSelection, 0, '联系人选择不再单独占据左侧卡片');
+  assert.equal(desktopLayout.integratedPicker, 1, '添加联系人应在创建分析标题栏内');
   assert.ok(desktopLayout.requestWidth >= 500, `分析要求区宽度过窄: ${desktopLayout.requestWidth}`);
-  assert.ok(desktopLayout.requestStartsAfterSelection, '分析要求区应位于联系人区右侧');
   assert.ok(desktopLayout.timeStartsAfterRequest, '时间范围应位于分析要求右侧');
   assert.equal(await page.locator('.ai-analysis-presets button').count(), 8, 'request composer shows original directions and custom question');
   await screenshot('00-analysis-request');
@@ -152,7 +147,7 @@ try {
   await page.locator('.ai-calendar-dialog-analysis').waitFor({ state: 'detached' });
   await chooseContacts([]);
   await page.locator('[data-ai-analysis-range=all]').click();
-  report.checks.push('Desktop analysis layout keeps contact selection left and gives the request area the main width');
+  report.checks.push('Desktop analysis integrates contact selection in the creation card and keeps time range beside the request');
   const beforeFirst = await generate('总结具体约定');
   assert.equal(await page.locator('.ai-report-sections h4').first().textContent(), '数据开场');
   assert.equal(await page.locator('.ai-report-sections h4').nth(1).textContent(), '值得记住');
