@@ -195,8 +195,13 @@ class SessionIdentity:
         if any(type(hint.get(key)) is not type(value) or hint[key] != value for key, value in self._hint_scope().items()):
             raise ValueError('session hint scope changed')
         now, issued = int(time.monotonic() * 1000), hint.get('issuedAt')
-        if type(issued) is not int or not 0 <= now - issued <= HINT_AGE_MS:
+        if type(issued) is not int or issued > now:
             raise ValueError('session hint expired')
+        if now - issued > HINT_AGE_MS:
+            # The hint is only a shortcut. An idle click must rediscover and
+            # fully verify the current manager instead of failing after 30 s.
+            self.manager = None
+            return
         address = hint.get('manager')
         if not isinstance(address, str) or not re.fullmatch(r'0x[0-9a-f]{1,16}', address):
             raise ValueError('session hint unavailable')
