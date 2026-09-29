@@ -45,6 +45,8 @@ def main():
     new_entry = api(glib, 'g_variant_new_dict_entry', ptr, [ptr, ptr])
     new_strv = api(glib, 'g_variant_new_strv', ptr, [c.POINTER(string), c.c_ssize_t])
     get_boolean = api(glib, 'g_variant_get_boolean', c.c_int, [ptr])
+    get_uint = api(glib, 'g_variant_get_uint32', c.c_uint, [ptr])
+    child_count = api(glib, 'g_variant_n_children', c.c_size_t, [ptr])
     is_type = api(glib, 'g_variant_is_of_type', c.c_int, [ptr, ptr])
     type_string, type_boolean = variant_type(b's'), variant_type(b'b')
 
@@ -58,6 +60,41 @@ def main():
             return default
         finally:
             unref(value)
+
+    def image_extension(options):
+        mime = {'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'image/bmp': 'bmp'}
+        for key in ('current_filter', 'filters'):
+            value = lookup(options, key.encode(), None)
+            if not value:
+                continue
+            try:
+                for i in range(1 if key == 'current_filter' else child_count(value)):
+                    selected = value if key == 'current_filter' else child(value, i)
+                    try:
+                        rules = child(selected, 1)
+                        try:
+                            for j in range(child_count(rules)):
+                                rule = child(rules, j)
+                                try:
+                                    kind, pattern = child(rule, 0), child(rule, 1)
+                                    try:
+                                        text = get_string(pattern, None).decode('utf-8').lower()
+                                        suffix = mime.get(text) if get_uint(kind) == 1 else None
+                                        if not suffix:
+                                            match = re.fullmatch(r'\*\.(jpe?g|png|webp|gif|bmp)', text)
+                                            suffix = 'jpg' if match and match[1] == 'jpeg' else match[1] if match else None
+                                        if suffix: return suffix
+                                    finally:
+                                        unref(kind); unref(pattern)
+                                finally:
+                                    unref(rule)
+                        finally:
+                            unref(rules)
+                    finally:
+                        if selected != value: unref(selected)
+            finally:
+                unref(value)
+        return 'png'
 
     def tuple_value(*values):
         return new_tuple((ptr * len(values))(*values), len(values))
@@ -202,7 +239,10 @@ def main():
                 return_value(invocation, tuple_value(new_path(handle)))
                 returned = True
                 if method_name == b'SaveFile':
-                    print(json.dumps({'type': 'request', 'id': request_id, 'operation': 'save', 'name': option(options, 'current_name', '') or '微信文件'}), flush=True)
+                    # The image viewer omits current_name; provide an extension
+                    # so the native image writer can select an output format.
+                    name = option(options, 'current_name', '') or '微信图片.' + image_extension(options)
+                    print(json.dumps({'type': 'request', 'id': request_id, 'operation': 'save', 'name': name}), flush=True)
                 elif option(options, 'directory', False):
                     native_dialog(request_id, title, options, False, True)
                 else:
