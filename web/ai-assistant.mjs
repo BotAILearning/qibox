@@ -20,7 +20,7 @@ const option = (value, label, selected) => `<option value="${esc(value)}" ${sele
 const field = (name, label, value, max = 1200, placeholder = '') => `<label class="ai-field">${label}<textarea name="${name}" maxlength="${max}" rows="${name === 'summary' ? 6 : 2}" placeholder="${esc(placeholder)}">${esc(value)}</textarea></label>`;
 const KEY_MASK = '********';
 const LEARN_TARGETS = [
-  { id: 'both', label: '风格 + 记忆', hint: '分别生成两项结果' },
+  { id: 'both', label: '风格 + 记忆', hint: '两项结果一起确认应用' },
   { id: 'style', label: '仅学习风格', hint: '保留现有记忆' },
   { id: 'memory', label: '仅学习记忆', hint: '记忆结果逐位确认' },
 ];
@@ -429,7 +429,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   function controls() {
     if (!state) return;
     // 记忆合并在后台跑，轮询拿到新状态时重画对象页，让合并结果立刻可确认。
-    const memoryPending = JSON.stringify((state.profiles || []).map(p => [p.id, p.pendingMemoryAt || 0, p.pendingMemorySource || '', p.memoryMerge?.status || '']));
+    const memoryPending = JSON.stringify((state.profiles || []).map(p => [p.id, p.pendingMemoryId || '', p.pendingMemoryAt || 0, p.pendingMemorySource || '', p.memoryMerge?.status || '']));
     if (memoryPending !== memoryPendingSignature) {
       memoryPendingSignature = memoryPending;
       if (['overview', 'profile'].includes(tab)) { render(); return; }
@@ -646,7 +646,14 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   function styleResults(profiles, editable = true) {
     if (!profiles.length) return '';
     const edit = p => `<button type="button" class="quiet" data-ai-profile="${esc(p.id)}">${profileName(p)} · ${editable ? '调整' : '查看'}${p.paused ? ' · 待你处理' : ''}</button>`;
-    return profiles.map(p => `<details class="ai-style-group" data-ai-result-profile="${esc(p.id)}" open><summary>${profileName(p)}</summary><h4>风格</h4>${styleSummary(p)}<h4>记忆</h4><p class="ai-result-memory">${esc(p.memory?.summary || '暂无明确记忆')}</p>${(p.replyStrategy?.replyGoal || p.strategy?.replyGoal) ? `<p class="ai-help">专属回复目的：${esc(p.replyStrategy?.replyGoal || p.strategy.replyGoal)}</p>` : ''}${edit(p)}</details>`).join('');
+    return profiles.map(p => {
+      const combined = p.pendingMemorySource === 'combined';
+      const memory = combined ? p.pendingMemory : p.memory;
+      const memoryBody = combined && memory?.entries?.length
+        ? `<ul class="ai-result-memory">${memory.entries.map(entry => `<li>${esc(entry.text)}</li>`).join('')}</ul>`
+        : `<p class="ai-result-memory">${esc(memory?.summary || (combined ? '本次没有提取到新的聊天记忆' : '暂无明确记忆'))}</p>`;
+      return `<details class="ai-style-group" data-ai-result-profile="${esc(p.id)}" open><summary>${profileName(p)}</summary><h4>风格${combined ? '（待应用）' : ''}</h4>${styleSummary(p)}<h4>记忆${combined ? '（待应用）' : ''}</h4>${memoryBody}${combined ? '<p class="ai-help">应用后与已保存的记忆合并。</p>' : ''}${(p.replyStrategy?.replyGoal || p.strategy?.replyGoal) ? `<p class="ai-help">专属回复目的：${esc(p.replyStrategy?.replyGoal || p.strategy.replyGoal)}</p>` : ''}${combined ? '' : edit(p)}</details>`;
+    }).join('');
   }
   function contactPickerRows(contacts, query) {
     const learned = new Set(learnedProfiles().map(p => p.contact));
@@ -701,7 +708,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   }
   function results() {
     const profiles = learnedProfiles().filter(p => !resultProfileIds || resultProfileIds.has(p.id));
-    return back('学习结果') + (profiles.length ? profiles.map(p => styleResults([{...p,style:p.pendingStyle || p.style}]) + '<div class="ai-actions ai-result-footer"><button type="button" class="secondary" data-ai-nav="overview">取消</button>' + (p.contact && state.contacts.some(c => c.id === p.contact) ? '<button type="button" class="primary" data-ai-apply-result="' + esc(p.id) + '">应用到 ' + profileName(p) + '</button>' : '') + '</div>').join('') : '<p class="ai-empty">还没有学习结果</p>');
+    return back('学习结果') + (profiles.length ? profiles.map(p => styleResults([{...p,style:p.pendingStyle || p.style}]) + '<div class="ai-actions ai-result-footer"><button type="button" class="secondary" data-ai-nav="overview">返回</button>' + (p.contact && state.contacts.some(c => c.id === p.contact) ? '<button type="button" class="primary" data-ai-apply-result="' + esc(p.id) + '">' + (p.pendingMemorySource === 'combined' ? '应用风格和记忆' : '应用到 ' + profileName(p)) + '</button>' : '') + '</div>').join('') : '<p class="ai-empty">还没有学习结果</p>');
   }
   function advancedSettings() {
     const rule = state.settings.takeover || {enabled:true,minutes:5};
@@ -1606,7 +1613,8 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         const profile = state.profiles.find(p => p.id === button.dataset.aiApplyResult);
         if (!profile?.contact) throw new Error('联系人已变化，请刷新后重试');
         const current = generation;
-        const applied = await execute('reply-profile', {value:{contact:profile.contact,preserveSwitches:true,styleSet:true,styleId:'learned',style:profile.pendingStyle || profile.learnedStyle || profile.style,strategy:profile.replyStrategy || replyStrategy()}}, '已应用到 '+profile.label+' 聊天');
+        const combined = profile.pendingMemorySource === 'combined';
+        const applied = await execute('reply-profile', {value:{contact:profile.contact,preserveSwitches:true,styleSet:true,styleId:'learned',style:profile.pendingStyle || profile.learnedStyle || profile.style,strategy:profile.replyStrategy || replyStrategy(),...(combined ? {applyCombinedLearning:true,combinedLearningId:profile.pendingMemoryId} : {})}}, combined ? '风格和记忆已一起应用到 '+profile.label : '已应用到 '+profile.label+' 聊天');
         if (!applied || current !== generation) return;
         selectedObject=profile.contact; objectKind=profile.kind || 'person'; objectDrafts.delete(profile.contact); await navigate('overview');
         return;
