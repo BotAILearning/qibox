@@ -1,4 +1,4 @@
-// Browser audit for action hierarchy, empty states and narrow-screen geometry.
+// Browser audit for action hierarchy, readable controls and responsive geometry.
 import { createRequire } from 'node:module';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -19,7 +19,8 @@ await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve));
 const space = await app.users.get('development'); await space.setConsent(true);
 const output = path.join(root, process.argv[2] || 'reports/ui-proportions');
 await mkdir(output, { recursive: true });
-const report = { scope: 'Disposable local app, WeChat and model fixtures; browser geometry only.', checks: [], errors: [], widths: [320, 390, 1024, 1440] };
+const desktopWidths = [1180, 1200, 1280, 1366, 1440, 1920];
+const report = { scope: 'Disposable local app, WeChat and model fixtures; browser geometry only.', checks: [], errors: [], widths: [320, 390, 1024, ...desktopWidths], desktopWidths, geometry: { analysis: [] } };
 let browser;
 try {
   browser = await chromium.launch({ channel: 'msedge', headless: true });
@@ -32,6 +33,35 @@ try {
     const rect = node.getBoundingClientRect(), outer = node.closest(parentSelector).getBoundingClientRect();
     return { width: rect.width, height: rect.height, ratio: rect.width / outer.width, parentHeight: outer.height };
   }, parent);
+  // Measure rendered glyph rectangles, rather than accepting a CSS declaration
+  // such as nowrap when the text is actually clipped or an ancestor hides it.
+  const textGeometry = async (selector, ownerSelector) => page.locator(selector).evaluateAll((nodes, ownerSelector) => nodes.map(node => {
+    const box = node.getBoundingClientRect(), owner = node.closest(ownerSelector).getBoundingClientRect();
+    const rects = [], walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+    for (let text = walker.nextNode(); text; text = walker.nextNode()) {
+      if (!text.textContent.trim()) continue;
+      const range = document.createRange(); range.selectNodeContents(text);
+      for (const rect of range.getClientRects()) if (rect.width > 0 && rect.height > 0) rects.push(rect);
+    }
+    const rows = [];
+    for (const rect of rects) if (!rows.some(top => Math.abs(top - rect.top) < 2)) rows.push(rect.top);
+    const inside = (rect, bounds) => rect.left >= bounds.left - 1 && rect.right <= bounds.right + 1 && rect.top >= bounds.top - 1 && rect.bottom <= bounds.bottom + 1;
+    const clippedBy = [];
+    for (let ancestor = node.parentElement; ancestor; ancestor = ancestor.parentElement) {
+      const style = getComputedStyle(ancestor), rect = ancestor.getBoundingClientRect();
+      const left = rect.left + ancestor.clientLeft, top = rect.top + ancestor.clientTop;
+      if (rects.some(text => /hidden|clip|auto|scroll/.test(style.overflowX) && (text.left < left - 1 || text.right > left + ancestor.clientWidth + 1) || /hidden|clip|auto|scroll/.test(style.overflowY) && (text.top < top - 1 || text.bottom > top + ancestor.clientHeight + 1))) clippedBy.push(ancestor.id || ancestor.className || ancestor.tagName);
+    }
+    return { text: node.textContent.trim(), rows: rows.length, width: box.width, glyphWidth: rects.length ? Math.max(...rects.map(rect => rect.right)) - Math.min(...rects.map(rect => rect.left)) : 0,
+      fits: rects.length > 0 && rects.every(rect => inside(rect, box) && inside(rect, owner)), clippedBy };
+  }), ownerSelector);
+  const assertReadable = (rows, label, singleLine = false) => {
+    assert.ok(rows.length, `${label}: expected visible text`);
+    for (const row of rows) {
+      if (singleLine) assert.equal(row.rows, 1, `${label}: label wraps: ${JSON.stringify(row)}`);
+      assert.ok(row.fits && !row.clippedBy.length, `${label}: text is clipped: ${JSON.stringify(row)}`);
+    }
+  };
 
   await page.goto(base);
   await page.locator('[data-market-action=download]').waitFor();
@@ -45,7 +75,7 @@ try {
   }
   const market = await size('.market-panel', '.workspace');
   assert.ok(market.height < 450, `market sidebar expands to ${market.height}px without content`);
-  report.checks.push('Market: one prominent installation action, compact import link, content-sized sidebar, no overflow at four widths.');
+  report.checks.push(`Market: one prominent installation action, compact import link, content-sized sidebar, no overflow at ${report.widths.join('/')}px.`);
 
   app.library.download(); await app.library.working;
   await page.goto(base);
@@ -61,7 +91,7 @@ try {
   report.checks.push('Installed market: exactly one primary action is visible on phone and desktop.');
   const meta = await space.add('比例检查微信'); await space.start(meta.id);
   const ai = space.get(meta.id).ai;
-  clearInterval(ai.timer); await ai.verifyProvider(modelConfig); await ai.scan(); await ai.settings({ enabled: false });
+  clearInterval(ai.timer); await ai.verifyProvider({ ...modelConfig, model: 'fixture-chat-pro' }); await ai.scan(); await ai.settings({ enabled: false });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(base);
   await page.locator('[data-action=open]').first().click(); await page.locator('#ai-open').click();
@@ -75,6 +105,37 @@ try {
   assert.ok(Math.abs(footer.tops[0] - footer.tops[1]) < 2, `sidebar utilities should share one row: ${JSON.stringify(footer)}`);
   await page.screenshot({ path: path.join(output, 'automatic-reply-1440.png') });
   report.checks.push('Automatic reply: related utility controls share a compact row in the contact sidebar.');
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.locator('[data-ai-object]').first().click();
+  // The master switch remains off; this is only an unsaved per-contact draft.
+  const originalObjectEnabled = await page.locator('#ai-object-form [name=enabled]').isChecked();
+  await page.locator('#ai-object-form [name=enabled]').check();
+  await page.locator('.ai-reference-child-grid').waitFor();
+  const objectLayout = await page.locator('.ai-reference-child-grid').evaluate(grid => {
+    const bounds = grid.getBoundingClientRect();
+    const items = [...grid.querySelectorAll('button,input:not([type=hidden]),select,b,small,label,.ai-reference-toggle,.ai-reference-limit,.ai-reference-limit-controls')].filter(node => node.getBoundingClientRect().width > 0);
+    return { width: bounds.width, overflow: grid.scrollWidth - grid.clientWidth,
+      outside: items.flatMap(node => { const rect = node.getBoundingClientRect(); return rect.left < bounds.left - 1 || rect.right > bounds.right + 1 ? [{ label: node.textContent.trim() || node.name, left: rect.left - bounds.left, right: rect.right - bounds.right }] : []; }) };
+  });
+  assert.ok(objectLayout.overflow <= 1 && !objectLayout.outside.length, `1280px object: child settings overflow or are hidden by the grid: ${JSON.stringify(objectLayout)}`);
+  assertReadable(await textGeometry('.ai-reference-child-grid b,.ai-reference-child-grid small', '.ai-reference-toggle'), '1280px object child settings');
+  const save = page.locator('#ai-object-form button[type=submit]');
+  assert.equal(await save.isVisible(), true, '1280px object: save action is missing');
+  const saveGeometry = await save.evaluate(node => {
+    const rect = node.getBoundingClientRect(), clip = node.closest('.ai-object-detail').getBoundingClientRect();
+    const center = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    return { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right,
+      visible: rect.top >= Math.max(0, clip.top) && rect.bottom <= Math.min(innerHeight, clip.bottom) + 1 && rect.left >= 0 && rect.right <= innerWidth + 1,
+      unobstructed: center === node || node.contains(center) };
+  });
+  assert.ok(saveGeometry.visible && saveGeometry.unobstructed, `1280px object: save must be reachable in the visible panel: ${JSON.stringify(saveGeometry)}`);
+  await noOverflow('1280px object settings');
+  report.geometry.object = { ...objectLayout, save: saveGeometry };
+  await page.screenshot({ path: path.join(output, 'object-settings-1280.png') });
+  // Restore the original draft value, leaving later regressions unchanged.
+  await page.locator('#ai-object-form [name=enabled]').setChecked(originalObjectEnabled);
+  report.checks.push('1280px object settings: enabled child controls stay inside their grid, labels are readable and Save is visible and unobstructed.');
 
   await page.locator('.ai-main-tabs [data-ai-nav=analysis]').click();
   await page.locator('[data-ai-analysis-pick]').waitFor();
@@ -94,6 +155,30 @@ try {
     await noOverflow(`${width}px analysis`);
     if (width === 390 || width === 1440) await page.screenshot({ path: path.join(output, `analysis-empty-${width}.png`) });
   }
+  for (const width of desktopWidths) {
+    await page.setViewportSize({ width, height: 900 });
+    const presets = await textGeometry('.ai-analysis-presets button span', '.ai-analysis-presets button');
+    assert.equal(presets.length, 8, `${width}px analysis: all eight direction labels are present`);
+    assertReadable(presets, `${width}px analysis directions`, true);
+    const layout = await page.locator('#ai-analysis-form').evaluate(form => {
+      // The form may use display:contents, so measure its visible cards against
+      // their actual workspace instead of relying on the form's empty rectangle.
+      const workspace = form.closest('.ai-page-body'), outer = workspace.getBoundingClientRect();
+      const sections = [...form.querySelectorAll('.ai-analysis-selection,.ai-analysis-request,.ai-analysis-main-fields,.ai-analysis-presets,.ai-analysis-time-entry')];
+      const outside = sections.flatMap(node => { const rect = node.getBoundingClientRect(); return rect.left < outer.left - 1 || rect.right > outer.right + 1 || node.scrollWidth > node.clientWidth + 1 ? [{ name: node.className, width: rect.width, overflow: node.scrollWidth - node.clientWidth }] : []; });
+      const time = form.querySelector('.ai-analysis-time-entry'), timeBox = time.getBoundingClientRect();
+      const content = [...time.querySelectorAll('strong,p,button')].map(node => node.getBoundingClientRect()).filter(rect => rect.width > 0 && rect.height > 0);
+      return { overflow: workspace.scrollWidth - workspace.clientWidth, outside, time: { height: timeBox.height,
+        contentHeight: Math.max(...content.map(rect => rect.bottom)) - Math.min(...content.map(rect => rect.top)),
+        trailingSpace: timeBox.bottom - Math.max(...content.map(rect => rect.bottom)) } };
+    });
+    assert.ok(layout.overflow <= 1 && !layout.outside.length, `${width}px analysis: form contents overflow: ${JSON.stringify(layout)}`);
+    // A small card should end near its last control, even alongside a tall editor.
+    assert.ok(layout.time.trailingSpace >= 0 && layout.time.trailingSpace <= 40, `${width}px analysis: time card contains excessive empty space: ${JSON.stringify(layout.time)}`);
+    report.geometry.analysis.push({ width, presets, ...layout });
+    await noOverflow(`${width}px analysis form`);
+    await page.screenshot({ path: path.join(output, `analysis-directions-${width}.png`) });
+  }
   await page.setViewportSize({ width: 390, height: 900 });
   await page.locator('[data-ai-analysis-pick]').click();
   await page.locator('.ai-contact-picker-dialog [data-picker-id]').first().check();
@@ -101,7 +186,7 @@ try {
   assert.equal(await page.locator('#ai-analysis-count').innerText(), '1');
   assert.ok((await size('[data-ai-analysis-pick]', '.ai-analysis-selection')).ratio < .72);
   await page.screenshot({ path: path.join(output, 'analysis-selected-390.png') });
-  report.checks.push('Analysis: empty and selected contact entries stay compact and usable at four widths; picker still selects a person.');
+  report.checks.push(`Analysis: compact contact entry at ${report.widths.join('/')}px; eight readable single-line direction labels, unclipped form and content-sized time card at ${desktopWidths.join('/')}px; picker still selects a person.`);
 
   await page.locator('.ai-main-tabs [data-ai-nav=settings]').click();
   for (const width of [320, 390, 1440]) {
@@ -130,6 +215,14 @@ try {
   const toggle = page.locator('.qbx-settings-group input[name=acknowledgeAI]');
   const beforeToggle = await toggle.isChecked();
   await toggle.evaluate(node => { node.checked = !node.checked; });
+  // Wait for the actual thumb endpoint; an immediate style read can catch the
+  // first frame of its transition and report a false failure.
+  await page.waitForFunction(({ selector, checked }) => {
+    const node = document.querySelector(selector), track = getComputedStyle(node), thumb = getComputedStyle(node, '::after');
+    const travel = parseFloat(track.width) - parseFloat(thumb.width) - 2 * parseFloat(thumb.left);
+    const shift = thumb.transform === 'none' ? 0 : new DOMMatrixReadOnly(thumb.transform).m41;
+    return Math.abs(shift - (checked ? travel : 0)) < .5;
+  }, { selector: '.qbx-settings-group input[name=acknowledgeAI]', checked: !beforeToggle });
   const changedThumb = await toggle.evaluate(node => getComputedStyle(node, '::after').transform);
   assert.equal(changedThumb === 'none' || changedThumb === 'matrix(1, 0, 0, 1, 0, 0)', beforeToggle, 'switch thumb must travel to the opposite end when state changes');
   await toggle.evaluate((node, checked) => { node.checked = checked; }, beforeToggle);
@@ -159,6 +252,30 @@ try {
     for (const width of [320, 390, 1440]) {
       await page.setViewportSize({ width, height: 900 });
       await noOverflow(`${width}px ${nav}`);
+    }
+    if (nav === 'provider') {
+      await page.setViewportSize({ width: 1280, height: 900 });
+      const names = await textGeometry('.ai-model-item-title strong', '.ai-model-item');
+      assertReadable(names, '1280px model names', true);
+      assert.ok(names.some(row => row.text === 'fixture-chat-pro'), '1280px model: configured model name is shown');
+      const models = await page.locator('.ai-model-workspace').evaluate(workspace => {
+        const rect = workspace.getBoundingClientRect();
+        const cards = [...workspace.children].map(node => { const box = node.getBoundingClientRect(); return { name: node.className, inside: box.left >= rect.left - 1 && box.right <= rect.right + 1, overflow: node.scrollWidth - node.clientWidth }; });
+        const canvas = document.createElement('canvas'), context = canvas.getContext('2d');
+        const assignments = [...workspace.querySelectorAll('[data-ai-assignment]')].map(select => {
+          const style = getComputedStyle(select); context.font = style.font;
+          const text = select.selectedOptions[0]?.textContent || '';
+          return { text, textWidth: context.measureText(text).width, available: select.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) - 20 };
+        });
+        return { cards, assignments };
+      });
+      assert.ok(models.cards.every(card => card.inside && card.overflow <= 1), `1280px model workspace: cards overflow: ${JSON.stringify(models)}`);
+      assert.equal(models.assignments.length, 2, '1280px model: both feature assignment controls are present');
+      assert.ok(models.assignments.every(row => row.text && row.available >= row.textWidth), `1280px model: selected model names are not readable: ${JSON.stringify(models.assignments)}`);
+      await noOverflow('1280px model workspace');
+      report.geometry.models = { width: 1280, names, ...models };
+      await page.screenshot({ path: path.join(output, 'models-readable-1280.png') });
+      report.checks.push('1280px model workspace: saved model names and selected assignments are readable, and both cards remain within their workspace.');
     }
   }
   report.checks.push('Other AI pages: learning, model, proactive, activity and settings remain within 320px, 390px and 1440px viewports.');

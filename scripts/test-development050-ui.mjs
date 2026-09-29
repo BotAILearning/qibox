@@ -44,7 +44,16 @@ try {
   const page = await context.newPage(); page.setDefaultTimeout(15000); page.on('pageerror', e => report.errors.push(e.message));
   await page.goto(`http://127.0.0.1:${app.server.address().port}${app.prefix}/?dev=${app.devKey}`);
   await page.locator('[data-action=open]').first().click(); await page.locator('#ai-open').click();
-  assert.equal(await page.locator('.ai-main-tabs').evaluate(node => Math.round(node.getBoundingClientRect().width)), 248);
+  const navLayout = await page.locator('.ai-main-tabs').evaluate(node => {
+    const nav = node.getBoundingClientRect();
+    return { width: nav.width, viewport: innerWidth, overflow: node.scrollWidth - node.clientWidth,
+      labels: [...node.querySelectorAll('button[data-ai-nav] span')].map(label => {
+        const range = document.createRange(); range.selectNodeContents(label);
+        const rects = [...range.getClientRects()], button = label.closest('button').getBoundingClientRect();
+        return { text: label.textContent, fits: rects.length === 1 && rects.every(rect => rect.width > 0 && rect.height > 0 && rect.left >= button.left && rect.right <= button.right && rect.top >= button.top && rect.bottom <= button.bottom && rect.left >= nav.left && rect.right <= nav.right) };
+      }) };
+  });
+  assert.ok(navLayout.width > 0 && navLayout.width <= navLayout.viewport / 4 && navLayout.overflow <= 1 && navLayout.labels.length === 5 && navLayout.labels.every(label => label.fits), `桌面导航保持紧凑且五个入口完整可读：${JSON.stringify(navLayout)}`);
   assert.equal(await page.getByText('设置按当前微信独立保存').count(), 0);
   await page.locator(`[data-ai-object="${bridge.contacts[0].id}"]`).click();
   assert.equal(await page.locator('.ai-reference-statuses button').count(), 0, '页头状态提醒不包含操作按钮');
@@ -59,7 +68,13 @@ try {
   });
   assert.equal(await page.locator('.ai-reference-memory-head h4').textContent(), '聊天记忆');
   assert.ok(memoryLayout.header.left <= memoryLayout.nav.left && memoryLayout.header.right >= memoryLayout.content.right && memoryLayout.header.bottom <= memoryLayout.nav.top, '聊天记忆标题位于左右两栏上方');
-  assert.equal(Math.round(memoryLayout.nav.width), 132, '聊天记忆分类栏使用紧凑宽度');
+  assert.ok(memoryLayout.nav.width > 0 && memoryLayout.nav.width < memoryLayout.content.width / 2, '聊天记忆分类栏保持紧凑，主要宽度留给内容');
+  assert.ok(await page.locator('.ai-reference-memory-categories button span').evaluateAll(nodes => nodes.every(node => {
+    const range = document.createRange(); range.selectNodeContents(node);
+    const button = node.closest('button').getBoundingClientRect(), nav = node.closest('.ai-reference-memory-categories').getBoundingClientRect();
+    const rects = [...range.getClientRects()].filter(rect => rect.width > 0 && rect.height > 0);
+    return rects.length > 0 && button.width > 0 && button.height > 0 && rects.every(rect => rect.left >= button.left - 1 && rect.right <= button.right + 1 && rect.top >= button.top - 1 && rect.bottom <= button.bottom + 1 && rect.left >= nav.left - 1 && rect.right <= nav.right + 1);
+  })), '聊天记忆分类文字完整可读');
   assert.equal(await page.locator('.ai-reference-memory-content > h4, .ai-reference-memory-content > .ai-memory-history').count(), 0);
   assert.equal(await page.locator('.ai-reference-memory-head .ai-memory-history').count(), 0, '没有修改记录时不展示历史入口');
   const categoryLabels = await page.locator('.ai-reference-memory-categories button span').allTextContents();
@@ -80,12 +95,13 @@ try {
   assert.equal(strategyBoxes.length, 2); assert.ok(strategyBoxes[1].left > strategyBoxes[0].left, '回复要求与边界左右并排');
   const childLayout = await page.locator('.ai-reference-child-grid').evaluate(node => ({ grid: node.getBoundingClientRect(), items: [...node.children].map(child => child.getBoundingClientRect()) }));
   assert.equal(childLayout.items.length, 3);
-  assert.ok(childLayout.items.every(item => Math.abs(item.top - childLayout.items[0].top) < 2), '三个自动回复子项横向并排');
-  assert.ok(childLayout.items[2].right <= childLayout.grid.right + 1, '上限项保持在同一行且不溢出');
+  const cardsFit = ({ grid, items }) => grid.width > 0 && grid.height > 0 && items.every((item, index) => item.width > 0 && item.height > 0 && item.left >= grid.left - 1 && item.right <= grid.right + 1 && item.top >= grid.top - 1 && item.bottom <= grid.bottom + 1 && items.slice(index + 1).every(other => item.right <= other.left + 1 || other.right <= item.left + 1 || item.bottom <= other.top + 1 || other.bottom <= item.top + 1));
+  assert.ok(cardsFit(childLayout), `三个自动回复子项完整排列且不重叠或溢出：${JSON.stringify(childLayout)}`);
   const limitControls = await page.locator('.ai-reference-limit').evaluate(node => ({ label: node.querySelector('label').getBoundingClientRect(), input: node.querySelector('.ai-reply-limit-control select').getBoundingClientRect(), button: node.querySelector('button').getBoundingClientRect(), text: node.querySelector('button').textContent }));
   assert.equal(limitControls.text, '应用到全部');
   assert.ok(Math.abs(limitControls.label.top - limitControls.input.top) < 16 && Math.abs(limitControls.input.top - limitControls.button.top) < 16, '上限标题、次数和按钮位于同一排');
-  assert.equal(await page.locator('.ai-reference-child-grid > *').evaluateAll(nodes => nodes.map(node => getComputedStyle(node.querySelector('b, label')).fontSize).filter(Boolean).every(size => size === '12.5px')), true, '三个自动回复子项标题字号一致');
+  const childTitleSizes = await page.locator('.ai-reference-child-grid > *').evaluateAll(nodes => nodes.map(node => parseFloat(getComputedStyle(node.querySelector('b, label')).fontSize)));
+  assert.ok(new Set(childTitleSizes).size === 1 && childTitleSizes.every(size => size >= 12), `三个自动回复子项标题字号一致且可读：${JSON.stringify(childTitleSizes)}`);
   assert.equal(await page.locator('#ai-reply-round-limit').inputValue(), '50', '未修改时默认 50');
   assert.deepEqual(await page.locator('#ai-reply-round-limit option').evaluateAll(nodes => nodes.map(node => node.textContent)), ['20','50','100','200','500','不限','自定义']);
   await page.locator('#ai-reply-round-limit').selectOption('custom');
@@ -137,9 +153,9 @@ try {
   assert.equal(await page.locator('.ai-reference-group-options .ai-reference-limit').isVisible(), true, '提及回复关闭时仍显示上限');
   assert.equal(await page.locator('.ai-reference-realtime-modes').count(), 0, '实时回复关闭时隐藏参与方式');
   assert.equal(await page.locator('.ai-reference-group-options .ai-reference-limit').textContent().then(text => text.includes('仅统计 @我与 @所有人回复')), false);
-  const groupLayout = await page.locator('.ai-reference-group-dependency').evaluate(node => ({ cards: [...node.querySelector('.ai-reference-group-options').children].map(item => item.getBoundingClientRect()), realtime: node.querySelector('.ai-reference-realtime-block').getBoundingClientRect() }));
-  assert.ok(groupLayout.cards.every(card => Math.abs(card.top - groupLayout.cards[0].top) < 2), '两个提及开关与上限同排');
-  assert.ok(groupLayout.realtime.top > groupLayout.cards[0].bottom, '实时回复及参与方式整体移至下方');
+  const groupLayout = await page.locator('.ai-reference-group-dependency').evaluate(node => ({ grid: node.querySelector('.ai-reference-group-options').getBoundingClientRect(), items: [...node.querySelector('.ai-reference-group-options').children].map(item => item.getBoundingClientRect()), realtime: node.querySelector('.ai-reference-realtime-block').getBoundingClientRect() }));
+  assert.ok(cardsFit(groupLayout), `两个提及开关与上限完整排列且不重叠或溢出：${JSON.stringify(groupLayout)}`);
+  assert.ok(groupLayout.realtime.top > Math.max(...groupLayout.items.map(card => card.bottom)), '实时回复及参与方式位于完整提及设置下方');
   await page.screenshot({ path: path.join(output, 'group-reply-off.png') });
   await page.locator('#ai-object-form [name=atMe]').check();
   assert.equal(await page.locator('.ai-reference-group-options .ai-reference-limit').isVisible(), true);

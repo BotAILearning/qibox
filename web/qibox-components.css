@@ -115,3 +115,358 @@
   #ai-panel .ai-analysis-intro.qbx-section-heading h4 { font-size: 19px; }
   #ai-panel .ai-analysis-intro.qbx-section-heading p { font-size: 12px; }
 }
+
+/* Page composition is measured inside the workspace, after the navigation. */
+.qiapp-product .content {
+  container: qbx-home / inline-size;
+  width: 100%; max-width: 1440px; padding: 28px;
+}
+.qiapp-product .workspace { grid-template-columns: 264px minmax(0,1fr); gap: 22px; }
+.qiapp-product :is(.market-panel,.desktop-panel) { padding: 22px; border-radius: var(--qbx-radius); }
+.qiapp-product .panel-heading { margin-bottom: 20px; }
+.qiapp-product .instance-grid { grid-template-columns: repeat(auto-fill,minmax(132px,1fr)); gap: 18px 12px; }
+.qiapp-product .store-card { padding: 16px; gap: 12px; }
+.qiapp-product :is(.modal-actions,.file-transfer-actions,.retained-row>div) { flex-wrap: wrap; gap: 10px; }
+.qiapp-product :is(.store-card-main>div,.mobile-instance-info,.mobile-ai-info) { min-width: 0; }
+
+#ai-panel #ai-content { container: qbx-content / inline-size; }
+#ai-panel .ai-page-body {
+  container: qbx-page / inline-size;
+  width: 100%; max-width: 1360px; min-width: 0;
+  padding: 24px; margin-inline: auto;
+}
+#ai-panel[data-page="settings"] .ai-page-body { max-width: 1040px; }
+#ai-panel[data-page="profile"] .ai-page-body,
+#ai-panel[data-page="manual-reply"] .ai-page-body { max-width: 1000px; }
+#ai-panel :is(.ai-page-heading,.ap-heading,.ai-reference-learning-top) {
+  min-width: 0; align-items: flex-start; gap: 12px 20px; margin-bottom: 20px;
+}
+#ai-panel :is(.ai-page-heading,.ap-heading,.ai-card-heading)>div { min-width: 0; }
+#ai-panel :is(.ai-page-heading h3,.ap-heading h3,.ai-reference-learning-top h3) {
+  margin: 0; font-size: 22px; line-height: 1.35; letter-spacing: -.015em;
+}
+#ai-panel :is(.ai-page-heading p,.ap-heading p) { margin-top: 6px; max-width: 72ch; line-height: 1.65; }
+#ai-panel :is(.ai-card,.ai-task-card,.ai-model-sidebar,.ai-reference-profile,.ai-reference-panel,.ap-form-card,.ap-table-panel,.ai-reply-record-card) {
+  border-color: var(--qbx-line); border-radius: var(--qbx-radius); box-shadow: 0 4px 16px #20345c06;
+}
+#ai-panel :is(.ai-card.qi-card,.ai-task-card.qi-card) { padding: 20px; }
+#ai-panel :is(.ai-actions,.ai-wizard-actions,.ai-learning-run,.ai-analysis-submit-row,.ai-learning-heading-tools) {
+  flex-wrap: wrap; align-items: center; gap: 10px;
+}
+/* Short actions wrap as a whole; descriptive cards keep normal text flow. */
+#ai-panel button:is(.qi-btn,[data-ai-analysis-preset],[data-ai-analysis-other],[data-ai-analysis-range],[data-ai-style],[data-ai-default-range],[data-ai-learn-range],[data-proactive-filter],[data-ai-record-source]):not(.icon-button):not(.ai-key-eye) {
+  flex-shrink: 0; white-space: nowrap; overflow-wrap: normal; word-break: normal;
+}
+#ai-panel :is(.ai-analysis-presets,.ai-style-pills,.ap-filters,.ai-reference-range-pills,.ai-reference-learning-range-pills) {
+  display: flex; flex-wrap: wrap; gap: 8px; min-width: 0;
+}
+#ai-panel :is(.ai-analysis-presets,.ai-style-pills,.ap-filters,.ai-reference-range-pills,.ai-reference-learning-range-pills)>button {
+  flex: 0 0 auto; width: auto; min-width: max-content; min-height: 38px;
+}
+#ai-panel :is(.ai-field,.ai-form-grid,.ai-model-workspace,.ai-default-style-layout,.ai-reference-learning-shell,.ap-editor-layout>fieldset)>* { min-width: 0; }
+#ai-panel .ai-field { margin-bottom: 16px; }
+#ai-panel .ai-field textarea { min-height: 112px; line-height: 1.7; }
+#ai-panel :is(.ai-record-error,.ai-help,.ai-empty,.ai-empty-state) { line-height: 1.7; }
+
+/* Analysis: contact selection, a flexible request, and a bounded time column. */
+#ai-panel .ai-page-body:has(>.ai-analysis-setup) { grid-template-columns: 224px minmax(0,1fr); gap: 20px; }
+#ai-panel .ai-page-body:has(>.ai-analysis-setup) .ai-analysis-selection { padding: 18px; }
+#ai-panel .ai-analysis-request.qbx-surface { container: qbx-analysis / inline-size; padding: 22px; min-width: 0; }
+#ai-panel .ai-analysis-main-fields { grid-template-columns: minmax(0,1fr) 208px; align-items: start; gap: 20px; }
+#ai-panel .ai-analysis-directions { margin-bottom: 18px; }
+#ai-panel .ai-analysis-presets { display: flex; flex-wrap: wrap; grid-template-columns: none; gap: 8px; width: 100%; }
+#ai-panel .ai-analysis-presets button {
+  justify-content: center; min-width: max-content; min-height: 38px;
+  padding: 8px 12px; gap: 7px; font-size: 13px; border-radius: 10px;
+}
+#ai-panel .ai-analysis-presets button>span { white-space: nowrap; }
+#ai-panel .ai-analysis-time-entry { padding: 16px; border-radius: 12px; }
+#ai-panel .ai-analysis-time-entry>p { margin-bottom: 12px; line-height: 1.65; }
+#ai-panel .ai-reference-analysis-ranges { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 6px; }
+#ai-panel .ai-reference-analysis-ranges button { padding: 7px 8px; min-height: 38px; }
+#ai-panel button.ai-analysis-custom-date:not(.icon-button):not(.ai-key-eye) {
+  width: 100%; min-width: 0; flex-shrink: 1; white-space: normal; text-align: left;
+}
+#ai-panel .ai-analysis-custom-date>span { flex: 1 1 auto; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+#ai-panel .ai-analysis-request textarea[name="request"] { min-height: 126px; padding: 14px 16px 10px; line-height: 1.75; }
+#ai-panel .ai-analysis-submit-row { justify-content: space-between; gap: 12px 20px; margin-top: 20px; padding-top: 18px; }
+#ai-panel .ai-analysis-submit-row>span { flex: 1 1 180px; min-width: 0; line-height: 1.65; }
+#ai-panel .ai-analysis-submit { width: auto; min-width: 164px; min-height: 44px; }
+#ai-panel .ai-analysis-report-grid { grid-template-columns: minmax(0,1fr); gap: 18px; }
+#ai-panel .ai-report-text { font-size: 14px; line-height: 1.85; overflow-wrap: anywhere; }
+#ai-panel .ai-analysis-history-list>.ai-card { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 14px 20px; padding: 18px 20px; }
+#ai-panel .ai-analysis-history-list>.ai-card>div:not(.ai-actions) { flex: 1 1 280px; min-width: 0; }
+#ai-panel .ai-analysis-history-list>.ai-card>.ai-actions { flex: 0 1 auto; width: auto; margin: 0; }
+#ai-panel .ai-analysis-history-detail { max-width: 1080px; margin-inline: auto; }
+#ai-panel .ai-analysis-history-detail .ai-report-text { padding: 24px 28px; }
+#ai-panel .ai-analysis-history-detail .ai-sticky-back { justify-content: flex-start; gap: 16px; }
+#ai-panel .ai-analysis-history-detail .ai-sticky-back>div:not(.ai-actions) { flex: 1; min-width: 0; }
+
+/* The object list and detail each keep their own scroll area. */
+#ai-panel .ai-object-workspace.ai-object-reference { grid-template-columns: 244px minmax(0,1fr); gap: 20px; padding: 24px; }
+#ai-panel .ai-object-reference .ai-object-detail { container: qbx-object / inline-size; min-width: 0; }
+#ai-panel .ai-object-reference #ai-object-form { gap: 16px; min-width: 0; }
+#ai-panel .ai-object-reference .ai-person-head { align-items: center; flex-wrap: wrap; gap: 12px; padding: 18px 20px; }
+#ai-panel .ai-object-reference .ai-person-head>div { min-width: 0; }
+#ai-panel .ai-object-reference .ai-person-head h3 { font-size: 18px; overflow-wrap: anywhere; }
+#ai-panel .ai-reference-statuses { gap: 6px 12px; }
+#ai-panel .ai-reference-tabs { padding: 0 12px; gap: 4px; }
+#ai-panel .ai-reference-tabs button { flex: 0 0 auto; min-width: max-content; white-space: nowrap; }
+#ai-panel .ai-reference-reply-main { padding: 20px; }
+#ai-panel .ai-reference-reply-settings { padding: 0 20px 20px; }
+#ai-panel .ai-reference-children { padding: 12px; }
+#ai-panel .ai-reference-children:before { content: none; }
+#ai-panel :is(.ai-reference-child-grid,.ai-reference-group-options) { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 0; }
+#ai-panel .ai-reference-group-options { gap: 10px; }
+#ai-panel :is(.ai-reference-child-grid,.ai-reference-group-options) .ai-reference-limit {
+  grid-column: 1/-1; min-height: 64px; flex-direction: row; align-items: center;
+  border-left: 0; border-top: 1px solid var(--qbx-line); padding: 12px 14px;
+}
+#ai-panel .ai-reference-group-options .ai-reference-toggle { min-height: 76px; }
+#ai-panel .ai-reference-group-options .ai-reference-limit-controls { width: auto; }
+#ai-panel .ai-reference-toggle { gap: 12px; min-height: 68px; padding: 14px; }
+#ai-panel .ai-reference-toggle>span { min-width: 0; }
+#ai-panel .ai-reference-toggle b { font-size: 14px; line-height: 1.5; }
+#ai-panel .ai-reference-toggle small { font-size: 12px; line-height: 1.5; }
+#ai-panel .ai-reference-child-grid .ai-reference-limit-copy label { font-size: 14px; }
+#ai-panel .ai-reference-limit-controls { flex-wrap: wrap; flex: 0 1 auto; justify-content: flex-end; gap: 8px; }
+#ai-panel .ai-reference-strategy { padding: 18px; }
+#ai-panel .ai-reference-strategy h4 { font-size: 16px; }
+#ai-panel .ai-reference-strategy-fields { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; }
+#ai-panel .ai-reference-strategy-fields .ai-field { margin: 0; }
+#ai-panel .ai-reference-strategy-fields textarea { min-height: 132px; }
+#ai-panel .ai-reference-style-body { padding: 20px; }
+#ai-panel .ai-reference-style-body textarea[name="summary"] { min-height: 180px; }
+#ai-panel .ai-reference-memory { grid-template-columns: 120px minmax(0,1fr); }
+#ai-panel .ai-reference-memory-content { padding: 20px; }
+#ai-panel .ai-wiki-bubble { grid-template-columns: 116px minmax(0,1fr); gap: 10px; }
+#ai-panel .ai-wiki-bubble.ai-wiki-school { grid-template-columns: 116px minmax(0,1fr); }
+#ai-panel .ai-wiki-bubble.ai-wiki-school>.ai-wiki-degree { grid-column: 2; grid-row: auto; }
+#ai-panel .ai-object-reference .ai-object-save { padding: 14px 18px; border-radius: 12px; }
+#ai-panel .ai-object-reference .ai-object-action-row { flex-wrap: wrap; gap: 10px; }
+#ai-panel .ai-contact-footer { flex-wrap: wrap; gap: 8px; }
+
+/* Models: names and addresses get a row before the secondary icon actions. */
+#ai-panel .ai-model-workspace { display: grid; grid-template-columns: minmax(0,1fr) 320px; gap: 20px; }
+#ai-panel .ai-model-sidebar { padding: 18px; }
+#ai-panel .ai-model-sidebar.ai-model-editing { padding: 0; }
+#ai-panel .ai-model-item { display: grid; grid-template-columns: minmax(0,1fr); gap: 10px; padding: 16px; }
+#ai-panel .ai-model-item-title { flex-wrap: wrap; gap: 6px 10px; }
+#ai-panel .ai-model-item-title strong { white-space: normal; overflow-wrap: anywhere; font-size: 14px; }
+#ai-panel .ai-model-item-main small { white-space: normal; overflow-wrap: anywhere; line-height: 1.65; }
+#ai-panel .ai-model-item-actions { width: auto; justify-content: flex-end; gap: 6px; padding-top: 4px; }
+#ai-panel .ai-model-editor .ai-form-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; }
+#ai-panel .ai-model-picker { flex-wrap: wrap; gap: 10px; }
+#ai-panel .ai-model-picker select { flex: 1 1 180px; width: auto; }
+#ai-panel .ai-assignment-row { grid-template-columns: minmax(0,1fr) auto; gap: 10px; padding-block: 16px; }
+#ai-panel .ai-assignment-row select { grid-column: 1/-1; width: 100%; }
+#ai-panel .ai-assignment-label strong { font-size: 14px; }
+
+/* Learning keeps the material readable and the configuration compact. */
+#ai-panel .ai-reference-learning-shell { display: grid; grid-template-columns: minmax(0,1fr) 300px; gap: 20px; }
+#ai-panel .ai-reference-learning-list.ai-card,
+#ai-panel .ai-reference-learning-config.ai-card { padding: 0; }
+#ai-panel .ai-reference-learning-tools { gap: 8px; padding: 0 18px 18px; }
+#ai-panel .ai-reference-learning-tools button { min-height: 40px; }
+#ai-panel .ai-reference-learning-choices.ai-selected-contact-list { min-height: 220px; max-height: min(520px,55dvh); overflow: auto; padding: 16px; }
+#ai-panel .ai-reference-learning-config section { padding: 18px; }
+#ai-panel .ai-reference-learning-config footer { padding: 18px; }
+#ai-panel .ai-default-style-layout { display: grid; grid-template-columns: minmax(260px,.8fr) minmax(0,1.2fr); gap: 20px; }
+#ai-panel .ai-default-material { container: qbx-material / inline-size; }
+#ai-panel .ai-default-current { position: static; min-height: 0; }
+#ai-panel .ai-default-current textarea { min-height: 260px; }
+#ai-panel .ai-default-source-tabs { gap: 10px; }
+#ai-panel .ai-default-source-tabs button { grid-template-columns: 22px minmax(0,1fr); min-height: 88px; padding: 14px; }
+#ai-panel .ai-default-source-tabs button :is(strong,small) { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+#ai-panel .ai-default-perspectives { gap: 16px; }
+#ai-panel :is(#ai-profile-form,#ai-manual-reply-form) { padding: 24px; background: var(--qbx-surface); }
+
+/* Proactive tasks retain their columns until the list itself needs cards. */
+#ai-panel .ap-reference-columns,
+#ai-panel .ap-reference-task { grid-template-columns: minmax(120px,1fr) minmax(110px,.9fr) minmax(180px,1.4fr) minmax(112px,.9fr) minmax(115px,.85fr) 44px; gap: 14px; }
+#ai-panel .ap-reference-task { padding: 18px 20px; }
+#ai-panel .ap-reference-cell { font-size: 13px; line-height: 1.65; }
+#ai-panel .ap-reference-cell strong { font-size: 14px; }
+#ai-panel .ap-reference-cell small { font-size: 12px; }
+#ai-panel .ap-reference-goal>span:not(.ap-reference-mobile) { white-space: normal; overflow-wrap: anywhere; }
+#ai-panel .ap-reference-toolbar { padding-bottom: 16px; }
+#ai-panel .ap-editor-layout>fieldset { grid-template-columns: minmax(0,1.05fr) minmax(320px,.95fr); gap: 20px; }
+#ai-panel .ap-editor-layout .ap-form-card,
+#ai-panel .ap-editor-layout .ap-form-card.ap-schedule-card { padding: 22px; }
+#ai-panel .ap-editor-confirm { padding: 18px 20px; gap: 16px; flex-wrap: wrap; }
+#ai-panel .ap-editor-confirm .ap-editor-footer { margin-left: auto; flex-wrap: wrap; }
+#ai-panel .ap-heading { flex-wrap: wrap; }
+#ai-panel .ap-editor-step { display: none; }
+
+/* Records use one toolbar and details flow underneath their contact header. */
+#ai-panel .ai-activity-page { container: qbx-records / inline-size; grid-template-columns: max-content minmax(180px,1fr) auto; gap: 0 14px; }
+#ai-panel .ai-activity-page :is(.ap-record-tabs,.ai-record-search,.ai-reference-filter-button) { margin-bottom: 16px; }
+#ai-panel .ai-activity-page .ai-record-search { max-width: none; }
+#ai-panel #ai-log-filter { grid-template-columns: repeat(4,minmax(0,1fr)) auto; gap: 14px; }
+#ai-panel #ai-log-filter:not([hidden]) { display: grid; }
+#ai-panel #ai-log-filter[hidden] { display: none; }
+#ai-panel #ai-log-filter .ai-field { min-width: 0; }
+#ai-panel .ai-reply-record-head { grid-template-columns: minmax(170px,1fr) 142px minmax(180px,1.5fr) auto; gap: 16px; padding: 18px 20px; }
+#ai-panel .ai-reply-record-head>* { grid-column: auto; grid-row: auto; min-width: 0; }
+#ai-panel .ai-reply-record-preview { line-height: 1.7; }
+#ai-panel .ai-reply-record-card>details[open]>summary { min-height: 48px; padding: 12px 20px; }
+#ai-panel .ai-reply-record-card>details[open] .ai-reply-summary-toolbar { position: static; margin: 0 0 14px; padding: 12px 14px; gap: 10px 16px; flex-wrap: wrap; background: var(--qi-surface-muted); border-radius: 10px; }
+#ai-panel .ai-reply-record-card>details[open] .ai-reply-summary-toolbar>span { display: block; margin-right: auto; }
+#ai-panel .ai-reply-record-detail { padding: 4px 20px 20px; }
+#ai-panel .ai-reply-history-list li { grid-template-columns: 142px minmax(0,1fr) auto auto; gap: 12px; }
+#ai-panel .ai-activity-page .ap-table-scroll { max-width: 100%; overflow: auto; }
+#ai-panel .ai-activity-page .ap-record-table { min-width: 760px; }
+#ai-panel .ai-activity-page .ap-proactive-record-table { min-width: 760px; }
+#ai-panel .ai-activity-page .ap-record-block { margin: 8px 0 24px; }
+#ai-panel .qbx-settings-group.ai-card.qi-card { padding: 0; }
+#ai-panel .qbx-settings-group footer { gap: 12px; flex-wrap: wrap; padding: 16px 20px; }
+#ai-panel .qbx-settings-group footer>span { flex: 1 1 220px; }
+
+@container qbx-home (max-width:760px) {
+  .qiapp-product .workspace { grid-template-columns: minmax(0,1fr); min-height: 0; }
+  .qiapp-product :is(.market-panel,.desktop-panel) { padding: 18px; }
+  .qiapp-product .empty-state { min-height: 240px; }
+}
+@container qbx-analysis (max-width:560px) {
+  #ai-panel .ai-analysis-main-fields { grid-template-columns: minmax(0,1fr); }
+  #ai-panel .ai-reference-analysis-ranges { display: flex; flex-wrap: wrap; gap: 6px; }
+  #ai-panel .ai-reference-analysis-ranges button { flex: 1 0 64px; }
+  #ai-panel .ai-analysis-time-entry { padding: 14px 16px; }
+}
+@container qbx-page (max-width:820px) {
+  #ai-panel .ai-model-workspace,
+  #ai-panel .ai-default-style-layout { grid-template-columns: minmax(0,1fr); }
+  #ai-panel .ai-reference-learning-shell { grid-template-columns: minmax(0,1fr) 280px; }
+  #ai-panel .ai-default-current textarea { min-height: 180px; }
+}
+@container qbx-content (max-width:780px) {
+  #ai-panel .ai-page-body:has(>.ai-analysis-setup) { grid-template-columns: 200px minmax(0,1fr); gap: 16px; }
+  #ai-panel .ai-object-workspace.ai-object-reference { grid-template-columns: 220px minmax(0,1fr); gap: 16px; padding: 20px; }
+}
+@container qbx-content (max-width:660px) {
+  #ai-panel .ai-page-body:has(>.ai-analysis-setup) { grid-template-columns: minmax(0,1fr); }
+  #ai-panel .ai-page-body:has(>.ai-analysis-setup) :is(.ai-analysis-selection,.ai-analysis-request,.ai-analysis-reports,.ai-analysis-history) { grid-column: 1; grid-row: auto; }
+}
+@container qbx-object (max-width:680px) {
+  #ai-panel .ai-reference-strategy-fields { grid-template-columns: minmax(0,1fr); }
+  #ai-panel .ai-reference-strategy-fields textarea { min-height: 104px; }
+  #ai-panel .ai-reference-memory { grid-template-columns: minmax(0,1fr); }
+  #ai-panel .ai-reference-memory-categories { display: flex; overflow-x: auto; padding: 10px 14px; gap: 6px; border-right: 0; border-bottom: 1px solid var(--qbx-line); }
+  #ai-panel .ai-reference-memory-categories button { flex: 0 0 auto; width: auto; min-width: 64px; }
+  #ai-panel .ai-reference-memory-head { padding: 16px; }
+  #ai-panel .ai-reference-memory-content { padding: 16px; }
+}
+@container qbx-object (max-width:440px) {
+  #ai-panel :is(.ai-reference-child-grid,.ai-reference-group-options,.ai-reference-mode-options) { grid-template-columns: minmax(0,1fr); }
+  #ai-panel .ai-reference-child-grid .ai-reference-toggle+.ai-reference-toggle { border-left: 0; border-top: 1px solid var(--qbx-line); }
+  #ai-panel :is(.ai-reference-child-grid,.ai-reference-group-options) .ai-reference-limit { align-items: flex-start; flex-direction: column; gap: 10px; }
+  #ai-panel .ai-reference-limit-controls { justify-content: flex-start; }
+  #ai-panel .ai-reference-reply-main { padding: 14px; }
+  #ai-panel .ai-reference-reply-settings { padding: 0 14px 14px; }
+  #ai-panel .ai-reference-strategy { padding: 14px; }
+  #ai-panel .ai-reference-statuses { width: 100%; justify-content: flex-start; margin-left: 0; }
+  #ai-panel .ai-wiki-bubble,
+  #ai-panel .ai-wiki-bubble.ai-wiki-school { grid-template-columns: minmax(0,1fr); }
+  #ai-panel .ai-wiki-bubble>:is(select,input[aria-label="信息内容"],.ai-wiki-degree) { grid-column: 1; grid-row: auto; }
+  #ai-panel .ai-wiki-bubble.ai-wiki-school>.ai-wiki-degree { grid-column: 1; grid-row: auto; }
+}
+@container qbx-page (max-width:620px) {
+  #ai-panel .ai-reference-learning-shell { grid-template-columns: minmax(0,1fr); }
+  #ai-panel .ai-reference-learning-config { position: static; }
+  #ai-panel .ai-model-editor .ai-form-grid { grid-template-columns: minmax(0,1fr); gap: 0; }
+}
+@container qbx-material (max-width:450px) {
+  #ai-panel .ai-default-source-tabs,
+  #ai-panel .ai-default-perspectives { grid-template-columns: minmax(0,1fr); }
+  #ai-panel .ai-default-source-tabs button { min-height: 70px; }
+}
+@container proactive-layout (max-width:920px) {
+  #ai-panel .ap-reference-columns { display: none; }
+  #ai-panel .ap-reference-task { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px 20px; }
+  #ai-panel .ap-reference-mobile { display: block; margin-bottom: 4px; font-size: 12px; color: var(--qbx-muted); }
+  #ai-panel .ap-reference-actions { justify-self: start; }
+  #ai-panel .ap-editor-layout>fieldset { grid-template-columns: minmax(0,1fr); }
+  #ai-panel .ap-editor-layout :is(.ap-editor-contacts,.ap-editor-brief,.ap-editor-schedule) { grid-column: 1; }
+}
+@container proactive-layout (max-width:620px) {
+  #ai-panel .ap-editor-layout .ap-form-card,
+  #ai-panel .ap-editor-layout .ap-form-card.ap-schedule-card { padding: 18px; }
+  #ai-panel .ap-reference-task { grid-template-columns: minmax(0,1fr); }
+  #ai-panel .ap-editor-brief-fields { grid-template-columns: minmax(0,1fr); }
+  #ai-panel .ap-editor-confirm .ap-editor-footer { width: 100%; margin-left: 0; }
+}
+@container qbx-records (max-width:900px) {
+  #ai-panel .ai-reply-record-head { grid-template-columns: minmax(0,1fr) auto; gap: 8px 16px; }
+  #ai-panel .ai-reply-record-person { grid-column: 1; grid-row: 1; }
+  #ai-panel .ai-reply-record-time { grid-column: 1; grid-row: 2; display: flex; flex-wrap: wrap; gap: 8px; }
+  #ai-panel .ai-reply-record-preview { grid-column: 1/-1; grid-row: 3; margin: 4px 0 0; }
+  #ai-panel .ai-reply-record-actions { grid-column: 2; grid-row: 1/3; }
+  #ai-panel #ai-log-filter { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  #ai-panel .ai-filter-actions { grid-column: 1/-1; }
+  #ai-panel .ai-reply-history-list li { grid-template-columns: minmax(0,1fr) auto; }
+  #ai-panel .ai-reply-history-list li time { grid-column: 1; grid-row: 1; }
+  #ai-panel .ai-reply-history-list li>span { grid-column: 2; grid-row: 1; }
+  #ai-panel .ai-reply-history-list .ai-record-message { grid-column: 1/-1; grid-row: 2; }
+  #ai-panel .ai-reply-history-list li>button { grid-column: 1/-1; grid-row: 3; justify-self: end; }
+}
+@container qbx-records (max-width:760px) {
+  #ai-panel .ai-activity-page :is(.ap-record-table,#ai-proactive-records .ap-proactive-record-table) { display: block; min-width: 0; width: 100%; border-spacing: 0; }
+  #ai-panel .ai-activity-page :is(.ap-record-table,#ai-proactive-records .ap-proactive-record-table) thead { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
+  #ai-panel .ai-activity-page :is(.ap-record-table,#ai-proactive-records .ap-proactive-record-table) tbody { display: grid; gap: 12px; }
+  #ai-panel .ai-activity-page :is(.ap-record-table,#ai-proactive-records .ap-proactive-record-table) tr { display: grid; grid-template-columns: minmax(0,1fr); padding: 16px; border: 1px solid var(--qbx-line); border-radius: var(--qbx-radius); background: var(--qbx-surface); }
+  #ai-panel .ai-activity-page :is(.ap-record-table,#ai-proactive-records .ap-proactive-record-table) td { display: grid; grid-template-columns: 84px minmax(0,1fr); align-items: start; gap: 8px 12px; width: auto; min-width: 0; padding: 10px 0; border: 0; border-bottom: 1px solid var(--qbx-line); border-radius: 0; background: transparent; }
+  #ai-panel .ai-activity-page :is(.ap-record-table,#ai-proactive-records .ap-proactive-record-table) td::before { content: attr(data-label); display: block; font-size: 12px; color: var(--qbx-muted); }
+  #ai-panel .ai-activity-page :is(.ap-record-table,#ai-proactive-records .ap-proactive-record-table) td>* { min-width: 0; grid-column: 2; }
+  #ai-panel .ai-activity-page :is(.ap-record-table,#ai-proactive-records .ap-proactive-record-table) td:last-child { display: flex; flex-wrap: wrap; gap: 8px; border-bottom: 0; }
+  #ai-panel .ai-activity-page :is(.ap-record-table,#ai-proactive-records .ap-proactive-record-table) td:last-child::before { width: 100%; }
+  #ai-panel .ai-activity-page :is(.ap-record-table,#ai-proactive-records .ap-proactive-record-table) td:last-child>button { display: inline-flex; flex: 0 0 auto; width: auto; min-width: 0; margin: 0; }
+  #ai-panel .ai-activity-page :is(.ap-record-table,#ai-proactive-records .ap-proactive-record-table) td[colspan] { display: block; }
+  #ai-panel .ai-activity-page :is(.ap-record-table,#ai-proactive-records .ap-proactive-record-table) td[colspan]::before { content: none; }
+}
+@container qbx-content (max-width:780px) {
+  #ai-panel .ai-activity-page { grid-template-columns: minmax(0,1fr) auto; gap: 0 10px; }
+  #ai-panel .ai-activity-page .ap-record-tabs { grid-column: 1/-1; }
+  #ai-panel .ai-activity-page .ai-record-search { grid-column: 1; }
+  #ai-panel .ai-activity-page .ai-reference-filter-button { grid-column: 2; align-self: end; }
+}
+@media(min-width:861px) {
+  #ai-panel { --ai-sidebar: 208px; }
+  #ai-panel .ai-panel-heading { height: 56px; min-height: 56px; padding-inline: 24px; }
+  #ai-panel .ai-panel-heading h2 { font-size: 15px; }
+  #ai-panel .ai-main-tabs { padding-inline: 12px; }
+  #ai-panel .ai-main-tabs button { min-height: 44px; padding: 10px 14px; }
+  #ai-panel .ai-nav-brand { padding: 22px 12px 18px; }
+  #ai-panel .ai-nav-caption { padding: 12px 14px 8px; }
+}
+@media(max-width:860px) {
+  .qiapp-product .content { padding: 18px; }
+  #ai-panel .ai-page-body { padding: 20px; }
+  /* Keep the parent tracks and explicit legacy child positions in agreement. */
+  #ai-panel .ai-page-body:has(>.ai-analysis-setup) { grid-template-columns: minmax(0,1fr); }
+  #ai-panel .ai-page-body:has(>.ai-analysis-setup) :is(.ai-analysis-selection,.ai-analysis-request,.ai-analysis-reports,.ai-analysis-history) {
+    grid-column: 1; grid-row: auto; position: static; min-width: 0;
+  }
+  #ai-panel .ai-object-workspace.ai-object-reference {
+    display: flex; flex-direction: column; grid-template-columns: minmax(0,1fr);
+    width: 100%; min-width: 0; padding: 16px;
+  }
+  #ai-panel .ai-object-reference :is(.ai-object-sidebar,.ai-object-detail) {
+    grid-column: 1; grid-row: auto; width: 100%; min-width: 0;
+  }
+  #ai-panel :is(.ai-model-workspace,.ai-default-style-layout,.ai-reference-learning-shell) { grid-template-columns: minmax(0,1fr); }
+}
+@media(max-width:600px) {
+  .qiapp-product .content { padding: 16px; }
+  #ai-panel .ai-page-body { padding: 16px; }
+  #ai-panel .ai-analysis-request.qbx-surface { padding: 18px 16px; }
+  #ai-panel .ai-analysis-submit-row { align-items: stretch; }
+  #ai-panel .ai-analysis-submit-row>span { flex-basis: auto; }
+  #ai-panel .ai-analysis-submit { width: 100%; }
+  #ai-panel .ai-analysis-history-detail .ai-report-text { padding: 18px; }
+  #ai-panel .ai-model-item-actions { justify-content: flex-start; }
+  #ai-panel .ai-object-reference .ai-object-save { padding: 12px 0; }
+  #ai-panel .ai-reply-record-head { padding: 16px; }
+  #ai-panel .ai-reply-record-detail { padding: 4px 16px 16px; }
+  #ai-panel .ai-reply-record-card>details[open] .ai-reply-summary-toolbar { align-items: stretch; }
+  #ai-panel .ai-reply-record-card>details[open] .ai-reply-summary-toolbar .ai-summary-controls { width: 100%; }
+}
