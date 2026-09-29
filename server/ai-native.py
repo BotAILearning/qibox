@@ -109,7 +109,46 @@ class ChatAdapter:
         group_header = request.get('kind') == 'group' and re.fullmatch(re.escape(label) + r'\s*[（(]\d+[）)]', actual_label)
         if actual_label != label and not group_header:
             raise ValueError('target changed')
+        if request.get('action') in ('send', 'send-guard', 'prepare-send'):
+            self.ensure_send_pane_clear(ins.locate(), actual_label)
         return {'account': request['account'], 'contact': {'id': request['contact'], 'label': actual_label, 'kind': request.get('kind', 'person')}}
+
+    def send_pane_clear(self, layout):
+        """An open chat-info sidebar can cover Send while AT-SPI says visible."""
+        ins = self.controls
+        pane, send = ins.bounds(layout['message_list']), ins.bounds(layout['send'])
+        if not pane or not send or min(pane[2:]) <= 0 or min(send[2:]) <= 0:
+            return False
+        center = send[0] + send[2] / 2
+        if not pane[0] <= center <= pane[0] + pane[2] + 12:
+            return False
+        # WeChat keeps the underlying message list and Send geometry unchanged
+        # when the group-info sidebar overlays them. Its exposed member list is
+        # the only reliable accessibility marker for that overlay.
+        for node in ins._located_nodes:
+            if node['role'] != 'list' or node['name'] != '聊天成员':
+                continue
+            panel = node['bounds']
+            if panel and panel[2] > 0 and panel[3] > 0 and panel[0] < send[0] + send[2] and panel[0] + panel[2] > send[0]:
+                return False
+        return True
+
+    def ensure_send_pane_clear(self, layout, label):
+        if self.send_pane_clear(layout):
+            return
+        ins = self.controls
+        ins.require_foreground('微信')
+        self.verify_session()
+        ins.press(layout['info'])
+        for _ in range(6):
+            fresh = ins.locate()
+            self.verify_session()
+            if fresh['label'] != label or ins._visible_roots(fresh['app'], fresh['frame']):
+                raise ValueError('send pane blocked')
+            if self.send_pane_clear(fresh):
+                return
+            time.sleep(.1)
+        raise ValueError('send pane blocked')
 
     def editor_text(self, obj):
         ins = self.controls
@@ -321,6 +360,8 @@ class ChatAdapter:
             raise ValueError('invalid text')
         if before['revision'] != request.get('revision') or self.editor_text(layout['editor']):
             return {'status': 'stale'}
+        if getattr(self, 'background_target', None) is not None and not self.send_pane_clear(layout):
+            return {'status': 'stale'}
         ins.check()
         self.verify_session()
         self.owned_draft = {key: layout[key] for key in ('app', 'frame', 'header', 'editor', 'label')}
@@ -329,6 +370,8 @@ class ChatAdapter:
         time.sleep(.08)
         fresh, layout = snapshot(account, contact['id'], contact['label'])
         if fresh['revision'] != before['revision'] or self.editor_text(layout['editor']) != text:
+            return {'status': 'uncertain'}
+        if getattr(self, 'background_target', None) is not None and not self.send_pane_clear(layout):
             return {'status': 'uncertain'}
         ins.check()
         if not ins.visible(layout['send']):

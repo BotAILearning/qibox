@@ -12,6 +12,28 @@ def msg(direction, text):
     return {'direction': direction, 'text': text}
 
 class DataGuard(unittest.TestCase):
+    def test_background_send_closes_obscuring_group_info_before_drafting(self):
+        adapter = object.__new__(native.ChatAdapter)
+        layout = {'app': 1, 'frame': 2, 'message_list': 3, 'send': 4, 'info': 5, 'label': '测试群'}
+        adapter.controls = Mock()
+        adapter.controls.locate.return_value = layout
+        adapter.controls._visible_roots.return_value = []
+        adapter.verify_session = Mock()
+        panel = {'role': 'list', 'name': '聊天成员', 'bounds': (500, 100, 150, 600)}
+        adapter.controls._located_nodes = [panel]
+        adapter.controls.press.side_effect = lambda obj: setattr(adapter.controls, '_located_nodes', [])
+        adapter.controls.bounds.side_effect = lambda obj: {
+            3: (100, 100, 500, 400),
+            4: (545, 450, 70, 35),
+        }[obj]
+        adapter.ensure_send_pane_clear(layout, '测试群')
+        adapter.controls.press.assert_called_once_with(5)
+        self.assertTrue(adapter.send_pane_clear(layout))
+        adapter.controls._located_nodes = [panel]
+        adapter.controls.press.side_effect = None
+        with self.assertRaisesRegex(ValueError, 'send pane blocked'):
+            adapter.ensure_send_pane_clear(layout, '测试群')
+
     def test_open_chat_requires_verified_session_and_matching_header(self):
         adapter = object.__new__(native.ChatAdapter)
         adapter.controls = Mock()
@@ -72,6 +94,16 @@ class DataGuard(unittest.TestCase):
         adapter.guard_snapshot.side_effect = [(value, layout), ({**value, 'revision': 'changed'}, layout)]
         self.assertEqual(adapter.execute({'action': 'send-guard', 'revision': 'guard', 'text': '允许的文字'}), {'status': 'uncertain'})
         adapter.controls.press.assert_not_called()
+
+    def test_group_info_opened_after_draft_never_presses_hidden_send(self):
+        adapter = self.adapter()
+        adapter.background_target = {'account': 'a', 'contact': 'b'}
+        adapter.send_pressed = False
+        adapter.send_pane_clear = Mock(side_effect=[True, False])
+        with patch.object(native.time, 'sleep'):
+            self.assertEqual(adapter.execute({'action': 'send-guard', 'revision': 'guard', 'text': '允许的文字'}), {'status': 'uncertain'})
+        adapter.controls.press.assert_not_called()
+        self.assertFalse(adapter.send_pressed)
 
     def test_only_post_send_row_changes_retry_observation_without_replaying_send(self):
         adapter = self.adapter()
@@ -208,6 +240,7 @@ class BackgroundIdentity(unittest.TestCase):
         adapter.controls = Mock()
         adapter.controls.pid = 123
         adapter.controls.locate.return_value = {'label': '同名对象'}
+        adapter.send_pane_clear = Mock(return_value=True)
         request = {'action': 'prepare-send', 'account': 'a' * 64, 'contact': 'b' * 64,
                    'label': '同名对象', 'background': {'account': 'c' * 64, 'contact': 'd' * 64}}
         return adapter, request
@@ -243,6 +276,7 @@ class BackgroundIdentity(unittest.TestCase):
 
     def test_identity_change_with_unchanged_text_and_label_blocks_send(self):
         adapter = DataGuard().adapter()
+        adapter.send_pane_clear = Mock(return_value=True)
         adapter.session_identity = Mock()
         adapter.background_target = {'account': 'c' * 64, 'contact': 'd' * 64}
         adapter.session_identity.verify.side_effect = [None, ValueError('target changed')]
@@ -253,6 +287,7 @@ class BackgroundIdentity(unittest.TestCase):
 
     def test_changed_session_before_input_leaves_draft_untouched(self):
         adapter = DataGuard().adapter()
+        adapter.send_pane_clear = Mock(return_value=True)
         adapter.session_identity = Mock()
         adapter.background_target = {'account': 'c' * 64, 'contact': 'd' * 64}
         adapter.session_identity.verify.side_effect = ValueError('target changed')
