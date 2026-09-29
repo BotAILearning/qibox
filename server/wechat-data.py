@@ -587,6 +587,26 @@ def contacts(rows, username):
     return account, result, unreadable
 
 
+def group_sender_names(db, usernames):
+    # Group members need not be friends. Look up only the exact identities
+    # already read from Name2Id, without adding cached members to the picker.
+    names = sorted({name for name in usernames if isinstance(name, str) and USER.fullmatch(name)})
+    labels = {}
+    for start in range(0, len(names), 200):
+        batch = names[start:start + 200]
+        rows = db.query('SELECT username, nick_name, remark FROM contact WHERE username IN (' + ','.join('?' for _ in batch) + ')', tuple(batch))
+        wanted = set(batch)
+        for username, nickname, remark in rows:
+            if username not in wanted:
+                continue
+            valid = lambda value: isinstance(value, str) and 0 < len(value.strip()) <= 120 and not re.search(r'[\x00-\x1f\x7f]', value)
+            label = next((value.strip() for value in (remark, nickname) if valid(value)), None)
+            labels.setdefault(username, set()).add(label)
+    # Conflicting directory rows are not enough evidence for a display name.
+    # No UID, WeChat alias, or message-body prefix is used as a fallback.
+    return {username: next(iter(values)) for username, values in labels.items() if len(values) == 1 and None not in values}
+
+
 def decode(content, compression):
     if compression not in (None, 0, 4):
         raise ValueError('unsupported compression')
@@ -745,6 +765,8 @@ def messages(db, shard, account, contact, self_name, target, selected=None, meta
             sender_key = sender_name or f'unknown:{sender}'
             if direction == 'system' and sender_name is None: mentions = {'verified': False, 'self': False, 'all': False, 'others': False}
             result[-1].update({'sender': digest(account + '\0' + contact + '\0' + sender_key), 'mentions': mentions})
+            if direction in ('self', 'other') and isinstance(sender_name, str) and USER.fullmatch(sender_name):
+                result[-1]['_sender_username'] = sender_name
     return result
 
 
@@ -1225,6 +1247,7 @@ def execute(request, pid, home, check, cache=None):
                             if old is None or message['_order'] < old['_order']: unique[message['_dedup']] = message
                     finally: shard.close()
                 ordered = sorted(unique.values(), key=lambda m: m['_order'])
+                sender_names = group_sender_names(db, (message.get('_sender_username') for message in ordered)) if target['kind'] == 'group' else {}
                 if not skip_unparsed:
                     # Automatic-reply decisions must never consume incomplete
                     # data, but only the newest incoming message is what a reply
@@ -1271,6 +1294,9 @@ def execute(request, pid, home, check, cache=None):
                 counted = 0
                 for message in iterable:
                     public = {k: v for k, v in message.items() if not k.startswith('_')}
+                    sender_name = sender_names.get(message.get('_sender_username'))
+                    if sender_name:
+                        public['senderName'] = sender_name
                     if bounds and message.get('_text_truncated'):
                         truncated = True
                         truncated_reasons.add('message_length')
@@ -1300,7 +1326,9 @@ def execute(request, pid, home, check, cache=None):
                 result = {'account': account, 'contact': target['id'], 'messages': recent, 'truncated': truncated,
                           'truncatedReasons': sorted(truncated_reasons),
                           'label': target['label'], 'native': target['native'],
-                          'revision': digest(json.dumps(recent, ensure_ascii=False, sort_keys=True, separators=(',', ':')))}
+                          # Display names can change without a new message and
+                          # must not alter the reply/read revision contract.
+                          'revision': digest(json.dumps([{k: v for k, v in message.items() if k != 'senderName'} for message in recent], ensure_ascii=False, sort_keys=True, separators=(',', ':')))}
                 if request['action'] == 'read-image':
                     message = next((m for m in ordered if m['id'] == request.get('messageId') and m.get('type') == 'image' and m['direction'] in ('self', 'other')), None)
                     image = images.read_image(root.parent, target['username'], message.get('_image'), message['timestamp'], check) if message else None

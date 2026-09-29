@@ -235,6 +235,18 @@ test('unbound contacts, duplicate message IDs and invalid senders are rejected',
     await assert.rejects(bridge.read({ account, contact: key('unbound') }));
   }
 });
+test('optional group sender display names are validated without rejecting history', async () => {
+  const named = { ...snapshot, messages: [
+    { ...snapshot.messages[1], sender: key('member'), senderName: '群成员🦊', mentions: { verified: true, self: false, all: false, others: false } },
+    { ...snapshot.messages[1], id: key('m3'), sender: key('member'), senderName: '🦊'.repeat(121), mentions: { verified: true, self: false, all: false, others: false } },
+  ] };
+  const { bridge } = fixture(action => action === 'contacts' || action === 'identity' ? { available: true, account, contacts: [{ ...person, kind: 'group' }] } : action === 'read' ? named : undefined);
+  await bridge.scan();
+  const result = await bridge.read({ account, contact });
+  assert.equal(result.messages[0].senderName, '群成员🦊');
+  assert.equal(Object.hasOwn(result.messages[1], 'senderName'), false);
+  assert.equal(result.messages[0].sender, key('member'));
+});
 test('selected data histories are learned per contact without persisting text', async t => {
   const root = await temp(), { bridge, calls } = fixture(), provider = new AIModelFixture();
   const a = new AIAssistant({ dataRoot: root, bridge, provider }); await a.init();

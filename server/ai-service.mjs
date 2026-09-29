@@ -60,6 +60,8 @@ const errorFallbackMessage = 'AI 操作暂未完成，稍后重试';
 // 让异常刷屏，无上限能把数据文件撑爆。10000 条远超用户会翻的深度，超出自动丢最早的。
 const errorLogLimit = 10000;
 const skipLogLimit = 10000;
+const skipSnapshotMessageLimit = 24;
+const skipSnapshotTextLimit = 24000;
 // 单条异常文案的长度上限，避免超长报错文本放大体积。
 const errorMessageLimit = 2000;
 const errorMessage = detail => typeof detail === 'string' && detail.trim() ? detail.trim().slice(0, errorMessageLimit) : errorFallbackMessage;
@@ -70,6 +72,28 @@ const memoryMergeEntry = entry => ({
   ...(Number.isSafeInteger(entry.recordedAt) ? { recordedAt: entry.recordedAt } : {}),
 });
 const asksDirectQuestion = text => /[?？]|(?:吗|呢|么)[。！!…]*$|(?:怎么|如何|是否|要不要|该不该|能不能|可不可以|是不是|有没有|为什么|什么|哪一个|哪个|几时|什么时候)/u.test(String(text || '').trim());
+function skipIncomingMessages(profile, messages = [], anchorId = null) {
+  const incoming = messages.filter(message => message && message.direction === 'other' && typeof message.id === 'string' && message.id && typeof message.text === 'string');
+  const seen = new Set(); const unique = incoming.filter(message => !seen.has(message.id) && seen.add(message.id));
+  const anchor = unique.find(message => message.id === anchorId);
+  const candidates = unique.filter(message => message.id !== anchorId).slice(-skipSnapshotMessageLimit + (anchor ? 1 : 0));
+  if (anchor) candidates.push(anchor);
+  let chars = 0, truncated = candidates.length < unique.length; const kept = [];
+  for (let index = candidates.length - 1; index >= 0 && kept.length < skipSnapshotMessageLimit; index--) {
+    const message = candidates[index], type = typeof message.type === 'string' && ['voice', 'image', 'video'].includes(message.type) ? message.type : null;
+    const budget = Math.min(12000, skipSnapshotTextLimit - chars), text = message.text.slice(0, budget);
+    if (!text && !type) continue;
+    if (text.length < message.text.length) truncated = true;
+    chars += text.length;
+    const senderName = profile.kind === 'group'
+      ? (typeof message.senderName === 'string' && message.senderName.trim() && message.senderName.length <= 120 && !/[\x00-\x1f\x7f]/.test(message.senderName) ? message.senderName.trim() : null)
+      : profile.label;
+    kept.unshift({ id: message.id, ...(senderName ? { senderName } : {}), ...(profile.kind === 'group' && /^[a-f0-9]{64}$/.test(message.sender || '') ? { senderId: message.sender } : {}), text,
+      ...(type ? { type } : {}), ...(Number.isSafeInteger(message.timestamp) && message.timestamp >= 0 ? { timestamp: message.timestamp } : {}) });
+    if (chars >= skipSnapshotTextLimit) { if (index > 0) truncated = true; break; }
+  }
+  return { messages: kept, truncated };
+}
 // Keep the most recent whole messages within a fair per-contact budget.
 function learningMaterial(messages, perspective = 'self') {
   const { kept, clipped } = recentWithinBudget(messages, 150000);
@@ -288,14 +312,117 @@ export class AIAssistant {
   exclusive(action) { const task = this.actions.then(action); this.actions = task.catch(() => {}); return task; }
   invalidate() { this.revision++; this.controller.abort(); this.controller = new AbortController(); this.followUps.clear(); this.scanOperation = null; }
   forgetContext({ preserveCursors = false } = {}) { if (!preserveCursors || !this.bridge.stableMessageIds) this.cursors.clear(); this.followUps.clear(); this.bridge.clearContext?.(); }
+  readSkipSnapshot(row) {
+    if (!row?.incomingSnapshot) return null;
+    try {
+      const value = this.vault.open(row.incomingSnapshot);
+      if (!Array.isArray(value?.messages) || row.messageId && !value.messages.some(message => message?.id === row.messageId && typeof message.text === 'string')) return null;
+      return value;
+    } catch { return null; }
+  }
+  publicSkipRecord(row) {
+    const { incomingSnapshot, ...publicRow } = row;
+    if (incomingSnapshot) {
+      const value = this.readSkipSnapshot(row);
+      if (value) {
+          publicRow.incomingMessages = value.messages.filter(message => message && typeof message.id === 'string' && typeof message.text === 'string').map(message => ({
+            id: message.id, ...(typeof message.senderName === 'string' ? { senderName: message.senderName } : {}), ...(typeof message.senderId === 'string' ? { senderId: message.senderId } : {}), text: message.text,
+            ...(typeof message.type === 'string' ? { type: message.type } : {}), ...(Number.isSafeInteger(message.timestamp) ? { timestamp: message.timestamp } : {}) }));
+          if (value.truncated === true) publicRow.truncated = true;
+          if (publicRow.incomingMessages.length) return publicRow;
+      }
+    }
+    publicRow.contentUnavailableMessage = publicRow.messageId
+      ? '原始来信暂不可读取，可尝试读取历史内容。'
+      : '此记录没有关联到具体来信。';
+    publicRow.contentUnavailable = true;
+    return publicRow;
+  }
+  async loadSkipRecordContent({ eventIds, eventId } = {}) {
+    return this.exclusive(async () => {
+      const account = this.data.account, wantedIds = [...new Set([...(Array.isArray(eventIds) ? eventIds : []), ...(typeof eventId === 'string' ? [eventId] : [])].filter(id => typeof id === 'string' && id))].slice(0, 50);
+      const activeProfile = target => this.profiles().find(profile => profile.id === target && profile.account === account);
+      const rows = new Map();
+      for (const row of this.data.skipLog || []) if (wantedIds.includes(row.id) && (row.account === account || !row.account && activeProfile(row.target))) rows.set(row.id, row);
+      for (const event of this.data.events || []) if (wantedIds.includes(event.id) && event.code === 'skip' && (event.account === account || !event.account && activeProfile(event.target))) {
+        if (!rows.has(event.id)) rows.set(event.id, event);
+      }
+      const grouped = new Map();
+      for (const row of rows.values()) {
+        if (!this.readSkipSnapshot(row) && row.messageId) {
+          const profile = activeProfile(row.target);
+          if (profile) { const list = grouped.get(profile.id) || { profile, rows: [] }; list.rows.push(row); grouped.set(profile.id, list); }
+        }
+      }
+      let changed = false;
+      const accountCheck = () => {
+        if (this.data.account !== account) throw new AppError('微信账号已变化，请刷新记录', 409, 'ai_account_changed');
+      };
+      const readSignal = AbortSignal.any([this.controller.signal, AbortSignal.timeout(110000)]);
+      const persistFor = (row, profile, messages) => {
+        accountCheck();
+        let current = (this.data.skipLog || []).find(item => item.id === row.id && (item.account === account || !item.account && activeProfile(item.target)));
+        if (!current) {
+          const event = (this.data.events || []).find(item => item.id === row.id && item.code === 'skip' && item.target === profile.id && (item.account === account || !item.account));
+          if (!event) return;
+          current = { id: event.id, account, target: event.target, at: event.at, ...(event.source ? { source: event.source } : {}), ...(event.detail ? { detail: event.detail } : {}), ...(event.messageId ? { messageId: event.messageId } : {}), ...(event.reasonCode ? { reasonCode: event.reasonCode } : {}) };
+          this.data.skipLog.unshift(current); changed = true;
+        }
+        if (!activeProfile(profile.id) || !current.messageId) return;
+        const incoming = skipIncomingMessages(profile, messages, current.messageId);
+        if (!incoming.messages.some(message => message.id === current.messageId)) return;
+        current.incomingSnapshot = this.vault.seal(incoming); changed = true;
+        rows.set(current.id, current);
+      };
+      for (const { profile, rows: missingRows } of grouped.values()) {
+        accountCheck();
+        let history = null;
+        try { history = await this.read(profile, readSignal); accountCheck(); }
+        catch { accountCheck(); }
+        const foundIds = new Set(history?.messages.filter(message => message.direction === 'other').map(message => message.id) || []);
+        const missing = missingRows.filter(row => !foundIds.has(row.messageId));
+        if (missing.length && this.bridge.readRange) {
+          const timed = missing.filter(row => Number.isSafeInteger(row.at) && row.at > 0).sort((a, b) => a.at - b.at);
+          const windows = [];
+          for (const row of timed) {
+            const at = Math.floor(row.at / 1000), previous = windows.at(-1);
+            if (previous && at - previous.to <= 900) { previous.to = at + 300; previous.rows.push(row); }
+            else windows.push({ from: Math.max(0, at - 300), to: at + 300, rows: [row] });
+          }
+          for (const window of windows) {
+            try {
+              const range = await readStableRange(this.bridge, { account, contact: profile.contact, from: window.from, to: window.to, signal: readSignal, skipUnparsed: true }, accountCheck);
+              accountCheck();
+              if (!history) history = { messages: [] };
+              const ids = new Set(history.messages.map(message => message.id));
+              history.messages.push(...range.messages.filter(message => !ids.has(message.id)));
+              for (const row of window.rows) if (range.messages.some(message => message.id === row.messageId && message.direction === 'other')) foundIds.add(row.messageId);
+            } catch { accountCheck(); }
+          }
+        }
+        for (const row of missingRows) {
+          if (!foundIds.has(row.messageId)) continue;
+          const messages = history.messages.filter(message => message.direction === 'other' && message.id === row.messageId);
+          // Keep each legacy event tied to its authenticated message ID. New records
+          // retain the complete original incoming burst captured at skip creation.
+          persistFor(row, profile, messages);
+        }
+      }
+      if (changed) { this.data.skipLog = (this.data.skipLog || []).slice(0, skipLogLimit); await this.save(); }
+      accountCheck();
+      return { account, records: wantedIds.map(id => rows.get(id)).filter(Boolean).map(row => this.publicSkipRecord(row)) };
+    });
+  }
   event(code, target = null, source = null, detail = null, metadata = null) {
     const entry = { id: randomUUID(), account: this.data.account, code, target, at: this.now(), ...(['reply', 'proactive', 'atMe', 'atAll', 'realtime', 'model-skip', 'system-skip'].includes(source) ? { source } : {}), ...(detail ? { detail } : {}), ...(code === 'skip' && metadata?.messageId ? { messageId: String(metadata.messageId) } : {}), ...(code === 'skip' && metadata?.reasonCode ? { reasonCode: String(metadata.reasonCode) } : {}) };
     this.data.events.unshift(entry); this.data.events = this.data.events.slice(0, 2000);
     if (code === 'skip') {
       this.data.skipLog ||= [];
       const contact = this.data.profiles[entry.target]?.contact;
+      const incoming = skipIncomingMessages(this.data.profiles[entry.target] || {}, metadata?.incomingMessages, entry.messageId);
       this.data.skipLog.unshift({ id: entry.id, account: entry.account, target: entry.target, ...(contact ? { contact } : {}), at: entry.at,
-        ...(entry.source ? { source: entry.source } : {}), ...(entry.detail ? { detail: entry.detail } : {}), ...(entry.messageId ? { messageId: entry.messageId } : {}), ...(entry.reasonCode ? { reasonCode: entry.reasonCode } : {}), ...(metadata?.trigger ? { trigger: String(metadata.trigger) } : {}) });
+        ...(entry.source ? { source: entry.source } : {}), ...(entry.detail ? { detail: entry.detail } : {}), ...(entry.messageId ? { messageId: entry.messageId } : {}), ...(entry.reasonCode ? { reasonCode: entry.reasonCode } : {}), ...(metadata?.trigger ? { trigger: String(metadata.trigger) } : {}),
+        ...(incoming.messages.length ? { incomingSnapshot: this.vault.seal(incoming) } : {}) });
       if (this.data.skipLog.length > skipLogLimit) this.data.skipLog.length = skipLogLimit;
     }
     // 异常同时进一份独立台账，不受 2000 条事件上限挤压，只有手动清空才移除；
@@ -733,12 +860,13 @@ export class AIAssistant {
     const activeSkipRecords = this.data.skipLog.filter(e => e.account === this.data.account || !e.account && e.target && this.profiles().some(p => p.id === e.target));
     const knownSkipIds = new Set(activeSkipRecords.map(e => e.id));
     for (const entry of this.data.events) if (entry.code === 'skip' && !knownSkipIds.has(entry.id) && (entry.account === this.data.account || !entry.account && entry.target && this.profiles().some(p => p.id === entry.target))) activeSkipRecords.push(entry);
+    const skipRecords = activeSkipRecords.sort((a, b) => b.at - a.at).slice(0, 50).map(row => this.publicSkipRecord(row));
     return { capabilities: { writeContactRemark: typeof this.bridge?.setContactRemark === 'function' }, settings: this.data.settings, strategy: this.data.strategy, replyStrategy: this.data.replyStrategy, replyRoundLimits: this.data.replyRoundLimits, profiles: this.profiles().map(p => ({ ...p, sentMessages: (p.sentMessages || []).map(({ body, ...meta }) => meta), memoryHistory: (p.memoryHistory || []).map(h => ({id:h.id,at:h.at})), memory: readMemory(this.vault, p), pendingMemory: this.pendingMemoryOf(p), memoryMerge: p.memoryMerge || null, pendingMemoryAt: p.pendingMemoryAt || null, pendingMemorySource: p.pendingMemorySource || null, memorySuggestion: p.memorySuggestion ? readMemory(this.vault, p, 'memorySuggestion') : null })), targets: this.data.targets, replyTargets: this.data.replyTargets, proactiveTargets: this.data.proactiveTargets,
       ...this.proactiveV2.state(), account: this.data.account,
       activity: this.activitySummaries(), activityHistory: this.activitySummaries('unknown'),
       provider: this.publicProvider('chat'), models: this.publicModels(), assignments: { chat: this.assignmentFor('chat'), learningAnalysis: this.assignmentFor('learning') },
       analysis: { mode: this.data.analysisMode, provider: this.publicProvider('analysis'), effectiveProvider: this.publicProvider('analysis'), history: this.analysisHistory() },
-      queue: this.data.queue, schedules: this.data.schedules.filter(s => s.account === this.data.account), events: this.data.events.filter(e => e.account === this.data.account || !e.account && e.target && this.profiles().some(p => p.id === e.target)), skipRecords: activeSkipRecords.sort((a, b) => b.at - a.at).slice(0, 50), contacts: orderedContacts(this.contacts.values(), this.profiles()).map(x => ({ id: x.id, label: x.label, kind: x.kind, lastChatAt: x.lastChatAt, contactOrder: x.contactOrder, ...(x.nickname ? { nickname: x.nickname } : {}), ...(this.avatarUrls.has(x.id) ? { avatar: true } : {}) })), avatarReady: this.avatarReady,
+      queue: this.data.queue, schedules: this.data.schedules.filter(s => s.account === this.data.account), events: this.data.events.filter(e => e.account === this.data.account || !e.account && e.target && this.profiles().some(p => p.id === e.target)), skipRecords, contacts: orderedContacts(this.contacts.values(), this.profiles()).map(x => ({ id: x.id, label: x.label, kind: x.kind, lastChatAt: x.lastChatAt, contactOrder: x.contactOrder, ...(x.nickname ? { nickname: x.nickname } : {}), ...(this.avatarUrls.has(x.id) ? { avatar: true } : {}) })), avatarReady: this.avatarReady,
       available: this.available, notice: this.notice, waiting: this.data.settings.enabled && (!this.ready() || !this.available || !this.modelReady() || !!this.operation || !!this.scanOperation || this.now() < (this.retryAt || 0)), operation: this.operation || this.scanOperation || null, manualRecovery: false, labels: { available: false, groups: [] },
       live: this.liveStates(), recentErrors: errors.records, errorsPage: errors.page,
       learnedDefaultStyle: this.data.learnedDefaultStyle || null,
@@ -1961,8 +2089,15 @@ export class AIAssistant {
       const account = this.data.account, profile = this.profile(profileId);
       const event = [...(this.data.skipLog || []).filter(row => row.id === eventId && row.account === account && row.target === profileId && row.messageId === messageId), ...(this.data.events || []).filter(row => row.id === eventId && row.account === account && row.target === profileId && row.messageId === messageId && row.code === 'skip')][0];
       if (!event || profile.account !== account || typeof messageId !== 'string' || !messageId) throw new AppError('未回复记录已变化，请刷新后重试', 409);
-      const snapshot = await this.read(profile, this.controller.signal);
-      const message = snapshot.messages.find(row => row.id === messageId && row.direction === 'other');
+      const encryptedRow = (this.data.skipLog || []).find(row => row.id === eventId && row.account === account && row.target === profileId && row.messageId === messageId && row.incomingSnapshot);
+      let message = null;
+      if (encryptedRow) {
+        try { message = this.vault.open(encryptedRow.incomingSnapshot)?.messages?.find(row => row.id === messageId && typeof row.text === 'string'); } catch { /* authenticated history remains the recovery path */ }
+      }
+      if (!message) {
+        const snapshot = await this.read(profile, this.controller.signal);
+        message = snapshot.messages.find(row => row.id === messageId && row.direction === 'other');
+      }
       if (!message || account !== this.data.account) throw new AppError('原始消息暂时无法读取，请刷新记录后重试');
       this.data.pendingReplySummaries ||= [];
       if (!this.data.pendingReplySummaries.some(row => row.account === account && row.profileId === profileId && row.messageId === messageId)) {
@@ -2266,14 +2401,17 @@ export class AIAssistant {
       burst = groupBurst(snapshot.messages, this.cursors.get(profile.id), mentionsExhausted ? { ...options, atMe: false, atAll: false } : options, profile.groupBaselines);
       trigger = burst.trigger;
       if (!trigger) {
-        const cursor = this.cursors.get(profile.id); if (cursor) cursor.pending = false;
+        const cursor = this.cursors.get(profile.id);
         const incoming = snapshot.messages.findLast(m => m.direction === 'other');
+        const incomingBoundary = Math.max(snapshot.messages.findLastIndex(m => m.direction === 'self'), snapshot.messages.findIndex(m => m.id === cursor?.pendingAfter));
+        const skippedIncoming = snapshot.messages.slice(incomingBoundary + 1).filter(m => m.direction === 'other');
+        if (cursor) cursor.pending = false;
         const cappedTrigger = mentionsExhausted ? groupBurst(snapshot.messages, cursor, options, profile.groupBaselines).trigger : null;
         if (cappedTrigger === 'atMe' || cappedTrigger === 'atAll') {
           profile.mentionLimitBlocked = true;
           this.event('limit', profile.id, cappedTrigger, '提及回复已达到连续回复上限，实时回复保持可用', { messageId: incoming?.id, trigger: cappedTrigger });
         }
-        else this.event('skip', profile.id, 'system-skip', '系统判断：没有已启用的群聊触发方式', { reasonCode: 'group-trigger-missing', messageId: incoming?.id });
+        else this.event('skip', profile.id, 'system-skip', '系统判断：没有已启用的群聊触发方式', { reasonCode: 'group-trigger-missing', messageId: incoming?.id, incomingMessages: skippedIncoming });
         await this.save(); return;
       }
       const key = `${profile.id}:${trigger}`, controller = this.replyControllers.get(key) || new AbortController();
@@ -2446,7 +2584,7 @@ export class AIAssistant {
         : explicitAsk ? `${profile.label}：检测到明确问题，但模型重试后仍未生成文字回复；本轮未发送，新消息仍可正常处理，请检查模型或上下文`
           : `${profile.label}：智能判断已关闭，但模型连续返回跳过，本轮未发送；请调整回复要求或更换模型`;
       const failedMessage = (profile.kind === 'group' && trigger ? snapshot.messages.find(m => m.id === burst?.messages.findLast(item => item.trigger === trigger)?.id) : null) || pendingMessages.findLast(m => m.direction === 'other') || snapshot.messages.findLast(m => m.direction === 'other');
-      if (explicitAsk) this.event('skip', profile.id, 'system-skip', '保护拦截：明确提问重试后仍未生成文字回复；新来信将继续正常处理', { reasonCode: 'explicit-question-no-response', messageId: failedMessage?.id, trigger: trigger || 'reply' });
+      if (explicitAsk) this.event('skip', profile.id, 'system-skip', '保护拦截：明确提问重试后仍未生成文字回复；新来信将继续正常处理', { reasonCode: 'explicit-question-no-response', messageId: failedMessage?.id, trigger: trigger || 'reply', incomingMessages: snapshot.messages.filter(message => pendingMessages.some(pending => pending.id === message.id)) });
       this.event('error', profile.id, trigger, this.notice);
       await this.save(); return;
     }
@@ -2494,7 +2632,7 @@ export class AIAssistant {
       this.followUps.delete(profile.id);
       if (result.action !== 'skip') this.pauseProfile(profile, result.action);
       const skipMessage = (profile.kind === 'group' && trigger ? fresh.messages.find(m => m.id === burst?.messages.findLast(item => item.trigger === trigger)?.id) : null) || pendingMessages.findLast(m => m.direction === 'other') || fresh.messages.findLast(m => m.direction === 'other');
-      if (result.action === 'skip') this.event('skip', profile.id, result.mediaSkipped || result.identitySkipped ? 'system-skip' : 'model-skip', result.mediaSkipped ? '系统拦截：当前内容无法安全处理' : result.identitySkipped ? '系统拦截：回复内容不符合身份规则' : '模型判断：本轮无需回复', { reasonCode: result.mediaSkipped ? 'unsupported-media' : result.identitySkipped ? 'identity-rule-block' : 'model-no-reply', messageId: skipMessage?.id, trigger: trigger || 'reply' });
+      if (result.action === 'skip') this.event('skip', profile.id, result.mediaSkipped || result.identitySkipped ? 'system-skip' : 'model-skip', result.mediaSkipped ? '系统拦截：当前内容无法安全处理' : result.identitySkipped ? '系统拦截：回复内容不符合身份规则' : '模型判断：本轮无需回复', { reasonCode: result.mediaSkipped ? 'unsupported-media' : result.identitySkipped ? 'identity-rule-block' : 'model-no-reply', ...(mode === 'reply' && skipMessage?.id ? { messageId: skipMessage.id } : {}), trigger: trigger || mode, ...(mode === 'reply' ? { incomingMessages: fresh.messages.filter(message => pendingMessages.some(pending => pending.id === message.id)) } : {}) });
       else this.event(result.action, profile.id, trigger);
       if (item) item.status = 'skipped';
       const cursor = this.cursors.get(profile.id); if (cursor) cursor.pending = false;

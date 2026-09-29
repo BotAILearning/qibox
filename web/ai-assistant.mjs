@@ -67,6 +67,33 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   const objectView = () => ({ kind: objectKind, selected: selectedObject, section: objectSection, memoryCategory: objectMemoryCategory, search: objectSearch, draft: objectDrafts.get(selectedObject) });
   function objects() { return objectPage(state, objectView()); }
   let logRecords = [], logLoading = false, logEpoch = 0, logSignature = '';
+  let skipLoading = false, skipEpoch = 0;
+  const skipContent = new Map();
+  function skipState() {
+    const rows = new Map([...(state?.events || []).filter(row => row.code === 'skip'), ...(state?.skipRecords || [])].map(row => [row.id, row]));
+    return { ...state, skipRecordsLoading: skipLoading, skipRecords: [...rows.values()].map(row => ({ ...row, ...(skipContent.get(row.id) || {}) })) };
+  }
+  function drawSkips() {
+    const box = tab === 'activity' && $('#ai-skip-records');
+    if (box) box.outerHTML = skipRecordsView(skipState());
+  }
+  async function loadSkipContent(retry = false) {
+    if (!state || skipLoading || logFilters.source !== 'reply') return;
+    if (retry) skipContent.clear();
+    const rows = skipState().skipRecords.sort((a, b) => b.at - a.at).slice(0, 50);
+    const eventIds = rows.filter(row => row.id && !row.incomingMessages?.length && !skipContent.has(row.id)).map(row => row.id);
+    if (!eventIds.length) return;
+    const current = generation, target = id, account = state.account, epoch = ++skipEpoch;
+    const valid = () => current === generation && target === id && account === state?.account && epoch === skipEpoch;
+    skipLoading = true; drawSkips();
+    try {
+      const result = await api(`/instances/${target}/ai`, { action: 'skip-record-content', value: { eventIds } }, 130000);
+      if (!valid() || result.account !== account) return;
+      for (const row of result.records || []) skipContent.set(row.id, row);
+    } catch (error) {
+      if (valid()) for (const eventId of eventIds) skipContent.set(eventId, { contentUnavailable: true, contentUnavailableMessage: '原消息暂时无法读取，请稍后重新进入执行记录重试。' });
+    } finally { if (valid()) { skipLoading = false; drawSkips(); } }
+  }
   const summaryResults = new Map();
   function showSummary(profileId, value) {
     summaryResults.set(profileId, value);
@@ -100,7 +127,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     for (const e of state?.recentErrors || []) errors.set(e.id, e);
     // 翻页游标取已翻出来的那一页，总数取两边的大值：新异常出现时标题不会往回缩。
     const serverPage = state?.errorsPage || {}, total = Math.max(Number(serverPage.total) || 0, Number(errorPage?.total) || 0);
-    return { ...state, proactiveRecords: [...rows.values()].sort((a, b) => new Date(b.at) - new Date(a.at)), proactiveRecordsPage: proactiveHistoryPage || (logFilters.taskId ? { hasMore: true } : state?.proactiveRecordsPage),
+    return { ...skipState(), proactiveRecords: [...rows.values()].sort((a, b) => new Date(b.at) - new Date(a.at)), proactiveRecordsPage: proactiveHistoryPage || (logFilters.taskId ? { hasMore: true } : state?.proactiveRecordsPage),
       recentErrors: [...errors.values()].sort((a, b) => new Date(b.at) - new Date(a.at)), errorsPage: { ...serverPage, ...(errorPage || {}), total } };
   };
   function activity() { return activityPage(activityState(), logFilters, logRecords, logLoading, proactiveRecordLoading, errorLoading, summaryResults); }
@@ -384,6 +411,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     if (state && state.account !== result.account) {
       analysisHistoryEpoch++; analysisHistoryReport = null; analysisResult = null; resetAnalysisExport();
       summaryResults.clear();
+      skipContent.clear(); skipEpoch++; skipLoading = false;
       recordCache.delete(id); logEpoch++; proactiveRecordEpoch++; errorEpoch++;
       logRecords = []; proactiveHistory = []; proactiveHistoryPage = null; errorHistory = []; errorPage = null; errorLoading = false; logLoading = false; proactiveRecordLoading = false; logSignature = '';
     }
@@ -415,7 +443,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       const liveBox = $('#ai-live-box'); if (liveBox) liveBox.innerHTML = liveActivityBox(state);
       const errBox = $('#ai-recent-errors'); if (errBox) errBox.innerHTML = recentErrorsBox(activityState(), logFilters.errorsOpen, errorLoading);
       const proactiveRecords = $('#ai-proactive-records'); if (proactiveRecords) proactiveRecords.innerHTML = proactiveRecordRows(activityState(), logFilters, proactiveRecordLoading);
-      const skipRecords = $('#ai-skip-records'); if (skipRecords) skipRecords.outerHTML = skipRecordsView(state);
+      drawSkips(); void loadSkipContent();
     }
     if (state.notice) { const note = $('#ai-state-notice'); if (note) note.textContent = state.notice; }
   }
@@ -710,7 +738,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     if (next === 'activity') { logLoading = logFilters.source === 'reply'; logRequestScope = ''; }
     if (next !== 'analysis') { analysisHistoryReport = null; analysisHistoryEpoch++; resetAnalysisExport(); }
     tab = next; editingProfile = null; editingReplyContact = null; message(''); render(); $('#ai-content').scrollTop = 0;
-    if (next === 'activity') await Promise.all([loadActivity(), loadProactiveRecords()]);
+    if (next === 'activity') await Promise.all([loadActivity(), loadProactiveRecords(), loadSkipContent(true)]);
     if ((next === 'analysis' || next === 'learning' || next === 'default-style' || next === 'proactive' || next === 'overview' && state.settings.reply) && needsContacts()) await refreshContacts();
   }
   function mobileLayout() {
@@ -1319,6 +1347,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       }
       const action = button.dataset.aiAction;
       if ('aiRetryRecords' in button.dataset) { await loadActivity(); return; }
+      if ('aiRetrySkips' in button.dataset) { await loadSkipContent(true); return; }
       if ('aiMarkReply' in button.dataset) {
         await call('mark-reply-needed', { value: { profileId: button.dataset.aiMarkReply, eventId: button.dataset.eventId, messageId: button.dataset.messageId } });
         message('已暂存；下一次自动回复前会先总结这条消息'); render(); return;
@@ -1366,7 +1395,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         logFilters.source = button.dataset.aiRecordSource;
         if (logFilters.source !== 'proactive' && logFilters.taskId) { logFilters.taskId = ''; proactiveHistory = []; proactiveHistoryPage = null; proactiveRecordEpoch++; proactiveRecordLoading = false; }
         logEpoch++; logLoading = logFilters.source === 'reply'; logRequestScope = ''; logSignature = ''; render();
-        await loadActivity(); return;
+        await Promise.all([loadActivity(), loadSkipContent()]); return;
       }
       if ('aiCopyReport' in button.dataset) {
         const report = analysisResult?.reports[Number(button.dataset.aiCopyReport)];
@@ -1644,7 +1673,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       analysisDraft = { request: '', from: '', to: '', contacts: [], includeVoice: false, includeVisual: false }; analysisRangeMode = 'all'; analysisRangeBeforeCustom = null; analysisContactsExpanded = false; analysisSearch = ''; analysisHistoryReport = null; analysisHistoryEpoch++; resetAnalysisExport(); learnRange = {from:'',to:''}; learnRangeMode = 'all'; learnScope='range'; learnTarget='both'; defaultStylePerspective = 'self'; analysisResult = null; proactiveUI.reset();
       reviewAlert.hidden = true;
       concealKey(true); modelDraft = null; learningDraft = null; renderedView = ''; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); summaryResults.clear(); selectedObject = ''; objectSearch = ''; objectKind = 'person'; learnContactKind = 'person'; editingReplyContact = null; contactSearch = ''; providerRevision++;
-      generation++; clearInterval(timer); id = instanceId; setContactAvatarInstance(instanceId); state = null; busy = false; polling = false; attaching = true; tab = 'overview'; replyDraft = null; editingProfile = null; contactsLoaded = false; contactsLoading = false; resultProfileIds = null;
+      generation++; skipEpoch++; skipLoading = false; skipContent.clear(); clearInterval(timer); id = instanceId; setContactAvatarInstance(instanceId); state = null; busy = false; polling = false; attaching = true; tab = 'overview'; replyDraft = null; editingProfile = null; contactsLoaded = false; contactsLoading = false; resultProfileIds = null;
       const attachedGeneration = generation;
       selectedContacts.clear(); replyProfiles.clear(); panel.hidden = true; rail.hidden = false; panel.setAttribute('aria-busy', 'false');
       proactiveHistory = []; proactiveHistoryPage = null; proactiveRecordLoading = false; proactiveRecordEpoch++; errorHistory = []; errorPage = null; errorLoading = false; errorEpoch++;

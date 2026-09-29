@@ -1,0 +1,68 @@
+import { createRequire } from 'node:module';
+import assert from 'node:assert/strict';
+import path from 'node:path';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { createApplication } from '../server/index.mjs';
+import { root, playwrightPath } from './tooling.mjs';
+import { temp, cleanup, runtimeFactory, extractor, fetcher, packageSha256 } from '../test/fixtures.mjs';
+import { ChatFixture, AIModelFixture, key } from '../test/ai-fixtures.mjs';
+import { rfbFixture } from '../test/rfb-fixture.mjs';
+const { chromium } = createRequire(import.meta.url)(playwrightPath);
+const dataRoot = await temp(), bridge = new ChatFixture(), provider = new AIModelFixture();
+const group = bridge.contacts[0]; group.kind = 'group'; group.label = '项目讨论群';
+const peer = await rfbFixture(path.join(root, 'web/backgrounds/mist.jpg'));
+const app = await createApplication({ appRoot: root, dataRoot, dev: true, extract: extractor, fetcher, trustedHashes: [packageSha256], aiProvider: provider,
+  runtimeFactory: (...args) => ({ ...runtimeFactory(...args), port: peer.port, aiBridge: bridge, loginStatus: 'logged-in' }) });
+const output = path.join(root, process.argv[2] || 'reports/unreplied-review-ui');
+await mkdir(output, { recursive: true });
+let browser;
+try {
+  await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve));
+  const space = await app.users.get('development'); await space.setConsent(true); app.library.download(); await app.library.working;
+  const meta = await space.add('未回复审查验收'); await space.start(meta.id); const ai = space.get(meta.id).ai; clearInterval(ai.timer);
+  await ai.scan(); await ai.saveReplyProfile({ contact: group.id, style: { summary: '自然简洁' }, strategy: { replyGoal: '回复对方问题', boundaries: '不作承诺' } });
+  const profile = ai.profiles().find(p => p.contact === group.id);
+  const push = (senderName, text) => Object.assign(bridge.push(group.id, 'other', text), { senderName, sender: key(senderName), timestamp: Math.floor(Date.now() / 1000), mentions: { verified: true, self: false, all: false, others: false } });
+  const first = push('小林', '今晚的测试结果我发到这里了。\n还有两项细节要确认。');
+  const second = push('小周', '<img src=x onerror=alert(1)> 请确认这些文字会原样展示。');
+  ai.event('skip', profile.id, 'model-skip', '本轮无需回复', { messageId: second.id, reasonCode: 'model-no-reply', trigger: 'realtime', incomingMessages: [first, second] });
+  const savedId = ai.data.skipLog[0].id;
+  const legacy = push('小陈', '这是一条升级前的未回复消息，打开列表时回读。');
+  ai.event('skip', profile.id, 'model-skip', '旧记录', { messageId: legacy.id, reasonCode: 'model-no-reply', trigger: 'realtime' });
+  const legacyId = ai.data.skipLog[0].id;
+  ai.event('skip', profile.id, 'system-skip', '媒体不可处理', { messageId: key('voice'), reasonCode: 'unsupported-media', incomingMessages: [{ id: key('voice'), direction: 'other', senderName: '小林', sender: key('小林'), text: '', type: 'voice', timestamp: first.timestamp }] });
+  const mediaId = ai.data.skipLog[0].id;
+  const unavailableId = key('missing');
+  ai.event('skip', profile.id, 'model-skip', '旧消息已不可用', { messageId: unavailableId, reasonCode: 'model-no-reply' });
+  await ai.save();
+  browser = await chromium.launch({ channel: 'msedge', headless: true });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 960 } });
+  const errors = []; page.on('pageerror', error => errors.push(error.message));
+  await page.goto(`http://127.0.0.1:${app.server.address().port}${app.prefix}/?dev=${app.devKey}`);
+  await page.locator('[data-action=open]').first().click(); await page.locator('#ai-open').click();
+  await page.locator('.ai-main-tabs [data-ai-nav="activity"]').click();
+  const saved = page.locator(`[data-ai-skip-record="${savedId}"]`);
+  await saved.waitFor();
+  assert.equal(await saved.locator('.ai-skip-sender').count(), 2);
+  assert.match(await saved.innerText(), /小林[\s\S]*小周/);
+  assert.ok((await saved.innerText()).includes(second.text));
+  assert.equal(await saved.locator('img').count(), 0);
+  assert.match(await page.locator(`[data-ai-skip-record="${mediaId}"]`).innerText(), /小林[\s\S]*\[语音\]/);
+  await page.waitForFunction(id => document.querySelector(`[data-ai-skip-record="${id}"] .ai-skip-sender`)?.textContent === '小陈', legacyId);
+  assert.ok((await page.locator(`[data-ai-skip-record="${legacyId}"]`).innerText()).includes(legacy.text));
+  const cases = [];
+  for (const width of [1440, 1280, 768, 390, 320]) {
+    await page.setViewportSize({ width, height: 960 });
+    await saved.scrollIntoViewIfNeeded();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `${width}px page overflow`);
+    const boxes = await saved.locator('.ai-skip-messages').evaluateAll(nodes => nodes.map(el => ({ width: el.clientWidth, scroll: el.scrollWidth })));
+    assert.ok(boxes.every(box => box.width >= 100 && box.scroll <= box.width + 1), `${width}px message width`);
+    if (width <= 768) assert.ok(boxes.every(box => box.width >= width * .65), `${width}px message uses the card width`);
+    await page.screenshot({ path: path.join(output, `unreplied-${width}.png`) });
+    cases.push({ width, passed: true });
+  }
+  assert.deepEqual(errors, []); assert.equal(bridge.sent.length, 0);
+  const result = { passed: true, cases, groupSenderAndBody: true, multipleIncoming: true, legacyHydration: true, escapedHtml: true, sentMessages: 0, errors };
+  await writeFile(path.join(output, 'verification.json'), JSON.stringify(result, null, 2));
+  console.log(JSON.stringify(result));
+} finally { await browser?.close(); await app.close(); await peer.close(); await cleanup(dataRoot); }

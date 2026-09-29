@@ -1065,6 +1065,69 @@ class DataTest(unittest.TestCase):
 
 
 class GroupMetadataTest(unittest.TestCase):
+    def test_group_sender_names_require_unambiguous_exact_directory_identity(self):
+        directory = Mock()
+        directory.query.return_value = [
+            ('wxid_a', '昵称甲', '备注甲'),
+            ('wxid_b', '昵称乙', '坏\n备注'),
+            ('wxid_c', '', ''),
+            ('wxid_d', '丙', ''), ('wxid_d', '丁', ''),
+            ('wxid_e', '戊', ''), ('wxid_e', '戊', ''),
+            ('wxid_outside', '不是请求的发送者', ''),
+            ('wxid_long', '字' * 121, ''),
+        ]
+        names = ['wxid_a', 'wxid_b', 'wxid_c', 'wxid_d', 'wxid_e', 'wxid_long', None, 'bad identity']
+        self.assertEqual(data.group_sender_names(directory, names), {'wxid_a': '备注甲', 'wxid_b': '昵称乙', 'wxid_e': '戊'})
+        query, parameters = directory.query.call_args.args
+        self.assertIn('username IN (', query)
+        self.assertNotIn('wxid_a', query)
+        self.assertNotIn('bad identity', parameters)
+
+    def test_group_reads_display_cached_member_names_without_changing_message_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory, 'wxid_self_abcd/db_storage')
+            (root / 'contact').mkdir(parents=True); (root / 'message').mkdir()
+            group = '12345@chatroom'
+            contact_file = root / 'contact/contact.db'
+            def write_contacts(remark):
+                if contact_file.exists(): contact_file.unlink()
+                make_database(contact_file,
+                    'CREATE TABLE contact(username TEXT,nick_name TEXT,remark TEXT,alias TEXT,local_type INTEGER,is_in_chat_room INTEGER);'
+                    "INSERT INTO contact VALUES('wxid_self','我','','',1,0),"
+                    f"('{group}','讨论群','','',2,1),"
+                    f"('wxid_friend','好友昵称','{remark}','',1,0),"
+                    "('wxid_member','非好友群成员','','',2,0),"
+                    "('wxid_ambiguous','名称甲','','',2,0),('wxid_ambiguous','名称乙','','',2,0),"
+                    "('wxid_alias_owner','不能按别名认人','','wxid_missing',2,0);")
+            write_contacts('好友备注')
+            table = 'Msg_' + hashlib.md5(group.encode()).hexdigest()
+            make_database(root / 'message/message_0.db',
+                "CREATE TABLE Name2Id(user_name TEXT); INSERT INTO Name2Id VALUES('wxid_self'),('wxid_friend'),('wxid_member'),('wxid_missing'),('wxid_ambiguous');"
+                f'CREATE TABLE {table}(local_id INTEGER,local_type INTEGER,create_time INTEGER,real_sender_id INTEGER,message_content TEXT,source TEXT);'
+                f"INSERT INTO {table} VALUES(1,1,100,2,'wxid_friend:' || char(10) || '第一条','<msgsource/>'),"
+                "(2,1,101,3,'第二条','<msgsource/>'),(3,1,102,4,'我是群主：正文不能认人','<msgsource/>'),"
+                "(4,1,103,5,'第四条','<msgsource/>');")
+            cache = data.SessionCache()
+            with patch.object(data, 'active_root', return_value=root), patch.object(data, 'discover_keys', return_value={SALT: KEY}):
+                scan = data.execute({'action': 'contacts'}, 42, directory, lambda: None, cache)
+                self.assertEqual({person['label'] for person in scan['contacts']}, {'讨论群', '好友备注'})
+                target = next(person for person in scan['contacts'] if person['kind'] == 'group')
+                request = {'action': 'read', 'account': scan['account'], 'contact': target['id']}
+                first = data.execute(request, 42, directory, lambda: None, cache)
+                self.assertEqual([message.get('senderName') for message in first['messages']], ['好友备注', '非好友群成员', None, None])
+                self.assertEqual(first['messages'][0]['text'], '第一条')
+                self.assertNotIn('wxid_', json.dumps(first, ensure_ascii=False))
+                self.assertNotIn('_sender_username', json.dumps(first))
+                ranged = data.execute({**request, 'action': 'read-range', 'from': 0, 'to': 200}, 42, directory, lambda: None, cache)
+                self.assertEqual(ranged['messages'], first['messages'])
+                self.assertEqual(ranged['revision'], first['revision'])
+                write_contacts('更新备注')
+                second = data.execute(request, 42, directory, lambda: None, cache)
+                self.assertEqual(second['messages'][0]['senderName'], '更新备注')
+                self.assertEqual(second['revision'], first['revision'])
+                self.assertEqual([message['id'] for message in second['messages']], [message['id'] for message in first['messages']])
+                self.assertEqual([message['sender'] for message in second['messages']], [message['sender'] for message in first['messages']])
+
     def test_mentions_are_validated_from_source_only(self):
         for xml, expected in [('<msgsource><atuserlist>wxid_self</atuserlist></msgsource>', 'self'),
                               ('<msgsource><atuserlist>notify@all</atuserlist></msgsource>', 'all'),

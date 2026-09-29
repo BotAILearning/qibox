@@ -789,7 +789,14 @@
 #ai-panel .ai-activity-page .ap-reply-record-table th:nth-child(1){width:18%}#ai-panel .ai-activity-page .ap-reply-record-table th:nth-child(2){width:18%}#ai-panel .ai-activity-page .ap-reply-record-table th:nth-child(3){width:43%}#ai-panel .ai-activity-page .ap-reply-record-table th:nth-child(4){width:21%}
 #ai-panel .ai-activity-page .ap-proactive-record-table{min-width:1080px}
 #ai-panel .ai-activity-page .ap-proactive-record-table th:nth-child(1){width:16%}#ai-panel .ai-activity-page .ap-proactive-record-table th:nth-child(2){width:16%}#ai-panel .ai-activity-page .ap-proactive-record-table th:nth-child(3){width:16%}#ai-panel .ai-activity-page .ap-proactive-record-table th:nth-child(4){width:36%}#ai-panel .ai-activity-page .ap-proactive-record-table th:nth-child(5){width:16%}
-#ai-panel .ai-activity-page .ap-skip-record-table th:nth-child(1){width:16%}#ai-panel .ai-activity-page .ap-skip-record-table th:nth-child(2){width:16%}#ai-panel .ai-activity-page .ap-skip-record-table th:nth-child(3){width:30%}#ai-panel .ai-activity-page .ap-skip-record-table th:nth-child(4){width:38%}
+#ai-panel .ai-activity-page .ap-skip-record-table th:nth-child(1){width:14%}#ai-panel .ai-activity-page .ap-skip-record-table th:nth-child(2){width:13%}#ai-panel .ai-activity-page .ap-skip-record-table th:nth-child(3){width:37%}#ai-panel .ai-activity-page .ap-skip-record-table th:nth-child(4){width:20%}#ai-panel .ai-activity-page .ap-skip-record-table th:nth-child(5){width:16%}
+#ai-panel .ai-skip-messages{display:grid;gap:12px;min-width:0}
+#ai-panel .ai-skip-message{min-width:0;overflow-wrap:anywhere;text-align:left}
+#ai-panel .ai-skip-message+.ai-skip-message{padding-top:12px;border-top:1px solid var(--ap-line)}
+#ai-panel .ai-skip-sender{display:block;color:var(--ai-text);font-size:13px}
+#ai-panel .ai-skip-message time{display:block;color:var(--ap-muted);font-size:11px;margin-top:2px}
+#ai-panel .ai-skip-message .ap-record-text{margin:5px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
+@media(max-width:1199px){#ai-panel .ai-activity-page #ai-skip-records .ap-skip-record-table td[data-label="消息内容"]{display:block;grid-column:1/-1}#ai-panel .ai-activity-page #ai-skip-records .ap-skip-record-table td[data-label="消息内容"]:before{display:block;margin-bottom:8px}}
 #ai-panel .ai-activity-page .ap-record-table button:not(.ai-record-message){min-height:38px;padding:8px 10px;margin:4px 4px 4px 0;white-space:normal;line-height:1.35}
 #ai-panel .ai-activity-page .ap-record-table details{max-width:none}
 #ai-panel .ai-activity-page .ap-record-table td:last-child>button{display:block;width:100%;margin:6px 0}

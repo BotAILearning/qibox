@@ -349,11 +349,12 @@ export class DataChatBridge extends NativeChatBridge {
           typeof message.text !== 'string' || !Number.isSafeInteger(message.timestamp) || message.timestamp < 0) throw unavailable();
       ids.add(message.id);
       if (message.type !== undefined && !['voice','image','video'].includes(message.type)) throw unavailable();
+      const senderName = typeof message.senderName === 'string' && message.senderName.trim() && Array.from(message.senderName.trim()).length <= 120 && !/[\x00-\x1f\x7f]/.test(message.senderName) ? message.senderName.trim() : null;
       if (binding.kind === 'group' && (!key(message.sender) || !message.mentions || ['verified', 'self', 'all', 'others'].some(k => typeof message.mentions[k] !== 'boolean'))) throw unavailable();
       let text = message.text;
       const textChars = Array.from(text);
       if (textChars.length > 150000) { text = textChars.slice(0, 150000).join(''); clipped = true; truncatedReasons.add('message_length'); }
-      return { id: message.id, direction: message.direction, text, timestamp: message.timestamp, ...(['voice','image','video'].includes(message.type) ? { type: message.type } : {}),
+      return { id: message.id, direction: message.direction, text, timestamp: message.timestamp, ...(['voice','image','video'].includes(message.type) ? { type: message.type } : {}), ...(senderName ? { senderName } : {}),
         ...(binding.kind === 'group' ? { sender: message.sender, mentions: Object.fromEntries(['verified', 'self', 'all', 'others'].map(k => [k, message.mentions[k]])) } : {}) };
     });
     // A range read is the complete bounded material for one contact. Its
