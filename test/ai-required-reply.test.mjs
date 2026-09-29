@@ -83,6 +83,7 @@ test('verified group @me sends after one invalid model skip', async t => {
   assert.equal(calls, 2); assert.equal(bridge.sent.length, 1);
   assert.equal(bridge.sent[0].text, '我收到了');
   assert.match(prompts[0], /普通决策的action只能为 send/);
+  assert.match(prompts[0], /不写成报告、客服答复或宣传文案/);
   assert.doesNotMatch(prompts[0], /普通决策的action只能为 send、skip/);
   assert.equal(a.data.events.some(e => e.code === 'skip'), false);
   await a.close(); await cleanup(root);

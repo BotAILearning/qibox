@@ -125,6 +125,7 @@ test('each recipient uses own learned style or natural default and persisted exa
   provider.calls.length = 0;
   const task = await create(a, bridge, { contacts: bridge.contacts.map(c => c.id) }); await ticks(a);
   assert.equal(bridge.sent.length, 3); assert.equal(task.status, 'ended'); assert.equal(provider.calls.length, 3);
+  assert.match(provider.calls[0].system, /不写成报告、客服答复或宣传文案/);
   assert.equal(provider.calls[0].input.style.summary, '仅甲适用的学习风格');
   assert.match(provider.calls[1].input.style.summary, /自然/); assert.match(provider.calls[2].input.style.summary, /自然/);
   assert.equal(a.data.proactiveRecords.length, 3);

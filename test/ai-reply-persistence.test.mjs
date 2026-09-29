@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { AIAssistant } from '../server/ai-service.mjs';
 import { AppError } from '../server/files.mjs';
 import { replyPresets } from '../server/ai-presets.mjs';
+import { objectPage } from '../web/ai-object-page-new.mjs';
 import { AIModelFixture, ChatFixture, modelConfig, learnedStyle } from './ai-fixtures.mjs';
 import { temp, cleanup } from './fixtures.mjs';
 
@@ -21,7 +22,7 @@ async function fixture(t) {
 }
 
 test('first poll handles a message received after strategy configuration without replying to older history', async t => {
-  const { a, bridge, incoming, advance } = await fixture(t);
+  const { a, bridge, provider, incoming, advance } = await fixture(t);
   const profile = a.profiles()[0];
   const old = incoming(); old.timestamp -= 100;
   await a.settings({ enabled: true }); await a.tick(); advance(20000); await a.tick();
@@ -30,7 +31,26 @@ test('first poll handles a message received after strategy configuration without
   await a.tick(); assert.equal(bridge.sent.length, 0);
   advance(20000); await a.tick();
   assert.equal(bridge.sent.length, 1); assert.equal(profile.rounds, 1);
+  assert.match(provider.calls.at(-1).system, /不写成报告、客服答复或宣传文案/);
   await a.tick(); assert.equal(bridge.sent.length, 1);
+});
+
+test('humorous style is selectable for a contact and persists with its preset identity', async t => {
+  const { a, bridge, options } = await fixture(t);
+  const preset = a.publicState().schema.replyPresets.find(p => p.id === 'humorous');
+  assert.equal(preset.label, '幽默风趣');
+  assert.equal(preset.style.humor, '轻松');
+  await a.saveReplyProfile({ contact: bridge.contacts[0].id, style: preset.style, strategy: preset.strategy,
+    styleId: 'preset:humorous', preserveSwitches: true });
+  const html = objectPage(a.publicState(), { selected: bridge.contacts[0].id, kind: 'person', section: 'style' });
+  assert.match(html, /data-ai-style="preset:humorous" aria-pressed="true">幽默风趣/);
+  bridge.contacts[0].kind = 'group'; await a.scan();
+  const groupHtml = objectPage(a.publicState(), { selected: bridge.contacts[0].id, kind: 'group', section: 'style' });
+  assert.match(groupHtml, /data-ai-style="preset:humorous" aria-pressed="true">幽默风趣/);
+  await a.close();
+  const restarted = new AIAssistant(options); await restarted.init();
+  try { assert.equal(restarted.profiles()[0].styleId, 'preset:humorous'); }
+  finally { await restarted.close(); }
 });
 
 test('refresh and strategy edits preserve enabled state and a pending reply uses the latest strategy once', async t => {
