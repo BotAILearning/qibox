@@ -14,6 +14,29 @@ export function fileExporter({ call, download, openFolder, show, notify }) {
     }
   }
   return {
+    async clipboard(request, signal) {
+      if (!globalThis.isSecureContext || !navigator.clipboard?.write || !globalThis.ClipboardItem) {
+        throw new Error('当前浏览器无法写入图片剪贴板，请通过 HTTPS 打开栖盒后重试');
+      }
+      if (request.count !== 1) throw new Error('一次只能复制一张图片');
+      // Start the write while the WeChat menu click still has user activation.
+      // Chromium accepts a promised PNG blob while the NAS image is fetched.
+      const png = (async () => {
+        signal.throwIfAborted();
+        const response = await download({ action: 'export-download', id: request.id, index: 0, signal });
+        const image = await createImageBitmap(await response.blob());
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = image.width; canvas.height = image.height;
+          canvas.getContext('2d').drawImage(image, 0, 0);
+          return await new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('图片转换失败')), 'image/png'));
+        } finally { image.close(); }
+      })();
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
+      signal.throwIfAborted();
+      await call('export-finish', { id: request.id });
+      notify('图片已复制到当前设备剪贴板');
+    },
     async local(request, name, signal) {
       let target, directory;
       if (request.operation === 'folder') {
