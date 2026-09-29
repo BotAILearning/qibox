@@ -207,6 +207,30 @@ test('learning and applying one contact preserves other contacts reply strategie
   assert.equal(snapshot.profiles[0].replyStrategy.replyGoal, 'Keep original goal');
 });
 
+test('combined result lists pending style and memory and sends one application action', { timeout: 2000 }, async t => {
+  const originalDocument = globalThis.document, dom = surface(), calls = [];
+  globalThis.document = dom.document;
+  const snapshot = { ...availableState(), schema: { categories, styleOptions, avoidOptions, defaultStyle, replyPresets },
+    contacts: [{ id: 'contact', label: '联系人', kind: 'person' }],
+    profiles: [{ id: 'profile', contact: 'contact', label: '联系人', kind: 'person', learnedAt: 1,
+      style: defaultStyle, learnedStyle: defaultStyle, pendingStyle: { ...defaultStyle, summary: '本次学到的风格' },
+      memory: { summary: '原有记忆', entries: [{ field: 'other', text: '原有记忆' }] },
+      pendingMemorySource: 'combined', pendingMemoryId: 'candidate-1', pendingMemory: { summary: '本次学到的事实', entries: [{ field: 'other', text: '本次学到的事实' }] } }] };
+  const controller = aiAssistant({ api: async (_url, payload) => { if (payload) calls.push(payload); return snapshot; } });
+  t.after(() => { controller.detach(); globalThis.document = originalDocument; });
+  await controller.attach('instance-a');
+  await dom.button({ aiApplyContact: 'contact' });
+  const html = dom.node('#ai-content').innerHTML;
+  assert.match(html, /本次学到的风格/);
+  assert.match(html, /本次学到的事实/);
+  assert.match(html, /应用风格和记忆/);
+  assert.doesNotMatch(html, /<h4>记忆（待应用）<\/h4>[\s\S]*原有记忆/);
+  await dom.button({ aiApplyResult: 'profile' });
+  assert.equal(calls.filter(call => call.action === 'reply-profile').length, 1);
+  assert.equal(calls.find(call => call.action === 'reply-profile').value.applyCombinedLearning, true);
+  assert.equal(calls.find(call => call.action === 'reply-profile').value.combinedLearningId, 'candidate-1');
+});
+
 const manualState = () => ({ ...availableState(), schema: { categories, styleOptions, avoidOptions, defaultStyle, replyPresets }, settings: { enabled: false, reply: true } });
 const manualEntries = () => Object.entries({ replyPreset: 'custom', summary: '自然简短', ...defaultStyle, replyGoal: 'Only discuss the planned event', facts: 'Saturday afternoon', boundaries: 'Confirm timing with me', maxRounds: '3' }).flatMap(([key, value]) => Array.isArray(value) ? value.map(item => [key, item]) : [[key, String(value)]]);
 
