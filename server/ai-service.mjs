@@ -44,7 +44,11 @@ function validatedLearnedMemory(value, material) {
       const sourceTimes = new Set((Array.isArray(material) ? material : []).filter(row => Number.isSafeInteger(row?.timestamp)).map(row => row.timestamp * 1000));
       memory.entries = memory.entries.map(entry => {
         const { observedAt, evidence: _unverifiedEvidence, ...safe } = entry;
-        return sourceTimes.has(observedAt) ? { ...safe, observedAt } : safe;
+        const field = safe.field === 'date' && !/纪念日|相识|认识|结婚|恋爱|确定关系|订婚/u.test(safe.text) ? 'other' : safe.field;
+        const { recordedAt, ...rest } = safe;
+        return { ...rest, field,
+          ...(['residence', 'workplace', 'employer', 'shipping', 'birthday', 'date'].includes(field) && recordedAt !== undefined ? { recordedAt } : {}),
+          ...(sourceTimes.has(observedAt) ? { observedAt } : {}) };
       });
       return memory;
     }

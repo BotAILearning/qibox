@@ -280,6 +280,17 @@ test('combined learning rechecks an empty memory result before staging both part
   assert.equal(readMemory(f.a.vault, f.profile()).entries.length, 0);
 });
 
+test('a learned short illness is kept as a dated memory rather than an anniversary field', async t => {
+  const f = await fixture(t);
+  f.respond(() => ({ style: { ...layers }, memory: { entries: [
+    { field: 'date', text: '对方在2026-09-28感冒了', recordedAt: 1790693783000 },
+  ] } }));
+  await f.a.learn({ contacts: [f.contacts[0]], target: 'both', previewOnly: true });
+  const [entry] = f.a.pendingMemoryOf(f.profile()).entries;
+  assert.equal(entry.field, 'other');
+  assert.equal(entry.recordedAt, undefined);
+});
+
 test('combined application preserves manual memory edits and refuses a partial apply on conflict', async t => {
   const f = await fixture(t);
   f.respond(() => ({ style: { ...layers }, memory: { entries: [{ field: 'workplace', text: '在上海工作', recordedAt: 1789000060000, observedAt: 1789000060000 }] } }));
