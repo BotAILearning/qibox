@@ -48,6 +48,17 @@ try {
   report.checks.push('Market: one prominent installation action, compact import link, content-sized sidebar, no overflow at four widths.');
 
   app.library.download(); await app.library.working;
+  await page.goto(base);
+  await page.locator('[data-market-action=add]').first().waitFor();
+  for (const [width, label] of [[390, '添加实例'], [1440, '添加到桌面']]) {
+    await page.setViewportSize({ width, height: 900 });
+    const visible = page.locator('[data-market-action=add]:visible');
+    assert.equal(await visible.count(), 1, `${width}px: installed app must expose exactly one primary action`);
+    assert.equal(await visible.innerText(), label);
+    await noOverflow(`${width}px installed market`);
+    await page.screenshot({ path: path.join(output, `store-installed-${width}.png`) });
+  }
+  report.checks.push('Installed market: exactly one primary action is visible on phone and desktop.');
   const meta = await space.add('比例检查微信'); await space.start(meta.id);
   const ai = space.get(meta.id).ai;
   clearInterval(ai.timer); await ai.verifyProvider(modelConfig); await ai.scan(); await ai.settings({ enabled: false });

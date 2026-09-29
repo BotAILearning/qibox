@@ -59,6 +59,8 @@
 #ai-panel button.qi-btn[data-icon] { width: var(--qi-control-md); min-width: var(--qi-control-md); height: var(--qi-control-md); padding: 0; }
 .qiapp-product button.qi-btn:disabled,
 #ai-panel button.qi-btn:disabled { background: var(--qi-disabled); border-color: var(--qi-border); color: var(--qi-disabled-text); opacity: 1; }
+.qiapp-product button.qi-btn.mobile-only { display: none; }
+html.mobile .qiapp-product button.qi-btn.mobile-only { display: inline-flex; }
 .qiapp-product :is(input.qi-input,select.qi-input,textarea.qi-input),
 #ai-panel :is(input.qi-input,select.qi-input,textarea.qi-input) {
   border-color: var(--qi-border-strong);
@@ -147,6 +149,7 @@
   #ai-panel :is(.ai-card.qi-card,.ai-task-card.qi-card) { padding: var(--qi-space-4); }
 }
 @media(max-width:760px) {
+  .qiapp-product button.qi-btn.mobile-only { display: inline-flex; }
   #ai-panel { --ai-sidebar: 0px; }
 }
 @media(max-width:560px) {
