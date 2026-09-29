@@ -1279,7 +1279,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
             return [...contacts.values()];
           },
           onRefresh: refreshContacts, onClose: () => { contactDialog = null; },
-          onConfirm: contacts => { if (current !== generation || account !== state?.account) return; analysisDraft.contacts = contacts.map(c => c.id); analysisContactsExpanded = true; render(); $('#ai-analysis-form [data-ai-analysis-contacts-toggle]')?.focus(); } });
+          onConfirm: contacts => { if (current !== generation || account !== state?.account) return; analysisDraft.contacts = contacts.map(c => c.id); render(); $('#ai-analysis-form [data-ai-analysis-pick]')?.focus(); } });
         return;
       }
       if (button.dataset.aiDefaultMode) {

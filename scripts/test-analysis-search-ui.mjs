@@ -77,7 +77,7 @@ try{
 
   await page.setViewportSize({width:390,height:844});
   await page.locator('.ai-main-tabs [data-ai-nav=analysis]').click();await settled();
-  await page.locator('[data-ai-analysis-contacts-toggle]').click();
+  await page.locator('[data-ai-analysis-pick]').click();
   const mobileDialog=page.locator('.ai-contact-picker-dialog');
   await mobileDialog.locator('[data-picker-id]').first().check();
   const bounds=await mobileDialog.evaluate(node=>{const d=node.getBoundingClientRect(),f=node.querySelector('footer').getBoundingClientRect();return{width:d.width,bottom:d.bottom,footerBottom:f.bottom};});

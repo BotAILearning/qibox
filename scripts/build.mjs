@@ -17,6 +17,8 @@ const iconRevision = createHash('sha256').update(await readFile(path.join(root, 
 const out = path.join(root, host === 'ugos' ? 'public-ugos' : 'public'); await mkdir(out, { recursive: true });
 await rm(path.join(out, 'icon.svg'), { force: true });
 for (const file of ['index.html', 'style.css', 'ai-workspace.css', 'ui-foundation.css', 'icon.png', 'auth-callback.html', 'privacy.html', 'terms.html']) await cp(path.join(root, 'web', file), path.join(out, file));
+await cp(path.join(root, 'web/vendor/qiapp-ui'), path.join(out, 'vendor/qiapp-ui'), { recursive: true });
+await cp(path.join(root, 'web/qiapp-product.css'), path.join(out, 'qiapp-product.css'));
 for (const file of ['index.html', 'auth-callback.html']) {
   const html = await readFile(path.join(out, file), 'utf8');
   await writeFile(path.join(out, file), html.replaceAll('./icon.png', `./icon.png?v=${iconRevision}`));

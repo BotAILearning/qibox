@@ -44,7 +44,7 @@ try {
   const page = await context.newPage(); page.setDefaultTimeout(15000); page.on('pageerror', e => report.errors.push(e.message));
   await page.goto(`http://127.0.0.1:${app.server.address().port}${app.prefix}/?dev=${app.devKey}`);
   await page.locator('[data-action=open]').first().click(); await page.locator('#ai-open').click();
-  assert.equal(await page.locator('.ai-main-tabs').evaluate(node => Math.round(node.getBoundingClientRect().width)), 152);
+  assert.equal(await page.locator('.ai-main-tabs').evaluate(node => Math.round(node.getBoundingClientRect().width)), 248);
   assert.equal(await page.getByText('设置按当前微信独立保存').count(), 0);
   await page.locator(`[data-ai-object="${bridge.contacts[0].id}"]`).click();
   assert.equal(await page.locator('.ai-reference-statuses button').count(), 0, '页头状态提醒不包含操作按钮');

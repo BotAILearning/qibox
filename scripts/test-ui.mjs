@@ -222,6 +222,17 @@ try {
   assert.equal(await mobilePage.locator('[data-mobile-login], [data-mobile-stop]').count(), 2);
   assert.equal(await mobilePage.locator('#desktop-view').isVisible(), false);
   report.checks.push('Phone portrait and landscape show instance-level login/stop controls without opening a desktop session');
+  await mobilePage.setViewportSize({ width: 980, height: 700 });
+  await mobilePage.waitForFunction(() => !document.documentElement.classList.contains('mobile'));
+  assert.equal(await mobilePage.locator('#mine-panel').isVisible(), true);
+  assert.equal(await mobilePage.locator('#mobile-instances').isVisible(), false);
+  assert.equal(await mobilePage.locator('#mobile-ai').isVisible(), false);
+  assert.equal(await mobilePage.locator('#add-instance').isVisible(), true);
+  await mobilePage.screenshot({ path: path.join(root, 'reports/screenshots/phone-desktop-request.png'), fullPage: true });
+  await mobilePage.setViewportSize({ width: 844, height: 390 });
+  await mobilePage.waitForFunction(() => document.documentElement.classList.contains('mobile'));
+  assert.equal(await mobilePage.locator('#mobile-instances').isVisible(), true);
+  report.checks.push('Phone desktop request shows only PC controls, and returning to phone width restores the mobile view');
   await page.setViewportSize({ width: 1440, height: 960 });
   const homeBefore = [...(await app.users.get('development')).instances.values()][0].home;
   await page.locator('#uninstall').click();

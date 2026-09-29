@@ -251,6 +251,10 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
       const files = { '/': ['index.html', 'text/html'], '/app.js': ['app.js', 'text/javascript'], '/style.css': ['style.css', 'text/css'], '/icon.png': ['icon.png', 'image/png'], '/backgrounds/mist.jpg': ['backgrounds/mist.jpg', 'image/jpeg'], '/auth-callback.html': ['auth-callback.html', 'text/html'], '/auth-callback.js': ['auth-callback.js', 'text/javascript'], '/privacy.html': ['privacy.html', 'text/html'], '/terms.html': ['terms.html', 'text/html'] };
       files['/ai-workspace.css'] = ['ai-workspace.css', 'text/css'];
       files['/ui-foundation.css'] = ['ui-foundation.css', 'text/css'];
+      files['/qiapp-product.css'] = ['qiapp-product.css', 'text/css'];
+      for (const stylesheet of ['styles', 'tokens', 'brands', 'base', 'components', 'ai']) {
+        files[`/vendor/qiapp-ui/${stylesheet}.css`] = [`vendor/qiapp-ui/${stylesheet}.css`, 'text/css'];
+      }
       if (!files[route]) throw new AppError('页面不存在', 404);
       const [file, type] = files[route]; const bytes = await readFile(path.join(appRoot, 'public', file));
       res.writeHead(200, { 'Content-Type': type.startsWith('text/') ? `${type}; charset=utf-8` : type, 'Cache-Control': 'no-cache' }); res.end(req.method === 'HEAD' ? undefined : bytes);

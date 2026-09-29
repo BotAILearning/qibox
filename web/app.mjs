@@ -10,14 +10,18 @@ import { desktopPointer } from './desktop-pointer.mjs';
 import { desktopReconnect } from './desktop-reconnect.mjs';
 import { aiAssistant } from './ai-assistant.mjs';
 import { desktopAudio } from './desktop-audio.mjs';
+import './qiapp-adopt.mjs';
 
 const $ = selector => document.querySelector(selector);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const prefix = apiPrefix;
 const small = matchMedia('(max-width: 760px)');
 const phone = /Android|iPhone|iPad|iPod|Mobile|HarmonyOS/i.test(navigator.userAgent);
-if (phone) document.documentElement.classList.add('mobile');
-const mobile = () => phone || small.matches;
+// A phone that requests a desktop-sized viewport should receive the PC controls.
+const mobile = () => small.matches || (phone && innerWidth < 980);
+const syncLayout = () => document.documentElement.classList.toggle('mobile', mobile());
+syncLayout();
+window.addEventListener('resize', syncLayout);
 let session, state, toastTimer, modalSubmit, requiredModal = false, polling = false, rfb, ime, fileBridge, desktopId, remoteGeneration = 0, lastInstancesMarkup = '';
 let desktopConnected = false, desktopBusy = false, desktopConnecting = false, pointer, connectionTimer, desktopOperation = 0;
 let sound, standaloneAI = false;

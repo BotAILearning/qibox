@@ -1,0 +1,153 @@
+/* QIAPP UI 0.1.0 product composition. Product state and events stay in qibox. */
+.qiapp-product {
+  --qi-primary: #5266e8;
+  --qi-primary-hover: #4055d6;
+  --qi-primary-active: #3548bc;
+  --qi-on-primary: #fff;
+  --qi-secondary: #eaf0ff;
+  --qi-selected: #eaf0ff;
+  --qi-hover: #f0f3ff;
+  --qi-active: #dce4ff;
+  --qi-focus: #6378f2;
+  --qi-bg: #f7f8fc;
+  --qi-surface: #fff;
+  --qi-surface-muted: #f6f8fd;
+  --qi-border: #e2e6f0;
+  --qi-border-strong: #aab4cb;
+  --qi-text: #202d47;
+  --qi-text-secondary: #54627b;
+  --qi-text-tertiary: #6e7b92;
+  --qi-radius-md: 8px;
+  --qi-radius-lg: 16px;
+  --qi-shadow-subtle: none;
+  --qi-shadow-floating: 0 10px 32px #1b2b5a14;
+  --ui-control-height: var(--qi-control-md);
+  --ui-control-height-touch: var(--qi-touch-target);
+  --ui-control-radius: var(--qi-radius-md);
+  --ui-control-gap: var(--qi-space-3);
+  color: var(--qi-text);
+  background: var(--qi-bg);
+}
+
+/* Shared native components are now drawn from the QIAPP scale and tokens. */
+.qiapp-product button.qi-btn,
+#ai-panel button.qi-btn {
+  min-height: var(--qi-control-md);
+  padding: var(--qi-space-2) var(--qi-space-4);
+  border: 1px solid transparent;
+  border-radius: var(--qi-radius-md);
+  background: var(--qi-primary);
+  color: var(--qi-on-primary);
+  font-size: var(--qi-font-button);
+  font-weight: var(--qi-weight-button);
+  line-height: var(--qi-line-button);
+  box-shadow: none;
+}
+.qiapp-product button.qi-btn:hover:not(:disabled),
+#ai-panel button.qi-btn:hover:not(:disabled) { background: var(--qi-primary-hover); color: var(--qi-on-primary); }
+.qiapp-product button.qi-btn[data-variant="secondary"],
+#ai-panel button.qi-btn[data-variant="secondary"] { border-color: var(--qi-border); background: var(--qi-surface); color: var(--qi-text); }
+.qiapp-product button.qi-btn[data-variant="secondary"]:hover:not(:disabled),
+#ai-panel button.qi-btn[data-variant="secondary"]:hover:not(:disabled) { background: var(--qi-hover); color: var(--qi-primary); }
+.qiapp-product button.qi-btn:is([data-variant="text"],[data-variant="ghost"]),
+#ai-panel button.qi-btn:is([data-variant="text"],[data-variant="ghost"]) { border-color: transparent; background: transparent; color: var(--qi-primary); }
+.qiapp-product button.qi-btn:is([data-variant="text"],[data-variant="ghost"]):hover:not(:disabled),
+#ai-panel button.qi-btn:is([data-variant="text"],[data-variant="ghost"]):hover:not(:disabled) { background: var(--qi-hover); color: var(--qi-primary-hover); }
+.qiapp-product button.qi-btn[data-variant="danger"],
+#ai-panel button.qi-btn[data-variant="danger"] { background: var(--qi-error); color: #fff; }
+.qiapp-product button.qi-btn[data-icon],
+#ai-panel button.qi-btn[data-icon] { width: var(--qi-control-md); min-width: var(--qi-control-md); height: var(--qi-control-md); padding: 0; }
+.qiapp-product button.qi-btn:disabled,
+#ai-panel button.qi-btn:disabled { background: var(--qi-disabled); border-color: var(--qi-border); color: var(--qi-disabled-text); opacity: 1; }
+.qiapp-product :is(input.qi-input,select.qi-input,textarea.qi-input),
+#ai-panel :is(input.qi-input,select.qi-input,textarea.qi-input) {
+  border-color: var(--qi-border-strong);
+  border-radius: var(--qi-radius-md);
+  background: var(--qi-surface);
+  color: var(--qi-text);
+  font-size: var(--qi-font-body);
+}
+.qiapp-product :is(input.qi-input,select.qi-input):not([hidden]),
+#ai-panel :is(input.qi-input,select.qi-input):not([hidden]) { height: var(--qi-control-md); min-height: var(--qi-control-md); }
+.qiapp-product :is(input.qi-input,select.qi-input,textarea.qi-input):focus-visible,
+#ai-panel :is(input.qi-input,select.qi-input,textarea.qi-input):focus-visible { border-color: var(--qi-primary); outline: 2px solid var(--qi-focus); outline-offset: 1px; box-shadow: none; }
+.qiapp-product label.qi-field,
+#ai-panel label.qi-field { display: flex; flex-direction: column; gap: var(--qi-space-2); font-size: var(--qi-font-label); font-weight: var(--qi-weight-label); line-height: var(--qi-line-label); }
+.qiapp-product :is(.qi-btn,.qi-input):focus-visible { outline: 2px solid var(--qi-focus); outline-offset: 2px; }
+.qiapp-product :is(.modal-actions,.file-transfer-actions),
+#ai-panel :is(.ai-actions,.ai-wizard-actions,.ai-analysis-submit-row) { gap: var(--qi-space-3); }
+.qiapp-product .qi-progress { height: 8px; accent-color: var(--qi-primary); }
+
+/* Page structure shares the library's 64px header, 248px sidebar and 24px spacing. */
+.qiapp-product .topbar { height: var(--qi-header); min-height: var(--qi-header); border-color: var(--qi-border); background: var(--qi-surface); }
+.qiapp-product .content { max-width: var(--qi-content-max); padding: var(--qi-space-8); }
+.qiapp-product .workspace { grid-template-columns: var(--qi-sidebar) minmax(0,1fr); gap: var(--qi-space-6); }
+.qiapp-product :is(.market-panel,.desktop-panel) { padding: var(--qi-space-6); border-color: var(--qi-border); border-radius: var(--qi-radius-lg); background: var(--qi-surface); box-shadow: none; }
+.qiapp-product :is(.store-card,.mobile-ai-card) { padding: var(--qi-space-4); border-color: var(--qi-border); border-radius: var(--qi-radius-md); background: var(--qi-surface-muted); box-shadow: none; }
+.qiapp-product .panel-heading { margin-bottom: var(--qi-space-6); }
+.qiapp-product .panel-heading h2 { color: var(--qi-text); font-size: var(--qi-font-h4); font-weight: var(--qi-weight-h4); }
+.qiapp-product .catalog-list { gap: var(--qi-space-4); }
+.qiapp-product .store-card :is(.primary,.secondary) { min-height: var(--qi-control-md); font-size: var(--qi-font-button); }
+.qiapp-product .store-card .install-actions { display: grid; grid-template-columns: minmax(0,1fr); }
+.qiapp-product .store-card .install-actions button { width: 100%; min-width: 0; flex: none; white-space: normal; line-height: 1.35; }
+.qiapp-product .market-tools { gap: var(--qi-space-3); }
+.qiapp-product .empty-state { color: var(--qi-text-secondary); }
+.qiapp-product :is(.status,.app-description,.install-format,.field-help) { color: var(--qi-text-secondary); font-size: var(--qi-font-small); }
+
+/* Modal headers, bodies and actions keep one inset and one control height. */
+.qiapp-product dialog.qiapp-dialog { width: min(560px,calc(100vw - 32px)); max-height: min(85dvh,850px); padding: var(--qi-space-6); border: 1px solid var(--qi-border); border-radius: var(--qi-radius-lg); background: var(--qi-surface); color: var(--qi-text); box-shadow: var(--qi-shadow-modal); }
+.qiapp-product dialog.qiapp-dialog::backdrop { background: var(--qi-overlay); }
+.qiapp-product .modal-heading { margin-bottom: var(--qi-space-4); }
+.qiapp-product .modal-heading h2 { color: var(--qi-text); font-size: var(--qi-font-h3); }
+.qiapp-product .modal-actions { margin-top: var(--qi-space-6); }
+.qiapp-product #modal-actions button.primary { background: var(--qi-primary); color: var(--qi-on-primary); }
+.qiapp-product #modal-actions button.secondary { border: 1px solid var(--qi-border); background: var(--qi-surface); color: var(--qi-text); }
+.qiapp-product #modal-body .field { margin-top: var(--qi-space-4); }
+.qiapp-product #modal-body .field>input { margin-top: var(--qi-space-2); }
+.qiapp-product #modal-body .choice { padding: var(--qi-space-3) var(--qi-space-4); border-color: var(--qi-border); border-radius: var(--qi-radius-md); }
+.qiapp-product #modal-body .choice:has(input:checked) { border-color: var(--qi-primary); background: var(--qi-selected); }
+#ai-panel .qiapp-dialog :is(header,footer) { padding-inline: var(--qi-space-6); }
+#ai-panel .qiapp-dialog :is(.ap-picker-tools,.ap-picker-list) { padding-inline: var(--qi-space-6); }
+
+/* AI workspaces use the same tokens while keeping their real business controls. */
+#ai-panel { --ai-primary: var(--qi-primary); --ai-bg: var(--qi-bg); --ai-border: var(--qi-border); --ai-text: var(--qi-text); --ai-muted: var(--qi-text-secondary); --ai-soft: var(--qi-selected); --ai-hint: var(--qi-text-tertiary); --ai-sidebar: var(--qi-sidebar); color: var(--qi-text); font-family: var(--qi-font-family); font-size: var(--qi-font-body); }
+#ai-panel .ai-main-tabs { padding: 0 var(--qi-space-4); background: #202a43; }
+#ai-panel .ai-main-tabs button { min-height: var(--qi-control-lg); padding: var(--qi-space-3); border-radius: var(--qi-radius-md); font-size: var(--qi-font-button); }
+#ai-panel .ai-main-tabs button[aria-current=page] { background: var(--qi-primary); box-shadow: none; }
+#ai-panel .ai-nav-brand { padding-block: var(--qi-space-6); }
+#ai-panel :is(.ai-panel-heading,.ai-page-heading) { border-color: var(--qi-border); }
+#ai-panel :is(.ai-card.qi-card,.ai-task-card.qi-card) { border-color: var(--qi-border); border-radius: var(--qi-radius-lg); padding: var(--qi-space-6); box-shadow: none; }
+#ai-panel :is(.ai-page-body,.ai-object-workspace) { gap: var(--qi-space-6); }
+#ai-panel :is(.ai-page-heading h3,.ai-analysis-intro h4) { color: var(--qi-text); }
+#ai-panel .ai-page-heading h3 { font-size: var(--qi-font-h3); }
+#ai-panel h4 { font-size: var(--qi-font-h4); }
+#ai-panel :is(.ai-help,small) { color: var(--qi-text-secondary); font-size: var(--qi-font-caption); }
+#ai-panel .ai-analysis-selection { background: var(--qi-surface); }
+#ai-panel .ai-analysis-time-entry { background: var(--qi-surface-muted); }
+#ai-panel .ai-contact-picker-dialog { border-color: var(--qi-border); border-radius: var(--qi-radius-lg); box-shadow: var(--qi-shadow-modal); }
+#ai-panel .ai-contact-picker-dialog>footer { gap: var(--qi-space-3); border-color: var(--qi-border); }
+#ai-panel .ai-contact-picker-dialog .ai-contact-picker-row { border-radius: var(--qi-radius-md); }
+#ai-panel .ai-analysis-presets button { border-radius: var(--qi-radius-full); }
+#ai-panel .ai-analysis-add.qi-btn { min-height: var(--qi-control-lg); }
+
+@media(max-width:860px) {
+  .qiapp-product .content { padding: var(--qi-space-4); }
+  .qiapp-product .workspace { grid-template-columns: minmax(0,1fr); }
+  .qiapp-product button.qi-btn,
+  #ai-panel button.qi-btn { min-height: var(--qi-touch-target); }
+  .qiapp-product button.qi-btn[data-icon],
+  #ai-panel button.qi-btn[data-icon] { width: var(--qi-touch-target); min-width: var(--qi-touch-target); height: var(--qi-touch-target); }
+  .qiapp-product :is(input.qi-input,select.qi-input):not([hidden]),
+  #ai-panel :is(input.qi-input,select.qi-input):not([hidden]) { min-height: var(--qi-touch-target); height: var(--qi-touch-target); font-size: 16px; }
+  #ai-panel { --ai-sidebar: 64px; }
+  #ai-panel .ai-main-tabs { padding: var(--qi-space-2) var(--qi-space-3); }
+  #ai-panel :is(.ai-card.qi-card,.ai-task-card.qi-card) { padding: var(--qi-space-4); }
+}
+@media(max-width:760px) {
+  #ai-panel { --ai-sidebar: 0px; }
+}
+@media(max-width:560px) {
+  .qiapp-product dialog.qiapp-dialog { width: calc(100vw - 24px); padding: var(--qi-space-4); }
+  .qiapp-product .modal-actions { flex-wrap: wrap; }
+  #ai-panel .ai-contact-picker-dialog :is(header,footer,.ap-picker-tools,.ap-picker-list) { padding-inline: var(--qi-space-4); }
+}
