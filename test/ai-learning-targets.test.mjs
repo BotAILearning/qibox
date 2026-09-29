@@ -267,6 +267,19 @@ test('combined learning applies style and memory together, and keeps both pendin
   assert.equal(profile.pendingMemory, undefined);
 });
 
+test('combined learning rechecks an empty memory result before staging both parts', async t => {
+  const f = await fixture(t);
+  let calls = 0;
+  f.respond(() => ++calls === 1
+    ? { style: { ...layers }, memory: { entries: [] } }
+    : { memory: { entries: [{ field: 'other', text: '对方不喜欢当导师' }] } });
+  await f.a.learn({ contacts: [f.contacts[0]], target: 'both', previewOnly: true });
+  assert.equal(calls, 2);
+  assert.ok(f.profile().pendingStyle);
+  assert.equal(f.a.pendingMemoryOf(f.profile()).entries[0].text, '对方不喜欢当导师');
+  assert.equal(readMemory(f.a.vault, f.profile()).entries.length, 0);
+});
+
 test('combined application preserves manual memory edits and refuses a partial apply on conflict', async t => {
   const f = await fixture(t);
   f.respond(() => ({ style: { ...layers }, memory: { entries: [{ field: 'workplace', text: '在上海工作', recordedAt: 1789000060000, observedAt: 1789000060000 }] } }));

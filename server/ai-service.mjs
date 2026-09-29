@@ -1,6 +1,7 @@
 import { learningPrompt, learningPromptFor, learningWithMemoryPrompt, defaultLearningSummaryPrompt, conversationPrompt, addressingPrompt, generationPrompt, naturalChatPrompt, longTermMemoryPrompt, timelinePrompt, generationProtocol, proactivePrompt, proactiveBackgroundPrompt, proactiveBackgroundTtl, messageSegments } from './ai-prompts.mjs';
 import { selectMemoryForChat } from './ai-memory-context.mjs';
 import { guardFinancialCommitment } from './ai-commitment-guard.mjs';
+import { annotateSourceDates } from './ai-time-context.mjs';
 import path from 'node:path';
 import { chatMemoryPrompt, groupMemoryInstruction, mergeMemory, editMemory as changeMemory, pointInTimeMemory } from './ai-wiki.mjs';
 import { defaultTakeover, takeoverValue, effectiveTakeover, identityPrompt, asksIdentity } from './ai-reply-rules.mjs';
@@ -1386,7 +1387,7 @@ export class AIAssistant {
             const memoryInputData = {
               styleOwner: perspective, styleOwnerText: styleOwnerText(perspective), kind: profile.kind,
               contact: profile.contact, label: profile.label, timezone: 'Asia/Shanghai',
-              coverage: memoryCoverage, material: memoryInput,
+               coverage: memoryCoverage, material: annotateSourceDates(memoryInput),
             };
             const validateMemoryResult = result => {
               const memory = validatedLearnedMemory(result?.memory, memoryInput);
@@ -1438,7 +1439,7 @@ export class AIAssistant {
         const { profile, material, source, memoryCoverage } = prepared;
         try {
         this.operation.phase = target === 'style' ? 'model' : 'memory';
-        const input = { styleOwner: perspective, styleOwnerText: styleOwnerText(perspective), contact: profile.contact, kind: profile.kind, material,
+        const input = { styleOwner: perspective, styleOwnerText: styleOwnerText(perspective), contact: profile.contact, kind: profile.kind, material: target === 'style' ? material : annotateSourceDates(material),
           ...(target !== 'style' ? { memoryCoverage, previousMemory: readMemory(this.vault, profile) } : {}) };
         const prompt = target === 'style' ? learningPrompt : learningWithMemoryPrompt + memoryPrompt + (profile.kind === 'group' ? groupMemoryInstruction : '');
         const entry = await this.provider.complete(this.modelFor('learning'), prompt, input, signal,
@@ -1451,7 +1452,16 @@ export class AIAssistant {
         const style = styleValue(validatedLearnedStyle(entry.style)), learnedStyle = structuredClone(style);
         if (profile.style) { for (const field of [...(profile.locked || []), 'customTone', 'customAvoid']) style[field] = profile.style[field]; }
         // 页面预览模式中，风格和记忆一起等待用户在结果页应用。
-        const learnedEntries = target === 'style' || entry.memory === undefined ? null : validatedLearnedMemory(entry.memory, material);
+        let learnedEntries = target === 'style' || entry.memory === undefined ? null : validatedLearnedMemory(entry.memory, material);
+        if (target === 'both' && learnedEntries && !learnedEntries.entries.length && material.some(message => message.text?.trim())) {
+          const checked = await this.provider.complete(this.modelFor('learning'),
+            `${memoryLearningPrompt}\n这是对同一份材料的补充核查。上一轮没有返回任何记忆；请重新检查明确的稳定事实和有时间背景的经历，不编造也不凑数。`,
+            { ...input, coverage: memoryCoverage }, signal,
+            { budget: 16384, validate: result => ({ ...result, memory: validatedLearnedMemory(result?.memory, material) }) });
+          signal.throwIfAborted();
+          if (revision !== this.revision) throw new AppError('学习已取消');
+          learnedEntries = validatedLearnedMemory(checked.memory, material);
+        }
         const memory = target === 'both' && !previewOnly ? learnedMemory(this.vault, profile, learnedEntries ?? undefined, this.now()) : {};
         if (target === 'both' && learnedEntries && !memoryValue(learnedEntries)) throw new AppError('模型返回的聊天记忆格式不正确');
         if (target !== 'style' && entry.memory === undefined) memoryMissing++;
