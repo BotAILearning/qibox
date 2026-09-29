@@ -116,15 +116,14 @@ export function analysisPage(state, draft, result, search = '', report = null, r
   const chosen = state.contacts.filter(c => c.kind === 'person' && selected.has(c.id));
   const chosenRows = chosen.length ? chosen.map((c, index) => `<div class="ai-analysis-picked-row">${contactPickerAvatar(c, index)}<span>${contactName(c)}</span></div>`).join('') : '<p class="ai-analysis-choose-hint">尚未选择联系人</p>';
   const rangeButtons = [['all','全部'],['day','近一天'],['week','近一周'],['month','近一月'],['custom','自定义']].map(([id,label]) => `<button type="button" data-ai-analysis-range="${id}" aria-pressed="${rangeMode === id}">${label}</button>`).join('');
-  return `<header class="ai-analysis-mobile-page-title"><span>栖盒 AI</span><h2>分析报告</h2><p>选择联系人、分析方向与时间范围，生成聊天回顾。</p></header>
-  <form id="ai-analysis-form" class="ai-analysis-setup">
-    <section class="ai-analysis-selection ai-contact-picker" aria-label="分析对象">
-      <div class="ai-analysis-section-title"><div><span class="ai-analysis-eyebrow">01 / 分析对象</span><h4>联系人</h4></div><small id="ai-analysis-count" aria-label="已选择人数">${selected.size}</small></div>
+  return `<form id="ai-analysis-form" class="ai-analysis-setup qbx-workspace">
+    <section class="ai-analysis-selection ai-contact-picker qbx-surface" aria-label="分析对象">
+      <div class="ai-analysis-section-title qbx-section-heading"><h4>联系人</h4><small id="ai-analysis-count" aria-label="已选择人数">${selected.size}</small></div>
       <button type="button" class="secondary ai-analysis-add" data-ai-analysis-pick>${icon('users')}<span>添加联系人</span></button>
       <div id="ai-analysis-contacts" class="ai-analysis-picked-list" aria-live="polite">${chosenRows}${(draft.contacts || []).map(id => `<input type="hidden" name="contacts" value="${esc(id)}">`).join('')}</div>
     </section>
-    <section class="ai-analysis-request">
-      <div class="ai-analysis-intro"><span class="ai-analysis-eyebrow">02 / 设置分析</span><h4>创建分析报告</h4><p>选一个分析方向，或写下你关心的问题。</p></div>
+    <section class="ai-analysis-request qbx-surface">
+      <div class="ai-analysis-intro qbx-section-heading"><h4>创建报告</h4><p>选择分析方向，或写下你关心的问题。</p></div>
       <div class="ai-analysis-main-fields">
         <div class="ai-analysis-request-fields"><div class="ai-analysis-directions"><strong>分析方向</strong><div class="ai-analysis-presets" role="group" aria-label="分析方向快捷输入">${presetChips(draft.request)}</div></div><label class="ai-analysis-field-label" for="ai-analysis-request-text">分析要求 <small>选填，可继续修改</small></label><div class="ai-analysis-composer"><textarea id="ai-analysis-request-text" name="request" maxlength="1000" rows="3" placeholder="例如：总结重要约定与尚未完成的事项">${esc(draft.request)}</textarea><div class="ai-analysis-composer-foot"><span>仅依据实际可读的聊天内容</span><span id="ai-analysis-request-count">${String(draft.request || '').length}/1000</span></div></div></div>
         <div class="ai-analysis-time-entry"><strong>时间范围</strong><p>默认分析全部可用记录，也可指定日期。</p><div class="ai-analysis-time-controls"><div class="ai-reference-analysis-ranges">${rangeButtons}</div><div class="ai-date-range" data-range-scope="analysis"><input type="hidden" name="from" value="${esc(draft.from)}"><input type="hidden" name="to" value="${esc(draft.to)}">${rangeMode === 'custom' ? `<button type="button" class="quiet ai-analysis-custom-date" aria-label="选择自定义日期" data-ai-date-range="analysis">${icon('clock')}<span>${draft.from && draft.to ? `${esc(draft.from)} 至 ${esc(draft.to)}` : '选择日期'}</span></button>` : ''}</div></div></div>

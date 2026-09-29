@@ -323,14 +323,14 @@ try {
   assert.equal(await page.locator('#ai-rail').isVisible(), false, 'the desktop rail stays hidden after AI settings open');
   assert.equal(await page.locator('.ai-entry-loading').count(), 0, 'loading art disappears as soon as settings render');
   assert.equal(await page.locator('#ai-panel .ai-panel-heading').isVisible(), false, 'the redundant mobile heading is removed');
-  assert.equal(await page.locator('#ai-mobile-back').innerText(), '返回上一级', 'mobile back label names its navigation action');
+  assert.equal(await page.locator('#ai-mobile-back').getAttribute('aria-label'), '返回上一级', 'icon-only mobile back keeps an accessible name');
   const backFits = await page.locator('#ai-mobile-back').evaluate(button => {
-    const text = button.querySelector('span').getBoundingClientRect(), edge = button.getBoundingClientRect();
-    return text.right <= edge.right - 10 && edge.right <= innerWidth;
+    const icon = button.querySelector('svg').getBoundingClientRect(), edge = button.getBoundingClientRect();
+    return edge.width >= 44 && icon.left >= edge.left && icon.right <= edge.right && edge.right <= innerWidth;
   });
-  assert.equal(backFits, true, 'mobile back text and icon fit inside their button');
+  assert.equal(backFits, true, 'mobile back icon fits inside a 44px touch target');
   await page.setViewportSize({ width: 320, height: 700 });
-  assert.equal(await page.locator('#ai-mobile-back').evaluate(button => button.querySelector('span').getBoundingClientRect().right <= button.getBoundingClientRect().right - 10), true, 'back text also fits at 320px');
+  assert.equal(await page.locator('#ai-mobile-back').evaluate(button => button.getBoundingClientRect().right <= innerWidth), true, 'back button fits at 320px');
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator('#ai-panel .ai-main-tabs [data-ai-nav="settings"]').click();
   assert.equal(await page.locator('#ai-title').textContent(), '系统设置', 'entry opens the usable AI settings workspace');

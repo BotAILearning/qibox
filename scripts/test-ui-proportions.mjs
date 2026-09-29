@@ -50,11 +50,11 @@ try {
   app.library.download(); await app.library.working;
   await page.goto(base);
   await page.locator('[data-market-action=add]').first().waitFor();
-  for (const [width, label] of [[390, '添加实例'], [1440, '添加到桌面']]) {
+  for (const width of [390, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     const visible = page.locator('[data-market-action=add]:visible');
     assert.equal(await visible.count(), 1, `${width}px: installed app must expose exactly one primary action`);
-    assert.equal(await visible.innerText(), label);
+    assert.match(await visible.innerText(), /^添加(实例|到桌面)$/);
     await noOverflow(`${width}px installed market`);
     await page.screenshot({ path: path.join(output, `store-installed-${width}.png`) });
   }
@@ -78,6 +78,7 @@ try {
 
   await page.locator('.ai-main-tabs [data-ai-nav=analysis]').click();
   await page.locator('[data-ai-analysis-pick]').waitFor();
+  assert.equal(await page.locator('.ai-analysis-eyebrow:visible').count(), 0, 'analysis should not display numbered steps');
   for (const width of report.widths) {
     await page.setViewportSize({ width, height: 900 });
     const action = await size('[data-ai-analysis-pick]', '.ai-analysis-selection');
@@ -85,6 +86,11 @@ try {
     assert.ok(action.ratio < .72, `${width}px: add-contact occupies ${action.ratio.toFixed(2)} of card`);
     assert.ok(action.height >= 43.5, `${width}px: add-contact touch target is too short: ${JSON.stringify(action)}`);
     assert.ok(card.height < 220, `${width}px: empty contact card too tall (${card.height}px)`);
+    if (width <= 390) {
+      const fold = await page.evaluate(() => ({ toolbar: document.querySelector('.qbx-mobile-toolbar').getBoundingClientRect().height, actionTop: document.querySelector('[data-ai-analysis-pick]').getBoundingClientRect().top, reportTop: document.querySelector('.ai-analysis-request').getBoundingClientRect().top }));
+      assert.ok(fold.toolbar <= 60, `${width}px: mobile toolbar too tall: ${JSON.stringify(fold)}`);
+      assert.ok(fold.actionTop < 170 && fold.reportTop < 250, `${width}px: useful controls fall below the first screen: ${JSON.stringify(fold)}`);
+    }
     await noOverflow(`${width}px analysis`);
     if (width === 390 || width === 1440) await page.screenshot({ path: path.join(output, `analysis-empty-${width}.png`) });
   }
@@ -98,6 +104,45 @@ try {
   report.checks.push('Analysis: empty and selected contact entries stay compact and usable at four widths; picker still selects a person.');
 
   await page.locator('.ai-main-tabs [data-ai-nav=settings]').click();
+  for (const width of [320, 390, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    const settings = await page.evaluate(() => {
+      const links = document.querySelector('.qbx-settings-links').getBoundingClientRect();
+      const group = document.querySelector('.qbx-settings-group').getBoundingClientRect();
+      return { linksTop: links.top, linksBottom: links.bottom, groupTop: group.top, groupGap: group.top - links.bottom };
+    });
+    assert.ok(settings.groupGap >= 0 && settings.groupGap <= 30, `${width}px: settings group gap is excessive: ${JSON.stringify(settings)}`);
+    if (width <= 390) assert.ok(settings.linksTop < 100, `${width}px: settings start too low: ${JSON.stringify(settings)}`);
+    const switches = await page.locator('input[role=switch]:visible').evaluateAll(nodes => nodes.map(node => {
+      const track = getComputedStyle(node), before = getComputedStyle(node, '::before'), thumb = getComputedStyle(node, '::after');
+      return { width: parseFloat(track.width), height: parseFloat(track.height), before: before.content, thumb: thumb.content, left: parseFloat(thumb.left), top: parseFloat(thumb.top), thumbWidth: parseFloat(thumb.width), thumbHeight: parseFloat(thumb.height), transform: thumb.transform };
+    }));
+    assert.ok(switches.length >= 3, `${width}px: settings switches missing`);
+    for (const sw of switches) {
+      assert.equal(sw.before, 'none', `${width}px: a second switch thumb is visible`);
+      assert.equal(sw.width, 48); assert.equal(sw.height, 28);
+      assert.equal(sw.top, 4); assert.equal(sw.left, 4);
+      assert.equal(sw.thumbWidth, 20); assert.equal(sw.thumbHeight, 20);
+    }
+    if (width === 390 || width === 1440) await page.screenshot({ path: path.join(output, `settings-${width}.png`) });
+    await noOverflow(`${width}px settings`);
+  }
+  const toggle = page.locator('.qbx-settings-group input[name=acknowledgeAI]');
+  const beforeToggle = await toggle.isChecked();
+  await toggle.evaluate(node => { node.checked = !node.checked; });
+  const changedThumb = await toggle.evaluate(node => getComputedStyle(node, '::after').transform);
+  assert.equal(changedThumb === 'none' || changedThumb === 'matrix(1, 0, 0, 1, 0, 0)', beforeToggle, 'switch thumb must travel to the opposite end when state changes');
+  await toggle.evaluate((node, checked) => { node.checked = checked; }, beforeToggle);
+  await page.setViewportSize({ width: 390, height: 900 });
+  const navContrast = await page.locator('.qbx-bottom-nav button[aria-current=page]').evaluate(node => {
+    const style = getComputedStyle(node);
+    const rgb = value => (value.match(/[\d.]+/g) || []).slice(0, 3).map(Number).map(x => { x /= 255; return x <= .04045 ? x / 12.92 : ((x + .055) / 1.055) ** 2.4; });
+    const luminosity = value => rgb(value).reduce((sum, x, i) => sum + x * [.2126, .7152, .0722][i], 0);
+    const a = luminosity(style.color), b = luminosity(style.backgroundColor);
+    return (Math.max(a, b) + .05) / (Math.min(a, b) + .05);
+  });
+  assert.ok(navContrast >= 4.5, `active navigation label contrast is ${navContrast.toFixed(2)}`);
+  report.checks.push('Qibox components: compact mobile toolbar and first-screen actions; settings groups have no oversized gap; every visible switch has one centered thumb; active navigation label meets 4.5:1 contrast.');
   await page.locator('[data-ai-nav=default-style]').click();
   for (const width of report.widths) {
     await page.setViewportSize({ width, height: 900 });

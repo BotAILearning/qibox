@@ -252,6 +252,7 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
       files['/ai-workspace.css'] = ['ai-workspace.css', 'text/css'];
       files['/ui-foundation.css'] = ['ui-foundation.css', 'text/css'];
       files['/qiapp-product.css'] = ['qiapp-product.css', 'text/css'];
+      files['/qibox-components.css'] = ['qibox-components.css', 'text/css'];
       for (const stylesheet of ['styles', 'tokens', 'brands', 'base', 'components', 'ai']) {
         files[`/vendor/qiapp-ui/${stylesheet}.css`] = [`vendor/qiapp-ui/${stylesheet}.css`, 'text/css'];
       }
