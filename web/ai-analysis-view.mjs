@@ -42,12 +42,11 @@ function countLabel(report, includeRange = true) {
   const range = includeRange && report.actualRange ? ` · ${reportDate(report.actualRange)}` : '';
   if (report.mediaCoverage) return `本次使用 ${report.analyzedCount ?? report.count} 条记录，内容已解析 ${report.contentParsedCount ?? 0} 条${range}`;
   if (Number.isInteger(report.analyzedChars)) {
-    const total = Number.isInteger(report.totalChars) ? report.totalChars : report.analyzedChars;
-    return `实际分析 ${report.analyzedCount ?? report.count} 条、${report.analyzedChars} 字（所读 ${report.readableCount ?? report.count} 条、${total} 字）${range}`;
+    return `本次分析 ${report.analyzedCount ?? report.count} 条（已读取 ${report.readableCount ?? report.count} 条）${range}`;
   }
   if (Number.isInteger(report.sampledCount) && report.sampledCount < report.count) {
     const sampleRange = report.sampledRange?.from && report.sampledRange?.to ? `，覆盖 ${reportDate(report.sampledRange)}` : '';
-    return `范围内共 ${report.rangeCount ?? report.count} 条记录（${report.count} 条可读），按记录顺序均匀抽样 ${report.sampledCount} 条${sampleRange}${range}`;
+    return `范围内共 ${report.rangeCount ?? report.count} 条记录（${report.count} 条可读），本次分析 ${report.sampledCount} 条${sampleRange}${range}`;
   }
   return report.rangeCount > report.count + (report.skipped || 0) ? `本次分析 ${report.count} 条（范围内共 ${report.rangeCount} 条）${range}` : `${report.count} 条范围内聊天记录${range}`;
 }
@@ -83,17 +82,18 @@ function coverageNotices(report) {
     const labels = { voice: '语音', image: '图片', video: '视频' };
     for (const [type, label] of Object.entries(labels)) {
       const row = report.mediaCoverage[type];
-      if (!row?.selected) continue;
-      notices.push(`${label} ${row.total} 条：成功解析 ${row.analyzed}、跳过 ${row.skipped + row.limited}${row.limited ? `（其中 ${row.limited} 条超出本次处理上限）` : ''}。`);
+      if (!row?.selected || !row.total) continue;
+      const unit = type === 'image' ? '张' : type === 'video' ? '段' : '条';
+      notices.push(`${label}：已分析 ${row.analyzed} ${unit}${row.skipped + row.limited ? `，跳过 ${row.skipped + row.limited} ${unit}` : ''}${row.limited ? `（其中 ${row.limited} ${unit}超出本次上限）` : ''}。`);
     }
   }
-  if (reasons.has('message_limit')) notices.push('微信聊天读取已达到记录数量上限；统计仅覆盖已读取记录，未读取的历史不计入。');
-  if (reasons.has('analysis_sample')) notices.push(`受单次请求容量限制，本次按记录顺序均匀抽样 ${report.sampledCount ?? 0} 条；统计覆盖已读取的可读记录。`);
-  if (reasons.has('character_limit')) notices.push(`所选范围超过 150000 个 Unicode 字符，本次保留最近内容；报告只描述实际分析的 ${report.analyzedChars ?? 0} 字，不代表未提供的历史。`);
-  if (reasons.has('source_read_truncated')) notices.push('微信数据读取本身未覆盖完整范围；报告仅依据成功读取的聊天记录。');
-  if (reasons.has('message_length')) notices.push('部分超长消息只保留了可安全读取的文字片段。');
-  if (reasons.has('message_output_limit')) notices.push('读取输出达到安全容量，报告只覆盖读取到的部分。');
-  if (!notices.length && report.truncated) notices.push('部分记录未完整纳入，统计仅覆盖已读取的可读记录。');
+  if (reasons.has('message_limit')) notices.push('部分较早的聊天未读取，统计仅包含已读取的记录。');
+  if (reasons.has('analysis_sample') && !(Number.isInteger(report.sampledCount) && report.sampledCount < report.count)) notices.push('部分聊天未纳入分析。');
+  if (reasons.has('character_limit')) notices.push('聊天内容较多，本次只分析了较近的内容。');
+  if (reasons.has('source_read_truncated')) notices.push('部分聊天未能读取，报告仅依据已读取的记录。');
+  if (reasons.has('message_length')) notices.push('部分较长消息未完整纳入报告。');
+  if (reasons.has('message_output_limit')) notices.push('部分聊天未纳入报告。');
+  if (!notices.length && report.truncated && !reasons.has('analysis_sample')) notices.push('部分记录未完整纳入，统计仅覆盖已读取的可读记录。');
   return notices.map(notice => `<p role="alert" class="ai-help">${esc(notice)}</p>`).join('');
 }
 export function reportExportDialog(dialog) {
@@ -127,7 +127,7 @@ export function analysisPage(state, draft, result, search = '', report = null, r
         <div class="ai-analysis-request-fields"><div class="ai-analysis-directions"><strong>分析方向</strong><div class="ai-analysis-presets" role="group" aria-label="分析方向快捷输入">${presetChips(draft.request)}</div></div><label class="ai-analysis-field-label" for="ai-analysis-request-text">分析要求 <small>选填，可继续修改</small></label><div class="ai-analysis-composer"><textarea id="ai-analysis-request-text" name="request" maxlength="1000" rows="3" placeholder="例如：总结重要约定与尚未完成的事项">${esc(draft.request)}</textarea><div class="ai-analysis-composer-foot"><span>仅依据实际可读的聊天内容</span><span id="ai-analysis-request-count">${String(draft.request || '').length}/1000</span></div></div></div>
         <div class="ai-analysis-time-entry"><strong>时间范围</strong><p>默认分析全部可用记录，也可指定日期。</p><div class="ai-analysis-time-controls"><div class="ai-reference-analysis-ranges">${rangeButtons}</div><div class="ai-date-range" data-range-scope="analysis"><input type="hidden" name="from" value="${esc(draft.from)}"><input type="hidden" name="to" value="${esc(draft.to)}">${rangeMode === 'custom' ? `<button type="button" class="quiet ai-analysis-custom-date" aria-label="选择自定义日期" data-ai-date-range="analysis">${icon('clock')}<span>${draft.from && draft.to ? `${esc(draft.from)} 至 ${esc(draft.to)}` : '选择日期'}</span></button>` : ''}</div></div></div>
       </div>
-      <fieldset class="ai-analysis-media"><legend>加入分析的内容</legend><label><input type="checkbox" name="includeVoice" ${draft.includeVoice ? 'checked' : ''}><span><strong>分析语音</strong><small>使用本地微信转文字，会打开相应聊天；语音较多时需要更长时间。</small></span></label><label><input type="checkbox" name="includeVisual" ${draft.includeVisual ? 'checked' : ''}><span><strong>分析图片和视频</strong><small>本地读取图片、视频抽帧；需要模型支持图片输入，可能增加费用。</small></span></label></fieldset>
+      <fieldset class="ai-analysis-media"><legend>加入分析的内容</legend><label><input type="checkbox" name="includeVoice" ${draft.includeVoice ? 'checked' : ''}><span><strong>分析语音</strong><small>语音较多时需要更长时间。</small></span></label><label><input type="checkbox" name="includeVisual" ${draft.includeVisual ? 'checked' : ''}><span><strong>分析图片和视频</strong><small>需要模型支持图片输入，可能增加费用。</small></span></label></fieldset>
       <div class="ai-analysis-submit-row"><span>已选 ${selected.size} 位联系人 · 逐位生成独立报告</span><button type="submit" class="primary ai-analysis-submit" aria-label="开始分析" ${selected.size ? '' : 'disabled'}>${icon('sparkle')}<span>开始分析 · ${selected.size} 位</span></button></div>
     </section>
   </form>

@@ -61,7 +61,7 @@ export async function analyzeContacts(assistant, value) {
   const targets = options.contacts.map(id => a.contacts.get(id));
   if (!a.available && !a.contacts.size) throw new AppError('聊天数据暂不可用，请稍后重试', 409, 'ai_data_unavailable');
   if (targets.some(c => !c || c.kind !== 'person')) throw new AppError('联系人已变化，请刷新后重新选择');
-  if (!a.bridge.readRange) throw new AppError('当前微信数据接口不支持按时间分析');
+  if (!a.bridge.readRange) throw new AppError('当前连接暂不支持按时间分析');
   a.invalidate();
   const controller = new AbortController(); a.analysisController = controller;
   const revision = a.revision, signal = AbortSignal.any([a.controller.signal, controller.signal]), account = a.data.account;

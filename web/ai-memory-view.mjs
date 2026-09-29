@@ -28,7 +28,7 @@ function coverageText(value) {
   const date = stamp => Number.isSafeInteger(stamp) ? new Date(stamp * 1000).toLocaleDateString('zh-CN') : '';
   const range = value.from || value.to ? `，记录时间 ${date(value.from) || '未知'} 至 ${date(value.to) || '未知'}` : '';
   const cut = value.truncated || value.sourceTruncated ? '（范围已截断，只分析实际提供内容）' : '（所选范围完整）';
-  return `实际覆盖 ${value.includedMessages ?? 0} 条、${value.includedChars ?? 0} 个 Unicode 字符${range}${cut}`;
+  return `本次参考 ${value.includedMessages ?? 0} 条聊天记录${range}${cut}`;
 }
 // A memory run parks its result here instead of writing over what the user has.
 // Replacing and merging are both explicit, and a merge result still has to be

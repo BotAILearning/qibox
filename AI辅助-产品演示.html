@@ -522,7 +522,7 @@ function renderReply(){
             ${optRow('atAll','@所有人时回复','群成员 @所有人 时回复', obj.atAll, false)}
             ${optRow('realtime','AI 实时回复','持续分析群消息，按需发言', obj.realtime, false, 'confirm')}
           </div>
-          <p class="field-hint" style="margin-top:9px">实时回复会持续分析群聊消息，消息较多时增加 Token 用量，频繁自动发言存在账号风险，开启前需二次确认。</p>
+          <p class="field-hint" style="margin-top:9px">消息较多时可能增加费用；频繁自动发言可能导致账号受限。</p>
         ` : `
           <div class="optrow">
             <div class="tx"><b>自动回复</b><small>收到新消息时，按照下方风格和要求回复</small></div>
@@ -644,7 +644,7 @@ function openRealtimeConfirm(){
     <div class="modal" role="dialog" aria-modal="true">
       <div class="modal-head"><h2>开启群聊实时回复？</h2><button class="x"><svg class="ic"><use href="#i-x" xlink:href="#i-x"/></svg></button></div>
       <div class="modal-body">
-        <div class="alertbox"><svg class="ic"><use href="#i-alert" xlink:href="#i-alert"/></svg><span>AI 将持续分析群聊消息。消息较多时会增加 Token 用量和费用，频繁自动发言也存在账号风险，请确认是否开启。</span></div>
+        <div class="alertbox"><svg class="ic"><use href="#i-alert" xlink:href="#i-alert"/></svg><span>开启后，AI 会根据群聊消息自动回复。消息较多时可能增加费用；频繁自动发言可能导致账号受限。</span></div>
         <div class="checkline"><input type="checkbox" id="rtAgree"><span>我已了解上述风险，确认开启该群聊的实时回复</span></div>
       </div>
       <div class="modal-foot">

@@ -278,7 +278,8 @@ test('memory learning trims the oldest text to 150000 codepoints and marks cover
   assert.equal(call.input.coverage.includedChars, 150000);
   assert.equal(call.input.coverage.truncated, true);
   assert.equal(Array.from(call.input.material[0].text).length, 150000);
-  assert.match(f.a.notice, /150000 个 Unicode 字符/);
+  assert.match(f.a.notice, /聊天记忆学习完成，请确认后应用/);
+  assert.doesNotMatch(f.a.notice, /Unicode|150000/);
 });
 
 test('applying replaces the memory, discarding leaves it alone and merging asks the model once more', async t => {

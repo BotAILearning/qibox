@@ -32,7 +32,7 @@ test('单份 Word 保留报告、范围、覆盖提示，排除原始聊天', as
   assert.match(body, /资料交接已经确定/);
   assert.match(body, /2026-09-01 至 2026-09-20/);
   assert.match(body, /2026-09-03 至 2026-09-18/);
-  assert.match(body, /微信数据读取未覆盖完整范围/);
+  assert.match(body, /部分聊天未能读取，报告仅依据已读取的记录/);
   assert.doesNotMatch(body, /不允许导出的原始聊天/);
 });
 

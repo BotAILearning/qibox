@@ -30,15 +30,19 @@ function linesFor(report) {
   if (Number.isInteger(report.skipped) && report.skipped > 0) lines.push({ text: `已跳过 ${report.skipped} 条无法解析的记录。`, kind: 'note' });
   for (const [type, name] of [['voice', '语音'], ['image', '图片'], ['video', '视频']]) {
     const item = report.mediaCoverage?.[type];
-    if (item?.selected) lines.push({ text: `${name} ${item.total} 条：解析 ${item.analyzed}，跳过 ${(item.skipped || 0) + (item.limited || 0)}。`, kind: 'note' });
+    if (item?.selected && item.total) {
+      const unit = type === 'image' ? '张' : type === 'video' ? '段' : '条';
+      const skipped = (item.skipped || 0) + (item.limited || 0);
+      lines.push({ text: `${name}：已分析 ${item.analyzed} ${unit}${skipped ? `，跳过 ${skipped} ${unit}` : ''}。`, kind: 'note' });
+    }
   }
   const reasons = new Set(report.truncatedReasons || []);
-  if (reasons.has('message_limit')) lines.push({ text: '微信聊天读取达到记录数量上限，未读取的历史不计入统计。', kind: 'warning' });
-  if (reasons.has('analysis_sample')) lines.push({ text: `本次按记录顺序抽样 ${report.sampledCount ?? 0} 条，报告不代表未提供的记录。`, kind: 'warning' });
-  if (reasons.has('character_limit')) lines.push({ text: '所选范围超过单次分析容量，本次保留最近内容，报告不代表未提供的历史。', kind: 'warning' });
-  if (reasons.has('source_read_truncated')) lines.push({ text: '微信数据读取未覆盖完整范围，报告仅依据成功读取的聊天记录。', kind: 'warning' });
-  if (reasons.has('message_length')) lines.push({ text: '部分超长消息只保留了可安全读取的文字片段。', kind: 'warning' });
-  if (reasons.has('message_output_limit')) lines.push({ text: '读取输出达到安全容量，报告只覆盖读取到的部分。', kind: 'warning' });
+  if (reasons.has('message_limit')) lines.push({ text: '部分较早的聊天未读取，统计仅包含已读取的记录。', kind: 'warning' });
+  if (reasons.has('analysis_sample')) lines.push({ text: `本次分析 ${report.sampledCount ?? 0} 条已读取的聊天记录。`, kind: 'warning' });
+  if (reasons.has('character_limit')) lines.push({ text: '聊天内容较多，本次只分析了较近的内容。', kind: 'warning' });
+  if (reasons.has('source_read_truncated')) lines.push({ text: '部分聊天未能读取，报告仅依据已读取的记录。', kind: 'warning' });
+  if (reasons.has('message_length')) lines.push({ text: '部分较长消息未完整纳入报告。', kind: 'warning' });
+  if (reasons.has('message_output_limit')) lines.push({ text: '部分聊天未纳入报告。', kind: 'warning' });
   if (report.truncated && !reasons.size) lines.push({ text: '部分记录未完整纳入，统计仅覆盖已读取的可读记录。', kind: 'warning' });
   if (clean(report.request).trim()) lines.push({ text: '分析要求', kind: 'heading' }, { text: clean(report.request), kind: 'body' });
   lines.push({ text: '报告正文', kind: 'heading' });

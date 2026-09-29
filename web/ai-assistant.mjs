@@ -228,7 +228,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   function confirmRealtime() {
     return new Promise(resolve => {
       const dialog = document.createElement('dialog'); dialog.className = 'ai-confirm-dialog';
-      dialog.innerHTML = '<h3>开启 AI 实时回复？</h3><p>开启后，AI 将持续分析群聊消息，并根据聊天内容自动回复。群聊消息较多时，会消耗大量 Token，增加模型调用费用。</p><p>自动发言过于频繁存在账号被限制或封禁的风险，请谨慎开启。</p><form method="dialog" class="ai-actions"><button class="secondary" value="cancel">取消</button><button class="primary" value="confirm">确认开启</button></form>';
+      dialog.innerHTML = '<h3>开启 AI 实时回复？</h3><p>开启后，AI 会根据群聊消息自动回复。消息较多时可能增加费用；自动发言过于频繁可能导致账号受限。</p><form method="dialog" class="ai-actions"><button class="secondary" value="cancel">取消</button><button class="primary" value="confirm">确认开启</button></form>';
       dialog.addEventListener('close', () => { const accepted = dialog.returnValue === 'confirm'; dialog.remove(); resolve(accepted); }, { once: true });
       document.body.append(dialog); dialog.showModal();
     });
@@ -296,9 +296,9 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   const needsContacts = () => !state.contacts?.length || state.avatarReady === false;
   const operationText = operation => {
     if (operation?.phase?.startsWith('analysis-')) {
-      const labels = { 'analysis-reading': '读取聊天记录', 'analysis-voice': '转写语音', 'analysis-image': '读取图片', 'analysis-video': '解析视频', 'analysis-vision': '理解图片和视频', 'analysis-model': '生成报告' };
+      const labels = { 'analysis-reading': '读取聊天记录', 'analysis-voice': '分析语音', 'analysis-image': '分析图片', 'analysis-video': '分析视频', 'analysis-vision': '分析图片和视频', 'analysis-model': '生成报告' };
       const elapsed = operation.startedAt ? Math.max(0, Math.floor((Date.now() - operation.startedAt) / 1000)) : 0;
-      return `正在${labels[operation.phase] || '分析'}${operation.total ? ` ${operation.completed}/${operation.total}，成功 ${operation.completed - (operation.skipped || 0)}，跳过 ${operation.skipped || 0}` : ''}${operation.attempt ? `；第 ${operation.attempt}/2 次尝试，已等待 ${elapsed} 秒` : ''}`;
+      return `正在${labels[operation.phase] || '分析'}${operation.total > 1 ? ` ${operation.completed}/${operation.total}` : ''}${operation.skipped ? `，跳过 ${operation.skipped}` : ''}${elapsed >= 10 ? `，已等待 ${elapsed} 秒` : ''}`;
     }
     return operation ? operation.phase === 'contacts' ? operation.total ? `正在获取联系人 ${operation.completed}/${operation.total}` : '正在读取通讯录…' : operation.phase === 'memory' ? `正在学习聊天记忆 ${operation.completed}/${operation.total} 批，请勿关闭页面` : operation.phase === 'model' ? `正在分析 ${operation.total} 位联系人的聊天风格…` : `正在读取聊天 ${operation.completed}/${operation.total}` : '';
   };

@@ -15,7 +15,7 @@ export function groupOptions(value, before = groupDefaults()) {
   for (const [key, setting] of Object.entries(value)) {
     if (key === 'realtimeMode' ? !['normal', 'proactive'].includes(setting) : !['atMe', 'atAll', 'realtime', 'confirmRealtime'].includes(key) || typeof setting !== 'boolean') throw new AppError('请检查群聊设置');
   }
-  if (value.realtime === true && !before.realtime && value.confirmRealtime !== true) throw new AppError('请先确认实时回复的 Token 消耗与账号风险');
+  if (value.realtime === true && !before.realtime && value.confirmRealtime !== true) throw new AppError('请先确认实时回复的费用与账号风险');
   return { ...Object.fromEntries(['atMe', 'atAll', 'realtime'].map(key => [key, value[key] ?? before[key]])), realtimeMode: value.realtimeMode ?? before.realtimeMode ?? 'normal' };
 }
 export function groupTrigger(message, options) {

@@ -49,17 +49,17 @@ test('队列状态逐联系人可见且联系人选择不限于十位', () => {
 test('旧历史报告仍能显示读取截断和抽样范围', () => {
   const report = { id: 'limited', label: '联系人', count: 30000, rangeCount: 30000, sampledCount: 200, truncated: true, truncatedReasons: ['message_limit', 'analysis_sample'], actualRange: { from: '2026-01-01', to: '2026-09-01' }, sampledRange: { from: '2026-01-02', to: '2026-08-30' }, createdAt: Date.now(), report: '范围有限的报告' };
   const html = analysisPage({ contacts: [], analysis: { history: [] } }, { contacts: [] }, null, '', report);
-  assert.match(html, /已达到记录数量上限/);
-  assert.match(html, /按记录顺序均匀抽样 200 条/);
-  assert.match(html, /未读取的历史不计入/);
+  assert.match(html, /部分较早的聊天未读取/);
+  assert.match(html, /本次分析 200 条/);
+  assert.match(html, /统计仅包含已读取的记录/);
 });
 
 test('历史列表和详情区分完整统计与均匀抽样范围，无法解析消息不冒充截取', () => {
   const report = { id: 'report', label: '33', count: 2409, rangeCount: 24554, sampledCount: 300, sampledRange: { from: '2026-01-01', to: '2026-09-01' }, skipped: 30, report: '测试报告', createdAt: Date.now() };
   const summary = historySummary(report);
   const state = { contacts: [], analysis: { history: [summary] } };
-  assert.match(analysisPage(state, { contacts: [] }, null), /范围内共 24554 条记录（2409 条可读），按记录顺序均匀抽样 300 条/);
-  assert.match(analysisPage(state, { contacts: [] }, null, '', report), /范围内共 24554 条记录（2409 条可读），按记录顺序均匀抽样 300 条/);
+  assert.match(analysisPage(state, { contacts: [] }, null), /范围内共 24554 条记录（2409 条可读），本次分析 300 条/);
+  assert.match(analysisPage(state, { contacts: [] }, null, '', report), /范围内共 24554 条记录（2409 条可读），本次分析 300 条/);
   const unreadableOnly = { ...report, count: 3, rangeCount: 5, skipped: 2 };
   const html = analysisPage(state, { contacts: [] }, null, '', unreadableOnly);
   assert.doesNotMatch(html, /本次分析最近/);

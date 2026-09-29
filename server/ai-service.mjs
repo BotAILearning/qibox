@@ -1200,7 +1200,7 @@ export class AIAssistant {
   async calendar({ contacts } = {}) {
     if (!this.available && !this.contacts.size) throw new AppError('聊天数据暂不可用，请稍后重试');
     if (!Array.isArray(contacts) || !contacts.length || contacts.length > 10 || new Set(contacts).size !== contacts.length || contacts.some(id => !this.contacts.has(id))) throw new AppError('请选择1–10位联系人');
-    if (!this.bridge.readDates) throw new AppError('当前数据接口无法获取可选日期');
+    if (!this.bridge.readDates) throw new AppError('当前连接无法获取可选日期');
     const account = this.data.account, signal = this.controller.signal, dates = new Set();
     for (const contact of contacts) {
       const result = await this.bridge.readDates({ account, contact, signal });
@@ -1261,7 +1261,7 @@ export class AIAssistant {
               const stable = await readStableRange(this.bridge, { account: this.data.account, contact: item.id, from: range.from, to: range.to, signal });
               material = stable.messages; materialTruncated = stable.truncated === true; learnTruncated ||= materialTruncated;
             } else {
-              if (target === 'memory' || scope === 'range' || from || to) throw new AppError('当前数据接口不支持读取全部聊天记录，请升级后重试');
+              if (target === 'memory' || scope === 'range' || from || to) throw new AppError('当前连接暂不支持读取全部聊天记录，请更新栖盒后重试');
               const snapshot = await this.read(profile, signal);
               material = snapshot.messages; materialTruncated = snapshot.truncated === true; learnTruncated ||= materialTruncated;
             }
@@ -1401,7 +1401,7 @@ export class AIAssistant {
         }
         if (learningFailures.length) { for (const failure of learningFailures) this.event('error', failure.profileId, null, `${failure.label}：${failure.error}`); await this.save(); }
         if (!memorySuccesses) throw new AppError(learningFailures.map(failure => `${failure.label}：${failure.error}`).join('；') || '没有联系人成功完成记忆学习', learningFailures.length === 1 ? learningFailures[0].status || 400 : 400, learningFailures.length === 1 ? learningFailures[0].code : undefined);
-        this.notice = `${emptyMemoryResults ? `${emptyMemoryResults} 位联系人没有发现可保存的新记忆；` : ''}聊天记忆学习完成，请确认后应用（每人最多 ${memoryMaterialChars} 个 Unicode 字符）${truncatedResults ? `；${truncatedResults} 位联系人范围已截断，实际条数与字数见联系人范围标记` : ''}${learningFailures.length ? `；失败 ${learningFailures.map(failure => `${failure.label}：${failure.error}`).join('；')}` : ''}`;
+        this.notice = `${emptyMemoryResults ? `${emptyMemoryResults} 位联系人没有发现可保存的新记忆；` : ''}聊天记忆学习完成，请确认后应用${truncatedResults ? `；${truncatedResults} 位联系人仅分析了部分聊天，详情见联系人范围提示` : ''}${learningFailures.length ? `；失败 ${learningFailures.map(failure => `${failure.label}：${failure.error}`).join('；')}` : ''}`;
         return this.publicState();
       }
       this.operation = { phase: 'reading', total: items.length, completed: 0 };
