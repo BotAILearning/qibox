@@ -38,7 +38,7 @@ try{
   const createLayout=async(width,expectWrap=false)=>{
     await page.setViewportSize({width,height:960});
     assert.equal(await page.locator('#ai-analysis-form .ai-analysis-selection').count(),0,'联系人不能再独立占据左侧卡片');
-    assert.equal(await page.locator('#ai-analysis-form .ai-analysis-request .ai-analysis-create-heading [data-ai-analysis-pick]').count(),1,'添加联系人位于创建分析卡片标题栏内');
+    assert.equal(await page.locator('#ai-analysis-form .ai-analysis-request .ai-analysis-contact-entry [data-ai-analysis-pick]').count(),1,'添加联系人位于创建分析标题下方');
     const layout=await page.locator('#ai-analysis-form .ai-analysis-request').evaluate(card=>{
       const box=card.getBoundingClientRect(),contacts=card.querySelector('#ai-analysis-contacts');
       const nodes=[card,...card.querySelectorAll('.ai-analysis-create-heading,[data-ai-analysis-pick],#ai-analysis-contacts,.ai-analysis-picked-row,.ai-analysis-main-fields,.ai-analysis-time-entry,.ai-analysis-submit-row')];

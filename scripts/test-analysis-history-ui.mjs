@@ -121,15 +121,15 @@ try {
     const time = document.querySelector('.ai-analysis-time-entry')?.getBoundingClientRect();
     return {
       standaloneSelection: form.querySelectorAll('.ai-analysis-selection').length,
-      integratedPicker: form.querySelectorAll('.ai-analysis-request .ai-analysis-create-heading [data-ai-analysis-pick]').length,
+      integratedPicker: form.querySelectorAll('.ai-analysis-request .ai-analysis-contact-entry [data-ai-analysis-pick]').length,
       requestWidth: request?.width || 0,
-      timeStartsAfterRequest: (time?.x || 0) > (requestFields?.right || 0),
+      timeStartsAfterRequest: (time?.top || 0) >= (requestFields?.bottom || 0),
     };
   });
   assert.equal(desktopLayout.standaloneSelection, 0, '联系人选择不再单独占据左侧卡片');
-  assert.equal(desktopLayout.integratedPicker, 1, '添加联系人应在创建分析标题栏内');
+  assert.equal(desktopLayout.integratedPicker, 1, '添加联系人应在创建分析标题下方');
   assert.ok(desktopLayout.requestWidth >= 500, `分析要求区宽度过窄: ${desktopLayout.requestWidth}`);
-  assert.ok(desktopLayout.timeStartsAfterRequest, '时间范围应位于分析要求右侧');
+  assert.ok(desktopLayout.timeStartsAfterRequest, '时间范围应位于分析要求下方');
   assert.equal(await page.locator('.ai-analysis-presets button').count(), 8, 'request composer shows original directions and custom question');
   await screenshot('00-analysis-request');
   await page.locator('[data-ai-analysis-preset=review]').click();
@@ -147,7 +147,7 @@ try {
   await page.locator('.ai-calendar-dialog-analysis').waitFor({ state: 'detached' });
   await chooseContacts([]);
   await page.locator('[data-ai-analysis-range=all]').click();
-  report.checks.push('Desktop analysis integrates contact selection in the creation card and keeps time range beside the request');
+  report.checks.push('Desktop analysis integrates contact selection in the creation card and places time range below the request');
   const beforeFirst = await generate('总结具体约定');
   assert.equal(await page.locator('.ai-report-sections h4').first().textContent(), '数据开场');
   assert.equal(await page.locator('.ai-report-sections h4').nth(1).textContent(), '值得记住');
