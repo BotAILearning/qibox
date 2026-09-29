@@ -586,6 +586,13 @@ class Boundaries(unittest.TestCase):
         self.assertEqual(result['send'], 10)
         self.assertEqual(result['label'], '测试对象')
 
+    def test_selected_chat_in_folded_conversations_is_still_locatable(self):
+        nodes = chat_nodes()
+        nodes[2]['name'] = '折叠的聊天'
+        result = native.locate_nodes(nodes, 1)
+        self.assertEqual(result['conversation_list'], 3)
+        self.assertEqual(result['label'], '测试对象')
+
     def test_editor_name_is_never_an_identifier(self):
         nodes = chat_nodes()
         nodes[-2]['name'] = 'draft with arbitrary changing text'
