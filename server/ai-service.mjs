@@ -17,7 +17,7 @@ import { categories, styleOptions, avoidOptions, defaultStyle, styleSchema, styl
 import { providerPresets, goalPresets, replyPresets } from './ai-presets.mjs';
 import { unsupportedTextAction, promisesMedia } from './ai-capabilities.mjs';
 import { parseSchedule, advanceSchedule } from './ai-schedule.mjs';
-import { groupDefaults, groupOptions, groupReplyEnabled, groupBurst, groupPrompt, groupTimingState, groupRealtimeIntervalMs } from './ai-group.mjs';
+import { groupDefaults, groupOptions, groupReplyEnabled, groupBurst, groupPrompt, groupTimingState, groupRealtimeIntervalMs, groupRealtimeDelayMs } from './ai-group.mjs';
 import { ProactiveTasks } from './ai-proactive.mjs';
 import { historySummary, validReportId } from './ai-report-history.mjs';
 
@@ -2300,7 +2300,7 @@ export class AIAssistant {
         const mentionsExhausted = groupOptions && mentionLimit !== 'unlimited' && (profile.mentionRounds || 0) >= mentionLimit;
         const groupTriggers = groupOptions ? groupBurst(snapshot.messages, cursor, mentionsExhausted ? { ...groupOptions, atMe: false, atAll: false } : groupOptions, profile.groupBaselines) : null;
         // Verified @me is urgent; realtime-only traffic is coalesced for the configured interval.
-        if (profile.kind === 'group' && groupTriggers?.trigger === 'realtime' && this.now() - (cursor.pendingSince ?? cursor.changedAt) < groupRealtimeIntervalMs) continue;
+        if (profile.kind === 'group' && groupTriggers?.trigger === 'realtime' && this.now() - (cursor.pendingSince ?? cursor.changedAt) < groupRealtimeDelayMs(groupOptions)) continue;
         const mergeReady = profile.kind === 'group' ? this.now() - cursor.changedAt >= 3000 || this.now() - (cursor.pendingSince ?? cursor.changedAt) >= 8000 : this.now() - cursor.changedAt >= this.data.settings.replyDelay * 1000;
         if (profile.paused || !cursor.pending || !mergeReady || this.now() < this.manualWaitUntil(profile)) continue;
         if (profile.kind === 'group') {

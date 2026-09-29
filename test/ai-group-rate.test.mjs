@@ -72,6 +72,23 @@ test('realtime mode is saved and changes only the realtime prompt', async t => {
   assert.equal(a.replySelected(profile), false, '已保存的模式不能单独开启群聊回复');
 });
 
+test('proactive realtime evaluates a substantive group turn after 12 seconds while normal stays occasional', async t => {
+  const { a, bridge, profile, advance } = await fixture(t);
+  await a.setGroupOptions({ contact: profile.contact, realtimeMode: 'proactive' });
+  let calls = 0, system = '';
+  a.provider.complete = async (_config, prompt) => { calls++; system = prompt; return { action: 'send', text: '我也觉得可以这样试试' }; };
+  Object.assign(bridge.push(profile.contact, 'other', '大家讨论一个新的做法'), {
+    timestamp: Math.floor(a.now() / 1000), sender: key('member'),
+    mentions: { verified: true, self: false, all: false, others: false },
+  });
+  await a.tick(); advance(11999); await a.tick();
+  assert.equal(calls, 0);
+  advance(1); await a.tick();
+  assert.equal(calls, 1); assert.equal(bridge.sent.length, 1);
+  assert.match(system, /默认积极参与每轮有实质内容的新讨论/);
+  assert.match(groupPrompt('realtime', false, 'normal'), /偶尔参与即可/);
+});
+
 test('realtime coalesces new group messages for 60 seconds, then evaluates once', async t => {
   const { a, bridge, provider, profile, advance } = await fixture(t);
   await a.settings({ judgeReply: false });
@@ -98,7 +115,7 @@ test('realtime model skip stays valid and consumes only that evaluated group mes
   let calls=0,system='';a.provider.complete=async(config,prompt)=>{calls++;system=prompt;return {action:'skip'};};
   const msg=Object.assign(bridge.push(profile.contact,'other','普通群聊内容'),{timestamp:Math.floor(a.now()/1000),sender:key('member'),mentions:{verified:true,self:false,all:false,others:false}});
   await a.tick();advance(60000);await a.tick();
-  assert.equal(calls,1);assert.match(system,/可以skip/);assert.equal(bridge.sent.length,0);
+  assert.equal(calls,1);assert.match(system,/时skip/);assert.equal(bridge.sent.length,0);
   assert.equal(profile.handledIncomingId,msg.id);assert.ok(a.data.events.some(e=>e.code==='skip' && e.source==='model-skip'));
   assert.equal(profile.paused,false);
 });

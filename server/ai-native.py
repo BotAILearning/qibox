@@ -468,6 +468,7 @@ def main():
                 cleanup = adapter.close()
                 if request.get('action') in ('send', 'send-guard', 'prepare-send'):
                     result['draftCleanup'] = cleanup
+                    result['sendPressed'] = adapter.send_pressed
                     # A completed cleanup and no Send press prove this attempt
                     # never submitted a message. Let the caller retry it instead
                     # of consuming the incoming message as an unknown delivery.
@@ -480,6 +481,7 @@ def main():
                 result = {'status': 'uncertain'} if adapter.possibly_written else {'available': False, 'error': 'unsupported'}
                 if request.get('action') in ('send', 'send-guard', 'prepare-send'):
                     result['draftCleanup'] = 'blocked' if adapter.possibly_written else 'not-needed'
+                    result['sendPressed'] = adapter.send_pressed
     print(json.dumps(result, ensure_ascii=False), flush=True)
 
 

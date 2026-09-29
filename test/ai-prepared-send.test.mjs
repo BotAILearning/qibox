@@ -152,6 +152,22 @@ test('SIGTERM preserves the unique complete cleanup report without treating canc
   }
 });
 
+test('another chat interrupts a prepared send before Send is pressed and the cleaned draft remains retryable', async () => {
+  const value = controlledFixture({
+    onCommit: value => value.controller.abort(),
+    onKill: ({ child }) => queueMicrotask(() => {
+      child.stdout.write(JSON.stringify({ status: 'uncertain', sendPressed: false, draftCleanup: 'cleared',
+        diagnostic: { phase: 'native-prepare', code: 'cancelled' } }) + '\n');
+      child.emit('close', 0);
+    }),
+  });
+  assert.deepEqual(await preparedSend(value.bridge, { account: 'a', contact: 'b' }, '测试内容', value.context, async () => true),
+    { status: 'not-sent', diagnostic: { phase: 'native-prepare', code: 'cancelled' } });
+  assert.equal(value.context.delivery.started, true);
+  assert.equal(value.context.draftSafe, true);
+  assert.deepEqual(value.signals, ['SIGTERM']);
+});
+
 test('a late prepared message after cancellation never starts verification or sends commit', async () => {
   const value = controlledFixture({
     onPrepare: value => value.controller.abort(),

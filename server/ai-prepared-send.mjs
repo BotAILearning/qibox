@@ -74,6 +74,13 @@ export async function preparedSend(bridge, route, text, context, verify) {
       if (context.delivery.started) bridge.noteDraftResult(complete ? result : undefined, context);
       if (failure?.code === 'ai_account_changed') return reject(failure);
       if (context.signal?.aborted && !context.delivery.started) return resolve({ status: 'stale' });
+      // A normal SIGTERM can still produce a complete, authenticated cleanup
+      // report. If Send was never pressed and the owned draft is gone, retry is
+      // safe even though the parent already issued the commit instruction.
+      const definitelyUnsent = complete && result.sendPressed === false &&
+        ['cleared', 'not-needed'].includes(result.draftCleanup) &&
+        (['not-sent', 'uncertain'].includes(result.status) || result.error === 'unsupported' || result.error === 'cancelled');
+      if (definitelyUnsent) return resolve({ status: 'not-sent', ...(result.diagnostic ? { diagnostic: safeDiagnostic(result.diagnostic) } : {}) });
       if (!complete || killed) return resolve({ status: context.delivery.started ? 'uncertain' : 'not-sent' });
       if (result.error === 'account-changed') return reject(Object.assign(new Error('微信账号已变化'), { code: 'ai_account_changed' }));
       if (result.error) return resolve({ status: context.delivery.started ? 'uncertain' : 'not-sent', diagnostic: safeDiagnostic(result.diagnostic) });
