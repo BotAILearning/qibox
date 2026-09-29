@@ -263,9 +263,14 @@ class LiveMemory(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'hint scope changed'):
                 self.reader._apply_hint(wrong)
 
-    def test_expired_future_or_malformed_hint_cannot_trigger_fallback_scan(self):
+    def test_expired_hint_rediscovers_while_future_or_malformed_hints_fail(self):
         hint = self.reader.hint()
-        for issued in (hint['issuedAt'] - session.HINT_AGE_MS - 1, hint['issuedAt'] + 60000, True, '1'):
+        self.reader._apply_hint({**hint, 'issuedAt': hint['issuedAt'] - session.HINT_AGE_MS - 1})
+        self.assertIsNone(self.reader.manager)
+        self.reader._managers = Mock(return_value=int(hint['manager'], 16))
+        self.assertTrue(self.reader.matches(*self.identities()))
+        self.reader._managers.assert_called_once_with()
+        for issued in (hint['issuedAt'] + 60000, True, '1'):
             with self.assertRaisesRegex(ValueError, 'hint expired'):
                 self.reader._apply_hint({**hint, 'issuedAt': issued})
         for address in ('0x0', '0x10001', '0xffffffffffffffff', '1', 123):

@@ -189,8 +189,10 @@ def locate_nodes(nodes, app):
     frame = unique([node for node in nodes if node['role'] == 'frame' and node['name'] == '微信'
                     and node['parent'] == app and shown(node)], nodes)
     scope = descendants(nodes, frame['obj'])
+    # Opening a group from search can leave WeChat inside "折叠的聊天" while
+    # the selected chat and message pane are otherwise unchanged.
     conversations = unique([node for node in scope if node['role'] == 'list'
-                            and node['name'] == '会话' and shown(node)], nodes)
+                            and node['name'] in ('会话', '折叠的聊天') and shown(node)], nodes)
     messages = unique([node for node in scope if node['role'] == 'list'
                       and node['name'] == '消息' and shown(node)], nodes)
     mx, my, mw, mh = messages['bounds']
