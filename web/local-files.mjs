@@ -33,8 +33,12 @@ export function localFiles({ screen, input, panel, api, upload, download, openFo
       if (disposed || current !== request || controller !== transfer) return;
       current = null; controller = null; hide(); focus?.();
     } catch (error) {
-      if (current === request && controller === transfer) { controller = null; present(); }
-      if (!disposed && !transfer.signal.aborted && error.name !== 'AbortError') notify(error.message || '保存未完成，请重试');
+      const failed = !transfer.signal.aborted && error.name !== 'AbortError';
+      if (current === request && controller === transfer) {
+        if (request.operation === 'copy') await abort(request);
+        else { controller = null; present(); }
+      }
+      if (!disposed && failed) notify(error.message || (request.operation === 'copy' ? '复制图片失败，请重试' : '保存未完成，请重试'));
     } finally { choose.disabled = false; if (nas) nas.disabled = false; }
   };
   const open = () => {
@@ -61,7 +65,11 @@ export function localFiles({ screen, input, panel, api, upload, download, openFo
         const claimed = await call('claim', { id: result.request.id });
         if (disposed) { await call('cancel', { id: result.request.id }).catch(() => {}); return; }
         current = claimed.request;
-        if (current) { activeUntil = 0; present(); }
+        if (current) {
+          activeUntil = 0;
+          if (current.operation === 'copy') void exportWork((request, _name, signal) => exporter.clipboard(request, signal));
+          else present();
+        }
       }
     } catch { /* A brief disconnect must not trigger extra pickers or messages. */ }
     finally { checking = false; schedule(Date.now() < activeUntil ? 100 : 750); }
