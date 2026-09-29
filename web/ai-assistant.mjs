@@ -3,7 +3,7 @@ import { providerPage } from './ai-provider-view.mjs';
 import { icon, iconSprite, logoIcon } from './ai-icons.mjs';
 import { keyIcon } from './ai-key-icon.mjs';
 import { memoryFields, pendingMemoryFields, wikiEntryMarkup, sameWikiEntries, degreeOptions } from './ai-memory-view.mjs';
-import { objectPage, objectList } from './ai-object-view.mjs';
+import { objectPage, objectList, objectExecutionStatus } from './ai-object-view.mjs';
 import { replyLimitControl, syncReplyLimitControl, parseReplyLimit, replyLimitManualMax } from './ai-reply-limit.mjs';
 import { styleChoice, styleSummary as styleSummaryText } from './ai-style-view.mjs';
 import { learnedObjectDraft } from './ai-learning-draft.mjs';
@@ -331,6 +331,12 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   const reviewAlert = document.createElement('a'); reviewAlert.href = '#ai-review'; reviewAlert.className = 'ai-review-alert'; reviewAlert.hidden = true; rail.append(reviewAlert);
   reviewAlert.addEventListener('click', event => { event.preventDefault(); show(); void navigate('activity').catch(e => message(e.message, true)); });
   panel.addEventListener('click', event => {
+    const skipWait = event.target.closest('[data-ai-skip-reply-wait]');
+    if (skipWait) {
+      event.preventDefault();
+      void execute('skip-reply-wait', { id: skipWait.dataset.aiSkipReplyWait }, '已跳过等待，正在交给 AI 处理').catch(error => message(error.message, true));
+      return;
+    }
     const resume = event.target.closest('[data-ai-resume-profile]');
     if (resume) {
       event.preventDefault(); const p = state.profiles.find(p => p.id === resume.dataset.aiResumeProfile);
@@ -439,6 +445,10 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       readiness.textContent = needs.length ? needs.join('；') : '已完成准备，可以选择需要运行的功能';
     }
     proactiveUI.refresh();
+    if (tab === 'overview' && selectedObject) {
+      const execution = panel.querySelector('[data-ai-object-execution]');
+      if (execution?.dataset.aiObjectExecution === selectedObject) execution.innerHTML = objectExecutionStatus(state, selectedObject);
+    }
     if (tab === 'activity') {
       const liveBox = $('#ai-live-box'); if (liveBox) liveBox.innerHTML = liveActivityBox(state);
       const errBox = $('#ai-recent-errors'); if (errBox) errBox.innerHTML = recentErrorsBox(activityState(), logFilters.errorsOpen, errorLoading);

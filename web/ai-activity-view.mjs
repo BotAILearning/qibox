@@ -40,7 +40,7 @@ export function liveActivityBox(state) {
   if (!live.length) return '';
   return `<section class="ap-record-live"><header><h4>实时状态</h4></header><ul>${live.map(x => {
     const remaining = x.phase === 'generating' || !Number.isFinite(x.dueAt) ? '' : ` · 约 ${Math.max(1, Math.ceil((x.dueAt - Date.now()) / 1000))} 秒后发送`;
-    return `<li><i class="ai-live-dot ${esc(x.phase)}"></i><strong>${contactName(x)}</strong>${x.phase === 'generating' ? '：模型生成中…' : `：${esc(x.reason || '等待发送')}${remaining}`}</li>`;
+    return `<li><i class="ai-live-dot ${esc(x.phase)}"></i><strong>${contactName(x)}</strong>${x.phase === 'generating' ? `：${esc(x.reason || '请求 AI')}…` : `：${esc(x.reason || '等待发送')}${remaining}`}</li>`;
   }).join('')}</ul></section>`;
 }
 export function recentErrorsBox(state, open = false, loading = false) {

@@ -161,7 +161,7 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
             'clear-activity-errors': () => ai.clearActivityErrors(), 'error-records': () => ai.errorRecords(data.value || {}),
             'proactive-task': () => ai.proactiveTaskAction(data.value || {}),
             'proactive-records': () => ai.proactiveRecords(data.value || {}),
-            'open-conversation': () => ai.openConversation(data.id),
+            'open-conversation': () => ai.openConversation(data.id), 'skip-reply-wait': () => ai.skipReplyWait(data.id),
             memory: () => ai.editMemory(data.id, data.value),
             'contact-memory': () => ai.editContactMemory(data.value?.contact, data.value),
             'memory-apply': () => ai.applyPendingMemory(data.id), 'memory-merge': () => ai.mergePendingMemory(data.id), 'memory-discard': () => ai.discardPendingMemory(data.id),

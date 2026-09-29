@@ -134,7 +134,7 @@ export class AIAssistant {
     this.file = path.join(dataRoot, 'ai-assistant.json'); this.vault = new SecretStore(dataRoot);
     this.bridge = bridge; this.ready = ready; this.provider = provider; this.now = now; this.interval = interval; this.delay = delay; this.random = random;
     this.revision = 0; this.writes = Promise.resolve(); this.actions = Promise.resolve(); this.controller = new AbortController();
-    this.contacts = new Map(); this.avatarUrls = new Map(); this.avatarReady = false; this.cursors = new Map(); this.followUps = new Map(); this.manualHolds = new Map(); this.available = false; this.notice = ''; this.closed = false; this.operation = null; this.generatingProfile = null; this.manualActivityWindow = 300000; this.sendBlockedUntil = 0;
+    this.contacts = new Map(); this.avatarUrls = new Map(); this.avatarReady = false; this.cursors = new Map(); this.followUps = new Map(); this.manualHolds = new Map(); this.generatingProfiles = new Map(); this.skipReplyWaits = new Set(); this.available = false; this.notice = ''; this.closed = false; this.operation = null; this.manualActivityWindow = 300000; this.sendBlockedUntil = 0;
     // 会话表索引的比对基线：id → 该会话上次被读到的「未读 / 最后一条消息序号 / 排序时间」。
     // 它只决定「这一拍读谁」，不参与任何判断结论，所以只留在内存里；重启后按最新
     // 会话表重建一次基线即可，不写进任何持久化数据。
@@ -310,7 +310,7 @@ export class AIAssistant {
     const snapshot = structuredClone(this.data); const operation = this.writes.then(() => atomicJson(this.file, snapshot)); this.writes = operation.catch(() => {}); return operation;
   }
   exclusive(action) { const task = this.actions.then(action); this.actions = task.catch(() => {}); return task; }
-  invalidate() { this.revision++; this.controller.abort(); this.controller = new AbortController(); this.followUps.clear(); this.scanOperation = null; }
+  invalidate() { this.revision++; this.controller.abort(); this.controller = new AbortController(); this.followUps.clear(); this.skipReplyWaits.clear(); this.scanOperation = null; }
   forgetContext({ preserveCursors = false } = {}) { if (!preserveCursors || !this.bridge.stableMessageIds) this.cursors.clear(); this.followUps.clear(); this.bridge.clearContext?.(); }
   readSkipSnapshot(row) {
     if (!row?.incomingSnapshot) return null;
@@ -484,6 +484,7 @@ export class AIAssistant {
   // 手动接续等待独立于暂停：第一条新来信才计时，同轮连续来信不延长。
   observeManual(profile, message) {
     if (!message || (profile.generatedIds || []).includes(message.id) || profile.lastManualId === message.id) return;
+    this.skipReplyWaits.delete(profile.id);
     profile.lastManualId = message.id;
     profile.lastManualAt = this.now();
     this.followUps.delete(profile.id);
@@ -888,18 +889,21 @@ export class AIAssistant {
   }
   liveStates() {
     const live = [];
-    if (this.generatingProfile) live.push({ ...this.generatingProfile, phase: 'generating', reason: '模型生成中' });
+    for (const generating of this.generatingProfiles.values()) live.push({ ...generating, phase: 'generating', reason: '请求 AI' });
     const now = this.now(), settings = this.data.settings;
     for (const [id, cursor] of this.cursors) {
       const profile = this.data.profiles[id];
       if (!profile || !cursor?.pending || profile.paused) continue;
       if (!(settings.reply && this.replySelected(profile)) && !this.continuing(profile)) continue;
+      if (this.generatingProfiles.has(id)) continue;
+      if (this.skipReplyWaits.has(id)) { live.push({ id, ...this.nameFields(profile), kind: profile.kind, phase: 'generating', reason: '请求 AI' }); continue; }
       const manualDue = this.manualWaitUntil(profile);
       if (manualDue > now) {
         live.push({ id, ...this.nameFields(profile), kind: profile.kind, phase: 'waiting', ...(Number.isFinite(manualDue) ? { dueAt: manualDue } : {}), reason: Number.isFinite(manualDue) ? '手动回复后的接续等待' : '手动回复后不再自动接续' });
         continue;
       }
-      const dueAt = profile.kind === 'group' ? Math.min(cursor.changedAt + 3000, (cursor.pendingSince ?? cursor.changedAt) + 8000) : cursor.changedAt + settings.replyDelay * 1000;
+      if (profile.groupWait?.dueAt > now) continue;
+      const dueAt = profile.kind === 'group' ? Math.max(Math.min(cursor.changedAt + 3000, (cursor.pendingSince ?? cursor.changedAt) + 8000), cursor.trigger === 'realtime' ? (cursor.pendingSince ?? cursor.changedAt) + groupRealtimeDelayMs(profile.groupOptions) : 0) : cursor.changedAt + settings.replyDelay * 1000;
       if (dueAt > now) live.push({ id, ...this.nameFields(profile), kind: profile.kind, phase: 'waiting', dueAt, reason: profile.kind === 'group' ? '群聊合并等待' : '等待合并回复' });
     }
     for (const profile of this.profiles()) {
@@ -910,7 +914,18 @@ export class AIAssistant {
     }
     const q = this.data.queue;
     if (q && q.nextAt && q.nextAt > now && q.status === 'running') live.push({ id: 'queue', label: '主动聊天队列', kind: 'person', phase: 'waiting', dueAt: q.nextAt, reason: '队列等待' });
-    return live.slice(0, 20);
+    return live;
+  }
+  async skipReplyWait(id) {
+    const profile = this.profile(id), cursor = this.cursors.get(id);
+    const waiting = this.liveStates().find(row => row.id === id && row.phase === 'waiting' &&
+      ['手动回复后的接续等待', '群聊合并等待', '等待合并回复'].includes(row.reason));
+    if (!waiting || !cursor?.pending || profile.paused || !this.data.settings.enabled || !this.data.settings.reply || !this.replySelected(profile) || !this.modelReady() || !this.ready() || !this.available) throw new AppError('当前没有可跳过的自动回复等待，请刷新状态', 409);
+    delete profile.manualWait;
+    this.skipReplyWaits.add(id);
+    await this.save();
+    void this.tick({ background: true });
+    return this.publicState();
   }
   proactiveTaskAction(value) { return this.proactiveV2.action(value); }
   proactiveRecords(value) { return this.proactiveV2.records(value); }
@@ -2299,14 +2314,15 @@ export class AIAssistant {
         const mentionLimit = groupOptions ? this.strategy(profile, 'reply').maxRounds : null;
         const mentionsExhausted = groupOptions && mentionLimit !== 'unlimited' && (profile.mentionRounds || 0) >= mentionLimit;
         const groupTriggers = groupOptions ? groupBurst(snapshot.messages, cursor, mentionsExhausted ? { ...groupOptions, atMe: false, atAll: false } : groupOptions, profile.groupBaselines) : null;
+        cursor.trigger = groupTriggers?.trigger || null;
         // Verified @me is urgent; realtime-only traffic is coalesced for the configured interval.
-        if (profile.kind === 'group' && groupTriggers?.trigger === 'realtime' && this.now() - (cursor.pendingSince ?? cursor.changedAt) < groupRealtimeDelayMs(groupOptions)) continue;
+        if (profile.kind === 'group' && groupTriggers?.trigger === 'realtime' && !this.skipReplyWaits.has(id) && this.now() - (cursor.pendingSince ?? cursor.changedAt) < groupRealtimeDelayMs(groupOptions)) continue;
         const mergeReady = profile.kind === 'group' ? this.now() - cursor.changedAt >= 3000 || this.now() - (cursor.pendingSince ?? cursor.changedAt) >= 8000 : this.now() - cursor.changedAt >= this.data.settings.replyDelay * 1000;
-        if (profile.paused || !cursor.pending || !mergeReady || this.now() < this.manualWaitUntil(profile)) continue;
+        if (profile.paused || !cursor.pending || (!mergeReady && !this.skipReplyWaits.has(id)) || this.now() < this.manualWaitUntil(profile)) continue;
         if (profile.kind === 'group') {
           if (profile.groupWait && profile.groupWait.context !== snapshot.revision) delete profile.groupWait;
           if (profile.groupWait && profile.groupWait.kind !== 'rate' && this.now() >= profile.groupWait.expires) delete profile.groupWait;
-          if (profile.groupWait && this.now() < profile.groupWait.dueAt) continue;
+          if (profile.groupWait && this.now() < profile.groupWait.dueAt && !this.skipReplyWaits.has(id)) continue;
         }
         pending.push({ profile, snapshot });
       }
@@ -2382,9 +2398,9 @@ export class AIAssistant {
       else await this.generate(profile, snapshot, 'reply', revision, signal, undefined, { followUp: true });
     }
   }
-  async guardGroupRate(profile, snapshot, trigger) {
+  async guardGroupRate(profile, snapshot, trigger, skipRate = false) {
     const rate = groupTimingState(profile);
-    if (trigger === 'realtime' && rate.ordinaryDueAt > this.now()) {
+    if (!skipRate && trigger === 'realtime' && rate.ordinaryDueAt > this.now()) {
       profile.groupWait = { kind: 'rate', context: snapshot.revision, trigger, dueAt: rate.ordinaryDueAt, expires: profile.groupWait?.expires || this.now() + 60000 };
       this.event('wait', profile.id, trigger, '等待群聊普通回复间隔');
       await this.save(); return false;
@@ -2401,6 +2417,7 @@ export class AIAssistant {
       burst = groupBurst(snapshot.messages, this.cursors.get(profile.id), mentionsExhausted ? { ...options, atMe: false, atAll: false } : options, profile.groupBaselines);
       trigger = burst.trigger;
       if (!trigger) {
+        this.skipReplyWaits.delete(profile.id);
         const cursor = this.cursors.get(profile.id);
         const incoming = snapshot.messages.findLast(m => m.direction === 'other');
         const incomingBoundary = Math.max(snapshot.messages.findLastIndex(m => m.direction === 'self'), snapshot.messages.findIndex(m => m.id === cursor?.pendingAfter));
@@ -2422,7 +2439,9 @@ export class AIAssistant {
       this.replyControllers.set(profile.id, controller); signal = AbortSignal.any([signal, controller.signal]);
     }
     if (!this.canDeliver(profile, mode, revision, signal)) return;
-    if (profile.kind === 'group' && mode === 'reply' && !await this.guardGroupRate(profile, snapshot, trigger)) return;
+    const skipRate = mode === 'reply' && this.skipReplyWaits.delete(profile.id);
+    if (skipRate) delete profile.groupWait;
+    if (profile.kind === 'group' && mode === 'reply' && !await this.guardGroupRate(profile, snapshot, trigger, skipRate)) return;
     const strategy = this.strategy(profile, mode), continuation = mode === 'reply' && this.continuing(profile);
     const groupState = profile.kind === 'group' ? { trigger, triggerMessages: burst?.messages, now: this.now(), recentActions: this.data.events.filter(e => e.target === profile.id && this.now() - e.at <= 600000).map(({ code, at }) => ({ code, at })), lastManualAt: profile.groupPauseReason === 'manual' ? profile.groupPausedUntil - 600000 : null } : undefined;
     const multiTurn = this.multiTurn(profile, mode, strategy);
@@ -2497,7 +2516,7 @@ export class AIAssistant {
     // 只作为提示交给模型照常文字回复，不再触发转交或暂停。
     const reason = voiceUnavailable ? 'voice' : unsupportedTextAction(pendingText);
     const modelStartedAt = this.now();
-    this.generatingProfile = { id: profile.id, ...this.nameFields(profile), kind: profile.kind };
+    this.generatingProfiles.set(profile.id, { id: profile.id, ...this.nameFields(profile), kind: profile.kind });
     const style = this.generationStyle(profile, strategy, mode);
     const defaultFallback = this.defaultStyleApplied(profile);
     const referenceStyle = defaultFallback || (mode === 'proactive' || continuation) && strategy.styleSource !== 'manual' && this.styleProfile(strategy)?.id !== profile.id;
@@ -2543,7 +2562,7 @@ export class AIAssistant {
         }
       }
       throw error;
-    } finally { if (this.generatingProfile?.id === profile.id) this.generatingProfile = null; }
+    } finally { this.generatingProfiles.delete(profile.id); }
     if (assumedProactiveRows.length) {
       for (const row of assumedProactiveRows) { row.assumedPresent = false; row.handedToReplyAt = this.now(); }
       await this.save();
@@ -2605,7 +2624,7 @@ export class AIAssistant {
     if (fresh.revision !== snapshot.revision) { if (item) this.data.queue.nextAt = this.now() + 10000; return; }
     if (result.action === 'send' && profile.kind === 'group' && mode === 'reply') {
       const rate = groupTimingState(profile);
-      if (trigger === 'realtime' && rate.ordinaryDueAt > this.now()) {
+      if (!skipRate && trigger === 'realtime' && rate.ordinaryDueAt > this.now()) {
         const dueAt = rate.ordinaryDueAt;
         profile.groupWait = { kind: 'rate', context: fresh.revision, trigger, dueAt, expires: Math.max(dueAt + groupRealtimeIntervalMs, profile.groupWait?.expires || 0) };
         this.event('wait', profile.id, trigger, '等待群聊普通回复间隔，保留待处理消息并在到期后重新判断');
@@ -2638,7 +2657,7 @@ export class AIAssistant {
       const cursor = this.cursors.get(profile.id); if (cursor) cursor.pending = false;
     } else {
       const sendStartedAt = this.now();
-      const outcome = await this.deliver(profile, fresh, mode, revision, signal, item, segments, strategy, trigger || mode);
+      const outcome = await this.deliver(profile, fresh, mode, revision, signal, item, segments, strategy, trigger || mode, skipRate);
       if (profile.delivery?.status === 'sent') {
         const receivedAt = mode === 'reply' ? snapshot.messages.findLast(message => message.direction === 'other')?.timestamp * 1000 : null;
         profile.delivery.timing = { modelMs, sendMs: this.now() - sendStartedAt, completedAt: this.now(),
@@ -2661,7 +2680,7 @@ export class AIAssistant {
     const active = mode === 'reply' ? this.data.settings.reply && this.replySelected(profile) || this.continuing(profile) : this.data.settings.proactive;
     return revision === this.revision && !signal.aborted && this.data.settings.enabled && this.modelReady() && strategyReady(this.strategy(profile, mode), mode) && active && this.selected(profile, mode) && !profile.paused && (!Number.isFinite(profile.stopUntil) || this.now() >= profile.stopUntil) && this.available && this.ready() && !this.manualHolds.size && this.now() >= (this.userBusyUntil || 0) && this.now() >= (this.sendBlockedUntil || 0);
   }
-  async deliver(profile, fresh, mode, revision, signal, item, segments, strategy, source = mode) {
+  async deliver(profile, fresh, mode, revision, signal, item, segments, strategy, source = mode, skipRate = false) {
     if (mode === 'reply' && source !== 'realtime' && strategy.maxRounds !== 'unlimited') {
       const cappedRounds = profile.kind === 'group' ? profile.mentionRounds || 0 : profile.rounds || 0;
       segments = segments.slice(0, Math.max(0, strategy.maxRounds - cappedRounds));
@@ -2669,7 +2688,7 @@ export class AIAssistant {
     const groupReply = mode === 'reply' && profile.kind === 'group';
     if (groupReply) {
       const rate = groupTimingState(profile);
-      if (source === 'realtime' && rate.ordinaryDueAt > this.now()) {
+      if (!skipRate && source === 'realtime' && rate.ordinaryDueAt > this.now()) {
         const dueAt = rate.ordinaryDueAt;
         const cursor = this.cursors.get(profile.id); if (cursor) cursor.pending = true;
         profile.groupWait = { kind: 'rate', context: fresh.revision, trigger: source, dueAt, expires: Math.max(dueAt + groupRealtimeIntervalMs, profile.groupWait?.expires || 0) };

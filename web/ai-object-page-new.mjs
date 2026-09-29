@@ -11,6 +11,18 @@ const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;
 const avatar = contact => contactPickerAvatar(contact);
 const toggle = (key, title, hint, checked, disabled = false, main = false) => `<div class="ai-reference-toggle ${main ? 'main' : ''} ${disabled ? 'dim' : ''}"><span><b>${title}</b><small>${hint}</small></span><input type="checkbox" name="${key}" role="switch" data-object-option="${key}" ${key === 'atMe' || key === 'atAll' || key === 'realtime' ? 'data-group-option' : ''} aria-label="${title}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}></div>`;
 const tab = (id, title, current) => `<button type="button" data-ai-object-section="${id}" class="${current === id ? 'active' : ''}" aria-current="${current === id ? 'page' : 'false'}">${title}</button>`;
+const skippableWait = new Set(['手动回复后的接续等待', '群聊合并等待', '等待合并回复']);
+
+export function objectExecutionStatus(state, contactId) {
+  const profile = state.profiles.find(p => p.contact === contactId);
+  const live = (state.live || []).find(row => row.id === profile?.id && row.phase === 'generating') ||
+    (state.live || []).find(row => row.id === profile?.id && row.phase === 'waiting');
+  const label = live?.phase === 'generating' ? '请求 AI' : live?.phase === 'waiting' ? '等待' : '空闲';
+  const detail = live?.phase === 'generating' ? '正在生成回复' : live?.reason || '当前没有正在执行的自动回复';
+  const remaining = live?.phase === 'waiting' && Number.isFinite(live.dueAt) ? ` · 约 ${Math.max(1, Math.ceil((live.dueAt - Date.now()) / 1000))} 秒` : '';
+  const skip = live?.phase === 'waiting' && skippableWait.has(live.reason) && state.settings?.enabled && state.settings?.reply && state.waiting !== true && profile && !profile.paused;
+  return `<div class="ai-object-execution" role="status" aria-live="polite"><div><span class="ai-object-execution-label ${esc(live?.phase || 'idle')}">${label}</span><span class="ai-object-execution-detail">${esc(detail + remaining)}</span></div>${skip ? `<button type="button" class="secondary" data-ai-skip-reply-wait="${esc(profile.id)}">跳过等待，交给 AI 回复</button>` : ''}</div>`;
+}
 
 export function objectPage(state, view) {
   const contact = state.contacts.find(c => c.id === view.selected && c.kind === view.kind);
@@ -35,7 +47,7 @@ export function objectPage(state, view) {
   const replyChoices = isGroup
     ? `<div class="ai-reference-dependency ai-reference-group-dependency"><h4 class="ai-reference-group-title">提及回复</h4><div class="ai-reference-group-options">${toggle('atMe', '@我时回复', '被提及时回复', group.atMe)}${toggle('atAll', '@所有人时回复', '提及所有人时回复', group.atAll)}${limit}</div><div class="ai-reference-realtime-block ${group.realtime ? 'on' : 'off'}">${toggle('realtime', 'AI 实时回复', '处理未提及的群消息', group.realtime, false, true)}${group.realtime ? realtimeModes : ''}</div></div>`
     : `<div class="ai-reference-dependency ${opts.enabled ? 'on' : 'off'}">${toggle('enabled', '自动回复', '新消息到达时处理', opts.enabled, false, true)}<div class="ai-reference-children" ${opts.enabled ? '' : 'hidden'}><div class="ai-reference-child-grid">${toggle('multiTurn', '多轮交流', '自然延续对话', opts.multiTurn)}${toggle('judgeReply', '智能判断是否回复', '避免过度打扰', opts.judgeReply)}${limit}</div></div></div>`;
-  const reply = `<section class="ai-reference-panel" data-ai-object-panel="reply" ${section !== 'reply' ? 'hidden' : ''}><div class="ai-reference-reply-main">${replyChoices}</div><div class="ai-reference-reply-settings" ${!isGroup && !opts.enabled ? 'hidden' : ''}>${strategy}</div></section>`;
+  const reply = `<section class="ai-reference-panel" data-ai-object-panel="reply" ${section !== 'reply' ? 'hidden' : ''}><div data-ai-object-execution="${esc(contact.id)}">${objectExecutionStatus(state, contact.id)}</div><div class="ai-reference-reply-main">${replyChoices}</div><div class="ai-reference-reply-settings" ${!isGroup && !opts.enabled ? 'hidden' : ''}>${strategy}</div></section>`;
   const style = `<section class="ai-reference-panel ai-reference-style" data-ai-object-panel="style" ${section !== 'style' ? 'hidden' : ''}><div class="ai-reference-style-head"><h4>聊天风格</h4></div><div class="ai-reference-style-body"><div class="ai-style-pills" role="group" aria-label="选择聊天风格">${styles.map(p => `<button type="button" data-ai-style="${esc(p.id)}" aria-pressed="${value.styleId === p.id}">${esc(p.label)}</button>`).join('')}</div><input type="hidden" name="styleId" value="${esc(value.styleId)}"><label class="ai-field"><span>风格说明</span><textarea name="summary" maxlength="6000" rows="6">${esc(value.summary)}</textarea></label>${value.styleId ? '' : `<p class="ai-help">当前跟随账号默认风格。<button type="button" class="quiet" data-ai-nav="default-style">学习默认风格</button></p>`}</div></section>`;
   const memoryTypes = isGroup ? [...groupMemoryTypes, ...(profile?.memory?.entries?.some(entry => ['name','addressing','phone','birthday','date','school','household','residence','workplace','employer','shipping'].includes(entry.field)) ? [['legacy','旧版记忆']] : [])] : personMemoryTypes;
   const memoryCategory = memoryTypes.some(([id]) => id === view.memoryCategory) ? view.memoryCategory : memoryTypes[0][0];

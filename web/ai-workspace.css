@@ -945,6 +945,13 @@
 #ai-panel .ai-reference-status::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
 #ai-panel .ai-reference-status.active{color:#5261c9}
 #ai-panel .ai-reference-status.warn{color:#a9651f}
+#ai-panel .ai-object-execution{display:flex;align-items:center;justify-content:space-between;gap:10px 16px;flex-wrap:wrap;padding:12px 18px;border-bottom:1px solid #f0f1f6;background:#f9faff}
+#ai-panel .ai-object-execution>div{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+#ai-panel .ai-object-execution-label{font-size:12px;font-weight:700;color:#687186}
+#ai-panel .ai-object-execution-label.waiting{color:#a9651f}
+#ai-panel .ai-object-execution-label.generating{color:#5261c9}
+#ai-panel .ai-object-execution-detail{font-size:12px;color:#687186}
+#ai-panel .ai-object-execution button{padding:5px 10px;font-size:12px}
 #ai-panel .ai-reference-tabs{display:flex;gap:2px;padding:0 16px;border-top:1px solid #f2f3f8;overflow:auto}
 #ai-panel .ai-reference-tabs button{position:relative;border:0;background:transparent;color:#7d849b;font-weight:650;font-size:12px;padding:13px 16px;white-space:nowrap}
 #ai-panel .ai-reference-tabs button.active{color:#5060c9}

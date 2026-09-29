@@ -22,6 +22,48 @@ for(const kind of ['person','group'])test(`${kind}: takeover starts at first inc
  f.advance(19999);await f.a.tick();assert.equal(f.provider.calls.length,0);
  f.advance(1);await f.a.tick();assert.equal(f.bridge.sent.length,1);
 });
+for (const kind of ['person', 'group']) test(`${kind}: skip waiting starts this contact's AI reply without waiting for the deadline`, async t => {
+ const f = await fixture(t, kind);
+ await f.push('self'); await f.push('other', '请回复我');
+ const profileId = f.p.id;
+ assert.ok(f.a.liveStates().some(row => row.id === profileId && row.reason === '手动回复后的接续等待'));
+ await f.a.skipReplyWait(profileId);
+ await f.a.tickFinished?.promise;
+ await Promise.all([...f.a.activeRuns.values()]);
+ assert.equal(f.bridge.sent.length, 1);
+ assert.equal(f.p.manualWait, undefined);
+ await assert.rejects(f.a.skipReplyWait(profileId), /当前没有可跳过/);
+});
+test('normal reply merge wait can be skipped for one contact', async t => {
+ const f = await fixture(t);
+ await f.push('other', '新消息');
+ assert.ok(f.a.liveStates().some(row => row.id === f.p.id && row.reason === '等待合并回复'));
+ await f.a.skipReplyWait(f.p.id);
+ await f.a.tickFinished?.promise;
+ await Promise.all([...f.a.activeRuns.values()]);
+ assert.equal(f.bridge.sent.length, 1);
+});
+test('group message merge wait can be skipped', async t => {
+ const f = await fixture(t, 'group');
+ await f.push('other', '请在群里回复');
+ assert.ok(f.a.liveStates().some(row => row.id === f.p.id && row.reason === '群聊合并等待'));
+ await f.a.skipReplyWait(f.p.id);
+ await f.a.tickFinished?.promise;
+ await Promise.all([...f.a.activeRuns.values()]);
+ assert.equal(f.bridge.sent.length, 1);
+});
+test('group realtime consolidation wait can be skipped', async t => {
+ const f = await fixture(t, 'group');
+ await f.a.setGroupOptions({ contact: f.p.contact, atMe: false, realtime: true, confirmRealtime: true });
+ const message = f.bridge.push(f.p.contact, 'other', '群里新消息');
+ Object.assign(message, { timestamp: Math.floor(1700000000000 / 1000), mentions: { verified: true, self: false, all: false, others: false } });
+ await f.a.tick();
+ assert.ok(f.a.liveStates().some(row => row.id === f.p.id && row.reason === '群聊合并等待' && row.dueAt > 1700000000000 + 3000));
+ await f.a.skipReplyWait(f.p.id);
+ await f.a.tickFinished?.promise;
+ await Promise.all([...f.a.activeRuns.values()]);
+ assert.equal(f.bridge.sent.length, 1);
+});
 test('manual reply ends the pending round; next incoming begins a new full wait',async t=>{
  const f=await fixture(t);await f.push('self');await f.push('other');f.advance(50000);await f.push('self','这轮我处理');f.advance(20000);await f.a.tick();assert.equal(f.bridge.sent.length,0);
  await f.push('other','新一轮');f.advance(59999);await f.a.tick();assert.equal(f.bridge.sent.length,0);f.advance(1);await f.a.tick();assert.equal(f.bridge.sent.length,1);

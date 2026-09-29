@@ -16,4 +16,4 @@ export function objectList(state, view) {
     return contactPickerRow(c, { index: i, selected: c.id === view.selected, button: `data-ai-object="${esc(c.id)}"`, detail: `${on ? `<small>${styleLabel}</small>` : ''}${limited ? `<small class="ai-contact-limit" role="status">${c.kind === 'group' ? '提及回复已达上限' : '已达自动回复上限'} ${rounds}/${maxRounds}</small>` : ''}`, trailing: profile?.paused ? '<span class="ai-contact-status">已暂停</span>' : '' });
   }).join('') || '<p class="ai-empty">暂无匹配对象，请刷新列表。</p>';
 }
-export { objectPage } from './ai-object-page-new.mjs';
+export { objectPage, objectExecutionStatus } from './ai-object-page-new.mjs';
