@@ -6,24 +6,24 @@ import { objectList } from './ai-object-view.mjs';
 import { replyLimitControl } from './ai-reply-limit.mjs';
 import { personReplyEnabled } from './ai-reply-state.mjs';
 import { contactPickerTabs, contactPickerSearch, contactPickerAvatar } from './ai-contact-picker.mjs';
+import { replyFlowMarkup } from './ai-reply-flow-view.mjs';
 
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const avatar = contact => contactPickerAvatar(contact);
 const toggle = (key, title, hint, checked, disabled = false, main = false) => `<div class="ai-reference-toggle ${main ? 'main' : ''} ${disabled ? 'dim' : ''}"><span><b>${title}</b><small>${hint}</small></span><input type="checkbox" name="${key}" role="switch" data-object-option="${key}" ${key === 'atMe' || key === 'atAll' || key === 'realtime' ? 'data-group-option' : ''} aria-label="${title}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}></div>`;
 const tab = (id, title, current) => `<button type="button" data-ai-object-section="${id}" class="${current === id ? 'active' : ''}" aria-current="${current === id ? 'page' : 'false'}">${title}</button>`;
-const skippableWait = new Set(['手动回复后的接续等待', '群聊合并等待', '等待合并回复']);
-
 export function objectExecutionStatus(state, contactId) {
   const profile = state.profiles.find(p => p.contact === contactId);
-  const live = (state.live || []).find(row => row.id === profile?.id && row.phase === 'generating') ||
-    (state.live || []).find(row => row.id === profile?.id && row.phase === 'waiting');
+  const live = (state.live || []).find(row => row.id === profile?.id);
   const unavailable = state.waiting === true && !live;
-  const label = unavailable ? '暂不可用' : live?.phase === 'generating' ? '请求 AI' : live?.phase === 'waiting' ? '等待' : '空闲';
+  const labels = { waiting: '等待汇总', summarizing: '汇总上下文', requesting: 'AI 请求中', generating: 'AI 请求中', sending: '发送中', sent: '已发送', failed: '发送失败', partial: '部分已发送', skipped: '本轮不回复', cancelled: '已取消' };
+  const phase = live?.phase || profile?.replyFlow?.phase;
+  const label = unavailable ? '暂不可用' : labels[phase] || '空闲';
   const detail = unavailable ? state.available === false ? (state.notice || '微信聊天暂不可读取，正在自动重试') : (state.requirements?.reply || '自动回复暂缓，正在恢复运行')
-    : live?.phase === 'generating' ? '正在生成回复' : live?.reason || '当前没有正在执行的自动回复';
-  const remaining = live?.phase === 'waiting' && Number.isFinite(live.dueAt) ? ` · 约 ${Math.max(1, Math.ceil((live.dueAt - Date.now()) / 1000))} 秒` : '';
-  const skip = live?.phase === 'waiting' && skippableWait.has(live.reason) && state.settings?.enabled && state.settings?.reply && state.waiting !== true && profile && !profile.paused;
-  return `<div class="ai-object-execution" role="status" aria-live="polite"><div><span class="ai-object-execution-label ${esc(unavailable ? 'unavailable' : live?.phase || 'idle')}">${label}</span><span class="ai-object-execution-detail">${esc(detail + remaining)}</span></div>${skip ? `<button type="button" class="secondary" data-ai-skip-reply-wait="${esc(profile.id)}">跳过等待，交给 AI 回复</button>` : ''}</div>`;
+    : live?.reason || profile?.replyFlow?.detail || (phase === 'sent' ? '微信已确认发送' : '当前没有正在执行的自动回复');
+  const skip = state.settings?.enabled && state.settings?.reply && state.waiting !== true && profile && !profile.paused;
+  const flow = !unavailable && profile ? replyFlowMarkup(profile, live, { allowSkip: skip }) : '';
+  return `<div class="ai-object-execution" role="status" aria-live="polite"><div><span class="ai-object-execution-label ${esc(unavailable ? 'unavailable' : phase || 'idle')}">${label}</span>${flow ? '' : `<span class="ai-object-execution-detail">${esc(detail)}</span>`}</div>${flow}</div>`;
 }
 
 export function objectPage(state, view) {

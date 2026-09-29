@@ -7,5 +7,6 @@ test('manual wait without a deadline does not claim a scheduled send or show NaN
   assert.ok(html.includes('手动回复后不再自动接续'));assert.doesNotMatch(html,/NaN|秒后发送/);
  }
  const html=liveActivityBox({live:[{id:'test',label:'测试',phase:'waiting',dueAt:Date.now()+60000}]});
- assert.match(html,/秒后发送/);
+ assert.match(html,/剩余 \d+ 秒/);
+ assert.doesNotMatch(html,/秒后发送/);
 });

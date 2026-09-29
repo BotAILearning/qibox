@@ -53,6 +53,23 @@ class SnapshotChanged(ValueError):
     """Rows changed inside an otherwise verified, unchanged native session."""
 
 
+NATIVE_FAILURE_REASONS = {
+    'open this group in WeChat first': 'group-not-listed',
+    'conversation outside viewport': 'conversation-outside-viewport',
+    'conversation candidate changed': 'conversation-candidate-changed',
+    'existing popup unavailable': 'popup-blocking-navigation',
+    'control unavailable': 'control-unavailable',
+    'inspection interrupted': 'inspection-interrupted',
+    'conversation changed': 'conversation-changed',
+    'target changed': 'target-changed',
+}
+
+
+def native_failure_reason(error):
+    """Return only fixed control codes; never include desktop or chat text."""
+    return NATIVE_FAILURE_REASONS.get(str(error))
+
+
 class ChatAdapter:
     def __init__(self, pid, seconds=28):
         self.controls = module('qibox_ai_controls', 'ai-native-controls.py').NativeControls(pid, seconds=seconds)
@@ -99,9 +116,20 @@ class ChatAdapter:
         ins.ensure_conversations()
         # When the target is already selected, avoid scanning the virtualized
         # conversation list. Live session identity and header are still checked.
-        if not self.session_identity.matches(**target):
-            ins.navigate_background(label, self.verify_session,
-                                    expected_contact=request['contact'], account=request['account'], group=request.get('kind') == 'group')
+        def matches_target():
+            try:
+                return self.session_identity.matches(**target)
+            except ValueError as error:
+                if str(error) not in ('session pointer unavailable', 'session mirror unavailable') and not (
+                    request.get('kind') == 'group' and str(error) == 'session manager ambiguous or unavailable'
+                ):
+                    raise
+                # No selected chat after startup (or an unselected search
+                # preview) is a navigation miss, never a send authorization.
+                return False
+        if not matches_target():
+            ins.search_background_conversation(label, matches_target, self.verify_session,
+                                               group=request.get('kind') == 'group')
         self.verify_session()
         self.phase = 'native-prepare'
         ins.require_foreground('微信')
@@ -505,6 +533,12 @@ def main():
             result = {'available': False, 'error': 'unsupported'}
         result['diagnostic'] = {'phase': getattr(adapter, 'phase', 'native-start'),
                                 'code': 'timeout' if isinstance(error, TimeoutError) else 'cancelled' if adapter and adapter.controls.cancelled else 'controls-unavailable'}
+        reason = native_failure_reason(error)
+        if reason:
+            result['diagnostic']['reason'] = reason
+        navigation_step = getattr(getattr(adapter, 'controls', None), 'group_search_phase', None)
+        if navigation_step in ('entry', 'results', 'candidate-open', 'identity', 'cleanup'):
+            result['diagnostic']['navigationStep'] = navigation_step
     finally:
         if adapter:
             try:

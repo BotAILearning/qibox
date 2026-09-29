@@ -150,7 +150,7 @@ test('explicit review navigation checks the bound native identity without insert
   const { bridge, runtime } = fixture(); const native = [];
   runtime.foregroundRequested = async () => {};
   bridge.invoke = async (action, args) => { native.push({ action, args }); return { account: args.account, contact: args.contact, opened: true }; };
-  await bridge.scan(); const read = bridge.invokeData; bridge.invokeData = (action, ...args) => { assert.notEqual(action, 'read', 'navigation must survive unreadable message bodies'); return read(action, ...args); }; await bridge.openChat({ account, contact: second });
+  await bridge.scan(); bridge.invokeData = () => { throw new Error('open must use the authenticated ID binding without another data scan'); }; await bridge.openChat({ account, contact: second });
   assert.equal(native.length, 1); assert.equal(native[0].action, 'open-chat');
   assert.equal(native[0].args.contact, key('native-b')); assert.equal(native[0].args.text, undefined);
   bridge.invoke = async () => ({ account: person.native.account, contact: key('wrong-person'), revision });

@@ -900,15 +900,26 @@ export class AIAssistant {
     const nickname = this.contactNickname(profile);
     return { label: this.contacts.get(profile?.contact)?.label || profile?.label, ...(nickname ? { nickname } : {}) };
   }
+  replyStage(profile, phase, detail = '') {
+    const now = this.now(), cursor = this.cursors.get(profile.id);
+    const startedAt = cursor?.pendingSince || now;
+    const previous = profile.replyFlow?.startedAt === startedAt ? profile.replyFlow : null;
+    profile.replyFlow = {
+      startedAt, phase, updatedAt: now,
+      steps: { waiting: startedAt, ...(previous?.steps || {}), [phase]: now },
+      ...(detail ? { detail } : {}),
+    };
+  }
   liveStates() {
     const live = [];
-    for (const generating of this.generatingProfiles.values()) live.push({ ...generating, phase: 'generating', reason: '请求 AI' });
+    for (const generating of this.generatingProfiles.values()) live.push({ ...generating, phase: 'requesting', reason: 'AI 请求中' });
     const now = this.now(), settings = this.data.settings;
     for (const [id, cursor] of this.cursors) {
       const profile = this.data.profiles[id];
       if (!profile || !cursor?.pending || profile.paused) continue;
       if (!(settings.reply && this.replySelected(profile)) && !this.continuing(profile)) continue;
       if (this.generatingProfiles.has(id)) continue;
+      if (this.activeRuns.has(id) && ['summarizing', 'requesting', 'sending'].includes(profile.replyFlow?.phase)) continue;
       if (this.skipReplyWaits.has(id)) { live.push({ id, ...this.nameFields(profile), kind: profile.kind, phase: 'generating', reason: '请求 AI' }); continue; }
       const manualDue = this.manualWaitUntil(profile);
       if (manualDue > now) {
@@ -917,7 +928,10 @@ export class AIAssistant {
       }
       if (profile.groupWait?.dueAt > now) continue;
       const dueAt = profile.kind === 'group' ? Math.max(Math.min(cursor.changedAt + 3000, (cursor.pendingSince ?? cursor.changedAt) + 8000), cursor.trigger === 'realtime' ? (cursor.pendingSince ?? cursor.changedAt) + groupRealtimeDelayMs(profile.groupOptions) : 0) : cursor.changedAt + settings.replyDelay * 1000;
-      if (dueAt > now) live.push({ id, ...this.nameFields(profile), kind: profile.kind, phase: 'waiting', dueAt, reason: profile.kind === 'group' ? '群聊合并等待' : '等待合并回复' });
+      const retryDue = profile.replyFlow?.phase === 'failed' && this.retryAt > now ? this.retryAt : 0;
+      if (Math.max(dueAt, retryDue) > now) live.push({ id, ...this.nameFields(profile), kind: profile.kind, phase: 'waiting', dueAt: Math.max(dueAt, retryDue), reason: retryDue ? '发送失败，等待重试' : profile.kind === 'group' ? '群聊合并等待' : '等待合并回复' });
+      else if (profile.replyFlow?.phase === 'failed') live.push({ id, ...this.nameFields(profile), kind: profile.kind, phase: 'failed', reason: '发送失败，准备重试' });
+      else live.push({ id, ...this.nameFields(profile), kind: profile.kind, phase: 'waiting', reason: '等待处理' });
     }
     for (const profile of this.profiles()) {
       if (profile.groupWait && profile.groupWait.dueAt > now) live.push({ id: profile.id, ...this.nameFields(profile), kind: profile.kind, phase: 'waiting', dueAt: profile.groupWait.dueAt, reason: '群聊等待' });
@@ -927,6 +941,14 @@ export class AIAssistant {
     }
     const q = this.data.queue;
     if (q && q.nextAt && q.nextAt > now && q.status === 'running') live.push({ id: 'queue', label: '主动聊天队列', kind: 'person', phase: 'waiting', dueAt: q.nextAt, reason: '队列等待' });
+    const active = new Set(live.map(row => row.id));
+    for (const profile of this.profiles()) {
+      const flow = profile.replyFlow;
+      if (active.has(profile.id) || !flow) continue;
+      const running = this.activeRuns.has(profile.id) && ['summarizing', 'requesting', 'sending'].includes(flow.phase);
+      const recentResult = now - flow.updatedAt < 10 * 60000 && ['sent', 'failed', 'skipped', 'partial', 'cancelled'].includes(flow.phase);
+      if (running || recentResult) live.push({ id: profile.id, ...this.nameFields(profile), kind: profile.kind, phase: flow.phase, reason: flow.detail || '' });
+    }
     return live;
   }
   async skipReplyWait(id) {
@@ -2498,6 +2520,7 @@ export class AIAssistant {
       const cursor = this.cursors.get(profile.id); if (cursor) cursor.pending = false;
       await this.save(); return;
     }
+    if (mode === 'reply') this.replyStage(profile, 'summarizing');
     const lastOwn = snapshot.messages.findLastIndex(x => x.direction === 'self');
     const conversation = {
       latestIncomingId: snapshot.messages.findLast(x => x.direction === 'other')?.id || null,
@@ -2560,6 +2583,7 @@ export class AIAssistant {
     // 只作为提示交给模型照常文字回复，不再触发转交或暂停。
     const reason = voiceUnavailable ? 'voice' : unsupportedTextAction(pendingText);
     const modelStartedAt = this.now();
+    if (mode === 'reply') this.replyStage(profile, 'requesting');
     this.generatingProfiles.set(profile.id, { id: profile.id, ...this.nameFields(profile), kind: profile.kind });
     const style = this.generationStyle(profile, strategy, mode);
     const defaultFallback = this.defaultStyleApplied(profile);
@@ -2602,6 +2626,7 @@ export class AIAssistant {
           cursor.changedAt = this.now();
           cursor.pendingSince = cursor.changedAt;
           if (!requiredGroupReply) profile.handledIncomingId = failedIncoming.id;
+          this.replyStage(profile, 'failed', 'AI 请求失败');
           await this.save().catch(() => {});
         }
       }
@@ -2701,6 +2726,7 @@ export class AIAssistant {
       else this.event(result.action, profile.id, trigger);
       if (item) item.status = 'skipped';
       const cursor = this.cursors.get(profile.id); if (cursor) cursor.pending = false;
+      if (mode === 'reply') this.replyStage(profile, 'skipped', '本轮未发送');
     } else {
       const sendStartedAt = this.now();
       const outcome = await this.deliver(profile, fresh, mode, revision, signal, item, segments, strategy, trigger || mode, skipRate);
@@ -2745,6 +2771,7 @@ export class AIAssistant {
     let sent = 0, expectedRevision = fresh.revision;
     const interrupted = async () => {
       if (sent) profile.delivery.interrupted = true;
+      if (mode === 'reply') this.replyStage(profile, sent ? 'partial' : 'cancelled', sent ? '部分消息已发送' : '发送已取消');
       await this.save(); return sent ? 'partial' : 'cancelled';
     };
     for (const text of segments) {
@@ -2763,6 +2790,7 @@ export class AIAssistant {
       const operationId = randomUUID();
       // Keep generated text in memory; persist each segment's send intent first.
       if (item) { item.status = 'sending'; item.segmentsSent = sent; item.segmentsTotal = segments.length; }
+      if (mode === 'reply' && !sent) this.replyStage(profile, 'sending');
       profile.delivery = { operationId, status: 'sending', at: this.now(), source: mode === 'reply' ? 'reply' : 'proactive', segmentsSent: sent, segmentsTotal: segments.length }; await this.save();
       if (!this.canDeliver(profile, mode, revision, signal)) {
         profile.delivery.status = sent ? 'sent' : 'cancelled'; profile.delivery.interrupted = sent > 0;
@@ -2774,6 +2802,12 @@ export class AIAssistant {
       catch (error) { if (error.code === 'ai_account_changed') throw error; delivery = { status: 'uncertain' }; }
       if (delivery.status === 'not-sent') {
         profile.delivery.status = sent ? 'sent' : 'cancelled'; profile.delivery.interrupted = sent > 0;
+        if (delivery.diagnostic) profile.delivery.diagnostic = delivery.diagnostic;
+        const phaseNames = { 'native-start': '启动微信发送组件', 'native-session': '核对当前微信会话', 'native-navigation': '定位目标会话', 'native-prepare': '准备微信输入区' };
+        const codeNames = { timeout: '超时', cancelled: '操作中断', 'controls-unavailable': '微信控件不可用', unavailable: '暂不可用' };
+        const reasonNames = { 'group-not-listed': '目标群不在微信会话列表', 'conversation-outside-viewport': '目标会话未进入可见区域', 'conversation-candidate-changed': '会话列表刷新', 'popup-blocking-navigation': '弹窗遮挡', 'control-unavailable': '控件缺失', 'inspection-interrupted': '定位中断', 'conversation-changed': '会话切换', 'target-changed': '目标切换' };
+        const diagnosticDetail = delivery.diagnostic ? `${phaseNames[delivery.diagnostic.phase] || '微信发送'}${codeNames[delivery.diagnostic.code] || '失败'}${reasonNames[delivery.diagnostic.reason] ? `（${reasonNames[delivery.diagnostic.reason]}）` : ''}` : '微信发送组件未返回具体原因';
+        if (mode === 'reply') this.replyStage(profile, sent ? 'partial' : 'failed', `${sent ? '部分消息已发送，后续发送失败' : '消息未发送，等待自动重试'}；${diagnosticDetail}`);
         if (item) {
           item.attempts = (item.attempts || 0) + 1;
           item.status = sent ? 'done' : item.attempts >= 3 ? 'failed' : 'pending';
@@ -2785,13 +2819,14 @@ export class AIAssistant {
         // 发送受阻只暂停"发送"：联系人与聊天数据仍然可用，学习与分析不受影响。
         this.sendBlockedUntil = this.now() + 30000 * Math.min(item?.attempts || 1, 3);
         this.retryAt = this.sendBlockedUntil;
-        this.notice = item?.reason || `${this.nameFields(profile).label}：消息尚未发送，稍后重试`;
+        this.notice = item?.reason || `${this.nameFields(profile).label}：消息尚未发送，稍后重试；${diagnosticDetail}`;
         this.event('error', profile.id, mode, this.notice);
         await this.save(); return sent ? 'partial' : 'pending';
       }
       if (delivery.status !== 'sent' || !delivery.messageId) {
         profile.delivery.status = delivery.status === 'stale' ? sent ? 'sent' : 'cancelled' : 'unknown';
         profile.delivery.interrupted = sent > 0;
+        if (mode === 'reply') this.replyStage(profile, delivery.status === 'stale' ? 'cancelled' : 'failed', delivery.status === 'stale' ? '聊天有新消息，重新判断' : '发送结果未确认，不会自动重发');
         if (item) item.status = delivery.status === 'stale' ? sent ? 'done' : 'pending' : 'skipped';
         if (delivery.status !== 'stale') {
           // Unknown receipts remain audit-only; do not create pending chat rows
@@ -2825,6 +2860,7 @@ export class AIAssistant {
       Object.assign(cursor, { sent: delivery.messageId, own: delivery.messageId, last: delivery.messageId, pending: false, revision: delivery.revision || fresh.revision, changedAt: this.now() }); this.cursors.set(profile.id, cursor);
       await this.save();
     }
+    if (mode === 'reply') { this.replyStage(profile, 'sent'); await this.save(); }
     return 'complete';
   }
   async suspend() { this.invalidate(); this.data.settings.enabled = false; this.pauseQueue(); this.forgetContext(); await this.save(); }

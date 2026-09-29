@@ -27,6 +27,18 @@ export async function restoreWechatWindow(options) {
   }
   return false;
 }
+export async function activateWechatWindow(options) {
+  const windows = (await wechatWindows(options)).filter(window => window.visible);
+  if (windows.length !== 1) throw new Error('WeChat main window unavailable');
+  const [window] = windows;
+  const tool = `${options.root}/usr/bin/xdotool`;
+  const active = (await options.command(tool, ['getactivewindow'], options.env, 5000)).trim();
+  if (Number(active) === Number(window.id)) return false;
+  await options.command(tool, ['windowactivate', '--sync', window.id], options.env, 5000);
+  const verified = (await options.command(tool, ['getactivewindow'], options.env, 5000)).trim();
+  if (Number(verified) !== Number(window.id)) throw new Error('WeChat main window did not activate');
+  return true;
+}
 
 export class DesktopWindowState {
   constructor({ probe, now = Date.now }) { this.probe = probe; this.now = now; this.reset(); }

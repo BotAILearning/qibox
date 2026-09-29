@@ -141,9 +141,19 @@ try {
   await page.locator('[data-ai-analysis-pick]').waitFor();
   assert.equal(await page.locator('.ai-analysis-eyebrow:visible').count(), 0, 'analysis should not display numbered steps');
   assert.equal(await page.locator('#ai-analysis-form .ai-analysis-selection').count(), 0, 'analysis has no standalone contact card');
-  assert.equal(await page.locator('.ai-analysis-request .ai-analysis-create-heading [data-ai-analysis-pick]').count(), 1, 'add-contact belongs to the creation card heading');
+  assert.equal(await page.locator('.ai-analysis-request .ai-analysis-contact-entry [data-ai-analysis-pick]').count(), 1, 'add-contact belongs below the creation heading');
   for (const width of report.widths) {
     await page.setViewportSize({ width, height: 900 });
+    const flow = await page.locator('#ai-analysis-form').evaluate(form => {
+      const rect = selector => form.querySelector(selector).getBoundingClientRect();
+      const options = [...form.querySelectorAll('.ai-reference-analysis-ranges button')].map(button => button.getBoundingClientRect().top);
+      return { requestBottom: rect('.ai-analysis-composer').bottom, timeTop: rect('.ai-analysis-time-entry').top,
+        timeBottom: rect('.ai-analysis-time-entry').bottom, mediaTop: rect('.ai-analysis-media').top,
+        optionRows: new Set(options.map(top => Math.round(top))).size, optionCount: options.length };
+    });
+    assert.ok(flow.timeTop >= flow.requestBottom && flow.mediaTop >= flow.timeBottom, `${width}px: time range must sit between request and media: ${JSON.stringify(flow)}`);
+    assert.equal(flow.optionCount, 4, `${width}px: four quick ranges must remain available`);
+    assert.equal(flow.optionRows, 1, `${width}px: four quick ranges must share one row`);
     const action = await size('[data-ai-analysis-pick]', '.ai-analysis-request');
     const heading = await size('.ai-analysis-create-heading', '.ai-analysis-request');
     assert.ok(action.ratio < .72, `${width}px: add-contact occupies ${action.ratio.toFixed(2)} of card`);
@@ -188,7 +198,7 @@ try {
   assert.equal(await page.locator('#ai-analysis-count').innerText(), '1');
   assert.ok((await size('[data-ai-analysis-pick]', '.ai-analysis-request')).ratio < .72);
   await page.screenshot({ path: path.join(output, 'analysis-selected-390.png') });
-  report.checks.push(`Analysis: contact entry inside the compact creation heading at ${report.widths.join('/')}px; eight readable single-line direction labels, unclipped form and content-sized time card at ${desktopWidths.join('/')}px; picker still selects a person.`);
+  report.checks.push(`Analysis: contact entry below the creation heading and four quick ranges between request and media at ${report.widths.join('/')}px; eight readable direction labels, unclipped form and picker selection.`);
 
   await page.locator('.ai-main-tabs [data-ai-nav=settings]').click();
   for (const width of [320, 390, 1440]) {
