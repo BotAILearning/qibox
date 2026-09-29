@@ -112,6 +112,27 @@ class LiveMemory(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'unique live member'):
             self.reader.current()
 
+    def test_exact_build_mirror_requires_two_stable_matching_selected_objects(self):
+        p = self.reader.profile
+        p['mirror_current'] = 0x48
+        mirror, other = 0x16000, 0x17000
+        self.pointer(self.inner + p['mirror_current'], mirror)
+        self.write(mirror + p['username'], short('wxid_target'))
+        self.pointer(self.vector, other)
+        self.assertTrue(self.reader.matches(*self.identities()))
+        self.write(mirror + p['username'], short('wxid_other'))
+        with self.assertRaisesRegex(ValueError, 'mirror changed'):
+            self.reader.current()
+        self.write(mirror + p['username'], short('wxid_target'))
+        self.pointer(self.inner + p['mirror_current'], self.current)
+        with self.assertRaisesRegex(ValueError, 'mirror unavailable'):
+            self.reader.current()
+        self.pointer(self.inner + p['mirror_current'], mirror)
+        self.pointer(self.node + p['vector_end'], self.vector + 32)
+        self.pointer(self.vector + 16, other)
+        with self.assertRaisesRegex(ValueError, 'unique live member'):
+            self.reader.current()
+
     def test_cycle_empty_oversized_and_misaligned_vectors_fail(self):
         p = self.reader.profile
         for end in (self.vector, self.vector + 17, self.vector + 16 * (session.MAX_VECTOR + 1)):

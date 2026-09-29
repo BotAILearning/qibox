@@ -2821,7 +2821,12 @@ export class AIAssistant {
       catch (error) { if (error.code === 'ai_account_changed') throw error; delivery = { status: 'uncertain' }; }
       if (delivery.status === 'not-sent') {
         profile.delivery.status = sent ? 'sent' : 'cancelled'; profile.delivery.interrupted = sent > 0;
-        if (mode === 'reply') this.replyStage(profile, sent ? 'partial' : 'failed', sent ? '部分消息已发送，后续发送失败' : '消息未发送，等待自动重试');
+        if (delivery.diagnostic) profile.delivery.diagnostic = delivery.diagnostic;
+        const phaseNames = { 'native-start': '启动微信发送组件', 'native-session': '核对当前微信会话', 'native-navigation': '定位目标会话', 'native-prepare': '准备微信输入区' };
+        const codeNames = { timeout: '超时', cancelled: '操作中断', 'controls-unavailable': '微信控件不可用', unavailable: '暂不可用' };
+        const reasonNames = { 'group-not-listed': '目标群不在微信会话列表', 'conversation-outside-viewport': '目标会话未进入可见区域', 'conversation-candidate-changed': '会话列表刷新', 'popup-blocking-navigation': '弹窗遮挡', 'control-unavailable': '控件缺失', 'inspection-interrupted': '定位中断', 'conversation-changed': '会话切换', 'target-changed': '目标切换' };
+        const diagnosticDetail = delivery.diagnostic ? `${phaseNames[delivery.diagnostic.phase] || '微信发送'}${codeNames[delivery.diagnostic.code] || '失败'}${reasonNames[delivery.diagnostic.reason] ? `（${reasonNames[delivery.diagnostic.reason]}）` : ''}` : '微信发送组件未返回具体原因';
+        if (mode === 'reply') this.replyStage(profile, sent ? 'partial' : 'failed', `${sent ? '部分消息已发送，后续发送失败' : '消息未发送，等待自动重试'}；${diagnosticDetail}`);
         if (item) {
           item.attempts = (item.attempts || 0) + 1;
           item.status = sent ? 'done' : item.attempts >= 3 ? 'failed' : 'pending';
@@ -2833,7 +2838,7 @@ export class AIAssistant {
         // 发送受阻只暂停"发送"：联系人与聊天数据仍然可用，学习与分析不受影响。
         this.sendBlockedUntil = this.now() + 30000 * Math.min(item?.attempts || 1, 3);
         this.retryAt = this.sendBlockedUntil;
-        this.notice = item?.reason || `${this.nameFields(profile).label}：消息尚未发送，稍后重试`;
+        this.notice = item?.reason || `${this.nameFields(profile).label}：消息尚未发送，稍后重试；${diagnosticDetail}`;
         this.event('error', profile.id, mode, this.notice);
         await this.save(); return sent ? 'partial' : 'pending';
       }

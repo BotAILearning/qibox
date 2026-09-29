@@ -1,7 +1,9 @@
 import path from 'node:path';
 const safeDiagnostic = value => ({
   phase: ['native-start','native-session','native-navigation','native-prepare'].includes(value?.phase) ? value.phase : 'native-prepare',
-  code: ['timeout','cancelled','controls-unavailable'].includes(value?.code) ? value.code : 'unavailable'
+  code: ['timeout','cancelled','controls-unavailable'].includes(value?.code) ? value.code : 'unavailable',
+  ...(['group-not-listed','conversation-outside-viewport','conversation-candidate-changed','popup-blocking-navigation','control-unavailable','inspection-interrupted','conversation-changed','target-changed'].includes(value?.reason) ? { reason: value.reason } : {}),
+  ...(['entry','results','candidate-open','identity','cleanup'].includes(value?.navigationStep) ? { navigationStep: value.navigationStep } : {})
 });
 
 // Hold one validated native chat session across the final DB revision check.

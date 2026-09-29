@@ -254,7 +254,7 @@ class BackgroundIdentity(unittest.TestCase):
         adapter.controls.ensure_conversations.assert_called_once_with()
         adapter.controls.account.assert_not_called()
         adapter.controls.contact.assert_not_called()
-        adapter.controls.navigate_background.assert_not_called()
+        adapter.controls.search_background_conversation.assert_not_called()
         session.verify.assert_called_once_with(**request['background'])
 
     def test_same_label_wrong_identity_must_navigate_and_revalidate(self):
@@ -263,9 +263,41 @@ class BackgroundIdentity(unittest.TestCase):
         with patch.object(native, 'module', return_value=Mock(SessionIdentity=Mock(return_value=session))), patch.dict(native.os.environ, {'HOME': '/owned'}):
             adapter.resolve(request)
         adapter.controls.ensure_conversations.assert_called_once_with()
-        adapter.controls.navigate_background.assert_called_once()
+        adapter.controls.search_background_conversation.assert_called_once()
         session.verify.assert_called_once_with(**request['background'])
         adapter.controls.account.assert_not_called(); adapter.controls.contact.assert_not_called()
+
+    def test_group_uses_verified_search_instead_of_scanning_virtualized_conversations(self):
+        adapter, request = self.adapter()
+        request['kind'] = 'group'
+        session = Mock(); session.matches.side_effect = [False, True]
+        with patch.object(native, 'module', return_value=Mock(SessionIdentity=Mock(return_value=session))), patch.dict(native.os.environ, {'HOME': '/owned'}):
+            adapter.resolve(request)
+        adapter.controls.search_background_conversation.assert_called_once()
+        adapter.controls.navigate_background.assert_not_called()
+        check = adapter.controls.search_background_conversation.call_args.args[1]
+        self.assertTrue(check())
+        session.verify.assert_called_once_with(**request['background'])
+
+    def test_unverifiable_group_preview_reenters_verified_search_without_sending(self):
+        adapter, request = self.adapter()
+        request['kind'] = 'group'
+        session = Mock(); session.matches.side_effect = ValueError('session manager ambiguous or unavailable')
+        with patch.object(native, 'module', return_value=Mock(SessionIdentity=Mock(return_value=session))), patch.dict(native.os.environ, {'HOME': '/owned'}):
+            adapter.resolve(request)
+        adapter.controls.search_background_conversation.assert_called_once()
+        adapter.controls.navigate_background.assert_not_called()
+
+    def test_unselected_startup_session_enters_fast_search_for_person_or_group(self):
+        for kind in ('person', 'group'):
+            adapter, request = self.adapter()
+            request['kind'] = kind
+            session = Mock(); session.matches.side_effect = ValueError('session pointer unavailable')
+            with patch.object(native, 'module', return_value=Mock(SessionIdentity=Mock(return_value=session))), patch.dict(native.os.environ, {'HOME': '/owned'}):
+                adapter.resolve(request)
+            adapter.controls.search_background_conversation.assert_called_once()
+            self.assertEqual(adapter.controls.search_background_conversation.call_args.kwargs['group'], kind == 'group')
+            adapter.controls.navigate_background.assert_not_called()
 
     def test_unknown_version_or_failed_reader_never_falls_back_to_profile(self):
         adapter, request = self.adapter()

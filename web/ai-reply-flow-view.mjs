@@ -39,7 +39,7 @@ export function replyFlowMarkup(profile, live, { allowSkip = false } = {}) {
   }).join('');
   const dueAt = live?.phase === 'waiting' && Number.isFinite(live.dueAt) ? live.dueAt : null;
   const countdown = dueAt !== null ? `<span class="ai-reply-countdown" data-ai-countdown="${dueAt}">${countdownText(dueAt)}</span>` : '';
-  const detail = retry ? '消息尚未发送，稍后自动重试' : live?.reason || flow?.detail || (phase === 'sent' ? '微信已确认发送' : '正在处理本轮回复');
+  const detail = retry ? flow?.detail || '消息尚未发送，稍后自动重试' : live?.reason || flow?.detail || (phase === 'sent' ? '微信已确认发送' : '正在处理本轮回复');
   const skip = allowSkip && waiting && skippable.has(live.reason) && profile?.id
     ? `<button type="button" class="secondary" data-ai-skip-reply-wait="${esc(profile.id)}">跳过倒计时</button>` : '';
   const result = terminal ? `<strong class="ai-reply-flow-result ${esc(phase)}">${esc(({ failed: '本轮未发送', skipped: '本轮不回复', partial: '部分已发送', cancelled: '本轮已取消' })[phase])}</strong>` : '';

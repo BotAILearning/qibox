@@ -228,23 +228,11 @@ export class DataChatBridge extends NativeChatBridge {
     if (action === 'transcribe') return this.transcribeData(args, context);
     if (action === 'open-chat') {
       const binding = this.binding(args);
-      // Authenticate the current account and target without requiring message
-      // shards or chat-body decoding to succeed just to navigate.
-      const current = await this.data('identity', { account: binding.account }, context);
-      const target = current.contacts?.find(c => c.id === binding.id && c.kind === binding.kind);
-      if (!target || !key(target.native?.account) || !key(target.native?.contact) || !label(target.label)) {
-        console.error('[ai-open-chat-identity]', JSON.stringify({
-          accountMatch: current.account === binding.account,
-          contactCount: Array.isArray(current.contacts) ? current.contacts.length : -1,
-          targetMatch: !!target,
-          accountKeyValid: key(target?.native?.account),
-          contactKeyValid: key(target?.native?.contact),
-          labelValid: label(target?.label),
-          kind: binding.kind,
-        }));
-        throw unavailable();
-      }
-      const route = { ...target.native, label: target.label, kind: binding.kind, source: 'contacts',
+      // The contact ID and native route were authenticated by the data scan.
+      // Native navigation rechecks the live process, account and selected ID;
+      // a second full contact snapshot here only delays an explicit click.
+      if (!key(binding.native?.account) || !key(binding.native?.contact) || !label(binding.label)) throw unavailable();
+      const route = { ...binding.native, label: binding.label, kind: binding.kind, source: 'contacts',
         background: { account: binding.account, contact: binding.id }, ...(binding.sessionHint ? { sessionHint: binding.sessionHint } : {}) };
       let result;
       try { result = await this.request('open-chat', route, context); }

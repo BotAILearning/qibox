@@ -5,7 +5,7 @@ import { spawn } from 'node:child_process';
 import { mkdir, readFile, writeFile, chmod, access, rename, rm, readdir, stat, symlink } from 'node:fs/promises';
 import { createWriteStream } from 'node:fs';
 import { AppError, atomicJson, jsonFile, hashFile } from './files.mjs';
-import { restoreWechatWindow, wechatWindowVisible, DesktopWindowState } from './desktop.mjs';
+import { activateWechatWindow, restoreWechatWindow, wechatWindowVisible, DesktopWindowState } from './desktop.mjs';
 import { fontConfiguration } from './fonts.mjs';
 import { AutoLoginVerifier, readNativeLogin } from './auto-login.mjs';
 import { LoginState } from './login-state.mjs';
@@ -279,22 +279,27 @@ export class Runtime {
       throw new AppError(this.message, 500);
     }
   }
-  async showWindow() {
+  async showWindow({ activate = false } = {}) {
     if (!this.isWechat) return this.status === 'running';
     if (this.status !== 'running' || !this.desktopEnv) return false;
     // A recent observation already proved this owned WeChat window is visible.
     // Opening a chat must not repeat the full X window scan on every click.
-    if (this.windowState.state(true) === true) return false;
+    if (this.windowState.state(true) === true && !activate) return false;
     if (this.showingWindow) return this.showingWindow;
-    const operation = restoreWechatWindow({ root: this.runtimeRoot, env: this.desktopEnv, command,
-      pid: this.processes.find(x => x.name === 'wechat')?.process.pid });
+    const options = { root: this.runtimeRoot, env: this.desktopEnv, command,
+      pid: this.processes.find(x => x.name === 'wechat')?.process.pid };
+    const operation = (async () => {
+      const restored = this.windowState.state(true) === true ? false : await restoreWechatWindow(options);
+      const focused = activate ? await activateWechatWindow(options) : false;
+      return restored || focused;
+    })();
     this.showingWindow = operation;
     try { return await operation; } finally { this.showingWindow = null; await this.windowState.refresh(true); }
   }
   async showLogin() {
     if (this.status !== 'running') throw new AppError('请先连接应用', 409);
     await this.foregroundRequested();
-    await this.showWindow();
+    await this.showWindow({ activate: true });
     await readNativeLogin({ appRoot: this.appRoot, runtimeRoot: this.runtimeRoot, env: this.desktopEnv,
       pid: this.processes.find(x => x.name === 'wechat')?.process.pid, session: true, loginPage: true });
     await this.loginState.refresh(true);

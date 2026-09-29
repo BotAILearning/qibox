@@ -226,7 +226,7 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
         if (action === 'recheck') { await item.runtime.loginState?.refresh(true); return send(res, 200, item.runtime.publicState()); }
         if (action === 'show') return send(res, 200, await item.exclusive(async () => {
           if (item.runtime.status !== 'running') throw new AppError('请先连接微信', 409);
-          await item.runtime.foregroundRequested?.(); await item.runtime.showWindow?.();
+          await item.runtime.foregroundRequested?.(); await item.runtime.showWindow?.({ activate: true });
           return item.runtime.publicState();
         }));
         if (action === 'rename') return send(res, 200, await space.rename(id, data.name));
@@ -240,7 +240,7 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
           return await item.exclusive(async () => {
             if (item.runtime.status !== 'running') throw new AppError('请先打开微信', 409);
             await item.runtime.foregroundRequested?.();
-            await item.runtime.showWindow?.(); await item.runtime.setInputMethod?.(false);
+            await item.runtime.showWindow?.({ activate: true }); await item.runtime.setInputMethod?.(false);
             const key = randomBytes(24).toString('hex'); tickets.set(key, { uid: user.uid, id, expires: Date.now() + 60000 });
             if (host === 'ugos') return send(res, 200, { password: item.runtime.password, transport: 'http', path: `${prefix}/desktop/stream?ticket=${key}`, input: `${prefix}/desktop/input?ticket=${key}` });
             return send(res, 200, { password: item.runtime.password, path: `${prefix}/desktop?ticket=${key}` });
