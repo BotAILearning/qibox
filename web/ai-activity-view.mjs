@@ -54,6 +54,7 @@ export function recentErrorsBox(state, open = false, loading = false) {
 }
 export function skipRecordsView(state) {
   const profiles = new Map((state.profiles || []).map(profile => [profile.id, profile]));
+  const expanded = new Set(state.skipMessageExpanded || []);
   const merged = new Map();
   for (const event of [...(state.events || []).filter(event => event.code === 'skip'), ...(state.skipRecords || [])]) merged.set(event.id || `${event.target || ''}:${event.at}`, event);
   const reasonLabels = { 'group-trigger-missing': '群聊未配置触发方式', 'explicit-question-no-response': '明确提问重试后仍未生成文字回复；新来信仍可处理', 'unsupported-media': '当前内容无法安全处理', 'identity-rule-block': '回复内容未通过身份规则', 'model-no-reply': '模型判断本轮无需回复' };
@@ -65,11 +66,19 @@ export function skipRecordsView(state) {
     const markText = marked ? '已标记为需回复' : marking ? '正在标记…' : '标记为需回复';
     const markHint = marked ? '已暂存，将在下一次自动回复前总结；此操作不会立即发送消息。' : event.markReplyError || '';
     const incoming = Array.isArray(event.incomingMessages) ? event.incomingMessages : [];
-    const content = incoming.length ? `<div class="ai-skip-messages">${incoming.map(message => {
-      const sender = message.senderName || (profile?.kind === 'person' ? profile.label : '') || (message.senderId ? `群成员（${String(message.senderId).slice(0, 8)}）` : '发送者暂不可读取');
+    const senderOf = message => message.senderName || (profile?.kind === 'person' ? profile.label : '') || (message.senderId ? `群成员（${String(message.senderId).slice(0, 8)}）` : '发送者暂不可读取');
+    const bodyOf = message => {
       const media = { image: '图片', voice: '语音', video: '视频', file: '文件', sticker: '表情', emoji: '表情', link: '链接', system: '系统消息' }[message.type];
-      return `<div class="ai-skip-message"><strong class="ai-skip-sender">${esc(sender)}</strong>${message.timestamp ? `<time>${esc(beijingTime(message.timestamp * 1000))}</time>` : ''}<p class="ap-record-text">${esc(message.text || (media ? `[${media}]` : '消息正文暂不可读取'))}</p>${message.truncated ? '<small>原消息较长，此处展示已保存的部分内容。</small>' : ''}</div>`;
-    }).join('')}${event.truncated ? '<p class="ai-help">来信较多或内容较长，此处展示已保存的部分消息。</p>' : ''}</div>` : `<p class="ai-help" role="status">${state.skipRecordsLoading ? '正在读取发送者与消息内容…' : esc(event.contentUnavailableMessage || '历史记录未保存原文，暂时无法读取消息内容。')}</p>`;
+      return message.text || (media ? `[${media}]` : '消息正文暂不可读取');
+    };
+    const messageList = incoming.map(message => {
+      return `<div class="ai-skip-message"><strong class="ai-skip-sender">${esc(senderOf(message))}</strong>${message.timestamp ? `<time>${esc(beijingTime(message.timestamp * 1000))}</time>` : ''}<p class="ap-record-text">${esc(bodyOf(message))}</p>${message.truncated ? '<small>原消息较长，此处展示已保存的部分内容。</small>' : ''}</div>`;
+    }).join('');
+    const messages = `<div class="ai-skip-messages">${messageList}${event.truncated ? '<p class="ai-help">来信较多或内容较长，此处展示已保存的部分消息。</p>' : ''}</div>`;
+    const latest = incoming.at(-1);
+    const content = incoming.length > 1 && event.id
+      ? `<details class="ai-skip-message-disclosure" data-ai-skip-messages="${esc(event.id)}" ${expanded.has(event.id) ? 'open' : ''}><summary><span class="ai-skip-message-count">${incoming.length} 条消息</span><span class="ai-skip-message-preview">${esc(senderOf(latest))}：${esc(bodyOf(latest))}</span><span class="ai-skip-message-toggle"><span class="when-closed">展开</span><span class="when-open">收起</span></span></summary>${messages}</details>`
+      : incoming.length ? messages : `<p class="ai-help" role="status">${state.skipRecordsLoading ? '正在读取发送者与消息内容…' : esc(event.contentUnavailableMessage || '历史记录未保存原文，暂时无法读取消息内容。')}</p>`;
      return `<tr data-ai-skip-record="${esc(event.id || '')}"><td data-label="联系人">${name}${profile?.kind === 'group' ? '<small>群聊</small>' : ''}</td><td data-label="时间">${esc(beijingTime(event.at))}</td><td data-label="消息内容">${content}</td><td data-label="原因与来源">${esc(source)} · ${esc(reason)}</td><td data-label="操作">${profile ? `<button type="button" class="secondary ap-record-open" data-ai-open-conversation="${esc(profile.id)}">打开聊天</button>` : '<span class="ai-help">联系人信息不可用</span>'}<button type="button" class="secondary ap-record-mark" data-ai-mark-reply="${esc(profile?.id || '')}" data-message-id="${esc(event.messageId || '')}" data-event-id="${esc(event.id || '')}" ${event.messageId && profile && !marked && !marking ? '' : 'disabled'}>${markText}</button>${markHint ? `<small class="ai-skip-mark-status${event.markReplyError ? ' error' : ''}" role="status">${esc(markHint)}</small>` : ''}<button type="button" class="quiet danger-link" data-ai-delete-record="${esc(event.id || '')}" data-ai-delete-source="skip">删除记录</button></td></tr>`;
   }).join('');
    const canRetry = [...merged.values()].sort((a, b) => b.at - a.at).slice(0, 50).some(event => event.messageId && !event.incomingMessages?.length);

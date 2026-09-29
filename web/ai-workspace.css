@@ -796,6 +796,15 @@
 #ai-panel .ai-skip-sender{display:block;color:var(--ai-text);font-size:13px}
 #ai-panel .ai-skip-message time{display:block;color:var(--ap-muted);font-size:11px;margin-top:2px}
 #ai-panel .ai-skip-message .ap-record-text{margin:5px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
+#ai-panel .ai-skip-message-disclosure{min-width:0}
+#ai-panel .ai-skip-message-disclosure>summary{display:flex;align-items:center;gap:8px;min-width:0;padding:9px 10px;border:1px solid #dfe4fa;border-radius:8px;background:#f6f7ff;color:var(--ai-text);cursor:pointer;list-style:none}
+#ai-panel .ai-skip-message-disclosure>summary::-webkit-details-marker{display:none}
+#ai-panel .ai-skip-message-count,#ai-panel .ai-skip-message-toggle{flex:none;color:#5261ba;font-size:12px;font-weight:650;white-space:nowrap}
+#ai-panel .ai-skip-message-preview{flex:1;min-width:0;overflow:hidden;color:var(--ap-muted);font-size:12px;text-overflow:ellipsis;white-space:nowrap}
+#ai-panel .ai-skip-message-toggle .when-open,#ai-panel .ai-skip-message-disclosure[open] .when-closed{display:none}
+#ai-panel .ai-skip-message-disclosure[open] .when-open{display:inline}
+#ai-panel .ai-skip-message-disclosure[open]>summary{margin-bottom:11px}
+#ai-panel .ai-skip-message-disclosure>summary:focus-visible{outline:2px solid #5869ec;outline-offset:2px}
 #ai-panel .ai-skip-mark-status{display:block;color:var(--ap-muted);font-size:11px;line-height:1.5;overflow-wrap:anywhere}
 #ai-panel .ai-skip-mark-status.error{color:#b03a3a}
 @media(max-width:1199px){#ai-panel .ai-activity-page #ai-skip-records .ap-skip-record-table td[data-label="消息内容"]{display:block;grid-column:1/-1}#ai-panel .ai-activity-page #ai-skip-records .ap-skip-record-table td[data-label="消息内容"]:before{display:block;margin-bottom:8px}}

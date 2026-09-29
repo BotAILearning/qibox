@@ -12,11 +12,16 @@ test('unreplied review shows each actual sender and message independently from i
   assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt;/);
   assert.doesNotMatch(html, /<img src=x/);
   assert.equal((html.match(/class="ai-skip-sender"/g) || []).length, 2);
+  assert.match(html, /<details class="ai-skip-message-disclosure" data-ai-skip-messages="skip-1"/);
+  assert.match(html, /2 条消息/);
+  assert.match(html, /成员乙：&lt;img src=x onerror=alert\(1\)&gt;/);
+  assert.match(skipRecordsView({ ...state({ incomingMessages: [{ id: 'm1', text: '一' }, { id: 'm2', text: '二' }] }), skipMessageExpanded: ['skip-1'] }), /data-ai-skip-messages="skip-1" open/);
 });
 test('unknown group identities never use the group name as sender; unavailable and media states are explicit', () => {
   const html = skipRecordsView(state({ incomingMessages: [{ id: 'm', text: '', type: 'voice', senderId: '0123456789abcdef' }] }));
   assert.match(html, /群成员（01234567）/);
   assert.match(html, /\[语音\]/);
+  assert.doesNotMatch(html, /ai-skip-message-disclosure/);
   assert.doesNotMatch(html, /ai-skip-sender">项目讨论群/);
   const missing = skipRecordsView(state({ contentUnavailable: true, contentUnavailableMessage: '原消息已不可读取 <重试>' }));
   assert.match(missing, /原消息已不可读取 &lt;重试&gt;/);

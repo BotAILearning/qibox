@@ -72,7 +72,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   const markReplyStatus = new Map();
   function skipState() {
     const rows = new Map([...(state?.events || []).filter(row => row.code === 'skip'), ...(state?.skipRecords || [])].map(row => [row.id, row]));
-    return { ...state, skipRecordsLoading: skipLoading, skipRecords: [...rows.values()].map(row => ({ ...row, ...(skipContent.get(row.id) || {}), markedForReply: row.markedForReply === true, ...(markReplyStatus.get(row.id) || {}) })) };
+    return { ...state, skipRecordsLoading: skipLoading, skipMessageExpanded: logFilters.skipMessageExpanded || [], skipRecords: [...rows.values()].map(row => ({ ...row, ...(skipContent.get(row.id) || {}), markedForReply: row.markedForReply === true, ...(markReplyStatus.get(row.id) || {}) })) };
   }
   function drawSkips() {
     const box = tab === 'activity' && $('#ai-skip-records');
@@ -778,7 +778,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     revealRevision++;
     const view = `${tab}:${editingProfile || editingReplyContact || (tab === 'overview' ? selectedObject : '')}:${tab === 'proactive' ? !!$('#ai-proactive-form') : ''}`;
     const objectScroll = $('#ai-object-list')?.scrollTop || 0;
-    const disclosureStates = view === renderedView ? [...panel.querySelectorAll('#ai-content details')].filter(node => !node.hasAttribute('data-ai-record-expand')).map(node => ({ label: node.querySelector('summary')?.textContent, open: node.open })) : [];
+    const disclosureStates = view === renderedView ? [...panel.querySelectorAll('#ai-content details')].filter(node => !node.hasAttribute('data-ai-record-expand') && !node.hasAttribute('data-ai-skip-messages')).map(node => ({ label: node.querySelector('summary')?.textContent, open: node.open })) : [];
     renderedView = view; panel.dataset.page = tab;
     const pageTitle = ({ overview: '自动回复', proactive: '主动聊天', activity: '执行记录', provider: '模型设置', settings: '系统设置', analysis: '分析报告', learning: '批量学习风格与记忆', 'default-style': '学习默认风格', results: '学习结果', profile: '编辑学习结果', 'manual-reply': '手动回复' })[tab] || 'AI 辅助';
     $('#ai-title').textContent = pageTitle;
@@ -799,7 +799,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     if ($('#ai-object-list')) { $('#ai-object-list').innerHTML = objectList(state, objectView()); $('#ai-object-list').scrollTop = objectScroll; }
     panel.classList.toggle('object-selected', !!selectedObject && tab === 'overview');
     for (const node of panel.querySelectorAll('#ai-content details')) {
-      if (node.hasAttribute('data-ai-record-expand')) continue;
+      if (node.hasAttribute('data-ai-record-expand') || node.hasAttribute('data-ai-skip-messages')) continue;
       const previous = disclosureStates.find(item => item.label === node.querySelector('summary')?.textContent);
       if (previous) node.open = previous.open;
     }
@@ -1113,6 +1113,15 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     if (event.target.closest('#ai-object-form') && $('[data-ai-dirty]')) $('[data-ai-dirty]').hidden = false;
   });
   panel.addEventListener('toggle', event => {
+    const skipId = event.target.dataset?.aiSkipMessages;
+    if (skipId && event.target.isConnected) {
+      const expanded = new Set(logFilters.skipMessageExpanded || []);
+      if (event.target.open) expanded.add(skipId);
+      else expanded.delete(skipId);
+      logFilters.skipMessageExpanded = [...expanded];
+      rememberRecords();
+      return;
+    }
     const key = event.target.dataset?.aiRecordExpand;
     if (!key || !event.target.isConnected) return;
     const expanded = new Set(logFilters.expanded || []);

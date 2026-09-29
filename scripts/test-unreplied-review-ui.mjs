@@ -43,13 +43,24 @@ try {
   await page.locator('.ai-main-tabs [data-ai-nav="activity"]').click();
   const saved = page.locator(`[data-ai-skip-record="${savedId}"]`);
   await saved.waitFor();
+  const disclosure = saved.locator('[data-ai-skip-messages]');
+  await disclosure.waitFor();
+  assert.equal(await disclosure.getAttribute('open'), null);
+  assert.match(await disclosure.locator('summary').innerText(), /2 条消息[\s\S]*小周/);
+  assert.equal(await saved.locator('.ai-skip-message').first().isVisible(), false);
   assert.equal(await saved.locator('.ai-skip-sender').count(), 2);
+  await disclosure.locator('summary').click();
+  assert.notEqual(await disclosure.getAttribute('open'), null);
   assert.match(await saved.innerText(), /小林[\s\S]*小周/);
   assert.ok((await saved.innerText()).includes(second.text));
+  await disclosure.locator('summary').click();
+  assert.equal(await saved.locator('.ai-skip-message').first().isVisible(), false);
+  await disclosure.locator('summary').click();
   assert.equal(await saved.locator('img').count(), 0);
   assert.match(await page.locator(`[data-ai-skip-record="${mediaId}"]`).innerText(), /小林[\s\S]*\[语音\]/);
   await page.waitForFunction(id => document.querySelector(`[data-ai-skip-record="${id}"] .ai-skip-sender`)?.textContent === '小陈', legacyId);
   assert.ok((await page.locator(`[data-ai-skip-record="${legacyId}"]`).innerText()).includes(legacy.text));
+  assert.notEqual(await disclosure.getAttribute('open'), null);
   const cases = [];
   for (const width of [1440, 1280, 768, 390, 320]) {
     await page.setViewportSize({ width, height: 960 });
@@ -61,8 +72,12 @@ try {
     await page.screenshot({ path: path.join(output, `unreplied-${width}.png`) });
     cases.push({ width, passed: true });
   }
+  await saved.locator('[data-ai-mark-reply]').click();
+  await page.waitForFunction(id => document.querySelector(`[data-ai-skip-record="${id}"] [data-ai-mark-reply]`)?.textContent === '已标记为需回复', savedId);
+  assert.notEqual(await disclosure.getAttribute('open'), null);
+  assert.equal(await saved.locator('.ai-skip-message').first().isVisible(), true);
   assert.deepEqual(errors, []); assert.equal(bridge.sent.length, 0);
-  const result = { passed: true, cases, groupSenderAndBody: true, multipleIncoming: true, legacyHydration: true, escapedHtml: true, sentMessages: 0, errors };
+  const result = { passed: true, cases, groupSenderAndBody: true, multipleIncoming: true, messageDisclosure: true, legacyHydration: true, escapedHtml: true, sentMessages: 0, errors };
   await writeFile(path.join(output, 'verification.json'), JSON.stringify(result, null, 2));
   console.log(JSON.stringify(result));
 } finally { await browser?.close(); await app.close(); await peer.close(); await cleanup(dataRoot); }
