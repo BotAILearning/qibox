@@ -56,7 +56,7 @@ export function recentErrorsBox(state, open = false, loading = false) {
   const total = Math.max(Number(page.total) || 0, errors.length);
   const hasMore = !!page.hasMore || errors.length < total;
   if (!total) return '';
-  return `<details class="ap-record-errors"${open ? ' open' : ''}><summary><h4>最近异常（${total}）</h4><button type="button" class="quiet danger-link" data-ai-clear-errors>清空</button></summary><ul>${errors.map(e => `<li><time>${esc(beijingTime(e.at))}</time><span>${esc(e.message || 'AI 操作未完成')}</span></li>`).join('')}</ul><footer class="ap-record-footer"><span>已加载 ${errors.length} / ${total} 条</span>${hasMore ? `<button class="secondary" type="button" data-ai-error-more ${loading ? 'disabled' : ''}>${loading ? '正在读取…' : '加载更早异常'}</button>` : '<span>已全部加载</span>'}</footer></details>`;
+  return `<details class="ap-record-errors"${open ? ' open' : ''}><summary><h4>最近异常（${total}）</h4><button type="button" class="quiet danger-link" data-ai-clear-errors>清空</button></summary><ul>${errors.map(e => `<li><time>${esc(beijingTime(e.at))}</time><span>${e.resolution === 'sent' ? '<strong>已确认送达</strong> · ' : ''}${esc(e.message || 'AI 操作未完成')}</span></li>`).join('')}</ul><footer class="ap-record-footer"><span>已加载 ${errors.length} / ${total} 条</span>${hasMore ? `<button class="secondary" type="button" data-ai-error-more ${loading ? 'disabled' : ''}>${loading ? '正在读取…' : '加载更早异常'}</button>` : '<span>已全部加载</span>'}</footer></details>`;
 }
 export function skipRecordsView(state) {
   const profiles = new Map((state.profiles || []).map(profile => [profile.id, profile]));
