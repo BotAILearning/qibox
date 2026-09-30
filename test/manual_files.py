@@ -9,6 +9,57 @@ manual = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(manual)
 
 
+class FocusedChat(unittest.TestCase):
+    def nodes(self, title='Bot', focused=True, start=10):
+        shown = {manual.controls.base.VISIBLE, manual.controls.base.SHOWING}
+        def node(obj, parent, role, name, bounds, states=()):
+            return {'obj': start + obj, 'parent': 1 if parent == -1 else start + parent,
+                    'role': role, 'name': name, 'bounds': bounds, 'states': shown | set(states),
+                    'interfaces': {'editable_text': True} if role == 'text' else {}}
+        return [node(0, -1, 'frame', title, (0, 0, 800, 600)),
+                node(1, 0, 'filler', '', (0, 0, 800, 50)),
+                node(2, 1, 'label', 'Bot', (10, 10, 80, 25), {11}),
+                node(3, 1, 'push button', '聊天信息', (700, 10, 30, 25)),
+                node(4, 0, 'list', '消息', (0, 50, 800, 330)),
+                node(5, 0, 'text', '', (0, 400, 800, 100), {17, 12} if focused else {17}),
+                node(6, 0, 'push button', '发送文件', (30, 530, 30, 25)),
+                node(7, 0, 'push button', '发送', (720, 530, 50, 25))]
+
+    def test_main_and_detached_chat_use_only_the_focused_editor(self):
+        nodes = self.nodes('微信', False) + self.nodes('Bot', True, 100)
+        layout, frames = manual.chat_nodes(nodes, 1)
+        self.assertEqual(layout['frame'], 100)
+        self.assertEqual(layout['title'], 'Bot')
+        self.assertEqual(frames, {10, 100})
+        with self.assertRaisesRegex(ValueError, 'focused chat'):
+            manual.chat_nodes(self.nodes(focused=False), 1)
+
+    def test_ambiguous_focus_and_search_fields_are_rejected(self):
+        with self.assertRaises(ValueError):
+            manual.chat_nodes(self.nodes() + self.nodes(start=100), 1)
+        nodes = self.nodes()
+        nodes[5]['states'].discard(17)
+        with self.assertRaises(ValueError):
+            manual.chat_nodes(nodes, 1)
+        nodes = self.nodes()
+        nodes[0]['parent'] = 2
+        with self.assertRaises(ValueError):
+            manual.chat_nodes(nodes, 1)
+
+    def test_preview_stays_in_the_original_frame_after_focus_changes(self):
+        nodes = self.nodes(focused=False) + self.nodes(start=100)
+        layout, _ = manual.chat_nodes(nodes, 1, expected_frame=10)
+        self.assertEqual(layout['frame'], 10)
+        with self.assertRaises(ValueError):
+            manual.chat_nodes(nodes, 1, expected_frame=999)
+
+    def test_only_verified_chat_frames_are_ignored_as_background_windows(self):
+        ins = manual.ManualControls.__new__(manual.ManualControls)
+        ins._manual_frames = {10, 100}
+        with patch.object(manual.controls.NativeControls, '_visible_roots', return_value=[10, 100, 900]):
+            self.assertEqual(ins._visible_roots(1, 100), [900])
+
+
 class FilePreview(unittest.TestCase):
     def fixture(self):
         layout = {'app': 1, 'frame': 2, 'header': 3, 'editor': 4, 'label': 'fixture'}

@@ -87,6 +87,13 @@ try {
     await until(() => peer.pointers.slice(pointerStart).some(event => event.mask === 1));
     report.checks.push(`${hasTouch ? 'Touch-capable PC' : 'PC'}: CDP Chinese composition commits once; subsequent English/backspace work; Ctrl+Space stays local; candidate anchor stays within edges and permits clicks`);
 
+    const multilineStart = peer.keys.length;
+    await page.keyboard.insertText('第一行🙂\n第二行\t结尾');
+    await until(() => peer.keys.slice(multilineStart).filter(key => key.down).length >= 2);
+    assert.equal(runtime.lastClipboard, '第一行🙂\n第二行\t结尾');
+    assert.deepEqual(peer.keys.slice(multilineStart).filter(key => key.down).map(key => key.symbol), [0xffe3, 118]);
+    report.checks.push(`${hasTouch ? 'Touch-capable PC' : 'PC'}: one multiline committed insertion creates one paste and no repeated trailing line`);
+
     const beforeReconnect = peer.frames;
     runtime.windowVisible = false;
     await page.getByRole('button', { name: '重新登录', exact: true }).waitFor();

@@ -173,3 +173,12 @@ test('native file preparation never sends a second Ctrl+V into the confirmation 
   fire(input, 'paste', { clipboardData: { files: [{ name: '资料.txt' }] } }); await bridge.flush();
   assert.deepEqual(keys, []); bridge.dispose();
 });
+
+test('a single multiline committed insertion is captured before the browser splits its input events', async () => {
+  const { input, pasted, keys, bridge } = setup();
+  const event = fire(input, 'beforeinput', { inputType: 'insertText', data: '第一行🙂\n第二行\t结尾' });
+  assert.equal(event.defaultPrevented, true); await bridge.flush();
+  assert.deepEqual(pasted, ['第一行🙂\n第二行\t结尾']);
+  assert.deepEqual(keys, [[0xffe3, 'ControlLeft', true], [0x76], [0xffe3, 'ControlLeft', false]]);
+  assert.equal(input.value, ''); bridge.dispose();
+});

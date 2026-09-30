@@ -90,6 +90,12 @@ export function nativeInput({ input, screen, client, paste, pasteFiles, notify, 
   });
   listen(input, 'beforeinput', event => {
     if (composing || event.isComposing) return;
+    // Chromium can emit separate input events for every line in one committed
+    // insertion. Capture it before mutation so clearing the host textarea does
+    // not replay the trailing lines (for example dictation / inserted text).
+    if (event.inputType === 'insertText' && /[\r\n\t]/.test(event.data || '')) {
+      event.preventDefault(); ended = null; pasteText(event.data); clear(); return;
+    }
     const key = { deleteContentBackward: 0xff08, deleteContentForward: 0xffff }[event.inputType];
     if (key) { event.preventDefault(); enqueue(() => chord(key)); }
   });
