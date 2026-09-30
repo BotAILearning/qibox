@@ -21,8 +21,12 @@ start)
     command -v node >/dev/null || exit 1
     nohup node "$ENTRY" >> "${TRIM_PKGVAR}/logs/service.log" 2>&1 </dev/null &
     printf '%s\n' "$!" > "$PID_FILE"
-    for attempt in {1..20}; do
+    # A cold upgrade prepares the shared environment and restores saved sessions
+    # before opening the socket. Do not report failure while that owned process
+    # is still preparing; a crashed process fails promptly.
+    for attempt in {1..120}; do
         if running && [ -S "${TRIM_APPDEST}/app.sock" ]; then exit 0; fi
+        if ! running; then exit 1; fi
         sleep 1
     done
     exit 1

@@ -735,7 +735,8 @@ export class AIAssistant {
       this.syncTargets(); await this.save(); return this.publicState();
     });
   }
-  watchedTargets() { return [...new Set([...this.data.targets, ...this.profiles().filter(p => this.continuing(p)).map(p => p.id), ...(this.data.settings.reply && this.data.settings.replyScope === 'all' ? this.profiles().filter(p => this.eligible(p) && p.kind === 'person').map(p => p.id) : [])])]; }
+  watchedTargets() { return [...new Set([...this.data.targets, ...this.profiles().filter(p => this.continuing(p)).map(p => p.id), ...(this.data.settings.reply && this.data.settings.replyScope === 'all' ? this.profiles().filter(p => this.eligible(p) && p.kind === 'person').map(p => p.id) : [])])]
+    .filter(id => { const profile = this.data.profiles[id]; return profile && !(profile.paused && profile.pauseReason === 'explicit'); }); }
   sessionToken(row) { return `${row.at}:${row.last}:${row.unread}`; }
   // 这一拍该读谁。微信自己的会话表（session.db）里每个会话一行，带未读数和最后一条
   // 消息的本地序号；读它只要一张几百 KB 的小表、不需要任何 message 分片，所以可以每拍
@@ -775,12 +776,12 @@ export class AIAssistant {
     }
     // 没有会话行的对象（通讯录里有、聊天列表里没有）仍按轮转覆盖，避免它们永远读不到；
     // 有会话行的对象一律由索引决定。
-    const unseen = targets.filter(id => !index.has(id) && important.has(id));
+    const unseen = targets.filter(id => !index.has(this.data.profiles[id].contact) && important.has(id));
     const rotating = Math.min(unseen.length, 2), start = (this.watchIndex || 0) % (unseen.length || 1);
     this.watchIndex = (start + rotating) % (unseen.length || 1);
     const changed = [];
     for (const id of targets) {
-      const row = index.get(id);
+      const row = index.get(this.data.profiles[id].contact);
       if (!row) continue;
       const token = this.sessionToken(row);
       this.watchTokens.set(id, token);
@@ -789,7 +790,7 @@ export class AIAssistant {
     // 最近变化的先读：应用长时间没跑时，先处理真正有新消息的会话。
     changed.sort((a, b) => b.at - a.at);
     const watched = [...new Set([...keep, ...changed.map(entry => entry.id), ...Array.from({ length: rotating }, (_, position) => unseen[(start + position) % unseen.length])])];
-    for (const id of Array.from(this.sessionSeen.keys())) if (!index.has(id)) this.sessionSeen.delete(id);
+    for (const id of Array.from(this.sessionSeen.keys())) if (!index.has(this.data.profiles[id]?.contact)) this.sessionSeen.delete(id);
     return watched.slice(0, 24);
   }
   // 读取成功后才记账：读取失败不落基线，下一拍仍按「变了」重试（受 readRetryAt 冷却）。
