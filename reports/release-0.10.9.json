@@ -1,0 +1,27 @@
+{
+  "version": "0.10.9",
+  "buildId": "0.10.9",
+  "channel": "stable",
+  "at": "2026-09-30T15:58:21.431Z",
+  "sourceCommit": "50444e33dc0b78da9d16bb4899638e3b1e8ab466",
+  "artifacts": [
+    {
+      "file": "dist/releases/0.10.9/0.10.9/qibox-0.10.9-all.fpk",
+      "bytes": 570804329,
+      "sha256": "a4163ecb45c81186156ed7531271ba24c09ccc0a74dd0daffc35a6205f9ed4be"
+    }
+  ],
+  "platforms": {
+    "fnos": {
+      "package": "universal FPK",
+      "architectures": [
+        "x64",
+        "arm64"
+      ]
+    }
+  },
+  "checks": {
+    "verifiedBuildHash": true
+  },
+  "acceptance": "See the version-specific acceptance document for local, device, model and installation evidence. Package metadata alone does not prove device acceptance."
+}
