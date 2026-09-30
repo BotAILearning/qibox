@@ -16,7 +16,7 @@ export function refreshReplyCountdowns(root = document) {
 export function replyFlowMarkup(profile, live, { allowSkip = false } = {}) {
   if (!live) return '';
   const phase = live.phase === 'generating' ? 'requesting' : live.phase;
-  const labels = { waiting: '等待汇总', summarizing: '汇总上下文', requesting: 'AI 请求中', sending: '发送中', sent: '已发送', failed: '等待重试', partial: '部分已发送', skipped: '本轮不回复', cancelled: '已取消' };
+  const labels = { waiting: '等待汇总', summarizing: '汇总上下文', requesting: 'AI 请求中', sending: '发送中', confirming: '核实发送结果', sent: '已发送', failed: '等待重试', partial: '部分已发送', skipped: '本轮不回复', cancelled: '已取消' };
   const detail = live.reason || labels[phase] || '等待新消息';
   const countdown = Number.isFinite(live.dueAt) && live.dueAt > Date.now() ? `<span class="ai-reply-countdown" data-ai-countdown="${live.dueAt}">${countdownText(live.dueAt)}</span>` : '';
   const canSkip = allowSkip && (live.canSkipWait === true || live.canSkipWait === undefined && phase === 'waiting' && skippable.has(live.reason));
