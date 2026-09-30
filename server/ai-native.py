@@ -64,6 +64,10 @@ NATIVE_FAILURE_REASONS = {
     'target changed': 'target-changed',
     'media paste unavailable': 'media-paste-unavailable',
     'media preview unavailable': 'media-preview-unavailable',
+    'voice unavailable': 'voice-unavailable',
+    'voice too long': 'voice-too-long',
+    'voice recording changed': 'voice-recording-changed',
+    'voice audio unavailable': 'voice-audio-unavailable',
 }
 
 
@@ -397,6 +401,8 @@ class ChatAdapter:
         if getattr(self, 'background_target', None) is not None and not self.send_pane_clear(layout):
             return {'status': 'stale'}
         if request.get('media') is not None:
+            if request['media'].get('delivery') == 'voice':
+                return module('qibox_ai_voice_output', 'ai-native-voice-output.py').send(self, request['media'], layout)
             return self.send_media(request['media'], layout)
         ins.check()
         self.verify_session()
@@ -552,6 +558,8 @@ class ChatAdapter:
     def cleanup_draft(self):
         if not self.possibly_written or self.send_confirmed:
             return 'not-needed'
+        if getattr(self, 'owned_voice', None):
+            return module('qibox_ai_voice_output', 'ai-native-voice-output.py').cleanup(self)
         if getattr(self, 'owned_media', None):
             return self.cleanup_media()
         if not self.owned_draft:
@@ -644,7 +652,7 @@ def main():
                 adapter.controls.check()
                 if select.select([sys.stdin.buffer], [], [], .1)[0]:
                     value = json.loads(sys.stdin.buffer.readline(100000))
-                    adapter.controls.deadline = time.monotonic() + 28
+                    adapter.controls.deadline = time.monotonic() + (85 if value.get('media', {}).get('delivery') == 'voice' else 28)
                     return value
             raise TimeoutError('commit timed out')
         result = adapter.execute(request, commit=commit if prepared else None)
@@ -672,6 +680,8 @@ def main():
                 if request.get('action') in ('send', 'send-guard', 'prepare-send'):
                     result['draftCleanup'] = cleanup
                     result['sendPressed'] = adapter.send_pressed
+                    if adapter.send_pressed and getattr(adapter, 'voice_receipt', None):
+                        result['voiceReceipt'] = adapter.voice_receipt
                     # A completed cleanup and no Send press prove this attempt
                     # never submitted a message. Let the caller retry it instead
                     # of consuming the incoming message as an unknown delivery.

@@ -9,6 +9,7 @@ import { temp, cleanup } from './fixtures.mjs';
 import { defaultStyle } from '../server/ai-schema.mjs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { LoginState } from '../server/login-state.mjs';
 
 const account = key('data-account'), contact = key('contact-a'), second = key('contact-b'), revision = key('r1');
 const person = { id: contact, label: '同名联系人', kind: 'person', native: { account: key('native-account'), contact: key('native-contact') } };
@@ -406,6 +407,27 @@ test('transient receipt read failures retry only reads and can confirm the commi
   assert.deepEqual(counters, { dispatches: 1, reads: 3 });
 });
 
+test('a newly authenticated contact scan recovers expired logout despite inconclusive native UI', async () => {
+  const {bridge,runtime}=fixture();let time=20000,status='logged-out';
+  const login=runtime.loginState=new LoginState({now:()=>time,probe:async()=>({status})});
+  await login.refresh();await assert.rejects(bridge.scan(),{code:'ai_wechat_logged_out'});
+  time+=16000;status='unknown';const scan=await bridge.scan();
+  assert.equal(scan.available,true);assert.equal(login.state(true),'logged-in');assert.equal(login.entryAvailable(true),true);
+  status='logged-out';await login.refresh(true);await assert.rejects(bridge.scan(),{code:'ai_wechat_logged_out'});
+  await bridge.close();
+});
+
+test('contact-only warm-up establishes login even when optional send-key discovery fails', async () => {
+  const {bridge,runtime,calls}=fixture(action=>{
+    if(action==='account')return {available:true,account};
+    if(action==='keys')throw new Error('optional cold session discovery unavailable');
+  });
+  const login=runtime.loginState=new LoginState({probe:async()=>({status:'unknown'})});
+  assert.equal(await bridge.warmup(),false);
+  assert.equal(login.entryAvailable(true),true);assert.deepEqual(calls.map(c=>c.action),['account','keys']);
+  assert.equal((await bridge.scan()).available,true);await bridge.close();
+});
+
 test('a delayed WeChat database receipt beyond five warm reads is confirmed without redispatch', async () => {
   const { bridge, counters, text, outgoing } = await receiptFixture({ response: ({ attempt, outgoing }) => attempt <= 8
     ? dataSnapshot : { ...dataSnapshot, revision: key('receipt-db'), messages: [...snapshot.messages, outgoing] } });
@@ -431,6 +453,18 @@ test('old IDs, missing history anchors, wrong bodies and multiple matching new s
       ({ ...dataSnapshot, revision: key('changed-' + kind), messages: messages(value) }) });
     assert.deepEqual(await bridge.send({ account, contact, revision, text }), { status: 'uncertain' });
     assert.equal(counters.dispatches, 1); assert.ok(counters.reads <= 32);
+  }
+});
+
+test('native voice receipts require one new voice message, never an audio file attachment', async () => {
+  const mediaFile = { name: 'AI-generated-00000000-0000-4000-8000-000000000001.mp3', type: 'audio/mpeg', mediaType: 'audio', data: Buffer.from('ID3fixture').toString('base64') };
+  for (const kind of ['voice', 'file', 'duplicate']) {
+    const f = await receiptFixture({ response: ({ outgoing }) => ({ ...dataSnapshot, revision: key('voice-' + kind), messages: [...snapshot.messages,
+      { ...outgoing, text: '[语音]', ...(kind === 'file' ? {} : { type: 'voice', voiceDurationMs: 2500 }) },
+      ...(kind === 'duplicate' ? [{ ...outgoing, id: key('second-voice'), type: 'voice', text: '[语音]', voiceDurationMs: 2500 }] : [])] }) });
+    const result = await f.bridge.send({ account, contact, revision, text: f.text, mediaFile });
+    assert.equal(result.status, kind === 'voice' ? 'sent' : 'uncertain');
+    assert.equal(f.counters.dispatches, 1);
   }
 });
 

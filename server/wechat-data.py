@@ -765,6 +765,14 @@ def messages(db, shard, account, contact, self_name, target, selected=None, meta
             result[-1]['_image'] = image_ref
         if kind == 34:
             result[-1]['type'] = 'voice'
+            if parsed and len(content) < 65536 and not re.search(r'<!\s*(DOCTYPE|ENTITY)', content, re.I):
+                try:
+                    voice_root = ET.fromstring(content)
+                    voice = voice_root if voice_root.tag == 'voicemsg' else voice_root.find('voicemsg')
+                    length = int(voice.get('voicelength', '0')) if voice is not None else 0
+                    if 0 < length <= 60000: result[-1]['voiceDurationMs'] = length
+                except (ValueError, ET.ParseError):
+                    pass
         if kind == 43:
             result[-1]['type'] = 'video'
             if parsed: result[-1]['_video'] = video_ref

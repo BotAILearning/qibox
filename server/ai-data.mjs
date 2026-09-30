@@ -84,6 +84,7 @@ export class DataChatBridge extends NativeChatBridge {
     this.supportsMediaOutput = !options.invoke || !!invokePrepared;
     this.invokePrepared = invokePrepared || (options.invoke ? null : ((route, text, context, verify) => preparedSend(this, route, text, context, verify)));
   }
+  get supportsNativeVoiceOutput() { return this.supportsMediaOutput && this.runtime.audioVoiceReady === true; }
   clearContext() {
     super.clearContext();
     this.voiceTexts?.clear();
@@ -152,11 +153,17 @@ export class DataChatBridge extends NativeChatBridge {
       // every read, and an inconclusive result no longer blocks anything.
       void login?.refresh?.().catch(() => {});
       this.check(context);
+      // Contact-only identity is fast and does not require the native session
+      // manager. Establish a new login before the optional cold send warm-up;
+      // that heavier discovery must not keep the AI/contact entry unavailable.
+      const identity = await this.data('account', {}, context);
+      if (identity.available !== true) return false;
       // 'keys' authenticates the same databases a read needs and persists what
       // it finds, so the next poll reads from cache instead of walking the whole
       // WeChat address space while the user waits.
-      await this.data('keys', {}, context);
-    } catch { /* silent: retried by the next warm-up tick */ }
+      const warmed = await this.data('keys', {}, context);
+      return warmed.available === true;
+    } catch { return false; /* retried by the next warm-up tick */ }
   }
   async executeData(action, { signal, ...args }, delivery) {
     signal?.throwIfAborted();
@@ -260,6 +267,7 @@ export class DataChatBridge extends NativeChatBridge {
   }
   data(action, args, context, options = {}) {
     this.check(context);
+    const login = this.runtime.loginState, generation = login?.generation, loginRevision = login?.observationRevision;
     // Reads do not wait for native navigation. Only the private data pipe is
     // serialized, including the final revision check of a prepared send. An
     // interactive read ("核对") runs right after whatever is in flight instead of
@@ -272,6 +280,10 @@ export class DataChatBridge extends NativeChatBridge {
         this.clear(); throw new AppError('微信账号已变化，请重新获取联系人', 409, 'ai_account_changed');
       }
       if (!result || result.error || !key(result.account)) throw readFailure(result?.stage);
+      // Authenticated current-process data also establishes login when native
+      // accessibility is slow (often the second WeChat instance). Malformed,
+      // failed, changed-account or cancelled reads never establish login.
+      if (['keys', 'account'].includes(action) && result.available === true) login?.authenticatedData?.(generation, loginRevision);
       return result;
     });
   }
@@ -300,6 +312,7 @@ export class DataChatBridge extends NativeChatBridge {
   async scanData(context, onProgress) {
     // Refresh bindings while retaining the process-scoped reader. The worker
     // independently checks the active account and database versions every time.
+    const login = this.runtime.loginState, generation = login?.generation, loginRevision = login?.observationRevision;
     const result = await this.data('contacts', {}, context);
     if (result.available !== true || !Array.isArray(result.contacts) || result.contacts.length > 20000) throw unavailable();
     const unreadableCount = result.unreadableCount === undefined ? 0 : result.unreadableCount;
@@ -318,6 +331,7 @@ export class DataChatBridge extends NativeChatBridge {
       ...(Number.isSafeInteger(contactOrder) && contactOrder >= 0 ? { contactOrder } : {}) }));
     await onProgress?.({ completed: contacts.length, total: contacts.length });
     this.check(context); super.clearContext(); this.account = result.account; this.bindings = bindings;
+    login?.authenticatedData?.(generation, loginRevision);
     return { available: true, account: result.account, contacts,
       ...(unreadableCount ? { unreadableCount } : {}),
       identities: [...bindings.values()].map(binding => ({ id: binding.id, previous: binding.native })) };
@@ -341,12 +355,14 @@ export class DataChatBridge extends NativeChatBridge {
           typeof message.text !== 'string' || !Number.isSafeInteger(message.timestamp) || message.timestamp < 0) throw unavailable();
       ids.add(message.id);
       if (message.type !== undefined && !['voice','image','video'].includes(message.type)) throw unavailable();
+      if (message.voiceDurationMs !== undefined && (message.type !== 'voice' || !Number.isSafeInteger(message.voiceDurationMs) || message.voiceDurationMs < 1 || message.voiceDurationMs > 60000)) throw unavailable();
       const senderName = typeof message.senderName === 'string' && message.senderName.trim() && Array.from(message.senderName.trim()).length <= 120 && !/[\x00-\x1f\x7f]/.test(message.senderName) ? message.senderName.trim() : null;
       if (binding.kind === 'group' && (!key(message.sender) || !message.mentions || ['verified', 'self', 'all', 'others'].some(k => typeof message.mentions[k] !== 'boolean'))) throw unavailable();
       let text = message.text;
       const textChars = Array.from(text);
       if (textChars.length > 150000) { text = textChars.slice(0, 150000).join(''); clipped = true; truncatedReasons.add('message_length'); }
       return { id: message.id, direction: message.direction, text, timestamp: message.timestamp, ...(['voice','image','video'].includes(message.type) ? { type: message.type } : {}), ...(senderName ? { senderName } : {}),
+        ...(message.voiceDurationMs ? { voiceDurationMs: message.voiceDurationMs } : {}),
         ...(binding.kind === 'group' ? { sender: message.sender, mentions: Object.fromEntries(['verified', 'self', 'all', 'others'].map(k => [k, message.mentions[k]])) } : {}) };
     });
     // A range read is the complete bounded material for one contact. Its
@@ -441,6 +457,13 @@ export class DataChatBridge extends NativeChatBridge {
     }
     if (['stale', 'not-sent'].includes(delivered?.status)) return { status: delivered.status, ...(delivered.diagnostic ? {diagnostic:delivered.diagnostic} : {}) };
     if (!context.delivery.started || !['submitted', 'uncertain'].includes(delivered?.status)) return { status: 'uncertain' };
+    const nativeVoice = delivered.voiceReceipt;
+    const voiceReceipt = args.mediaFile?.mediaType === 'audio' && delivered.sendPressed === true &&
+      nativeVoice && ['startAt', 'endAt', 'durationMs'].every(key => Number.isSafeInteger(nativeVoice[key])) &&
+      nativeVoice.startAt <= nativeVoice.endAt && nativeVoice.endAt - nativeVoice.startAt <= 70000 &&
+      nativeVoice.durationMs > 0 && nativeVoice.durationMs <= 60000 &&
+      Math.abs(nativeVoice.endAt - Date.now()) < 10000 ? { voiceReceipt: { ...nativeVoice } } : {};
+    const unknown = () => ({ status: 'uncertain', ...voiceReceipt });
     // The native post-click observation can fail after the message was sent.
     // Reconcile that committed attempt through read-only DB reads, never another
     // dispatch. Receipt reads have a cancellation deadline; an earlier queued
@@ -453,15 +476,15 @@ export class DataChatBridge extends NativeChatBridge {
     for (let attempt = 0; attempt < 32; attempt++) {
       try {
         this.check(receiptContext);
-        if (this.bindings.get(binding.id) !== binding) return { status: 'uncertain' };
+        if (this.bindings.get(binding.id) !== binding) return unknown();
         const after = await this.readData({ ...args, priority: true }, receiptContext);
-        if (this.bindings.get(binding.id) !== binding) return { status: 'uncertain' };
+        if (this.bindings.get(binding.id) !== binding) return unknown();
         const anchor = baseline.messages.at(-1)?.id;
         const boundary = anchor ? after.messages.findIndex(message => message.id === anchor) : -1;
-        if (anchor && boundary < 0) return { status: 'uncertain' };
+        if (anchor && boundary < 0) return unknown();
         const candidates = after.messages.map((message, index) => ({ message, index })).filter(({ message, index }) =>
-          index > boundary && message.direction === 'self' && (args.mediaFile ? args.mediaFile.mediaType === 'image' ? message.type === 'image' : message.text.includes(args.mediaFile.name) : message.text === args.text) && !before.ids.has(message.id));
-        if (candidates.length > 1) return { status: 'uncertain' };
+          index > boundary && message.direction === 'self' && (args.mediaFile ? args.mediaFile.mediaType === 'image' ? message.type === 'image' : message.type === 'voice' : message.text === args.text) && !before.ids.has(message.id));
+        if (candidates.length > 1) return unknown();
         if (after.revision !== args.revision && candidates.length === 1) {
           const { message, index } = candidates[0];
           // Only acknowledge the history through our receipt. This prefix hash
@@ -473,16 +496,16 @@ export class DataChatBridge extends NativeChatBridge {
         }
       } catch (error) {
         if (error.code === 'ai_account_changed') throw error;
-        if (receiptContext.signal.aborted || error.code !== 'ai_data_unavailable') return { status: 'uncertain' };
-        try { this.check(receiptContext); } catch { return { status: 'uncertain' }; }
-        if (this.bindings.get(binding.id) !== binding) return { status: 'uncertain' };
+        if (receiptContext.signal.aborted || error.code !== 'ai_data_unavailable') return unknown();
+        try { this.check(receiptContext); } catch { return unknown(); }
+        if (this.bindings.get(binding.id) !== binding) return unknown();
       }
       if (attempt < 31) {
         try { await this.receiptDelay(250, undefined, { signal: receiptContext.signal }); }
-        catch { return { status: 'uncertain' }; }
+        catch { return unknown(); }
       }
     }
-    return { status: 'uncertain' };
+    return unknown();
   }
   async invokeDataProcess(action, args, context) {
     this.check(context);

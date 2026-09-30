@@ -49,7 +49,7 @@ test('repeated wrong date answers remain bounded and fail before any reply can b
 
 async function fixture(t) {
   const root = await temp(), bridge = new ChatFixture(), provider = new AIModelFixture();
-  bridge.supportsMediaOutput = true;
+  bridge.supportsMediaOutput = true; bridge.supportsNativeVoiceOutput = true;
   let now = Date.parse('2026-09-30T20:20:30+08:00');
   const a = new AIAssistant({ dataRoot: root, bridge, provider, now: () => now, delay: async () => {} });
   await a.init(); await a.configure({ ...modelConfig, baseUrl: 'https://api.minimaxi.com/anthropic', model: 'MiniMax-M3', protocol: 'anthropic' }); await a.scan();
@@ -105,7 +105,7 @@ test('the surfaced pending message uses the actual WeChat transcript and preserv
   await a.tick(); assert.equal(bridge.sent.length, 2);
 });
 
-test('a generated audio reply discloses synthesis in text and delivers one portable MP3 segment', async t => {
+test('a generated voice reply discloses synthesis and supplies one private audio source for native recording', async t => {
   const { a, bridge, provider, contact, advance } = await fixture(t);
   t.mock.method(globalThis, 'fetch', async () => Response.json({ base_resp:{status_code:0},data:{audio:Buffer.from('ID3 test audio').toString('hex')} }));
   const calls=[], original=bridge.send.bind(bridge);
@@ -114,7 +114,7 @@ test('a generated audio reply discloses synthesis in text and delivers one porta
   await a.tick(); advance(20000);
   provider.next=async()=>({action:'send',text:'给你一段问候。',media:[{type:'audio',text:'晚上好'}]});
   await a.tick();
-  assert.equal(calls.length,2); assert.match(calls[0].text,/^（AI 合成音频）/); assert.equal(calls[0].mediaFile,undefined);
+  assert.equal(calls.length,2); assert.match(calls[0].text,/^（AI 合成语音）/); assert.equal(calls[0].mediaFile,undefined);
   assert.equal(calls[1].mediaFile.type,'audio/mpeg'); assert.match(calls[1].mediaFile.name,/^AI-generated-[a-f0-9-]{36}\.mp3$/);
   assert.equal(Object.values(a.data.profiles).find(profile=>profile.contact===contact).rounds,2);
 });

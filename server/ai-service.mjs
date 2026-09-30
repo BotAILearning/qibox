@@ -327,9 +327,9 @@ export class AIAssistant {
     if (this.closed || this.warmupRunning || !this.ready()) return;
     const changed = this.warmupPid != null && this.bridge.pid !== this.warmupPid;
     const warm = !changed && this.warmupSucceededAt && this.now() - this.warmupSucceededAt < 10 * 60000;
-    if (!changed && this.now() - this.lastWarmupAt < (warm ? 600000 : 120000)) return;
+    if (!changed && this.now() - this.lastWarmupAt < (warm ? 600000 : 30000)) return;
     this.warmupRunning = true;
-    try { await this.bridge.warmup?.(); this.warmupSucceededAt = this.now(); this.warmupPid = this.bridge.pid; }
+    try { if (await this.bridge.warmup?.() === true) { this.warmupSucceededAt = this.now(); this.warmupPid = this.bridge.pid; } }
     catch { /* keep waiting for a later retry */ }
     finally { this.warmupRunning = false; this.lastWarmupAt = this.now(); }
   }
@@ -562,6 +562,20 @@ export class AIAssistant {
     if (!wait) return 0;
     const policy = effectiveTakeover(this.data.settings);
     return !policy.enabled ? 0 : wait.startedAt === undefined ? Infinity : wait.startedAt + policy.minutes * 60000;
+  }
+  reconcileManualWait(profile, snapshot) {
+    const wait = profile.manualWait;
+    if (!wait) return;
+    const generated = new Set(profile.generatedIds || []);
+    const own = snapshot.messages.findLast(message => message.direction === 'self');
+    const ownIndex = own && snapshot.messages.findIndex(message => message.id === own.id);
+    const waitIndex = snapshot.messages.findIndex(message => message.id === wait.ownId);
+    const misclassified = generated.has(wait.ownId);
+    const superseded = own && generated.has(own.id) && (waitIndex >= 0 ? ownIndex > waitIndex : Number.isSafeInteger(own.timestamp) && own.timestamp * 1000 > wait.at);
+    if (!misclassified && !superseded) return;
+    delete profile.manualWait;
+    if (misclassified && profile.lastManualId === wait.ownId) { delete profile.lastManualId; delete profile.lastManualAt; }
+    return true;
   }
 
   profiles() { return Object.values(this.data.profiles).filter(x => x.account === this.data.account || x.account === 'paste'); }
@@ -928,7 +942,7 @@ export class AIAssistant {
     const errors = this.errorRecords({ limit: 20 });
     const skipped = this.skipRecords();
     const skipRecords = skipped.records;
-    return { capabilities: { mediaOutput: !!(this.providerConfig('chat') && mediaCapability(this.providerConfig('chat')) && this.bridge.supportsMediaOutput), writeContactRemark: typeof this.bridge?.setContactRemark === 'function' }, settings: this.data.settings, strategy: this.data.strategy, replyStrategy: this.globalReplyStrategy(), personalInformation: (() => { const info = personalInformation(this); return { entries: info.entries, suggestions: info.suggestions, history: info.history.map(row => ({ at: row.at })) }; })(), personalFields, replyRoundLimits: this.data.replyRoundLimits, profiles: this.profiles().map(profile => this.publicProfile(profile)), targets: this.data.targets, replyTargets: this.data.replyTargets, proactiveTargets: this.data.proactiveTargets,
+    return { capabilities: { mediaOutput: !!(this.providerConfig('chat') && mediaCapability(this.providerConfig('chat')) && this.bridge.supportsMediaOutput), nativeVoiceOutput: this.bridge.supportsNativeVoiceOutput === true, writeContactRemark: typeof this.bridge?.setContactRemark === 'function' }, settings: this.data.settings, strategy: this.data.strategy, replyStrategy: this.globalReplyStrategy(), personalInformation: (() => { const info = personalInformation(this); return { entries: info.entries, suggestions: info.suggestions, history: info.history.map(row => ({ at: row.at })) }; })(), personalFields, replyRoundLimits: this.data.replyRoundLimits, profiles: this.profiles().map(profile => this.publicProfile(profile)), targets: this.data.targets, replyTargets: this.data.replyTargets, proactiveTargets: this.data.proactiveTargets,
       ...this.proactiveV2.state(), account: this.data.account, configurationRevision: this.revision,
       activity: this.activitySummaries(), activityHistory: this.activitySummaries('unknown'),
       provider: this.publicProvider('chat'), models: this.publicModels(), assignments: { chat: this.assignmentFor('chat'), learningAnalysis: this.assignmentFor('learning') },
@@ -1692,18 +1706,14 @@ export class AIAssistant {
       { id: operationId, at: this.now(), body: this.vault.seal({ text }), source: 'proactive', taskId: task.id, assumedPresent: true, deliveryConfidence: 'unknown' }];
   }
   appendUncertainProactiveContext(profile, snapshot, modelMessages) {
+    this.reconcileUnknownReplies(profile, snapshot);
+    this.reconcileManualWait(profile, snapshot);
     const used = [];
     const rows = (profile.sentMessages || []).filter(message => message.source === 'proactive' && message.assumedPresent === true && message.deliveryConfidence === 'unknown' && Number.isFinite(message.at) && this.now() - message.at <= proactiveBackgroundTtl);
     for (const row of rows) {
       let text;
       try { text = this.vault.open(row.body)?.text; } catch { continue; }
       if (typeof text !== 'string' || !text.trim()) continue;
-      const matches = snapshot.messages.filter(message => message.direction === 'self' && message.text === text && Number.isFinite(message.timestamp) && Math.abs(message.timestamp * 1000 - row.at) <= 15 * 60 * 1000);
-      if (matches.length === 1) {
-        row.id = matches[0].id; row.confirmed = true; row.assumedPresent = false;
-        profile.generatedIds = [...new Set([...(profile.generatedIds || []), matches[0].id])];
-        continue;
-      }
       modelMessages.push({ id: `assumed-${row.id}`, direction: 'self', text, timestamp: Math.floor(row.at / 1000), aiGenerated: true, assumedPresent: true, deliveryConfidence: 'unknown' });
       used.push(row);
     }
@@ -2376,7 +2386,7 @@ export class AIAssistant {
     if (!attempts.size) return;
     const generatedIds = new Set(profile.generatedIds || []), byOperation = new Map(), byBaseline = new Map(), bodies = new Map(), aliases = new Map();
     for (const row of profile.sentMessages || []) {
-      if (row.source !== 'reply' || row.confirmed === false || row.deliveryConfidence === 'unknown' || !validKey(row.id) || !generatedIds.has(row.id)) continue;
+      if (!['reply', 'proactive'].includes(row.source) || row.confirmed === false || row.deliveryConfidence === 'unknown' || !validKey(row.id) || !generatedIds.has(row.id)) continue;
       const index = row.operationId ? byOperation : byBaseline, key = row.operationId || row.baseline;
       if (!index.has(key)) index.set(key, []);
       index.get(key).push(row);
@@ -2401,12 +2411,12 @@ export class AIAssistant {
   }
   confirmDeliveryReceipt(profile, row) {
     const operationId = row.operationId;
-    if (operationId && profile.delivery?.operationId === operationId && profile.delivery.status !== 'sent') {
-      profile.delivery.status = 'sent';
-      profile.delivery.segmentsSent = Math.min(profile.delivery.segmentsTotal || 1, (profile.delivery.segmentsSent || 0) + 1);
-      const partial = profile.delivery.segmentsSent < (profile.delivery.segmentsTotal || 1);
-      profile.delivery.interrupted = partial;
-      if (profile.replyFlow) profile.replyFlow = { ...profile.replyFlow, phase: partial ? 'partial' : 'sent', updatedAt: this.now(), detail: partial ? '已核实部分送达，剩余未发送' : '已核实送达' };
+    for (const delivery of [profile.delivery, profile.proactiveDelivery]) if (operationId && delivery?.operationId === operationId && delivery.status !== 'sent') {
+      delivery.status = 'sent';
+      delivery.segmentsSent = Math.min(delivery.segmentsTotal || 1, (delivery.segmentsSent || 0) + 1);
+      const partial = delivery.segmentsSent < (delivery.segmentsTotal || 1);
+      delivery.interrupted = partial;
+      if (row.source === 'reply' && profile.replyFlow) profile.replyFlow = { ...profile.replyFlow, phase: partial ? 'partial' : 'sent', updatedAt: this.now(), detail: partial ? '已核实部分送达，剩余未发送' : '已核实送达' };
       const label = this.nameFields(profile).label;
       if ([`${label}：发送结果待核实；本条不会重复发送`, `${label}：发送结果无法确认；为避免重复发送，本条不会自动重发`].includes(this.notice)) this.notice = `${label}：已确认送达`;
     }
@@ -2430,21 +2440,30 @@ export class AIAssistant {
     }
   }
   reconcileUnknownReplies(profile, snapshot) {
+    let changed = false;
     for (const row of profile.sentMessages || []) {
-      if (row.source !== 'reply' || row.deliveryConfidence !== 'unknown' || row.media) continue;
+      if (!['reply', 'proactive'].includes(row.source) || row.deliveryConfidence !== 'unknown') continue;
+      const voice = row.media?.type === 'audio' && row.voiceReceipt;
+      if (row.media && (!voice || !['startAt', 'endAt', 'durationMs'].every(key => Number.isSafeInteger(voice[key])) || voice.startAt > voice.endAt || voice.endAt - voice.startAt > 70000 || voice.durationMs < 1 || voice.durationMs > 60000)) continue;
       const boundary = snapshot.messages.findIndex(message => message.id === row.baseline);
       if (row.baseline && boundary < 0) continue;
+      if (!Number.isFinite(row.at)) continue;
       const text = this.vault.open(row.body).text;
-      const candidates = snapshot.messages.slice(boundary + 1).filter(message => message.direction === 'self' && message.text === text && !(profile.generatedIds || []).includes(message.id));
+      const candidates = snapshot.messages.slice(boundary + 1).filter(message => message.direction === 'self' && !(profile.generatedIds || []).includes(message.id) && Number.isSafeInteger(message.timestamp) && Math.abs(message.timestamp * 1000 - row.at) <= 180000 &&
+        (voice ? message.type === 'voice' && Number.isSafeInteger(message.voiceDurationMs) && Math.abs(message.voiceDurationMs - voice.durationMs) <= 1500 && message.timestamp * 1000 >= voice.startAt - 2000 && message.timestamp * 1000 <= voice.endAt + 2000 : message.text === text));
       if (candidates.length !== 1) continue;
-      const oldId = row.id; row.operationId ||= oldId; row.id = candidates[0].id; row.confirmed = true; row.deliveryConfidence = 'confirmed';
-      profile.generatedIds = [...new Set([...(profile.generatedIds || []), row.id])]; profile.rounds = (profile.rounds || 0) + 1;
+      const oldId = row.id; row.operationId ||= oldId; row.id = candidates[0].id; row.confirmed = true; row.deliveryConfidence = 'confirmed'; row.assumedPresent = false;
+      profile.generatedIds = [...new Set([...(profile.generatedIds || []), row.id])];
+      if (row.source === 'reply') profile.rounds = (profile.rounds || 0) + 1;
       this.confirmDeliveryReceipt(profile, row);
-      this.data.deletedActivityRecords = (this.data.deletedActivityRecords || []).map(record => record.account === profile.account && record.source === 'reply' && record.id === oldId ? { ...record, id: row.id } : record);
+      changed = true;
+      this.data.deletedActivityRecords = (this.data.deletedActivityRecords || []).map(record => record.account === profile.account && record.source === row.source && record.id === oldId ? { ...record, id: row.id } : record);
     }
+    return changed;
   }
   async observe(profile, snapshot) {
-    this.reconcileUnknownReplies(profile, snapshot);
+    const receiptsChanged = this.reconcileUnknownReplies(profile, snapshot), waitRepaired = this.reconcileManualWait(profile, snapshot);
+    if (receiptsChanged || waitRepaired) await this.save();
     const last = snapshot.messages.filter(x => x.direction !== 'system').at(-1);
     const ownMessage = snapshot.messages.findLast(x => x.direction === 'self'), own = ownMessage?.id;
     let cursor = this.cursors.get(profile.id);
@@ -2836,7 +2855,7 @@ export class AIAssistant {
       for (let attempt = 0; attempt < 2; attempt++) {
         const time = currentChatTime(this.now(), selfContext(this, profile.kind));
         const mediaReady = !!mediaCapability(this.modelFor('chat')) && this.bridge.supportsMediaOutput === true;
-        const sendImages = this.replyOptions(profile).sendImages && mediaReady, sendAudio = this.replyOptions(profile).sendAudio && mediaReady;
+        const sendImages = this.replyOptions(profile).sendImages && mediaReady, sendAudio = this.replyOptions(profile).sendAudio && mediaReady && this.bridge.supportsNativeVoiceOutput === true;
         result = onlyImages && !images.length && profile.kind !== 'group' ? { action: 'skip', mediaSkipped: true } : await this.provider.complete(
           this.modelFor('chat'),
           `${generationPrompt}${naturalChatPrompt}${longTermMemoryPrompt}${timelinePrompt}${personalContextPrompt}${presentTimePrompt}${chatMemoryPrompt}${profile.kind === 'group' ? groupMemoryInstruction : ' 单聊中，对方姓名写入 name；只有用户确实直接这样称呼对方且对象明确时，才把称呼写入 addressing。'}${identityPrompt(this.data.settings.acknowledgeAI)}${conversationPrompt}${replySummaryContext} ${mediaOutputPrompt} 只能发送文字和capabilities明确允许的生成图片或音频文件，不能读取或下载任意文件，不能拨打或接听电话，仅能理解实际附带的图片；未附带图片或图片无法读取时，应如实说明无法查看并请对方转成文字，不猜测图片内容。${groupTriggerInstruction}${groupBatch?.sender ? ` 本轮只回复成员ID ${groupBatch.sender} 对应的消息 ${groupBatch.ids.join(',')}，其余成员的消息仅作背景。需要称呼时仅使用members中该ID对应的真实称呼，不编造姓名。` : ''}${profile.groupContextWait?.trigger === 'atMe' ? ' 上轮已等待补充信息，本次必须回复；信息仍不足时用一句简短问题澄清，不能再次wait。' : ''}${currentTask}${currentStyle}${profile.kind === 'group' ? groupPrompt(trigger, multiTurn, profile.groupOptions?.realtimeMode) : ''}${generationProtocol({ multiTurn, group: profile.kind === 'group', followUpAllowed: profile.kind !== 'group' && !followUp, updateStyle: this.data.settings.updateStyle, allowSkip: !mustReply, allowStop: true })}${reflectiveReplyPrompt}${currentTimeAnchor(time)}${mode === 'reply' && !followUp ? ' 本轮只回应conversation.pendingIncomingMessages列出的来信；其中excerpt=true时按ID查阅messages全文。messages中pending=false的旧问题和已发回复只作背景，不能再补答。' : ''}`,
@@ -2974,12 +2993,12 @@ export class AIAssistant {
       if (mode === 'reply') this.replyStage(profile, 'skipped', '本轮未发送');
     } else {
       if (result.action === 'send' && Array.isArray(result.media) && this.bridge.supportsMediaOutput && mediaCapability(this.modelFor('chat'))) {
-        const item = result.media[0], allowed = item?.type === 'image' ? this.replyOptions(profile).sendImages : item?.type === 'audio' && this.replyOptions(profile).sendAudio;
+        const item = result.media[0], allowed = item?.type === 'image' ? this.replyOptions(profile).sendImages : item?.type === 'audio' && this.replyOptions(profile).sendAudio && this.bridge.supportsNativeVoiceOutput === true;
         if (allowed && (strategy.maxRounds === 'unlimited' || (profile.rounds || 0) + segments.length < strategy.maxRounds)) {
           try {
             const media = await generateMediaOutput(this.modelFor('chat'), item, signal);
             if (!this.canDeliver(profile, mode, revision, signal)) return;
-            if (media.mediaType === 'audio') segments[0] = `（AI 合成音频）${segments[0]}`.slice(0, 3000);
+            if (media.mediaType === 'audio') segments[0] = `（AI 合成语音）${segments[0]}`.slice(0, 3000);
             segments.push(media);
           }
           catch (error) { if (signal.aborted) return; this.notice = error instanceof AppError ? error.message : '媒体生成暂未完成，本轮保留文字回复'; this.event('media-fallback', profile.id, trigger || mode, this.notice); }
@@ -3038,7 +3057,7 @@ export class AIAssistant {
     };
     for (const rawText of segments) {
       const mediaFile = typeof rawText === 'object' ? rawText : null;
-      const text = mediaFile ? `[${mediaFile.mediaType === 'image' ? '图片' : 'AI合成音频'}] ${mediaFile.description}` : guardTimeGreeting(rawText, currentChatTime(this.now(), selfContext(this, profile.kind)));
+      const text = mediaFile ? `[${mediaFile.mediaType === 'image' ? '图片' : 'AI合成语音'}] ${mediaFile.description}` : guardTimeGreeting(rawText, currentChatTime(this.now(), selfContext(this, profile.kind)));
       if (!this.canDeliver(profile, mode, revision, signal)) return interrupted();
       if (sent) {
         try { await this.delay(this.randomDelay('segmentDelay'), signal); }
@@ -3069,7 +3088,7 @@ export class AIAssistant {
         if (delivery.diagnostic) profile.delivery.diagnostic = delivery.diagnostic;
         const phaseNames = { 'native-start': '启动微信发送组件', 'native-session': '核对当前微信会话', 'native-navigation': '定位目标会话', 'native-prepare': '准备微信输入区' };
         const codeNames = { timeout: '超时', cancelled: '操作中断', 'controls-unavailable': '微信控件不可用', unavailable: '暂不可用' };
-        const reasonNames = { 'group-not-listed': '目标群不在微信会话列表', 'conversation-outside-viewport': '目标会话未进入可见区域', 'conversation-candidate-changed': '会话列表刷新', 'popup-blocking-navigation': '弹窗遮挡', 'control-unavailable': '控件缺失', 'inspection-interrupted': '定位中断', 'conversation-changed': '会话切换', 'target-changed': '目标切换' };
+        const reasonNames = { 'group-not-listed': '目标群不在微信会话列表', 'conversation-outside-viewport': '目标会话未进入可见区域', 'conversation-candidate-changed': '会话列表刷新', 'popup-blocking-navigation': '弹窗遮挡', 'control-unavailable': '控件缺失', 'inspection-interrupted': '定位中断', 'conversation-changed': '会话切换', 'target-changed': '目标切换', 'voice-unavailable': '微信录音控件不可用', 'voice-too-long': '合成语音超过单条时长', 'voice-recording-changed': '录音界面变化', 'voice-audio-unavailable': '语音输入通道不可用' };
         const diagnosticDetail = delivery.diagnostic ? `${phaseNames[delivery.diagnostic.phase] || '微信发送'}${codeNames[delivery.diagnostic.code] || '失败'}${reasonNames[delivery.diagnostic.reason] ? `（${reasonNames[delivery.diagnostic.reason]}）` : ''}` : '微信发送组件未返回具体原因';
         if (mode === 'reply') this.replyStage(profile, sent ? 'partial' : 'failed', `${sent ? '部分消息已发送，后续发送失败' : '消息未发送，等待自动重试'}；${diagnosticDetail}`);
         if (item) {
@@ -3092,7 +3111,7 @@ export class AIAssistant {
         if (mode === 'reply') this.replyStage(profile, delivery.status === 'stale' ? 'cancelled' : 'confirming', delivery.status === 'stale' ? '聊天有新消息，重新判断' : '发送结果待核实，不会重复发送');
         if (item) item.status = delivery.status === 'stale' ? sent ? 'done' : 'pending' : 'skipped';
         if (delivery.status !== 'stale') {
-          profile.sentMessages = [...(profile.sentMessages || []), { id: operationId, operationId, at: this.now(), body: this.vault.seal({ text }), source: mode === 'reply' ? 'reply' : 'proactive', confirmed: false, deliveryConfidence: 'unknown', baseline: fresh.messages.at(-1)?.id, ...(mediaFile ? { media: { type: mediaFile.mediaType, name: mediaFile.name } } : {}), ...(source !== mode ? { trigger: source } : {}), ...(item?.taskId ? { taskId: item.taskId } : {}), ...(groupBatch ? { replyTo: groupBatch.ids, recipient: groupBatch.sender } : {}) }];
+          profile.sentMessages = [...(profile.sentMessages || []), { id: operationId, operationId, at: this.now(), body: this.vault.seal({ text }), source: mode === 'reply' ? 'reply' : 'proactive', confirmed: false, deliveryConfidence: 'unknown', baseline: fresh.messages.at(-1)?.id, ...(mediaFile ? { media: { type: mediaFile.mediaType, name: mediaFile.name }, ...(delivery.voiceReceipt ? { voiceReceipt: delivery.voiceReceipt } : {}) } : {}), ...(source !== mode ? { trigger: source } : {}), ...(item?.taskId ? { taskId: item.taskId } : {}), ...(groupBatch ? { replyTo: groupBatch.ids, recipient: groupBatch.sender } : {}) }];
           // Unknown receipts remain audit-only; do not create pending chat rows
           // or a manual recovery gate.
         if (mode === 'reply') {
@@ -3111,9 +3130,9 @@ export class AIAssistant {
       sent++; expectedRevision = delivery.revision;
       if (mode === 'reply') profile.rounds = (profile.rounds || 0) + 1;
       if (groupReply && (source === 'atMe' || source === 'atAll')) profile.mentionRounds = (profile.mentionRounds || 0) + 1;
-      if (mode === 'reply' && sent === 1) delete profile.manualWait;
+      if (sent === 1) delete profile.manualWait;
       profile.generatedIds = [...(profile.generatedIds || []), delivery.messageId];
-      profile.sentMessages = [...(profile.sentMessages || []), { id: delivery.messageId, operationId, at: this.now(), body: this.vault.seal({ text }), source: mode === 'reply' ? 'reply' : 'proactive', ...(mediaFile ? { media: { type: mediaFile.mediaType, name: mediaFile.name } } : {}), ...(source !== mode ? { trigger: source } : {}), ...(item?.taskId ? { taskId: item.taskId } : {}), ...(groupBatch ? { replyTo: groupBatch.ids, recipient: groupBatch.sender } : {}) }];
+      profile.sentMessages = [...(profile.sentMessages || []), { id: delivery.messageId, operationId, at: this.now(), body: this.vault.seal({ text }), source: mode === 'reply' ? 'reply' : 'proactive', ...(mediaFile ? { media: { type: mediaFile.mediaType, name: mediaFile.name }, ...(delivery.voiceReceipt ? { voiceReceipt: delivery.voiceReceipt } : {}) } : {}), ...(source !== mode ? { trigger: source } : {}), ...(item?.taskId ? { taskId: item.taskId } : {}), ...(groupBatch ? { replyTo: groupBatch.ids, recipient: groupBatch.sender } : {}) }];
       profile.delivery.status = 'sent'; profile.delivery.segmentsSent = sent;
       // A confirmed prefix must never become a pending whole opening again.
       if (item) { item.status = 'done'; item.segmentsSent = sent; }

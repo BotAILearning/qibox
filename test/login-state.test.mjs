@@ -32,6 +32,34 @@ test('old in-flight probes never overwrite a new instance session', async () => 
   state.reset(); resolve({ status: 'logged-in' }); await first;
   assert.equal(state.state(true), 'unknown');
 });
+
+test('expired logout cannot block a new authenticated account indefinitely', async () => {
+  let time = 20000;
+  const state = new LoginState({ now: () => time, probe: async () => ({status:'logged-out'}) });
+  await state.refresh(); assert.equal(state.loggedOut(true), true);
+  time += 16000; assert.equal(state.loggedOut(true), false);
+  assert.equal(state.authenticatedData(state.generation, state.observationRevision), true);
+  assert.equal(state.state(true), 'logged-in'); assert.equal(state.entryAvailable(true), true);
+});
+
+test('a newer logout or process reset wins over an older data proof', async () => {
+  let status = 'unknown';
+  const state = new LoginState({probe:async()=>({status})});
+  const generation = state.generation, revision = state.observationRevision;
+  status = 'logged-out'; await state.refresh();
+  assert.equal(state.authenticatedData(generation, revision), false); assert.equal(state.loggedOut(true), true);
+  state.reset(); assert.equal(state.authenticatedData(generation, state.observationRevision), false);
+});
+
+test('an old native probe cannot revoke a newer authenticated login', async () => {
+  const gate = Promise.withResolvers(), state = new LoginState({probe:()=>gate.promise});
+  const pending = state.refresh(); await Promise.resolve();
+  assert.equal(state.authenticatedData(state.generation,state.observationRevision),true);
+  gate.resolve({status:'logged-out'}); await pending;
+  assert.equal(state.state(true),'logged-in');
+  state.probe=async()=>({status:'logged-out'}); await state.refresh(true);
+  assert.equal(state.state(true),'relogin-required');
+});
 test('AI entry survives inconclusive probes but is revoked on logout and restart', async () => {
   let time = 20000, status = 'unknown';
   const state = new LoginState({ now: () => time, probe: async () => ({ status }) });

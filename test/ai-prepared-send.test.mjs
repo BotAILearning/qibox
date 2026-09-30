@@ -4,6 +4,9 @@ import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import { preparedSend } from '../server/ai-prepared-send.mjs';
 import { NativeChatBridge } from '../server/ai-native.mjs';
+import { temp, cleanup as cleanupTemp } from './fixtures.mjs';
+import { access } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 
 function fixture() {
   const input = [], cleanup = [], controller = new AbortController(), memory = { fd: 55, closed: 0, async close() { this.closed++; } };
@@ -71,13 +74,17 @@ test('a user file selection or export blocks preparation without touching native
   assert.equal(context.delivery.started,false);assert.equal(input.length,0);assert.equal(memory.closed,0);
  }
 });
-test('generated MP3 reserves only the private file portal and releases the reservation after helper exit',async()=>{
- const {bridge,context,input}=fixture(), lease={done:Promise.resolve({ready:true}),closed:0,async close(){this.closed++;}};
+test('generated speech stages only an owned microphone source and removes it after helper exit',async t=>{
+ const {bridge,context,input}=fixture(), root=await temp();t.after(()=>cleanupTemp(root));
  context.mediaFile={name:'AI合成-00000000-0000-4000-8000-000000000000.mp3',type:'audio/mpeg',data:'AA=='};
- bridge.runtime.setClipboard=()=>assert.fail('MP3 must not change the clipboard');
- bridge.runtime.fileChooser={armGeneratedMedia(file,{signal}){assert.equal(file,context.mediaFile);assert.equal(signal,context.signal);return lease;}};
- assert.equal((await preparedSend(bridge,{},'audio',context,async()=>true)).status,'submitted');
- assert.equal(lease.closed,1);assert.deepEqual(input[1].media,{name:context.mediaFile.name,type:context.mediaFile.type});
+ Object.assign(bridge.runtime,{status:'running',audioEnv:{},audioProcess:{exitCode:null,signalCode:null},audioSocket:'owned-audio',audioVoiceReady:true,desktopEnv:{XDG_RUNTIME_DIR:root}});
+ bridge.runtime.setClipboard=()=>assert.fail('Voice must not change the clipboard');
+ bridge.runtime.fileChooser={armGeneratedMedia(){assert.fail('Voice must not attach an audio file');}};
+ const spawn=bridge.spawnProcess;
+ bridge.spawnProcess=(...args)=>{const child=spawn(...args);child.stdin.on('data',chunk=>{const r=JSON.parse(chunk.toString());if(r.action==='commit'){assert.equal(r.media.delivery,'voice');assert.equal(r.media.size,1);assert.equal(r.media.sha256.length,64);assert.deepEqual(readFileSync(r.media.path),Buffer.from([0]));}});return child;};
+ assert.equal((await preparedSend(bridge,{},'voice',context,async()=>true)).status,'submitted');
+ assert.equal(input[1].media.name,context.mediaFile.name);assert.equal(input[1].media.type,'audio/mpeg');
+ await assert.rejects(access(input[1].media.path),{code:'ENOENT'});
 });
 
 test('a complete native no-submit report stays retryable after commit, while an attempted send stays uncertain', async () => {

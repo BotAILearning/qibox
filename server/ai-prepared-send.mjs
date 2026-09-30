@@ -1,8 +1,9 @@
 import path from 'node:path';
+import { stageNativeVoice } from './ai-voice-output.mjs';
 const safeDiagnostic = value => ({
   phase: ['native-start','native-session','native-navigation','native-prepare'].includes(value?.phase) ? value.phase : 'native-prepare',
   code: ['timeout','cancelled','controls-unavailable'].includes(value?.code) ? value.code : 'unavailable',
-  ...(['group-not-listed','conversation-outside-viewport','conversation-candidate-changed','popup-blocking-navigation','control-unavailable','inspection-interrupted','conversation-changed','target-changed','media-paste-unavailable','media-preview-unavailable'].includes(value?.reason) ? { reason: value.reason } : {}),
+  ...(['group-not-listed','conversation-outside-viewport','conversation-candidate-changed','popup-blocking-navigation','control-unavailable','inspection-interrupted','conversation-changed','target-changed','media-paste-unavailable','media-preview-unavailable','voice-unavailable','voice-too-long','voice-recording-changed','voice-audio-unavailable'].includes(value?.reason) ? { reason: value.reason } : {}),
   ...(['entry','results','candidate-open','identity','cleanup'].includes(value?.navigationStep) ? { navigationStep: value.navigationStep } : {})
 });
 
@@ -54,18 +55,16 @@ export async function preparedSend(bridge, route, text, context, verify) {
             try {
               const authorized = await verify(value); bridge.check(context);
               if (killed || exited) return;
-              clearTimeout(timer); timer = setTimeout(abort, 32000);
+              clearTimeout(timer); timer = setTimeout(abort, context.mediaFile?.type === 'audio/mpeg' ? 90000 : 32000);
               if (authorized) {
                 if (context.mediaFile) {
                   if (context.mediaFile.type === 'audio/mpeg') {
-                    mediaLease = bridge.runtime.fileChooser?.armGeneratedMedia(context.mediaFile, { signal: context.signal });
-                    if (!mediaLease) throw new Error('Audio file chooser unavailable');
-                    mediaLease.done.catch(error => { failure = error; abort(); });
+                    mediaLease = await stageNativeVoice(runtime, context.mediaFile, context.signal);
                   } else await bridge.runtime.setClipboard({ files: [context.mediaFile] });
                   bridge.check(context); if (killed || exited) return;
                 }
                 context.delivery.started = true;
-                child.stdin.end(JSON.stringify({ action: 'commit', revision: value.revision, text, ...(context.mediaFile ? { media: { name: context.mediaFile.name, type: context.mediaFile.type } } : {}) }) + '\n');
+                child.stdin.end(JSON.stringify({ action: 'commit', revision: value.revision, text, ...(context.mediaFile ? { media: mediaLease?.media || { name: context.mediaFile.name, type: context.mediaFile.type } } : {}) }) + '\n');
               } else child.stdin.end(JSON.stringify({ action: 'cancel' }) + '\n');
             } catch (error) { failure = error; abort(); }
           })();

@@ -27,7 +27,7 @@ test('a delayed authenticated receipt repairs status and exception display exact
   p.replyFlow={phase:'failed',startedAt:at};
   p.sentMessages=[{id:operationId,source:'reply',at,baseline,body:a.vault.seal({text:'已发送'}),confirmed:false,deliveryConfidence:'unknown'}];
   a.event('error',p.id,'reply','发送结果无法确认',{operationId});advance(1000);
-  const snapshot={messages:[{id:baseline,direction:'other',text:'问题'},{id:receipt,direction:'self',text:'已发送'}]};
+  const snapshot={messages:[{id:baseline,direction:'other',text:'问题'},{id:receipt,direction:'self',text:'已发送',timestamp:Math.floor(a.now()/1000)}]};
   a.reconcileUnknownReplies(p,snapshot);a.reconcileUnknownReplies(p,snapshot);
   assert.equal(p.rounds,8);assert.equal(p.delivery.status,'sent');assert.equal(p.delivery.segmentsSent,1);
   assert.equal(p.replyFlow.phase,'sent');assert.equal(p.sentMessages[0].operationId,operationId);
@@ -105,7 +105,7 @@ test('a verified partial prefix cannot claim unsent segments or resolve unrelate
   p.delivery={operationId,status:'unknown',segmentsSent:0,segmentsTotal:3};p.replyFlow={phase:'failed'};
   a.event('error',p.id,'reply','发送结果无法确认',{operationId:'different-operation'});
   advance(5000);a.event('error',p.id,'reply','发送结果无法确认');
-  a.confirmDeliveryReceipt(p,{id:key('verified-prefix'),operationId,at});
+  a.confirmDeliveryReceipt(p,{id:key('verified-prefix'),operationId,at,source:'reply'});
   assert.equal(p.delivery.segmentsSent,1);assert.equal(p.replyFlow.phase,'partial');
   assert.equal(p.delivery.interrupted,true);assert.ok(a.errorRecords().records.every(e=>!e.resolution));
 });

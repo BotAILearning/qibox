@@ -6,6 +6,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { AppError } from './files.mjs';
 
 export async function startAudio(runtime, env) {
+  runtime.audioVoiceReady = false;
   runtime.audioEnv = { ...env };
   const directory = path.join(env.XDG_RUNTIME_DIR, 'audio');
   await mkdir(directory, { recursive: true, mode: 0o700 });
@@ -16,12 +17,17 @@ export async function startAudio(runtime, env) {
   const config = path.join(directory, 'default.pa');
   await writeFile(config, [
     'load-module module-null-sink sink_name=qibox rate=48000 channels=2 format=s16le',
+    // Private speech input is separate from WeChat playback: recordings never
+    // capture received messages or browser audio. Create it before WeChat
+    // enumerates microphones, including for each additional instance.
+    'load-module module-null-sink sink_name=qibox_voice_input rate=48000 channels=1 format=s16le',
+    'load-module module-remap-source master=qibox_voice_input.monitor source_name=qibox_voice_mic channels=1 source_properties=device.description=Qibox-AI-Voice',
     `load-module module-native-protocol-unix socket=${quote(socket)} auth-cookie=${quote(cookie)}`,
     `load-module module-simple-protocol-unix socket=${quote(pcm)} source=qibox.monitor record=true playback=false rate=48000 channels=2 format=s16le`,
-    'set-default-sink qibox', 'set-default-source qibox.monitor',
+    'set-default-sink qibox', 'set-default-source qibox_voice_mic',
   ].join('\n') + '\n', { mode: 0o600 });
   Object.assign(env, { PULSE_SERVER: `unix:${socket}`, PULSE_SINK: 'qibox', PULSE_COOKIE: cookie,
-    PULSE_RUNTIME_PATH: directory, PULSE_STATE_PATH: path.join(directory, 'state') });
+    PULSE_RUNTIME_PATH: directory, PULSE_STATE_PATH: path.join(directory, 'state'), PULSE_SOURCE: 'qibox_voice_mic' });
   const triple = process.arch === 'arm64' ? 'aarch64-linux-gnu' : 'x86_64-linux-gnu';
   const pulse = (await readdir(path.join(runtime.runtimeRoot, 'usr/lib'))).filter(name => /^pulse-\d/.test(name));
   if (pulse.length !== 1) throw new AppError('声音组件不完整，请重新安装栖盒');
@@ -29,10 +35,10 @@ export async function startAudio(runtime, env) {
   const child = runtime.child(path.join(runtime.runtimeRoot, 'usr/bin/pulseaudio'), ['-n', '--daemonize=no', '--use-pid-file=no', '--exit-idle-time=-1', '--disable-shm=yes', '--log-target=stderr', `--dl-search-path=${modules}`, `--file=${config}`],
     { ...env, LD_LIBRARY_PATH: `${modules}:${path.join(runtime.runtimeRoot, 'usr/lib', triple, 'pulseaudio')}:${env.LD_LIBRARY_PATH}` }, 'audio');
   runtime.audioProcess = child;
-  child.once('exit', () => { if (runtime.audioProcess === child) { runtime.audioSocket = null; runtime.audioProcess = null; } });
+  child.once('exit', () => { if (runtime.audioProcess === child) { runtime.audioSocket = null; runtime.audioProcess = null; runtime.audioVoiceReady = false; } });
   for (let i = 0; i < 40; i++) {
     if (child.exitCode !== null || child.signalCode !== null) throw new AppError('声音服务未启动，请重新打开应用');
-    try { await chmod(pcm, 0o600); await chmod(socket, 0o600); runtime.audioSocket = pcm; return; } catch {}
+    try { await chmod(pcm, 0o600); await chmod(socket, 0o600); runtime.audioSocket = pcm; runtime.audioVoiceReady = true; return; } catch {}
     await delay(100);
   }
   child.kill(); throw new AppError('声音服务未启动，请重新打开应用');

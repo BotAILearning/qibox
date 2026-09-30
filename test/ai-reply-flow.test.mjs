@@ -66,7 +66,7 @@ test('an unknown receipt stays visible without a false failure or resend, then c
   assert.equal(flow.canSkipWait, false); assert.equal(flow.canRetry, false);
   const markup = replyFlowMarkup(p, flow, { allowSkip: true }); assert.match(markup, /核实发送结果/); assert.doesNotMatch(markup, /发送失败|data-ai-skip/);
   f.advance(10000); await f.assistant.tick(); assert.equal(dispatches, 1);
-  const receipt = key('confirmed-unknown-flow'), snapshot = { messages: [{ id: p.delivery.baseline, direction: 'other', text: '请回复' }, { id: receipt, direction: 'self', text }] };
+  const receipt = key('confirmed-unknown-flow'), snapshot = { messages: [{ id: p.delivery.baseline, direction: 'other', text: '请回复' }, { id: receipt, direction: 'self', text, timestamp: Math.floor(f.assistant.now() / 1000) }] };
   f.assistant.reconcileUnknownReplies(p, snapshot); f.assistant.reconcileUnknownReplies(p, snapshot);
   assert.equal(p.replyFlow.phase, 'sent'); assert.equal(p.rounds, 1); assert.match(f.assistant.notice, /已确认送达/);
   assert.equal(f.assistant.errorRecords().page.total, 0); assert.equal(dispatches, 1);
