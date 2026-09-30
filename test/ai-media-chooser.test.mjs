@@ -5,7 +5,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { FileChooser } from '../server/file-chooser.mjs';
 import { temp, cleanup } from './fixtures.mjs';
-const file = {name:'AI合成-00000000-0000-4000-8000-000000000000.mp3',type:'audio/mpeg',data:Buffer.from('generated test audio').toString('base64')};
+const file = {name:'AI-generated-00000000-0000-4000-8000-000000000000.mp3',type:'audio/mpeg',data:Buffer.from('generated test audio').toString('base64')};
 async function setup(t) {
  const root=await temp(), sent=[], chooser=new FileChooser({dataRoot:root,send:event=>sent.push(event)});
  await chooser.init();t.after(async()=>{await chooser.close();await cleanup(root);});return {chooser,sent};

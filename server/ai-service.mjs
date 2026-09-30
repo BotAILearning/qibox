@@ -2908,7 +2908,12 @@ export class AIAssistant {
       if (result.action === 'send' && Array.isArray(result.media) && this.bridge.supportsMediaOutput && mediaCapability(this.modelFor('chat'))) {
         const item = result.media[0], allowed = item?.type === 'image' ? this.replyOptions(profile).sendImages : item?.type === 'audio' && this.replyOptions(profile).sendAudio;
         if (allowed && (strategy.maxRounds === 'unlimited' || (profile.rounds || 0) + segments.length < strategy.maxRounds)) {
-          try { const media = await generateMediaOutput(this.modelFor('chat'), item, signal); if (!this.canDeliver(profile, mode, revision, signal)) return; segments.push(media); }
+          try {
+            const media = await generateMediaOutput(this.modelFor('chat'), item, signal);
+            if (!this.canDeliver(profile, mode, revision, signal)) return;
+            if (media.mediaType === 'audio') segments[0] = `（AI 合成音频）${segments[0]}`.slice(0, 3000);
+            segments.push(media);
+          }
           catch (error) { if (signal.aborted) return; this.notice = error instanceof AppError ? error.message : '媒体生成暂未完成，本轮保留文字回复'; this.event('media-fallback', profile.id, trigger || mode, this.notice); }
         }
       }

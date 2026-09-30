@@ -18,6 +18,7 @@ test('audio output handles MiniMax hex data as a synthetic MP3 file', async () =
   const mp3 = Buffer.from('ID3 fixture audio'), audio = await generateMediaOutput(config, { type: 'audio', text: '下午好' }, signal,
     async () => Response.json({ base_resp: { status_code: 0 }, data: { audio: mp3.toString('hex') } }));
   assert.equal(audio.type, 'audio/mpeg'); assert.equal(audio.mediaType, 'audio'); assert.deepEqual(Buffer.from(audio.data, 'base64'), mp3);
+  assert.match(audio.name, /^AI-generated-[a-f0-9-]{36}\.mp3$/); assert.equal(Buffer.byteLength(audio.name), audio.name.length);
 });
 test('media never follows model URLs, supports video or ignores provider errors', async () => {
   assert.equal(mediaCapability({ baseUrl: 'https://models.example.test/v1' }), null);

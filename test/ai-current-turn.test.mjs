@@ -104,3 +104,17 @@ test('the surfaced pending message uses the actual WeChat transcript and preserv
   };
   await a.tick(); assert.equal(bridge.sent.length, 2);
 });
+
+test('a generated audio reply discloses synthesis in text and delivers one portable MP3 segment', async t => {
+  const { a, bridge, provider, contact, advance } = await fixture(t);
+  t.mock.method(globalThis, 'fetch', async () => Response.json({ base_resp:{status_code:0},data:{audio:Buffer.from('ID3 test audio').toString('hex')} }));
+  const calls=[], original=bridge.send.bind(bridge);
+  bridge.send=async request=>{calls.push(request);return original(request);};
+  bridge.push(contact,'other','请生成普通合成声音的 MP3 问候。');
+  await a.tick(); advance(20000);
+  provider.next=async()=>({action:'send',text:'给你一段问候。',media:[{type:'audio',text:'晚上好'}]});
+  await a.tick();
+  assert.equal(calls.length,2); assert.match(calls[0].text,/^（AI 合成音频）/); assert.equal(calls[0].mediaFile,undefined);
+  assert.equal(calls[1].mediaFile.type,'audio/mpeg'); assert.match(calls[1].mediaFile.name,/^AI-generated-[a-f0-9-]{36}\.mp3$/);
+  assert.equal(Object.values(a.data.profiles).find(profile=>profile.contact===contact).rounds,2);
+});

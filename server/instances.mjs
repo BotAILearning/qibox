@@ -17,7 +17,22 @@ export class Instances {
     this.userFile = path.join(this.dataRoot, 'users.json');
     this.uids = await jsonFile(this.userFile, []); this.userWrites = Promise.resolve();
     this.assets = { status: 'stopped' }; this.preparing = Promise.resolve();
-    for (const uid of this.uids) await this.get(uid);
+    if (!this.deferRestore) await this.restore();
+  }
+  restore() {
+    this.restoring ??= (async () => {
+      for (const uid of [...this.uids]) {
+        if (this.closing) break;
+        try { await this.get(uid); }
+        catch (error) {
+          if (!this.deferRestore) throw error;
+          // One failed saved space must not stop restoring the other users.
+          // Opening that user's page retries its normal owned initialization.
+          console.error('栖盒：一个已保存的用户会话暂未恢复，请打开该用户的页面检查');
+        }
+      }
+    })();
+    return this.restoring;
   }
   async ensureAssets() {
     if (this.runtimeFactory) return;
@@ -59,7 +74,7 @@ export class Instances {
     });
   }
   async close({ deadline = Infinity } = {}) {
-    this.closing = true; await Promise.allSettled(this.pending.values());
+    this.closing = true; await this.restoring?.catch(() => {}); await Promise.allSettled(this.pending.values());
     await Promise.all([...this.spaces.values()].map(x => x.close(deadline))); await this.preparing;
   }
 }

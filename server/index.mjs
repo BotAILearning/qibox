@@ -30,7 +30,7 @@ async function body(req, limit = 360064) {
   try { const data = JSON.parse(Buffer.concat(chunks).toString()); if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error(); return data; }
   catch { throw new AppError('请求格式错误'); }
 }
-export async function createApplication({ appRoot = moduleRoot, dataRoot = path.join(appRoot, '.dev-data'), dev = false, runtimeFactory, fetcher, extract, aiProvider, trustedHashes, nasFiles = new NasFiles(), host = 'fnos', arch = process.arch } = {}) {
+export async function createApplication({ appRoot = moduleRoot, dataRoot = path.join(appRoot, '.dev-data'), dev = false, deferRestore = false, runtimeFactory, fetcher, extract, aiProvider, trustedHashes, nasFiles = new NasFiles(), host = 'fnos', arch = process.arch } = {}) {
   if (host !== 'fnos') throw new AppError('当前平台不受支持', 403);
   dataRoot = path.resolve(dataRoot); await mkdir(dataRoot, { recursive: true, mode: 0o700 });
   const product = await jsonFile(path.join(appRoot, 'config/product.json')), prefix = product.gatewayPrefix;
@@ -48,7 +48,7 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
   }
   function check(req, user) { if (req.headers['sec-fetch-site'] === 'cross-site' || !equal(req.headers['x-csrf-token'], token(user.uid))) throw new AppError('页面已过期，请刷新后重试', 403); }
   const library = new PackageLibrary({ appRoot, dataRoot, dev, fetcher, extract, arch, ...(trustedHashes ? { trustedHashes } : {}) }); await library.init();
-  const users = new Instances({ appRoot, dataRoot, dev, host, library, runtimeFactory, aiProvider }); await users.init();
+  const users = new Instances({ appRoot, dataRoot, dev, host, library, runtimeFactory, aiProvider, deferRestore }); await users.init();
   library.beforeInstall = async () => { await users.ensureAssets(); if (users.assets.status === 'error') throw new AppError('准备失败，请重新打开栖盒'); };
   library.beforeUninstall = () => users.suspendForUninstall();
   const send = (res, status, value) => { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(value)); };
@@ -281,7 +281,7 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
       });
     } catch { socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n'); }
   });
-  return { server, users, library, prefix, devKey,
+  return { server, users, library, prefix, devKey, startRecovery: () => users.restore(),
     async close() { clearInterval(ticketTimer); for (const ws of wss.clients) ws.terminate(); await library.close(); await users.close(); for (const socket of sockets) socket.destroy(); if (server.listening) await new Promise(resolve => server.close(resolve)); wss.close(); } };
 }
 
@@ -317,7 +317,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     process.exit(0);
   }
   const devDataRoot = process.env.QIBOX_DEV_DATA_DIR ? path.resolve(process.env.QIBOX_DEV_DATA_DIR) : path.join(tmpdir(), `qibox-dev-${process.pid}`);
-  const app = await createApplication({ appRoot, dataRoot: dev ? devDataRoot : platform.dataRoot, dev, host: platform.host });
+  const app = await createApplication({ appRoot, dataRoot: dev ? devDataRoot : platform.dataRoot, dev, deferRestore: !dev, host: platform.host });
   if (dev) {
     const port = Number(process.env.QIBOX_PORT || 8790);
     await new Promise(resolve => app.server.listen(port, '127.0.0.1', resolve));
@@ -331,4 +331,5 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const close = async () => { if (closing) return; closing = true; try { await app.close(); process.exit(0); } catch (error) { console.error(error); process.exit(1); } };
   // Keep signal handlers installed so duplicate signals cannot interrupt cleanup.
   process.on('SIGTERM', close); process.on('SIGINT', close);
+  if (!dev) void app.startRecovery().catch(() => console.error('栖盒：已保存的会话暂未恢复，请打开页面检查'));
 }

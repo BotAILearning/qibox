@@ -84,6 +84,28 @@ class MediaPreview(unittest.TestCase):
         self.assertTrue(state['submitted'])
         self.assertEqual(sum(call.args[0] == 21 for call in adapter.controls.press.call_args_list), 1)
 
+    def test_inline_audio_submits_one_owned_file_without_clipboard_or_a_popup(self):
+        adapter, layout, _, library, state = self.inline_fixture()
+        media = {'name':'AI-generated-00000000-0000-0000-0000-000000000000.mp3','type':'audio/mpeg'}
+        with patch.object(native.c, 'CDLL', return_value=library), patch.object(native.time, 'sleep'):
+            self.assertEqual(adapter.send_media(media, layout), {'status':'submitted'})
+        self.assertTrue(state['submitted']); self.assertTrue(adapter.send_confirmed)
+        adapter.controls.xtest.XTestFakeKeyEvent.assert_not_called()
+        self.assertEqual([call.args[0] for call in adapter.controls.press.call_args_list], [23,21])
+
+    def test_inline_audio_never_submits_when_owned_editor_changes(self):
+        for change in ['target', 'sidebar', 'manual-text']:
+            adapter, layout, _, library, state = self.inline_fixture()
+            media = {'name':'AI-generated-00000000-0000-0000-0000-000000000000.mp3','type':'audio/mpeg'}
+            if change == 'target': adapter.controls.locate.return_value = {**layout,'label':'另一对象'}
+            elif change == 'sidebar': adapter.send_pane_clear.return_value = False
+            else: adapter.editor_text.side_effect = lambda obj: '用户自己的草稿' if state['pasted'] else ''
+            with patch.object(native.c, 'CDLL', return_value=library), patch.object(native.time, 'sleep'):
+                if change == 'manual-text':
+                    with self.assertRaisesRegex(ValueError,'media preview unavailable'): adapter.send_media(media,layout)
+                else: self.assertEqual(adapter.send_media(media,layout),{'status':'uncertain'})
+            self.assertFalse(adapter.send_pressed)
+
     def test_inline_image_does_not_send_after_target_change_or_sidebar_obstruction(self):
         for change in ['target', 'sidebar']:
             adapter, layout, media, library, _ = self.inline_fixture()

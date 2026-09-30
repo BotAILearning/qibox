@@ -34,7 +34,7 @@ export class FileChooser {
   }
   armGeneratedMedia(file, { signal } = {}) {
     validateClipboardFiles([file]);
-    if (file.type !== 'audio/mpeg' || !/^AI合成-[a-f0-9-]{36}\.mp3$/.test(file.name)) throw new AppError('生成的音频文件无效');
+    if (file.type !== 'audio/mpeg' || !/^(?:AI合成|AI-generated)-[a-f0-9-]{36}\.mp3$/.test(file.name)) throw new AppError('生成的音频文件无效');
     if (this.closed || this.pending || this.exports.pending || this.generatedMedia) throw new AppError('微信正在选择文件，请完成后重试', 409);
     signal?.throwIfAborted();
     const lease = { file, client: randomUUID(), signal, pending: null, task: null, closed: false };

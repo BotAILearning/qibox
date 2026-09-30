@@ -36,6 +36,29 @@ test('catalog survives process restart; installation is shared without migrating
   finally { await users.close(); await cleanup(dataRoot); }
 });
 
+test('deferred saved-user recovery cannot delay metadata initialization, shares user loads and drains on shutdown', async () => {
+ const dataRoot=await temp(),gate=Promise.withResolvers(),started=Promise.withResolvers();
+ await writeFile(path.join(dataRoot,'users.json'),JSON.stringify(['1001','1002']));
+ const users=new Instances({dataRoot,deferRestore:true});let loads=[];
+ users.get=async uid=>{loads.push(uid);started.resolve();await gate.promise;};
+ try {
+  await users.init();assert.deepEqual(loads,[]);
+  const first=users.restore();assert.equal(users.restore(),first);await started.promise;
+  let closed=false;const shutdown=users.close().then(()=>{closed=true;});
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(closed,false);
+  gate.resolve();await shutdown;assert.deepEqual(loads,['1001']);
+ } finally {gate.resolve();await users.close();await cleanup(dataRoot);}
+});
+
+test('deferred recovery continues after a failed saved user without including private error text in logs',async()=>{
+ const dataRoot=await temp();await writeFile(path.join(dataRoot,'users.json'),JSON.stringify(['1001','1002']));
+ const users=new Instances({dataRoot,deferRestore:true});const loads=[],logs=[];
+ users.get=async uid=>{loads.push(uid);if(uid==='1001')throw new Error('PRIVATE_ACCOUNT_CONTENT');};
+ const original=console.error;console.error=value=>logs.push(value);
+ try {await users.init();await users.restore();assert.deepEqual(loads,['1001','1002']);assert.equal(logs.length,1);assert.equal(logs[0].includes('PRIVATE_ACCOUNT_CONTENT'),false);}
+ finally {console.error=original;await users.close();await cleanup(dataRoot);}
+});
+
 test('legacy active and retained entries acquire the WeChat app type without changing their homes', async () => {
   const dataRoot = await temp(), library = { installed: () => ({ version: '4.1.13.9' }) };
   const options = { dataRoot, appRoot: dataRoot, library, runtimeFactory };

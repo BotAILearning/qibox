@@ -35,5 +35,7 @@ export async function generateMediaOutput(config, item, signal, fetcher = fetch)
   const image = bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])) ? 'png' : bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255 ? 'jpg' : null;
   const audio = bytes.subarray(0,3).toString() === 'ID3' || bytes[0] === 255 && (bytes[1] & 224) === 224;
   if (item.type === 'image' && !image || item.type === 'audio' && !audio) throw new AppError('媒体内容校验失败，已保留文字回复');
-  return { name: `AI合成-${randomUUID()}.${item.type === 'audio' ? 'mp3' : image}`, type: item.type === 'audio' ? 'audio/mpeg' : image === 'png' ? 'image/png' : 'image/jpeg', data: bytes.toString('base64'), description: content, mediaType: item.type };
+  // Linux WeChat can silently ignore a portal-selected MP3 with a Chinese
+  // basename. Keep the explicit synthetic label with a portable filename.
+  return { name: `${item.type === 'audio' ? 'AI-generated' : 'AI合成'}-${randomUUID()}.${item.type === 'audio' ? 'mp3' : image}`, type: item.type === 'audio' ? 'audio/mpeg' : image === 'png' ? 'image/png' : 'image/jpeg', data: bytes.toString('base64'), description: content, mediaType: item.type };
 }

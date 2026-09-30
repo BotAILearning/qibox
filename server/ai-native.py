@@ -434,9 +434,9 @@ class ChatAdapter:
         return {'status': 'uncertain'}
 
     def send_media(self, media, layout):
-        """Paste one parent-validated file, submit only its newly owned preview."""
+        """Attach one parent-validated file, submit only its newly owned preview."""
         if (not isinstance(media, dict) or set(media) != {'name', 'type'}
-                or not re.fullmatch(r'AI合成-[a-f0-9-]{36}\.(png|jpg|mp3)', media.get('name', ''))
+                or not re.fullmatch(r'(?:AI合成|AI-generated)-[a-f0-9-]{36}\.(png|jpg|mp3)', media.get('name', ''))
                 or media.get('type') not in ('image/png', 'image/jpeg', 'audio/mpeg')):
             raise ValueError('invalid media')
         ins = self.controls
@@ -474,9 +474,9 @@ class ChatAdapter:
             time.sleep(.1); ins.check(); self.verify_session()
             roots = [root for root in ins._visible_roots(layout['app']) if root not in before_roots]
             if not roots:
-                # Linux WeChat 4.1 also pastes a picture as exactly one embedded
-                # object in the previously empty editor, without a dialog.
-                if media['type'] == 'audio/mpeg' or self.editor_text(layout['editor']) != '\ufffc':
+                # Linux WeChat 4.1 embeds a pasted picture or the parent's
+                # selected MP3 as one object in the previously empty editor.
+                if self.editor_text(layout['editor']) != '\ufffc':
                     continue
                 self.owned_media['inline'] = {key: layout[key] for key in ('app', 'frame', 'header', 'editor', 'label')}
                 inline_checks += 1
