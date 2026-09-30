@@ -392,11 +392,11 @@ export class AIProvider {
         }
       } catch (error) {
         if (signal?.aborted) throw new AppError('操作已取消', 409);
-        const retryableCode = ['ai_model_retry', 'ai_model_response', 'ai_model_format', 'ai_model_schema', 'ai_model_incomplete'];
+        const retryableCode = ['ai_model_retry', 'ai_model_response', 'ai_model_format', 'ai_model_schema', 'ai_model_incomplete', 'ai_model_time'];
         const retryable = error instanceof AppError ? retryableCode.includes(error.code) : true;
         if (retryable && retry && attempt < MODEL_RETRY_LIMIT) {
           await this.backoff(attempt, signal);
-          if (error instanceof AppError && error.code !== 'ai_model_retry') currentSystem = `${system}\n上一次返回未通过格式或业务结构校验。请基于同一份输入修正后重新回答，只返回符合原要求的完整 JSON 对象，不要解释。`;
+          if (error instanceof AppError && error.code !== 'ai_model_retry') currentSystem = `${system}\n上一次返回未通过格式或业务结构校验。${error.code === 'ai_model_time' ? error.message + '。' : ''}请基于同一份输入修正后重新回答，只返回符合原要求的完整 JSON 对象，不要解释。`;
           continue;
         }
         if (error instanceof AppError) throw error;

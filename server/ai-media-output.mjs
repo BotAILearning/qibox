@@ -5,7 +5,7 @@ export function mediaCapability(config) {
   const host = new URL(config.baseUrl).hostname;
   return /^(?:api\.minimaxi\.com|api\.minimax\.cn|api\.minimax\.io)$/.test(host) ? 'minimax' : host === 'api.openai.com' ? 'openai' : null;
 }
-export const mediaOutputPrompt = ` capabilities.sendImages/sendAudio 表示用户已勾选允许对应输出，且模型服务和微信发送通道支持。默认仍用文字；只有对方明确请求图片或音频、且当前任务确实适合时，才额外返回 media:[{type:"image",prompt:"完整画面描述"}] 或 [{type:"audio",text:"需要朗读的完整回复"}]，最多1项；未勾选或能力为false时不得返回media。图片是新生成的图，不能冒充真实照片、已有文件或已完成的操作；音频使用普通合成声音，以音频文件发送，不假装用户本人录音。text必须仍提供独立可用的文字回复；media生成失败会仅发送这个文字回复。不得输出视频、网址、文件路径、Base64、下载要求或编造媒体内容。`;
+export const mediaOutputPrompt = ` capabilities.sendImages/sendAudio 表示用户已勾选允许对应输出，且模型服务和微信发送通道支持；sendMedia 为两者的汇总能力，files=false仅表示不能读取或发送任意已有文件，不妨碍生成媒体。默认仍用文字；对方明确请求生成图片或朗读音频、对应能力为true且内容适合时，必须实际附带 media:[{type:"image",prompt:"完整画面描述"}] 或 [{type:"audio",text:"需要朗读的完整回复"}]，最多1项，不要只用文字描述图像或声称做不到；确需澄清或无法安全生成时正常文字说明。未勾选或能力为false时不得返回media。图片是新生成的图，不能冒充真实照片、已有文件或已完成的操作；音频使用普通合成声音，以音频文件发送，不假装用户本人录音。text必须提供独立可用的文字回复，不能宣称媒体已生成或已发送；生成失败会仅发送这个文字回复。不得输出视频、网址、文件路径、Base64、下载要求或编造媒体内容。`;
 
 export async function generateMediaOutput(config, item, signal, fetcher = fetch) {
   const provider = mediaCapability(config);
