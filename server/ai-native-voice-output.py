@@ -13,6 +13,7 @@ import re
 import shutil
 import stat
 import subprocess
+import threading
 import time
 
 RATE = 48000
@@ -43,20 +44,29 @@ def read_media(media):
 
 def communicate_checked(child, payload, check, timeout):
     deadline = time.monotonic() + timeout
-    first = True
+    finished = threading.Event()
+    outcome = {}
+    def exchange():
+        try:
+            # communicate must run once for the entire input. Repeating it
+            # after short timeouts can strand unwritten PCM in the pipe.
+            outcome['result'] = child.communicate(payload, timeout=timeout + 1)
+        except Exception as error:
+            outcome['error'] = error
+        finally:
+            finished.set()
+    worker = threading.Thread(target=exchange, daemon=True)
+    worker.start()
     try:
-        while time.monotonic() < deadline:
+        while not finished.wait(.1):
             check()
-            try:
-                result = child.communicate(payload if first else None, timeout=.1)
-                if child.returncode != 0: raise ValueError('voice audio unavailable')
-                return result
-            except subprocess.TimeoutExpired:
-                first = False
-        raise TimeoutError('voice audio unavailable')
+            if time.monotonic() >= deadline: raise TimeoutError('voice audio unavailable')
+        check()
+        if 'error' in outcome or child.returncode != 0: raise ValueError('voice audio unavailable')
+        return outcome['result']
     finally:
-        if child.poll() is None:
-            child.kill(); child.communicate(timeout=1)
+        if child.poll() is None: child.kill()
+        worker.join(timeout=1)
 
 
 def decode_audio(data, check):

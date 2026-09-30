@@ -462,7 +462,7 @@ export class DataChatBridge extends NativeChatBridge {
       nativeVoice && ['startAt', 'endAt', 'durationMs'].every(key => Number.isSafeInteger(nativeVoice[key])) &&
       nativeVoice.startAt <= nativeVoice.endAt && nativeVoice.endAt - nativeVoice.startAt <= 70000 &&
       nativeVoice.durationMs > 0 && nativeVoice.durationMs <= 60000 &&
-      Math.abs(nativeVoice.endAt - Date.now()) < 10000 ? { voiceReceipt: { ...nativeVoice } } : {};
+      Math.abs(nativeVoice.endAt - Date.now()) < 10000 ? { voiceReceipt: { startAt: nativeVoice.startAt, endAt: nativeVoice.endAt, durationMs: nativeVoice.durationMs } } : {};
     const unknown = () => ({ status: 'uncertain', ...voiceReceipt });
     // The native post-click observation can fail after the message was sent.
     // Reconcile that committed attempt through read-only DB reads, never another

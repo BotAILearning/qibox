@@ -1,6 +1,8 @@
 """Native voice delivery/cancellation boundaries; no actual desktop operations."""
 import importlib.util
 import pathlib
+import subprocess
+import sys
 import unittest
 from unittest.mock import Mock, patch
 
@@ -9,6 +11,21 @@ voice = importlib.util.module_from_spec(spec); spec.loader.exec_module(voice)
 
 
 class NativeVoiceOutput(unittest.TestCase):
+    def test_audio_pipe_is_fully_drained_while_slow_reader_and_guards_run(self):
+        data = b'pcm' * 300000
+        program = 'import sys,time,hashlib;data=b""\nwhile True:\n chunk=sys.stdin.buffer.read(4096)\n if not chunk:break\n data+=chunk;time.sleep(.002)\nprint(hashlib.sha256(data).hexdigest())'
+        child = subprocess.Popen([sys.executable, '-c', program], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        checks = Mock()
+        result, _ = voice.communicate_checked(child, data, checks, 5)
+        self.assertEqual(result.strip().decode(), voice.hashlib.sha256(data).hexdigest())
+        self.assertGreater(checks.call_count, 1)
+
+    def test_audio_cancellation_stops_owned_player_and_finishes_pipe_cleanup(self):
+        child = subprocess.Popen([sys.executable, '-c', 'import time;time.sleep(30)'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        with self.assertRaisesRegex(RuntimeError, 'cancelled'):
+            voice.communicate_checked(child, b'pcm' * 300000, Mock(side_effect=RuntimeError('cancelled')), 5)
+        self.assertIsNotNone(child.poll())
+
     def fixture(self):
         adapter = Mock(); ins = adapter.controls
         adapter.send_pressed = False; adapter.send_confirmed = False; adapter.possibly_written = False

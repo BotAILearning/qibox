@@ -2406,7 +2406,7 @@ export class AIAssistant {
     }
     if (aliases.size) {
       profile.sentMessages = profile.sentMessages.filter(row => !aliases.has(row.id) || aliases.get(row.id) === row.id);
-      this.data.deletedActivityRecords = (this.data.deletedActivityRecords || []).map(record => record.account === profile.account && record.source === 'reply' && aliases.has(record.id) ? { ...record, id: aliases.get(record.id) } : record);
+      this.data.deletedActivityRecords = (this.data.deletedActivityRecords || []).map(record => record.account === profile.account && aliases.has(record.id) && profile.sentMessages.some(row => row.id === aliases.get(record.id) && row.source === record.source) ? { ...record, id: aliases.get(record.id) } : record);
     }
   }
   confirmDeliveryReceipt(profile, row) {

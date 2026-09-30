@@ -18,10 +18,14 @@ test('audio stream carries exact PCM and closes the private monitor when the bro
   const server = http.createServer((req, res) => { streamAudio(runtime, req, res).catch(error => { res.writeHead(error.status || 500); res.end(); }); });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(async () => { for (const socket of connections) socket.destroy(); for (const socket of runtime.audioListeners || []) socket.destroy(); server.closeAllConnections(); await Promise.all([new Promise(r => server.close(r)), new Promise(r => native.close(r))]); await cleanup(directory); });
-  const response = await fetch(`http://127.0.0.1:${server.address().port}`, { method: 'POST' });
-  assert.equal(response.status, 200); assert.match(response.headers.get('x-audio-format'), /48000/);
-  const reader = response.body.getReader(); assert.deepEqual(Buffer.from((await reader.read()).value), payload);
-  assert.equal(runtime.audioListeners.size, 1); await reader.cancel();
+  // OS-assigned test ports occasionally fall on fetch's browser-blocked list.
+  // Exercise the PCM HTTP stream directly without depending on that list.
+  const response = await new Promise((resolve, reject) => {
+    http.request({ hostname: '127.0.0.1', port: server.address().port, method: 'POST' }, resolve).on('error', reject).end();
+  });
+  assert.equal(response.statusCode, 200); assert.match(response.headers['x-audio-format'], /48000/);
+  assert.deepEqual((await once(response, 'data'))[0], payload);
+  assert.equal(runtime.audioListeners.size, 1); response.destroy();
   for (let i = 0; i < 50 && runtime.audioListeners.size; i++) await delay(10);
   assert.equal(runtime.audioListeners.size, 0);
 });
