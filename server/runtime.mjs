@@ -1,6 +1,6 @@
 import path from 'node:path';
 import net from 'node:net';
-import { randomBytes, createHash } from 'node:crypto';
+import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { mkdir, readFile, writeFile, chmod, access, rename, rm, readdir, stat, symlink } from 'node:fs/promises';
 import { createWriteStream } from 'node:fs';
@@ -18,6 +18,17 @@ import { prepareXvfb, displayReady } from './x11.mjs';
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function exists(file) { try { await access(file); return true; } catch { return false; } }
+export async function clearRuntimeCache(directory, { remove = rm, move = rename } = {}) {
+  const absolute = path.resolve(directory);
+  if (!['runtime.preparing', 'runtime.previous'].includes(path.basename(absolute))) throw new Error('Unexpected runtime cache path');
+  try { await remove(absolute, { recursive: true, force: true }); }
+  catch (error) {
+    if (!['EACCES', 'EPERM'].includes(error.code)) throw error;
+    // A previous diagnostic can leave a protected Python cache. Move only the
+    // disposable runtime cache aside; never alter a user profile to unblock an upgrade.
+    await move(absolute, `${absolute}.retained-${randomUUID()}`);
+  }
+}
 function command(bin, args, env, timeout = 60000) {
   return new Promise((resolve, reject) => {
     const child = spawn(bin, args, { env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -120,7 +131,7 @@ export class Runtime {
         const staging = `${this.runtimeRoot}.preparing`;
         // Only remove our own disposable extraction directory, never user profiles.
         if (!staging.startsWith(path.resolve(this.dataRoot) + path.sep)) throw new Error('Runtime path escaped data root');
-        await rm(staging, { recursive: true, force: true });
+        await clearRuntimeCache(staging);
         await mkdir(staging, { recursive: true, mode: 0o700 });
         const archives = this.lock.packages;
         for (let i = 0; i < archives.length; i++) {
@@ -134,7 +145,7 @@ export class Runtime {
         }
         const old = `${this.runtimeRoot}.previous`;
         if (await exists(this.runtimeRoot)) {
-          await rm(old, { recursive: true, force: true });
+          await clearRuntimeCache(old);
           await rename(this.runtimeRoot, old);
         }
         await rename(staging, this.runtimeRoot);
@@ -165,6 +176,7 @@ export class Runtime {
     // later start replays the same "应用仍在退出" refusal and the desktop can
     // never come back on its own, so the retry cleans up forcefully first.
     if (this.status === 'error') await this.stop({ force: true, deadline: Date.now() + 5000 });
+    if (!this.xvfb) await this.prepare();
     if (this.status !== 'stopped') throw new AppError('应用尚未准备好，请稍后重试', 409);
     this.status = 'starting'; this.message = '正在打开应用';
     this.loginState.reset();

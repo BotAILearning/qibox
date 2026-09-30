@@ -21,6 +21,7 @@ export class Instances {
   }
   async ensureAssets() {
     if (this.runtimeFactory) return;
+    if (this.assets.status === 'error') { await this.assetsTask; this.assetsTask = null; }
     this.assetsTask ??= (async () => {
       const { Runtime } = await import('./runtime.mjs');
       this.assets = new Runtime({ appRoot: this.appRoot, dataRoot: this.dataRoot, dev: this.dev });
