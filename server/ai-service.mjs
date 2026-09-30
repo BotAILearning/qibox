@@ -926,21 +926,21 @@ export class AIAssistant {
       if (!(settings.reply && this.replySelected(profile)) && !this.continuing(profile)) continue;
       if (this.generatingProfiles.has(id)) continue;
       if (this.activeRuns.has(id) && ['summarizing', 'requesting', 'sending'].includes(profile.replyFlow?.phase)) continue;
-      if (this.skipReplyWaits.has(id)) { live.push({ id, ...this.nameFields(profile), kind: profile.kind, phase: 'generating', reason: '请求 AI' }); continue; }
+      if (this.skipReplyWaits.has(id)) { live.push({ id, ...this.nameFields(profile), kind: profile.kind, replyFlow: true, phase: 'generating', reason: '请求 AI' }); continue; }
       const manualDue = this.manualWaitUntil(profile);
       if (manualDue > now) {
-        live.push({ id, ...this.nameFields(profile), kind: profile.kind, phase: 'waiting', ...(Number.isFinite(manualDue) ? { dueAt: manualDue } : {}), reason: Number.isFinite(manualDue) ? '手动回复后的接续等待' : '手动回复后不再自动接续' });
+        live.push({ id, ...this.nameFields(profile), kind: profile.kind, replyFlow: true, phase: 'waiting', ...(Number.isFinite(manualDue) ? { dueAt: manualDue } : {}), reason: Number.isFinite(manualDue) ? '手动回复后的接续等待' : '手动回复后不再自动接续' });
         continue;
       }
       if (profile.groupWait?.dueAt > now) continue;
       const dueAt = profile.kind === 'group' ? Math.max(Math.min(cursor.changedAt + 3000, (cursor.pendingSince ?? cursor.changedAt) + 8000), cursor.trigger === 'realtime' ? (cursor.pendingSince ?? cursor.changedAt) + groupRealtimeDelayMs(profile.groupOptions) : 0) : cursor.changedAt + settings.replyDelay * 1000;
       const retryDue = profile.replyFlow?.phase === 'failed' && this.retryAt > now ? this.retryAt : 0;
-      if (Math.max(dueAt, retryDue) > now) live.push({ id, ...this.nameFields(profile), kind: profile.kind, phase: 'waiting', dueAt: Math.max(dueAt, retryDue), reason: retryDue ? '发送失败，等待重试' : profile.kind === 'group' ? '群聊合并等待' : '等待合并回复' });
-      else if (profile.replyFlow?.phase === 'failed') live.push({ id, ...this.nameFields(profile), kind: profile.kind, phase: 'failed', reason: '发送失败，准备重试' });
-      else live.push({ id, ...this.nameFields(profile), kind: profile.kind, phase: 'waiting', reason: '等待处理' });
+      if (Math.max(dueAt, retryDue) > now) live.push({ id, ...this.nameFields(profile), kind: profile.kind, replyFlow: true, phase: 'waiting', dueAt: Math.max(dueAt, retryDue), reason: retryDue ? '发送失败，等待重试' : profile.kind === 'group' ? '群聊合并等待' : '等待合并回复' });
+      else if (profile.replyFlow?.phase === 'failed') live.push({ id, ...this.nameFields(profile), kind: profile.kind, replyFlow: true, phase: 'failed', reason: '发送失败，准备重试' });
+      else live.push({ id, ...this.nameFields(profile), kind: profile.kind, replyFlow: true, phase: 'waiting', reason: '等待处理' });
     }
     for (const profile of this.profiles()) {
-      if (profile.groupWait && profile.groupWait.dueAt > now) live.push({ id: profile.id, ...this.nameFields(profile), kind: profile.kind, phase: 'waiting', dueAt: profile.groupWait.dueAt, reason: '群聊等待' });
+      if (profile.groupWait && profile.groupWait.dueAt > now && this.cursors.get(profile.id)?.pending) live.push({ id: profile.id, ...this.nameFields(profile), kind: profile.kind, replyFlow: true, phase: 'waiting', dueAt: profile.groupWait.dueAt, reason: '群聊等待' });
     }
     for (const [id, pending] of this.followUps) {
       if (pending.dueAt > now) { const p = this.data.profiles[id]; if (p) live.push({ id, ...this.nameFields(p), kind: p.kind, phase: 'waiting', dueAt: pending.dueAt, reason: '追问等待' }); }
@@ -952,8 +952,7 @@ export class AIAssistant {
       const flow = profile.replyFlow;
       if (active.has(profile.id) || !flow) continue;
       const running = this.activeRuns.has(profile.id) && ['summarizing', 'requesting', 'sending'].includes(flow.phase);
-      const recentResult = now - flow.updatedAt < 10 * 60000 && ['sent', 'failed', 'skipped', 'partial', 'cancelled'].includes(flow.phase);
-      if (running || recentResult) live.push({ id: profile.id, ...this.nameFields(profile), kind: profile.kind, phase: flow.phase, reason: flow.detail || '' });
+      if (running) live.push({ id: profile.id, ...this.nameFields(profile), kind: profile.kind, replyFlow: true, phase: flow.phase, reason: flow.detail || '' });
     }
     return live;
   }
@@ -2612,7 +2611,7 @@ export class AIAssistant {
     const reason = voiceUnavailable ? 'voice' : unsupportedTextAction(pendingText);
     const modelStartedAt = this.now();
     if (mode === 'reply') this.replyStage(profile, 'requesting');
-    this.generatingProfiles.set(profile.id, { id: profile.id, ...this.nameFields(profile), kind: profile.kind });
+    this.generatingProfiles.set(profile.id, { id: profile.id, ...this.nameFields(profile), kind: profile.kind, replyFlow: mode === 'reply' });
     const style = this.generationStyle(profile, strategy, mode);
     const defaultFallback = this.defaultStyleApplied(profile);
     const referenceStyle = defaultFallback || (mode === 'proactive' || continuation) && strategy.styleSource !== 'manual' && this.styleProfile(strategy)?.id !== profile.id;

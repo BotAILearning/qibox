@@ -21,12 +21,12 @@ export function refreshReplyCountdowns(root = document) {
 }
 
 export function replyFlowMarkup(profile, live, { allowSkip = false } = {}) {
+  if (!profile || live?.replyFlow !== true) return '';
   const retry = live?.reason === '发送失败，等待重试';
   const waiting = live?.phase === 'waiting' && !retry;
   const flow = waiting
     ? { phase: 'waiting', steps: { waiting: live?.startedAt || Date.now() } }
     : profile?.replyFlow || (live?.phase === 'waiting' ? { phase: 'waiting', steps: {} } : null);
-  if (!flow && !live) return '';
   const phase = retry ? 'failed' : live?.phase === 'generating' ? 'requesting' : live?.phase && live.phase !== 'waiting' ? live.phase : flow?.phase || 'waiting';
   const steps = flow?.steps || {};
   const current = stages.findIndex(([key]) => key === phase);

@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { AIAssistant } from '../server/ai-service.mjs';
 import { ChatFixture, AIModelFixture, modelConfig } from './ai-fixtures.mjs';
 import { temp, cleanup } from './fixtures.mjs';
+import { objectExecutionStatus } from '../web/ai-object-page-new.mjs';
+import { liveActivityBox } from '../web/ai-activity-view.mjs';
 
 const gate = () => { let open; const promise = new Promise(resolve => { open = resolve; }); return { promise, open }; };
 
@@ -36,6 +38,7 @@ test('reply records wait, context, model, send and confirmed delivery stages', a
   assert.equal(profile.replyFlow.phase, 'sent');
   assert.ok(profile.replyFlow.steps.sent >= profile.replyFlow.steps.sending);
   assert.equal(f.bridge.sent.length, 1);
+  assert.equal(f.assistant.liveStates().some(row => row.id === profile.id), false);
 });
 
 test('unsubmitted reply is shown as failure while the incoming remains pending', async t => {
@@ -50,4 +53,25 @@ test('unsubmitted reply is shown as failure while the incoming remains pending',
   assert.deepEqual(profile.delivery.diagnostic, { phase: 'native-prepare', code: 'controls-unavailable' });
   assert.match(profile.replyFlow.detail, /准备微信输入区微信控件不可用/);
   assert.ok(f.assistant.liveStates().some(row => row.id === profile.id && row.reason === '发送失败，等待重试'));
+});
+
+test('no incoming message shows idle, and a completed skip appears only in records', async t => {
+  const f = await fixture(t), profile = f.assistant.profiles()[0];
+  const status = () => objectExecutionStatus(f.assistant.publicState(), f.contact);
+  assert.match(status(), /空闲/);
+  assert.doesNotMatch(status(), /ai-reply-flow|本轮不回复/);
+
+  f.bridge.push(f.contact, 'other', '这条消息不用回复');
+  await f.assistant.tick();
+  assert.equal(f.assistant.liveStates().find(row => row.id === profile.id)?.replyFlow, true);
+  f.provider.next = async () => ({ action: 'skip' });
+  f.advance(20000);
+  await f.assistant.tick();
+
+  assert.equal(profile.replyFlow.phase, 'skipped');
+  assert.equal(f.assistant.publicState().skipRecords.length, 1);
+  assert.equal(f.assistant.liveStates().some(row => row.id === profile.id), false);
+  assert.match(status(), /空闲/);
+  assert.doesNotMatch(status(), /ai-reply-flow|本轮不回复|本轮未发送/);
+  assert.doesNotMatch(liveActivityBox(f.assistant.publicState()), /本轮不回复|本轮未发送/);
 });

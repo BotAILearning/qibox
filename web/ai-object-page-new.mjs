@@ -14,13 +14,13 @@ const toggle = (key, title, hint, checked, disabled = false, main = false) => `<
 const tab = (id, title, current) => `<button type="button" data-ai-object-section="${id}" class="${current === id ? 'active' : ''}" aria-current="${current === id ? 'page' : 'false'}">${title}</button>`;
 export function objectExecutionStatus(state, contactId) {
   const profile = state.profiles.find(p => p.contact === contactId);
-  const live = (state.live || []).find(row => row.id === profile?.id);
+  const live = (state.live || []).find(row => row.id === profile?.id && row.replyFlow === true);
   const unavailable = state.waiting === true && !live;
   const labels = { waiting: '等待汇总', summarizing: '汇总上下文', requesting: 'AI 请求中', generating: 'AI 请求中', sending: '发送中', sent: '已发送', failed: '发送失败', partial: '部分已发送', skipped: '本轮不回复', cancelled: '已取消' };
-  const phase = live?.phase || profile?.replyFlow?.phase;
+  const phase = live?.phase;
   const label = unavailable ? '暂不可用' : labels[phase] || '空闲';
   const detail = unavailable ? state.available === false ? (state.notice || '微信聊天暂不可读取，正在自动重试') : (state.requirements?.reply || '自动回复暂缓，正在恢复运行')
-    : live?.reason || profile?.replyFlow?.detail || (phase === 'sent' ? '微信已确认发送' : '当前没有正在执行的自动回复');
+    : live?.reason || '当前没有正在执行的自动回复';
   const skip = state.settings?.enabled && state.settings?.reply && state.waiting !== true && profile && !profile.paused;
   const flow = !unavailable && profile ? replyFlowMarkup(profile, live, { allowSkip: skip }) : '';
   return `<div class="ai-object-execution" role="status" aria-live="polite"><div><span class="ai-object-execution-label ${esc(unavailable ? 'unavailable' : phase || 'idle')}">${label}</span>${flow ? '' : `<span class="ai-object-execution-detail">${esc(detail)}</span>`}</div>${flow}</div>`;

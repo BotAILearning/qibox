@@ -42,8 +42,13 @@ try {
   await ai.setReplyOptions({ contact: bridge.contacts[0].id, enabled: true });
   await ai.settings({ enabled: true });
   await ai.tick();
+  const profile = ai.profiles().find(row => row.contact === bridge.contacts[0].id);
+  profile.replyFlow = { phase: 'skipped', detail: '本轮未发送', startedAt: Date.now() - 1000, updatedAt: Date.now(), steps: { waiting: Date.now() - 1000, skipped: Date.now() } };
+  await ai.save();
   await page.getByRole('button', { name: '自动回复', exact: true }).click();
   await page.locator(`[data-ai-object="${bridge.contacts[0].id}"]`).click();
+  await page.waitForFunction(() => document.querySelector('[data-ai-object-execution]')?.textContent.includes('空闲'));
+  assert.equal(await page.locator('[data-ai-object-execution] .ai-reply-flow').count(), 0);
   await page.locator('#ai-object-form [name=replyGoal]').fill('草稿保留检查');
   const now = Math.floor(Date.now() / 1000);
   Object.assign(bridge.push(bridge.contacts[0].id, 'self', '手动接管'), { timestamp: now });

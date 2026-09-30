@@ -3,7 +3,7 @@ import { icon } from './ai-icons.mjs';
 import { contactName, contactSearch } from './ai-contact-name.mjs';
 import { contactPickerAvatar } from './ai-contact-picker.mjs';
 import { replyRecordCards } from './ai-reply-records-view.mjs';
-import { replyFlowMarkup } from './ai-reply-flow-view.mjs';
+import { countdownText, replyFlowMarkup } from './ai-reply-flow-view.mjs';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const within = (at, filters) => {
   if (!filters.from && !filters.to) return true;
@@ -46,7 +46,8 @@ export function liveActivityBox(state) {
   return `<section class="ap-record-live"><header><h4>实时状态</h4></header><ul>${live.map(x => {
     const profile = (state.profiles || []).find(profile => profile.id === x.id);
     const flow = replyFlowMarkup(profile, x, { allowSkip: !!(profile && state.settings?.enabled && state.settings?.reply && state.waiting !== true && !profile.paused) });
-    return `<li><i class="ai-live-dot ${esc(x.phase)}"></i><div><strong>${contactName(x)}</strong>${flow || `：${esc(x.reason || '等待处理')}`}</div></li>`;
+    const countdown = x.phase === 'waiting' && Number.isFinite(x.dueAt) ? ` <span class="ai-reply-countdown" data-ai-countdown="${x.dueAt}">${countdownText(x.dueAt)}</span>` : '';
+    return `<li><i class="ai-live-dot ${esc(x.phase)}"></i><div><strong>${contactName(x)}</strong>${flow || `：${esc(x.reason || '等待处理')}${countdown}`}</div></li>`;
   }).join('')}</ul></section>`;
 }
 export function recentErrorsBox(state, open = false, loading = false) {
