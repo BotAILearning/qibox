@@ -2,6 +2,7 @@ import { beijingTime } from './ai-proactive-view.mjs';
 import { icon } from './ai-icons.mjs';
 import { contactName, contactSearch } from './ai-contact-name.mjs';
 import { replyRecordCards } from './ai-reply-records-view.mjs';
+import { replyFlowMarkup } from './ai-reply-flow-view.mjs';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const within = (at, filters) => {
   if (!filters.from && !filters.to) return true;
@@ -39,8 +40,9 @@ export function liveActivityBox(state) {
   const live = state.live || [];
   if (!live.length) return '';
   return `<section class="ap-record-live"><header><h4>实时状态</h4></header><ul>${live.map(x => {
-    const remaining = x.phase === 'generating' || !Number.isFinite(x.dueAt) ? '' : ` · 约 ${Math.max(1, Math.ceil((x.dueAt - Date.now()) / 1000))} 秒后发送`;
-    return `<li><i class="ai-live-dot ${esc(x.phase)}"></i><strong>${contactName(x)}</strong>${x.phase === 'generating' ? `：${esc(x.reason || '请求 AI')}…` : `：${esc(x.reason || '等待发送')}${remaining}`}</li>`;
+    const profile = (state.profiles || []).find(profile => profile.id === x.id);
+    const flow = replyFlowMarkup(profile, x, { allowSkip: !!(profile && state.settings?.enabled && state.settings?.reply && state.waiting !== true && !profile.paused) });
+    return `<li><i class="ai-live-dot ${esc(x.phase)}"></i><div><strong>${contactName(x)}</strong>${flow || `：${esc(x.reason || '等待处理')}`}</div></li>`;
   }).join('')}</ul></section>`;
 }
 export function recentErrorsBox(state, open = false, loading = false) {

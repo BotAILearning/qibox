@@ -189,8 +189,10 @@ def locate_nodes(nodes, app):
     frame = unique([node for node in nodes if node['role'] == 'frame' and node['name'] == '微信'
                     and node['parent'] == app and shown(node)], nodes)
     scope = descendants(nodes, frame['obj'])
+    # Opening a group from search can leave WeChat inside "折叠的聊天" while
+    # the selected chat and message pane are otherwise unchanged.
     conversations = unique([node for node in scope if node['role'] == 'list'
-                            and node['name'] == '会话' and shown(node)], nodes)
+                            and node['name'] in ('会话', '折叠的聊天') and shown(node)], nodes)
     messages = unique([node for node in scope if node['role'] == 'list'
                       and node['name'] == '消息' and shown(node)], nodes)
     mx, my, mw, mh = messages['bounds']
@@ -710,7 +712,17 @@ class NativeControls(base.Inspector):
                 raise ControlsUnavailable('foreground title changed')
             self.check()
             after = x11_property32(xlib, display, root, atoms['_NET_ACTIVE_WINDOW'], atoms['WINDOW'])
-            if errors or owner != self.pid or after != active:
+            search_child = False
+            if owner != self.pid and getattr(self, '_search_child_allowed', False) and owner:
+                try:
+                    status = open(f'/proc/{owner}/status', encoding='utf-8').read()
+                    parent = next(int(line.split(':', 1)[1]) for line in status.splitlines()
+                                  if line.startswith('PPid:'))
+                    search_child = (parent == self.pid and
+                                    open(f'/proc/{owner}/comm', encoding='utf-8').read().strip() == 'WeChatAppEx')
+                except (OSError, StopIteration, ValueError):
+                    pass
+            if errors or (owner != self.pid and not search_child) or after != active:
                 raise ControlsUnavailable('foreground changed or belongs to another process')
             self.check()
 
@@ -1003,6 +1015,205 @@ class NativeControls(base.Inspector):
             return result
         finally:
             self._close_chat()
+
+    def _group_search_field(self):
+        app = self.application()
+        self._located_nodes = self.tree(app, prune_lists=True)
+        shell = main_nodes(self._located_nodes, app)
+        scope = descendants(self._located_nodes, shell['frame'])
+        fields = [node for node in scope if node['role'] == 'text' and node['name'] == '搜索' and shown(node)]
+        return unique(fields, self._located_nodes)['obj']
+
+    def _group_search_text(self, field):
+        iface = self.bind('atspi_accessible_get_text_iface', c.c_void_p, [c.c_void_p])(field)
+        if not iface:
+            raise ControlsUnavailable('group search unreadable')
+        error = c.c_void_p()
+        ptr = self.bind('atspi_text_get_text', c.c_void_p,
+                        [c.c_void_p, c.c_int, c.c_int, c.POINTER(c.c_void_p)])(iface, 0, -1, c.byref(error))
+        if error.value or not ptr:
+            if error.value:
+                self.glib.g_error_free(error)
+            raise ControlsUnavailable('group search unreadable')
+        try:
+            value = c.string_at(ptr).decode('utf-8')
+            if len(value) > 120:
+                raise ControlsUnavailable('group search occupied')
+            return value
+        finally:
+            self.glib.g_free(ptr)
+
+    def _set_group_search_text(self, field, value):
+        iface = self.bind('atspi_accessible_get_editable_text_iface', c.c_void_p, [c.c_void_p])(field)
+        if not iface:
+            raise ControlsUnavailable('group search unavailable')
+        error = c.c_void_p()
+        ok = self.bind('atspi_editable_text_set_text_contents', c.c_int,
+                       [c.c_void_p, c.c_char_p, c.POINTER(c.c_void_p)])(iface, value.encode(), c.byref(error))
+        if error.value:
+            self.glib.g_error_free(error)
+        if not ok or error.value:
+            raise ControlsUnavailable('group search unavailable')
+
+    def _trigger_group_search(self, field, label):
+        # EditableText changes QLineEdit's contents, but this WeChat build
+        # starts searching only on a real text edit. Keep keyboard input scoped
+        # to the verified, focused search field; never type into a chat draft.
+        if self._group_search_text(field) != label:
+            raise ControlsUnavailable('group search text changed')
+        if 12 not in self.states(field):
+            raise ControlsUnavailable('group search focus unavailable')
+        self.require_foreground('微信')
+        if not getattr(self, 'display', None):
+            raise ControlsUnavailable('group search keyboard unavailable')
+        self.xlib.XKeysymToKeycode.argtypes = [c.c_void_p, c.c_ulong]
+        self.xlib.XKeysymToKeycode.restype = c.c_uint
+        self.xtest.XTestFakeKeyEvent.argtypes = [c.c_void_p, c.c_uint, c.c_int, c.c_ulong]
+        for keysym in (0x20, 0xff08):  # Space, then Backspace.
+            self.require_foreground('微信')
+            if 12 not in self.states(field):
+                raise ControlsUnavailable('group search focus unavailable')
+            code = self.xlib.XKeysymToKeycode(self.display, keysym)
+            if not code:
+                raise ControlsUnavailable('group search keyboard unavailable')
+            self.xtest.XTestFakeKeyEvent(self.display, code, 1, 0)
+            self.xtest.XTestFakeKeyEvent(self.display, code, 0, 0)
+            self.xlib.XFlush(self.display)
+            time.sleep(.1)
+        if self._group_search_text(field) != label:
+            raise ControlsUnavailable('group search text changed')
+
+    def _group_search_results(self, label, group=False):
+        app = self.application()
+        nodes = self.tree(app, prune_lists=True)
+        results = []
+        wanted_section = '群聊' if group else '联系人'
+        for node in nodes:
+            if node['role'] != 'list' or node['name'] in ('会话', '消息') or not shown(node):
+                continue
+            section = None
+            for row in self.list_rows(node['obj']):
+                if row['label'] in ('搜索网络结果', '群聊', '联系人', '公众号'):
+                    section = row['label']
+                elif section == wanted_section and row['label'] == label and self.row_in_view(row, node['obj']):
+                    results.append((row, node['obj']))
+        if not results or len(results) > 4:
+            raise ControlsUnavailable('group search result unavailable')
+        return results
+
+    def _dismiss_group_search(self):
+        app = self.application()
+        shell = main_nodes(self.tree(app, prune_lists=True), app)
+        roots = self._visible_roots(app, shell['frame'])
+        if not roots:
+            return
+        if len(roots) != 1 or self.string('get_role_name', roots[0]) != 'filler':
+            raise ControlsUnavailable('group search cleanup unavailable')
+        self.require_foreground('微信')
+        xlib = c.CDLL('libX11.so.6')
+        xlib.XKeysymToKeycode.argtypes = [c.c_void_p, c.c_ulong]
+        xlib.XKeysymToKeycode.restype = c.c_uint
+        code = xlib.XKeysymToKeycode(self.display, 0xff1b)
+        if not code:
+            raise ControlsUnavailable('group search cleanup unavailable')
+        self.xtest.XTestFakeKeyEvent(self.display, code, 1, 0)
+        self.xtest.XTestFakeKeyEvent(self.display, code, 0, 0)
+        self.xlib.XFlush(self.display)
+        def closed():
+            if self._visible_roots(app, shell['frame']):
+                raise ControlsUnavailable('group search cleanup unavailable')
+        self._observe(closed)
+
+    def search_background_conversation(self, label, matches_session, verify_session, group=False):
+        """Find a chat in WeChat search, then verify its private session key."""
+        self.group_search_phase = 'entry'
+        if first_line(label) != label or not callable(matches_session) or not callable(verify_session):
+            raise ControlsUnavailable('invalid group search')
+        shell = self.main()
+        if self._visible_roots(shell['app'], shell['frame']):
+            raise ControlsUnavailable('existing popup unavailable')
+        field = self._group_search_field()
+        if self._group_search_text(field):
+            raise ControlsUnavailable('group search occupied')
+        owned = False
+        def clear_owned_search():
+            self.group_search_phase = 'cleanup'
+            field = self._group_search_field()
+            current = self._group_search_text(field)
+            if current == label:
+                self._set_group_search_text(field, '')
+            elif current:
+                raise ControlsUnavailable('group search changed')
+            self._dismiss_group_search()
+        self._search_child_allowed = True
+        try:
+            for index in range(4):
+                self.group_search_phase = 'results'
+                self.require_foreground('微信')
+                field = self._group_search_field()
+                if self._group_search_text(field) not in ('', label):
+                    raise ControlsUnavailable('group search occupied')
+                self.press(field)
+                self._set_group_search_text(field, label)
+                owned = True
+                # EditableText can move focus back to the chat composer.
+                self.press(field)
+                def focused_search():
+                    current_field = self._group_search_field()
+                    if self._group_search_text(current_field) != label:
+                        raise ControlsUnavailable('group search text changed')
+                    if 12 not in self.states(current_field):
+                        raise ControlsUnavailable('group search focus unavailable')
+                    return current_field
+                field = self._observe(focused_search)
+                self._trigger_group_search(field, label)
+                results = self._observe(lambda: self._group_search_results(label, group=group))
+                if index >= len(results):
+                    break
+                row, container = results[index]
+                self.group_search_phase = 'candidate-open'
+                self.require_foreground('微信')
+                self.press_row(row, container)
+                def observed_header():
+                    current = self.locate()['label']
+                    if current != label and not (group and re.fullmatch(re.escape(label) + r'\s*[（(]\d+[）)]', current)):
+                        raise ControlsUnavailable('conversation changed')
+                try:
+                    self._observe(observed_header)
+                except ControlsUnavailable:
+                    # Search can return a group card before a conversation.
+                    # A card has no send pane; return to chats and try the
+                    # next exact-name result without ever drafting text.
+                    if index + 1 >= len(results):
+                        raise
+                    clear_owned_search()
+                    self.ensure_conversations()
+                    continue
+                self.group_search_phase = 'identity'
+                for _ in range(4):
+                    try:
+                        matched = matches_session()
+                    except ValueError as error:
+                        if str(error) not in ('session manager ambiguous or unavailable',
+                                              'session pointer unavailable', 'session mirror unavailable'):
+                            raise
+                        # A search preview can show the group title without
+                        # entering WeChat's normal verified chat session.
+                        matched = False
+                    if matched:
+                        verify_session()
+                        return True
+                    time.sleep(.1)
+                if index + 1 < len(results):
+                    clear_owned_search()
+                    self.ensure_conversations()
+            raise ControlsUnavailable('group search identity unavailable')
+        finally:
+            try:
+                if owned:
+                    clear_owned_search()
+            finally:
+                self._search_child_allowed = False
 
     def navigate_background(self, label, verify_session, expected_contact=None, account=None, group=False):
         """Open a candidate conversation without opening its details for identity."""

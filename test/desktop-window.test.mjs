@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { wechatWindowVisible, restoreWechatWindow, DesktopWindowState } from '../server/desktop.mjs';
+import { activateWechatWindow, wechatWindowVisible, restoreWechatWindow, DesktopWindowState } from '../server/desktop.mjs';
 import { Runtime } from '../server/runtime.mjs';
 test('only the requested WeChat main window determines visibility and restoration', async () => {
   let state = 1; const mapped = [];
@@ -14,6 +14,24 @@ test('only the requested WeChat main window determines visibility and restoratio
   state = 3; assert.equal(await wechatWindowVisible(options), false);
   assert.equal(await restoreWechatWindow(options), true);
   assert.deepEqual(mapped, ['id_cmd:win=0x123:map']);
+});
+
+test('activation targets only the unique visible WeChat main window owned by this process', async () => {
+  let active = '222', windows = '0x123, 222, 333';
+  const activated = [];
+  const options = { root: '/runtime', env: {}, pid: 100, command: async (bin, args) => {
+    if (bin.endsWith('xdotool')) {
+      if (args[0] === 'getactivewindow') return active + '\n';
+      activated.push(args); active = String(Number(args[2])); return '';
+    }
+    if (args[0] === '--root') return `_NET_CLIENT_LIST(WINDOW) = ${windows}\n`;
+    return `WM_CLASS(STRING) = "wechat", "wechat"\nWM_STATE(WM_STATE) = 1, 0\n_NET_WM_WINDOW_TYPE(ATOM) = _NET_WM_WINDOW_TYPE_${args[1] === '222' ? 'DIALOG' : 'NORMAL'}\n_NET_WM_PID(CARDINAL) = ${args[1] === '333' ? 200 : 100}\n`;
+  } };
+  assert.equal(await activateWechatWindow(options), true);
+  assert.deepEqual(activated, [['windowactivate', '--sync', '0x123']]);
+  assert.equal(await activateWechatWindow(options), false);
+  windows = '0x123, 0x456';
+  await assert.rejects(activateWechatWindow(options), /unavailable/);
 });
 test('window observation is throttled, expires and rejects results from an old session', async () => {
   let time = 100, visible = true, resolve;

@@ -244,6 +244,81 @@ test('combined learning sends one continuous bounded material per contact withou
   assert.equal(readMemory(f.a.vault, f.profile()).summary, '完整范围事实');
 });
 
+test('combined learning applies style and memory together, and keeps both pending before application', async t => {
+  const f = await fixture(t);
+  f.respond(() => ({ style: { ...layers }, memory: { entries: [{ field: 'other', text: '对方喜欢看展' }] } }));
+  await f.a.learn({ contacts: [f.contacts[0]], target: 'both', previewOnly: true });
+  const profile = f.profile(), activeStyle = structuredClone(profile.style);
+  assert.ok(profile.pendingStyle);
+  assert.equal(profile.pendingMemorySource, 'combined');
+  assert.equal(profile.learnedAt, null, 'preview must not mark a new style as applied');
+  assert.equal(profile.learnedStyle, undefined, 'preview must not expose the new style as active');
+  assert.equal(readMemory(f.a.vault, profile).summary, '');
+  assert.notDeepEqual(profile.pendingStyle, activeStyle);
+  await assert.rejects(f.a.applyPendingMemory(profile.id), /一起应用/);
+  assert.equal(readMemory(f.a.vault, profile).summary, '');
+  await f.a.saveReplyProfile({ contact: profile.contact, style: profile.pendingStyle, styleId: 'learned', preserveSwitches: true,
+    strategy: profile.replyStrategy || f.a.data.replyStrategy, applyCombinedLearning: true, combinedLearningId: profile.pendingMemoryId });
+  assert.equal(readMemory(f.a.vault, profile).summary, '对方喜欢看展');
+  assert.equal(profile.style.summary, composedSummary);
+  assert.ok(profile.learnedAt);
+  assert.equal(profile.learnedStyle.summary, composedSummary);
+  assert.equal(profile.pendingStyle, undefined);
+  assert.equal(profile.pendingMemory, undefined);
+});
+
+test('combined learning rechecks an empty memory result before staging both parts', async t => {
+  const f = await fixture(t);
+  let calls = 0;
+  f.respond(() => ++calls === 1
+    ? { style: { ...layers }, memory: { entries: [] } }
+    : { memory: { entries: [{ field: 'other', text: '对方不喜欢当导师' }] } });
+  await f.a.learn({ contacts: [f.contacts[0]], target: 'both', previewOnly: true });
+  assert.equal(calls, 2);
+  assert.ok(f.profile().pendingStyle);
+  assert.equal(f.a.pendingMemoryOf(f.profile()).entries[0].text, '对方不喜欢当导师');
+  assert.equal(readMemory(f.a.vault, f.profile()).entries.length, 0);
+});
+
+test('a learned short illness is kept as a dated memory rather than an anniversary field', async t => {
+  const f = await fixture(t);
+  f.respond(() => ({ style: { ...layers }, memory: { entries: [
+    { field: 'date', text: '对方在2026-09-28感冒了', recordedAt: 1790693783000 },
+  ] } }));
+  await f.a.learn({ contacts: [f.contacts[0]], target: 'both', previewOnly: true });
+  const [entry] = f.a.pendingMemoryOf(f.profile()).entries;
+  assert.equal(entry.field, 'other');
+  assert.equal(entry.recordedAt, undefined);
+});
+
+test('combined application preserves manual memory edits and refuses a partial apply on conflict', async t => {
+  const f = await fixture(t);
+  f.respond(() => ({ style: { ...layers }, memory: { entries: [{ field: 'workplace', text: '在上海工作', recordedAt: 1789000060000, observedAt: 1789000060000 }] } }));
+  await f.a.learn({ contacts: [f.contacts[0]], target: 'both', previewOnly: true });
+  const profile = f.profile(), activeStyle = structuredClone(profile.style);
+  await f.a.editMemory(profile.id, { entries: [{ field: 'workplace', text: '在北京工作', recordedAt: 1789000060000 }] });
+  await assert.rejects(f.a.saveReplyProfile({ contact: profile.contact, style: profile.pendingStyle, styleId: 'learned', preserveSwitches: true,
+    strategy: profile.replyStrategy || f.a.data.replyStrategy, applyCombinedLearning: true, combinedLearningId: profile.pendingMemoryId }), /冲突/);
+  assert.deepEqual(profile.style, activeStyle);
+  assert.equal(readMemory(f.a.vault, profile).summary, '在北京工作');
+  assert.ok(profile.pendingStyle);
+  assert.ok(profile.pendingMemory);
+});
+
+test('a newer combined learning result cannot be applied with an older result id', async t => {
+  const f = await fixture(t);
+  f.respond(() => ({ style: { ...layers }, memory: { entries: [{ text: '本次记忆' }] } }));
+  await f.a.learn({ contacts: [f.contacts[0]], target: 'both', previewOnly: true });
+  const previousId = f.profile().pendingMemoryId;
+  await f.a.learn({ contacts: [f.contacts[0]], target: 'both', previewOnly: true });
+  const profile = f.profile();
+  assert.notEqual(profile.pendingMemoryId, previousId);
+  await assert.rejects(f.a.saveReplyProfile({ contact: profile.contact, style: profile.pendingStyle, styleId: 'learned', preserveSwitches: true,
+    strategy: profile.replyStrategy || f.a.data.replyStrategy, applyCombinedLearning: true, combinedLearningId: previousId }), /已变化/);
+  assert.equal(readMemory(f.a.vault, profile).summary, '');
+  assert.ok(profile.pendingStyle);
+});
+
 test('combined batch bounds each contact to 150000 codepoints and sends one material copy', async t => {
   const f = await fixture(t, { count: 2 });
   const source = Array.from({ length: 2 }, (_, contactIndex) => Array.from({ length: 2 }, (_, row) => ({

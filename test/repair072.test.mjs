@@ -41,7 +41,7 @@ test('single and multi-contact learning request style plus independent memory pe
   let prompt = f.provider.calls.at(-1).system;
   // 风格按五个层次输出，memory 由追加的记忆规则在同一个 JSON 中返回。
   assert.match(prompt, /"style":\{"language":"语言层","rhythm":"节奏层","interaction":"互动层","emotion":"情感层","role":"角色层"\}/);
-  assert.match(prompt, /在同一个 JSON 中返回 memory:\{"entries":\[\{"id":"修改旧条目时原样引用其id，新增时省略","field":"可选的字段类型，无法分类时为other","calendar":"日期字段可选 solar 或 lunar","degree":"学历字段可选","text":"一条有事实依据的记忆","recordedAt":0\}\]\}/);
+  assert.match(prompt, /在同一个 JSON 中返回 memory:\{"entries":\[\{"id":"修改旧条目时原样引用其id，新增时省略","field":"可选的字段类型，无法分类时为other","calendar":"日期字段可选 solar 或 lunar","degree":"学历字段可选","text":"一条有事实依据的记忆","recordedAt":0,"observedAt":0\}\]\}/);
   assert.match(prompt, /生日及纪念日明确区分 calendar=solar\/lunar/);
   const before = f.provider.calls.length;
   await f.a.learn({ contacts: f.bridge.contacts.slice(0, 2).map(c => c.id) });
@@ -64,7 +64,7 @@ test('independent proactive sends every segment with encrypted confirmed receipt
   assert.ok(f.p.sentMessages.every(m => f.a.vault.open(m.body).text));
   assert.doesNotMatch(await readFile(f.a.file, 'utf8'), /首段秘密|第二段秘密|第三段秘密/);
   const call = f.provider.calls.at(-1); assert.equal(call.input.multiTurn, true); assert.equal(call.input.followUpAllowed, false);
-  assert.match(call.system, /不是继续回答聊天历史里的旧问题/); assert.doesNotMatch(call.system, /可同时返回 memoryUpdates/);
+  assert.match(call.system, /不是继续回答聊天历史里的旧问题/); assert.match(call.system, /比较 messages 的时间戳与 currentTime/); assert.doesNotMatch(call.system, /可同时返回 memoryUpdates/);
 });
 for (const interruption of ['incoming', 'manual', 'pause', 'account', 'not-sent', 'uncertain']) test(`proactive ${interruption} after confirmed prefix never retries prefix or remaining suffix`, async t => {
   let f, task, once = false;

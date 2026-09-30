@@ -1,4 +1,7 @@
-import { learningPrompt, learningPromptFor, learningWithMemoryPrompt, defaultLearningSummaryPrompt, conversationPrompt, addressingPrompt, generationPrompt, naturalChatPrompt, generationProtocol, proactivePrompt, proactiveBackgroundPrompt, proactiveBackgroundTtl, messageSegments } from './ai-prompts.mjs';
+import { learningPrompt, learningPromptFor, learningWithMemoryPrompt, defaultLearningSummaryPrompt, conversationPrompt, addressingPrompt, generationPrompt, naturalChatPrompt, longTermMemoryPrompt, timelinePrompt, reflectiveReplyPrompt, generationProtocol, proactivePrompt, proactiveBackgroundPrompt, proactiveBackgroundTtl, messageSegments } from './ai-prompts.mjs';
+import { selectMemoryForChat } from './ai-memory-context.mjs';
+import { guardFinancialCommitment } from './ai-commitment-guard.mjs';
+import { annotateSourceDates, staleTemporaryProactive } from './ai-time-context.mjs';
 import path from 'node:path';
 import { chatMemoryPrompt, groupMemoryInstruction, mergeMemory, editMemory as changeMemory, pointInTimeMemory } from './ai-wiki.mjs';
 import { defaultTakeover, takeoverValue, effectiveTakeover, identityPrompt, asksIdentity } from './ai-reply-rules.mjs';
@@ -34,10 +37,21 @@ function validatedLearnedStyleFields(value) {
   return value;
 }
 const validatedLearnedStyle = value => composeLearnedStyle(validatedLearnedStyleFields(value));
-function validatedLearnedMemory(value) {
+function validatedLearnedMemory(value, material) {
   try {
     const memory = memoryValue(value);
-    if (memory) return memory;
+    if (memory) {
+      const sourceTimes = new Set((Array.isArray(material) ? material : []).filter(row => Number.isSafeInteger(row?.timestamp)).map(row => row.timestamp * 1000));
+      memory.entries = memory.entries.map(entry => {
+        const { observedAt, evidence: _unverifiedEvidence, ...safe } = entry;
+        const field = safe.field === 'date' && !/纪念日|相识|认识|结婚|恋爱|确定关系|订婚/u.test(safe.text) ? 'other' : safe.field;
+        const { recordedAt, ...rest } = safe;
+        return { ...rest, field,
+          ...(['residence', 'workplace', 'employer', 'shipping', 'birthday', 'date'].includes(field) && recordedAt !== undefined ? { recordedAt } : {}),
+          ...(sourceTimes.has(observedAt) ? { observedAt } : {}) };
+      });
+      return memory;
+    }
   } catch { /* malformed or oversized model structure is a retryable schema failure */ }
   throw new AppError('模型未返回有效聊天记忆结构，请重试', 502, 'ai_model_schema');
 }
@@ -70,6 +84,9 @@ const memoryMergeEntry = entry => ({
   ...(entry.degree ? { degree: entry.degree } : {}), ...(entry.calendar ? { calendar: entry.calendar } : {}),
   ...(Number.isSafeInteger(entry.from) ? { from: entry.from } : {}), ...(Number.isSafeInteger(entry.to) ? { to: entry.to } : {}),
   ...(Number.isSafeInteger(entry.recordedAt) ? { recordedAt: entry.recordedAt } : {}),
+  ...(Number.isSafeInteger(entry.observedAt) ? { observedAt: entry.observedAt } : {}),
+  ...(['historical', 'uncertain'].includes(entry.status) ? { status: entry.status } : {}),
+  ...(Array.isArray(entry.evidence) ? { evidence: entry.evidence } : {}),
 });
 const asksDirectQuestion = text => /[?？]|(?:吗|呢|么)[。！!…]*$|(?:怎么|如何|是否|要不要|该不该|能不能|可不可以|是不是|有没有|为什么|什么|哪一个|哪个|几时|什么时候)/u.test(String(text || '').trim());
 function skipIncomingMessages(profile, messages = [], anchorId = null) {
@@ -540,7 +557,7 @@ export class AIAssistant {
   // explicit step, and a new run simply replaces the unconfirmed candidate.
   setPendingMemory(profile, value, { source = 'learned', coverage = null } = {}) {
     const stored = this.data.profiles[profile.id] || profile;
-    this.data.profiles[profile.id] = { ...stored, pendingMemory: this.vault.seal(pointInTimeMemory(value)), pendingMemoryAt: this.now(), pendingMemorySource: source, memoryMerge: null,
+    this.data.profiles[profile.id] = { ...stored, pendingMemory: this.vault.seal(pointInTimeMemory(value)), pendingMemoryAt: this.now(), pendingMemoryId: randomUUID(), pendingMemorySource: source, memoryMerge: null,
       ...(coverage ? { pendingMemoryCoverage: coverage } : {}),
       source: stored.source || source, paused: stored.paused || false, rounds: stored.rounds || 0 };
     return this.data.profiles[profile.id];
@@ -548,7 +565,7 @@ export class AIAssistant {
   clearPendingMemory(profile) {
     const stored = this.data.profiles[profile.id];
     if (!stored) return null;
-    delete stored.pendingMemory; delete stored.pendingMemoryAt; delete stored.pendingMemorySource; delete stored.pendingMemoryCoverage; delete stored.memoryMerge;
+    delete stored.pendingMemory; delete stored.pendingMemoryAt; delete stored.pendingMemoryId; delete stored.pendingMemorySource; delete stored.pendingMemoryCoverage; delete stored.memoryMerge;
     return stored;
   }
   pendingMemoryOf(profile) {
@@ -889,15 +906,26 @@ export class AIAssistant {
     const nickname = this.contactNickname(profile);
     return { label: this.contacts.get(profile?.contact)?.label || profile?.label, ...(nickname ? { nickname } : {}) };
   }
+  replyStage(profile, phase, detail = '') {
+    const now = this.now(), cursor = this.cursors.get(profile.id);
+    const startedAt = cursor?.pendingSince || now;
+    const previous = profile.replyFlow?.startedAt === startedAt ? profile.replyFlow : null;
+    profile.replyFlow = {
+      startedAt, phase, updatedAt: now,
+      steps: { waiting: startedAt, ...(previous?.steps || {}), [phase]: now },
+      ...(detail ? { detail } : {}),
+    };
+  }
   liveStates() {
     const live = [];
-    for (const generating of this.generatingProfiles.values()) live.push({ ...generating, phase: 'generating', reason: '请求 AI' });
+    for (const generating of this.generatingProfiles.values()) live.push({ ...generating, phase: 'requesting', reason: 'AI 请求中' });
     const now = this.now(), settings = this.data.settings;
     for (const [id, cursor] of this.cursors) {
       const profile = this.data.profiles[id];
       if (!profile || !cursor?.pending || profile.paused) continue;
       if (!(settings.reply && this.replySelected(profile)) && !this.continuing(profile)) continue;
       if (this.generatingProfiles.has(id)) continue;
+      if (this.activeRuns.has(id) && ['summarizing', 'requesting', 'sending'].includes(profile.replyFlow?.phase)) continue;
       if (this.skipReplyWaits.has(id)) { live.push({ id, ...this.nameFields(profile), kind: profile.kind, phase: 'generating', reason: '请求 AI' }); continue; }
       const manualDue = this.manualWaitUntil(profile);
       if (manualDue > now) {
@@ -906,7 +934,10 @@ export class AIAssistant {
       }
       if (profile.groupWait?.dueAt > now) continue;
       const dueAt = profile.kind === 'group' ? Math.max(Math.min(cursor.changedAt + 3000, (cursor.pendingSince ?? cursor.changedAt) + 8000), cursor.trigger === 'realtime' ? (cursor.pendingSince ?? cursor.changedAt) + groupRealtimeDelayMs(profile.groupOptions) : 0) : cursor.changedAt + settings.replyDelay * 1000;
-      if (dueAt > now) live.push({ id, ...this.nameFields(profile), kind: profile.kind, phase: 'waiting', dueAt, reason: profile.kind === 'group' ? '群聊合并等待' : '等待合并回复' });
+      const retryDue = profile.replyFlow?.phase === 'failed' && this.retryAt > now ? this.retryAt : 0;
+      if (Math.max(dueAt, retryDue) > now) live.push({ id, ...this.nameFields(profile), kind: profile.kind, phase: 'waiting', dueAt: Math.max(dueAt, retryDue), reason: retryDue ? '发送失败，等待重试' : profile.kind === 'group' ? '群聊合并等待' : '等待合并回复' });
+      else if (profile.replyFlow?.phase === 'failed') live.push({ id, ...this.nameFields(profile), kind: profile.kind, phase: 'failed', reason: '发送失败，准备重试' });
+      else live.push({ id, ...this.nameFields(profile), kind: profile.kind, phase: 'waiting', reason: '等待处理' });
     }
     for (const profile of this.profiles()) {
       if (profile.groupWait && profile.groupWait.dueAt > now) live.push({ id: profile.id, ...this.nameFields(profile), kind: profile.kind, phase: 'waiting', dueAt: profile.groupWait.dueAt, reason: '群聊等待' });
@@ -916,6 +947,14 @@ export class AIAssistant {
     }
     const q = this.data.queue;
     if (q && q.nextAt && q.nextAt > now && q.status === 'running') live.push({ id: 'queue', label: '主动聊天队列', kind: 'person', phase: 'waiting', dueAt: q.nextAt, reason: '队列等待' });
+    const active = new Set(live.map(row => row.id));
+    for (const profile of this.profiles()) {
+      const flow = profile.replyFlow;
+      if (active.has(profile.id) || !flow) continue;
+      const running = this.activeRuns.has(profile.id) && ['summarizing', 'requesting', 'sending'].includes(flow.phase);
+      const recentResult = now - flow.updatedAt < 10 * 60000 && ['sent', 'failed', 'skipped', 'partial', 'cancelled'].includes(flow.phase);
+      if (running || recentResult) live.push({ id: profile.id, ...this.nameFields(profile), kind: profile.kind, phase: flow.phase, reason: flow.detail || '' });
+    }
     return live;
   }
   async skipReplyWait(id) {
@@ -951,15 +990,25 @@ export class AIAssistant {
     };
     const recentSelfMessages = snapshot.messages.filter(message => message.direction === 'self').slice(-8).map(emphasis);
     const latestIncoming = snapshot.messages.findLast(message => message.direction === 'other');
-    return this.provider.complete(this.modelFor('proactive'), `${generationPrompt}${naturalChatPrompt}${conversationPrompt}${addressingPrompt}${identityPrompt(this.data.settings.acknowledgeAI)}${proactivePrompt(strategy)} 当前只能发送纯文字，不承诺发送媒体、文件或执行付款。本次是独立主动聊天任务，不自动续聊，不更新风格或记忆。${generationProtocol({ multiTurn, followUpAllowed: false, memoryUpdates: false, allowSkip: false })}${extra}`, {
+    const generate = (correction = '') => this.provider.complete(this.modelFor('proactive'), `${generationPrompt}${naturalChatPrompt}${longTermMemoryPrompt}${timelinePrompt}${conversationPrompt}${addressingPrompt}${identityPrompt(this.data.settings.acknowledgeAI)}${proactivePrompt(strategy)} 当前只能发送纯文字，不承诺发送媒体、文件或执行付款。本次是独立主动聊天任务，不自动续聊，不更新风格或记忆。${generationProtocol({ multiTurn, followUpAllowed: false, memoryUpdates: false, allowSkip: false })}${extra}${correction}`, {
       mode: 'proactive', continuation: false, multiTurn, followUp: false, followUpAllowed: false, updateStyle: false, judgeReply: false,
       kind: profile.kind, strategy, style, styleOwner: 'self', addressing: { styleScope: 'current-chat', currentStyle: style },
       currentTime, timezone: 'Asia/Shanghai',
-      memory: readMemory(this.vault, profile), capabilities: { sendText: true, sendMedia: false, files: false, calls: false },
+      memory: selectMemoryForChat(readMemory(this.vault, profile), { query: `${task.goal}\n${latestIncoming?.text || ''}`, now: this.now() }), capabilities: { sendText: true, sendMedia: false, files: false, calls: false },
       conversation: { latestIncomingId: latestIncoming?.id || null, lastSelfId: recentSelfMessages.length ? snapshot.messages.filter(message => message.direction === 'self').at(-1)?.id || null : null,
         recentSelfMessages, latestIncoming: latestIncoming ? emphasis(latestIncoming) : null },
       messages: snapshot.messages.map(m => ({ ...m, aiGenerated: (profile.generatedIds || []).includes(m.id) }))
     }, signal);
+    let result = await generate();
+    const skipped = String(result?.action || '').trim().toLowerCase() === 'skip';
+    if (skipped || staleTemporaryProactive(result, snapshot.messages, this.now(), task.goal)) {
+      result = await generate(' 重新开场：围绕 strategy.purpose 说一条新消息；旧病情、压力等临时状态不可作为普通问候的由头，也不问“好点了吗”“还累吗”。只使用已确认的事实，返回 action=send。');
+    }
+    if (staleTemporaryProactive(result, snapshot.messages, this.now(), task.goal)) {
+      if (/问候|打招呼|寒暄|聊聊近况/u.test(String(task.goal || ''))) return { action: 'send', text: '最近怎么样？', followUp: false };
+      throw new AppError('主动消息仍在接续过期状态，本次未发送');
+    }
+    return result;
   }
   providerConfig(scope = 'chat') {
     if (!['chat', 'analysis'].includes(scope)) throw new AppError('模型用途无效');
@@ -1374,29 +1423,30 @@ export class AIAssistant {
             const memoryInputData = {
               styleOwner: perspective, styleOwnerText: styleOwnerText(perspective), kind: profile.kind,
               contact: profile.contact, label: profile.label, timezone: 'Asia/Shanghai',
-              coverage: memoryCoverage, material: memoryInput,
+               coverage: memoryCoverage, material: annotateSourceDates(memoryInput),
             };
             const validateMemoryResult = result => {
-              const memory = validatedLearnedMemory(result?.memory);
+              const memory = validatedLearnedMemory(result?.memory, memoryInput);
               return { ...result, memory };
             };
             const memoryPromptForKind = profile.kind === 'group' ? `${memoryLearningPrompt}\n${groupMemoryInstruction}` : memoryLearningPrompt;
             let parsed = await this.provider.complete(this.modelFor('learning'), memoryPromptForKind, memoryInputData,
               signal, { budget: 16384, validate: validateMemoryResult });
             if (revision !== this.revision) throw new AppError('学习已取消');
-            let parsedMemory = memoryValue(parsed?.memory);
+            let parsedMemory = validatedLearnedMemory(parsed?.memory, memoryInput);
             if (!parsedMemory) throw new AppError('模型未返回有效聊天记忆，未保存空结果');
             if (!parsedMemory.entries.length && memoryInput.some(message => message.text.trim())) {
               const recheckPrompt = `${memoryPromptForKind}\n这是对同一份材料的补充核查。上一轮没有返回任何条目，请重新检查材料前段和后段，留意有明确依据的稳定事实、重要经历、已确认约定与待办；有依据的事实分别列出，不要因为聊天很多或范围截断就整体留空。不得编造，也不要凑数；确实没有符合条件的事实时才返回空 entries。`;
               parsed = await this.provider.complete(this.modelFor('learning'), recheckPrompt, memoryInputData,
                 signal, { budget: 16384, validate: validateMemoryResult });
               if (revision !== this.revision) throw new AppError('学习已取消');
-              parsedMemory = memoryValue(parsed?.memory);
+              parsedMemory = validatedLearnedMemory(parsed?.memory, memoryInput);
               if (!parsedMemory) throw new AppError('模型未返回有效聊天记忆，未保存空结果');
             }
             const entries = parsedMemory.entries;
             if (!entries.length) emptyMemoryResults++;
             if (memoryCoverage?.truncated || memoryCoverage?.sourceTruncated) truncatedResults++;
+            if (profile.pendingMemorySource === 'combined') delete profile.pendingStyle;
             this.setPendingMemory(profile, { summary: entries.map(entry => entry.text).join('\n'), entries }, { source: source || 'learned', coverage: memoryCoverage });
             await this.save();
             memorySuccesses++;
@@ -1425,26 +1475,40 @@ export class AIAssistant {
         const { profile, material, source, memoryCoverage } = prepared;
         try {
         this.operation.phase = target === 'style' ? 'model' : 'memory';
-        const input = { styleOwner: perspective, styleOwnerText: styleOwnerText(perspective), contact: profile.contact, kind: profile.kind, material,
+        const input = { styleOwner: perspective, styleOwnerText: styleOwnerText(perspective), contact: profile.contact, kind: profile.kind, material: target === 'style' ? material : annotateSourceDates(material),
           ...(target !== 'style' ? { memoryCoverage, previousMemory: readMemory(this.vault, profile) } : {}) };
         const prompt = target === 'style' ? learningPrompt : learningWithMemoryPrompt + memoryPrompt + (profile.kind === 'group' ? groupMemoryInstruction : '');
         const entry = await this.provider.complete(this.modelFor('learning'), prompt, input, signal,
           target === 'style' ? { validate: result => ({ ...result, style: validatedLearnedStyleFields(result?.style) }) } : { budget: 16384, validate: result => {
-            const style = validatedLearnedStyleFields(result?.style), memory = validatedLearnedMemory(result?.memory);
+            const style = validatedLearnedStyleFields(result?.style), memory = validatedLearnedMemory(result?.memory, material);
             return { ...result, style, memory };
           } });
         signal.throwIfAborted();
         if (revision !== this.revision) throw new AppError('学习已取消');
         const style = styleValue(validatedLearnedStyle(entry.style)), learnedStyle = structuredClone(style);
         if (profile.style) { for (const field of [...(profile.locked || []), 'customTone', 'customAvoid']) style[field] = profile.style[field]; }
-        // 仅学习风格时不读写聊天记忆，已保存的内容原样保留。
-        const memory = target === 'style' ? {} : learnedMemory(this.vault, profile, entry.memory, this.now());
+        // 页面预览模式中，风格和记忆一起等待用户在结果页应用。
+        let learnedEntries = target === 'style' || entry.memory === undefined ? null : validatedLearnedMemory(entry.memory, material);
+        if (target === 'both' && learnedEntries && !learnedEntries.entries.length && material.some(message => message.text?.trim())) {
+          const checked = await this.provider.complete(this.modelFor('learning'),
+            `${memoryLearningPrompt}\n这是对同一份材料的补充核查。上一轮没有返回任何记忆；请重新检查明确的稳定事实和有时间背景的经历，不编造也不凑数。`,
+            { ...input, coverage: memoryCoverage }, signal,
+            { budget: 16384, validate: result => ({ ...result, memory: validatedLearnedMemory(result?.memory, material) }) });
+          signal.throwIfAborted();
+          if (revision !== this.revision) throw new AppError('学习已取消');
+          learnedEntries = validatedLearnedMemory(checked.memory, material);
+        }
+        const memory = target === 'both' && !previewOnly ? learnedMemory(this.vault, profile, learnedEntries ?? undefined, this.now()) : {};
+        if (target === 'both' && learnedEntries && !memoryValue(learnedEntries)) throw new AppError('模型返回的聊天记忆格式不正确');
         if (target !== 'style' && entry.memory === undefined) memoryMissing++;
         if (memoryCoverage && (memoryCoverage.truncated || memoryCoverage.sourceTruncated)) memoryCoverageTruncated++;
         const updated = { ...profile, ...memory, ...(memoryCoverage ? { memoryCoverage, memoryCoverageAt: this.now() } : {}), style, learnedStyle, styleId: JSON.stringify(style) === JSON.stringify(learnedStyle) ? 'learned' : 'custom', replyStyleSet: true, source, learnedAt: this.now(), paused: profile.paused || false, rounds: profile.rounds || 0,
-          ...(previewOnly ? { pendingStyle: style, style: profile.style || structuredClone(defaultStyle), styleId: profile.styleId || '', replyStyleSet: profile.replyStyleSet ?? false } : {}) };
+          ...(previewOnly ? { pendingStyle: style, style: profile.style || structuredClone(defaultStyle), styleId: profile.styleId || '', replyStyleSet: profile.replyStyleSet ?? false,
+            learnedStyle: profile.learnedStyle, learnedAt: profile.learnedAt || null, source: profile.source || 'manual' } : {}) };
         this.data.profiles[updated.id] = updated;
-        profiles.push(updated);
+        if (target === 'both' && previewOnly) this.setPendingMemory(updated, learnedEntries || { entries: [] }, { source: 'combined', coverage: memoryCoverage });
+        else if (target === 'style' && updated.pendingMemorySource === 'combined') { delete updated.pendingStyle; this.clearPendingMemory(updated); }
+        profiles.push(this.data.profiles[updated.id]);
         await this.save();
         } catch (error) {
           if (signal.aborted || revision !== this.revision || error?.message === '学习已取消') throw error;
@@ -1456,9 +1520,9 @@ export class AIAssistant {
       if (!profiles.length) throw new AppError(learningFailures.map(failure => `${failure.label}：${failure.error}`).join('；') || '没有联系人成功完成学习', learningFailures.length === 1 ? learningFailures[0].status || 400 : 400, learningFailures.length === 1 ? learningFailures[0].code : undefined);
       const suffix = learnTruncated ? '；部分对象的聊天记录过长，已自动截断' : '';
       this.notice = (target === 'style' ? `聊天风格已更新${suffix}，聊天记忆未改动` : memoryMissing
-        ? `风格已更新，但 ${memoryMissing} 位联系人未返回记忆；已有记忆已保留，请检查结果后重试${suffix}`
-        : memoryCoverageTruncated ? `风格与记忆已更新；${memoryCoverageTruncated} 位联系人范围已截断，实际条数和字数见联系人记忆详情`
-        : `风格与记忆学习完成${learnTruncated ? suffix : '，请查看结果'}`) + (learningFailures.length ? `；失败 ${learningFailures.map(failure => `${failure.label}：${failure.error}`).join('；')}` : ''); return this.publicState();
+        ? `${previewOnly ? '风格已整理' : '风格已更新'}，但 ${memoryMissing} 位联系人未返回记忆；已有记忆未改动，请检查结果后重试${suffix}`
+        : memoryCoverageTruncated ? `${previewOnly ? '风格与记忆已整理，等待一起应用' : '风格与记忆已更新'}；${memoryCoverageTruncated} 位联系人范围已截断，实际条数和字数见联系人记忆详情`
+        : previewOnly ? `风格与记忆学习完成，查看结果后点击应用${learnTruncated ? suffix : ''}` : `风格与记忆学习完成${learnTruncated ? suffix : '，请查看结果'}`) + (learningFailures.length ? `；失败 ${learningFailures.map(failure => `${failure.label}：${failure.error}`).join('；')}` : ''); return this.publicState();
     } catch (error) {
       // Preserve concrete bridge/provider failures (especially login and account
       // errors) even if another operation invalidated the shared controller.
@@ -1601,7 +1665,7 @@ export class AIAssistant {
       await this.save(); return { ...this.publicState(), appliedReplyLimit: { kind, maxRounds, count } };
     });
   }
-  async saveReplyProfile({ contact, style: value, strategy: reply, preserveSwitches = false, replyEnabled, styleSet, styleId } = {}) {
+  async saveReplyProfile({ contact, style: value, strategy: reply, preserveSwitches = false, replyEnabled, styleSet, styleId, applyCombinedLearning = false, combinedLearningId } = {}) {
     return this.exclusive(async () => {
       const target = this.contacts.get(contact);
       if (!this.available || !this.data.account || !['person', 'group'].includes(target?.kind)) throw new AppError('请先获取并选择联系人或群聊');
@@ -1609,11 +1673,21 @@ export class AIAssistant {
       if (styleSet !== undefined && typeof styleSet !== 'boolean') throw new AppError('风格设置状态无效');
       if (!strategyReady(replyStrategy, 'reply')) throw new AppError('请填写回复目的和不能擅自决定的事项');
       const id = digest(`${this.data.account}\0${contact}`), previous = this.data.profiles[id];
+      let learnedMemoryChange = null;
+      if (applyCombinedLearning) {
+        if (!previous?.pendingStyle || previous.pendingMemorySource !== 'combined' || !combinedLearningId || previous.pendingMemoryId !== combinedLearningId) throw new AppError('学习结果已变化，请刷新后再应用');
+        const pending = this.pendingMemoryOf(previous);
+        if (!pending) throw new AppError('待应用的聊天记忆暂不可读取，请稍后重试');
+        learnedMemoryChange = mergeMemory(this.vault, previous, { entries: pending.entries }, this.now());
+        if (learnedMemoryChange.memoryNotice) throw new AppError('聊天记忆与已保存内容有冲突，请先核对后重新学习');
+      }
       if (previous) migrateLearnedStyle(previous);
       this.invalidate();
       this.data.profiles[id] = Object.assign(previous || {}, { id, account: this.data.account, contact, label: target.label, kind: target.kind,
         style, styleId: selectedStyleId(previous, style, styleId, styleSet ?? true, this.data.learnedDefaultStyle?.style), replyStrategy, source: previous?.source || 'manual', preparedAt: previous?.preparedAt || this.now(),
-        learnedAt: previous?.learnedAt || null, replyWatchSince: previous?.replyWatchSince || previous?.replyConfiguredAt || this.now(), replyConfiguredAt: this.now(), replyStyleSource: 'manual', locked: [], paused: previous?.paused || false, rounds: previous?.rounds || 0 });
+        learnedAt: applyCombinedLearning ? this.now() : previous?.learnedAt || null,
+        ...(applyCombinedLearning ? { learnedStyle: structuredClone(previous.pendingStyle), source: previous.source === 'paste' ? 'paste' : 'learned' } : {}),
+        replyWatchSince: previous?.replyWatchSince || previous?.replyConfiguredAt || this.now(), replyConfiguredAt: this.now(), replyStyleSource: 'manual', locked: [], paused: previous?.paused || false, rounds: previous?.rounds || 0 });
       const profile = this.data.profiles[id];
       if (replyEnabled !== undefined) {
         if (typeof replyEnabled !== 'boolean') throw new AppError('自动回复状态无效');
@@ -1630,6 +1704,10 @@ export class AIAssistant {
       } else if (!preserveSwitches) { this.data.replyTargets = [...new Set([...this.data.replyTargets, id])]; this.data.settings.reply = true; }
       this.data.profiles[id].replyStyleSet = styleSet ?? true;
       delete this.data.profiles[id].pendingStyle;
+      if (applyCombinedLearning) {
+        Object.assign(profile, learnedMemoryChange, { memoryLearnedAt: this.now() });
+        this.clearPendingMemory(profile);
+      }
       // 个人对象勾选【自动回复】后点击【保存设置】，表示由 AI 接管；群聊走群选项保存。
       // 仅保存风格或策略（未带开关状态）不解除暂停。
       if (replyEnabled === true) this.resumeForSavedReply(profile);
@@ -1712,6 +1790,7 @@ export class AIAssistant {
     return this.exclusive(async () => {
       const profile = this.profile(id), pending = this.pendingMemoryOf(profile);
       if (!pending) throw new AppError('没有待确认的记忆，请先学习一次');
+      if (profile.pendingMemorySource === 'combined') throw new AppError('请在学习结果中一起应用风格和记忆');
       if (!pending.entries.length) throw new AppError('本次没有提取到明确记忆，已有记忆未改变');
       this.invalidate();
       Object.assign(profile, replaceMemory(this.vault, profile, { entries: pending.entries }, this.now()));
@@ -1727,6 +1806,7 @@ export class AIAssistant {
       const profile = this.profile(id);
       if (!this.pendingMemoryOf(profile) && !profile.memoryMerge) throw new AppError('没有待确认的记忆');
       this.invalidate();
+      if (profile.pendingMemorySource === 'combined') delete profile.pendingStyle;
       this.clearPendingMemory(profile);
       await this.save();
       this.notice = `${profile.label}：已放弃本次学习到的记忆`;
@@ -1740,6 +1820,7 @@ export class AIAssistant {
       const profile = this.profile(id);
       const pending = this.pendingMemoryOf(profile);
       if (!pending) throw new AppError('没有待确认的记忆，请先学习一次');
+      if (profile.pendingMemorySource === 'combined') throw new AppError('请在学习结果中一起应用风格和记忆');
       if (!pending.entries.length) throw new AppError('本次没有提取到明确记忆，已有记忆未改变');
       if (profile.memoryMerge?.status === 'running') throw new AppError('正在合并记忆，请稍候');
       if (!this.modelReady()) throw new AppError('请先配置模型');
@@ -1764,8 +1845,15 @@ export class AIAssistant {
         signal, { budget: 16384 });
       const merged = memoryValue(result?.memory);
       if (!merged) throw new AppError('模型返回的记忆格式不正确');
-      const recordedAtById = new Map([...current.entries, ...incoming.entries].filter(entry => Number.isSafeInteger(entry.recordedAt)).map(entry => [entry.id, entry.recordedAt]));
-      merged.entries = merged.entries.map(entry => Number.isSafeInteger(recordedAtById.get(entry.id)) ? { ...entry, recordedAt: recordedAtById.get(entry.id) } : entry);
+      const metadataById = new Map([...current.entries, ...incoming.entries].map(entry => [entry.id, entry]));
+      merged.entries = merged.entries.map(entry => {
+        const prior = metadataById.get(entry.id);
+        return prior ? { ...entry,
+          ...(Number.isSafeInteger(prior.recordedAt) ? { recordedAt: prior.recordedAt } : {}),
+          ...(Number.isSafeInteger(prior.observedAt) ? { observedAt: prior.observedAt } : {}),
+          ...(['historical', 'uncertain'].includes(prior.status) ? { status: prior.status } : {}),
+          ...(prior.evidence?.length ? { evidence: prior.evidence } : {}) } : entry;
+      });
       const stored = this.data.profiles[id];
       if (!stored || revision !== this.revision) return;
       // 合并结果不直接写入：它替换掉待确认内容，等用户再确认一次。
@@ -2460,6 +2548,7 @@ export class AIAssistant {
       const cursor = this.cursors.get(profile.id); if (cursor) cursor.pending = false;
       await this.save(); return;
     }
+    if (mode === 'reply') this.replyStage(profile, 'summarizing');
     const lastOwn = snapshot.messages.findLastIndex(x => x.direction === 'self');
     const conversation = {
       latestIncomingId: snapshot.messages.findLast(x => x.direction === 'other')?.id || null,
@@ -2522,6 +2611,7 @@ export class AIAssistant {
     // 只作为提示交给模型照常文字回复，不再触发转交或暂停。
     const reason = voiceUnavailable ? 'voice' : unsupportedTextAction(pendingText);
     const modelStartedAt = this.now();
+    if (mode === 'reply') this.replyStage(profile, 'requesting');
     this.generatingProfiles.set(profile.id, { id: profile.id, ...this.nameFields(profile), kind: profile.kind });
     const style = this.generationStyle(profile, strategy, mode);
     const defaultFallback = this.defaultStyleApplied(profile);
@@ -2541,8 +2631,8 @@ export class AIAssistant {
       for (let attempt = 0; attempt < 2; attempt++) {
         result = onlyImages && !images.length && profile.kind !== 'group' ? { action: 'skip', mediaSkipped: true } : await this.provider.complete(
           this.modelFor('chat'),
-          `${generationPrompt}${naturalChatPrompt}${chatMemoryPrompt}${profile.kind === 'group' ? groupMemoryInstruction : ' 单聊中，对方姓名写入 name；只有用户确实直接这样称呼对方且对象明确时，才把称呼写入 addressing。'}${identityPrompt(this.data.settings.acknowledgeAI)}${conversationPrompt}${replySummaryContext} 当前只能发送纯文字，不能发送、读取或下载文件，不能拨打或接听电话，仅能理解实际附带的图片；未附带图片或图片无法读取时，应如实说明无法查看并请对方转成文字，不猜测图片内容。${groupTriggerInstruction}${currentTask}${currentStyle}${profile.kind === 'group' ? groupPrompt(trigger, multiTurn, profile.groupOptions?.realtimeMode) : ''}${generationProtocol({ multiTurn, group: profile.kind === 'group', followUpAllowed: profile.kind !== 'group' && !followUp, updateStyle: this.data.settings.updateStyle, allowSkip: !mustReply, allowStop: profile.kind !== 'group' || requiredGroupReply })}`,
-          { images: textOnlyRetry ? [] : images, onlyImages: textOnlyRetry ? false : onlyImages, capabilityConcern: reason, mode, continuation, multiTurn, followUp, followUpAllowed: profile.kind !== 'group' && !followUp, kind: profile.kind, conversation, addressing, memory: readMemory(this.vault, profile), groupState, capabilities: { sendText: true, wechatVoiceText: true, files: false, calls: false, receiveImages: !textOnlyRetry && images.length > 0, sendMedia: false }, strategy, style, styleOwner: 'self', judgeReply: profile.kind === 'group' ? trigger === 'realtime' : followUp || this.replyOptions(profile).judgeReply, updateStyle: this.data.settings.updateStyle, messages: modelMessages.map(message => ({ ...message, aiGenerated: message.aiGenerated === true || (profile.generatedIds || []).includes(message.id) })) }, signal
+          `${generationPrompt}${naturalChatPrompt}${longTermMemoryPrompt}${timelinePrompt}${chatMemoryPrompt}${profile.kind === 'group' ? groupMemoryInstruction : ' 单聊中，对方姓名写入 name；只有用户确实直接这样称呼对方且对象明确时，才把称呼写入 addressing。'}${identityPrompt(this.data.settings.acknowledgeAI)}${conversationPrompt}${replySummaryContext} 当前只能发送纯文字，不能发送、读取或下载文件，不能拨打或接听电话，仅能理解实际附带的图片；未附带图片或图片无法读取时，应如实说明无法查看并请对方转成文字，不猜测图片内容。${groupTriggerInstruction}${currentTask}${currentStyle}${profile.kind === 'group' ? groupPrompt(trigger, multiTurn, profile.groupOptions?.realtimeMode) : ''}${generationProtocol({ multiTurn, group: profile.kind === 'group', followUpAllowed: profile.kind !== 'group' && !followUp, updateStyle: this.data.settings.updateStyle, allowSkip: !mustReply, allowStop: profile.kind !== 'group' || requiredGroupReply })}${reflectiveReplyPrompt}`,
+          { images: textOnlyRetry ? [] : images, onlyImages: textOnlyRetry ? false : onlyImages, capabilityConcern: reason, mode, continuation, multiTurn, followUp, followUpAllowed: profile.kind !== 'group' && !followUp, kind: profile.kind, conversation, addressing, memory: selectMemoryForChat(readMemory(this.vault, profile), { query: pendingMessages.map(message => message.text || "").join(" ") || (strategy.replyGoal || strategy.purpose || ""), now: this.now() }), currentTime: new Date(this.now() + 8 * 3600000).toISOString().replace("Z", "+08:00"), timezone: "Asia/Shanghai", groupState, capabilities: { sendText: true, wechatVoiceText: true, files: false, calls: false, receiveImages: !textOnlyRetry && images.length > 0, sendMedia: false }, strategy, style, styleOwner: 'self', judgeReply: profile.kind === 'group' ? trigger === 'realtime' : followUp || this.replyOptions(profile).judgeReply, updateStyle: this.data.settings.updateStyle, messages: modelMessages.map(message => ({ ...message, aiGenerated: message.aiGenerated === true || (profile.generatedIds || []).includes(message.id) })) }, signal
         );
         if (retryGroupMedia && result?.mediaSkipped && attempt === 0) { textOnlyRetry = true; continue; }
         if (result?.mediaSkipped && !retryGroupMedia) break;
@@ -2564,11 +2654,13 @@ export class AIAssistant {
           cursor.changedAt = this.now();
           cursor.pendingSince = cursor.changedAt;
           if (!requiredGroupReply) profile.handledIncomingId = failedIncoming.id;
+          this.replyStage(profile, 'failed', 'AI 请求失败');
           await this.save().catch(() => {});
         }
       }
       throw error;
     } finally { this.generatingProfiles.delete(profile.id); }
+    if (mode === 'reply') result = guardFinancialCommitment(pendingText, result, strategy);
     if (assumedProactiveRows.length) {
       for (const row of assumedProactiveRows) { row.assumedPresent = false; row.handedToReplyAt = this.now(); }
       await this.save();
@@ -2644,9 +2736,11 @@ export class AIAssistant {
         const evidenceMessages = modelMessages.filter(m => m.id && !m.aiGenerated && !(profile.generatedIds || []).includes(m.id));
         const evidenceById = new Map(evidenceMessages.map(message => [message.id, message]));
         const memoryUpdates = result.memoryUpdates.map(entry => {
-          if (!['residence','workplace','employer','shipping'].includes(entry.field) || Number.isSafeInteger(entry.recordedAt)) return entry;
-          const source = (Array.isArray(entry.evidence) ? entry.evidence : []).map(id => evidenceById.get(id)).find(message => Number.isSafeInteger(message?.timestamp));
-          return source ? { ...entry, recordedAt: source.timestamp * 1000 } : entry;
+          const sources = (Array.isArray(entry.evidence) ? entry.evidence : []).map(id => evidenceById.get(id)).filter(message => Number.isSafeInteger(message?.timestamp));
+          const observedAt = sources.length ? Math.max(...sources.map(message => message.timestamp * 1000)) : undefined;
+          const { observedAt: _modelObservedAt, ...safeEntry } = entry;
+          return { ...safeEntry, ...(observedAt !== undefined ? { observedAt } : {}),
+            ...(['residence','workplace','employer','shipping'].includes(entry.field) && !Number.isSafeInteger(entry.recordedAt) && observedAt !== undefined ? { recordedAt: observedAt } : {}) };
         });
         Object.assign(profile, mergeMemory(this.vault, profile, { entries: memoryUpdates }, this.now(), { evidence: new Set(evidenceMessages.map(m => m.id)) }));
       }
@@ -2661,6 +2755,7 @@ export class AIAssistant {
       else this.event(result.action, profile.id, trigger);
       if (item) item.status = 'skipped';
       const cursor = this.cursors.get(profile.id); if (cursor) cursor.pending = false;
+      if (mode === 'reply') this.replyStage(profile, 'skipped', '本轮未发送');
     } else {
       const sendStartedAt = this.now();
       const outcome = await this.deliver(profile, fresh, mode, revision, signal, item, segments, strategy, trigger || mode, skipRate);
@@ -2705,6 +2800,7 @@ export class AIAssistant {
     let sent = 0, expectedRevision = fresh.revision;
     const interrupted = async () => {
       if (sent) profile.delivery.interrupted = true;
+      if (mode === 'reply') this.replyStage(profile, sent ? 'partial' : 'cancelled', sent ? '部分消息已发送' : '发送已取消');
       await this.save(); return sent ? 'partial' : 'cancelled';
     };
     for (const text of segments) {
@@ -2723,6 +2819,7 @@ export class AIAssistant {
       const operationId = randomUUID();
       // Keep generated text in memory; persist each segment's send intent first.
       if (item) { item.status = 'sending'; item.segmentsSent = sent; item.segmentsTotal = segments.length; }
+      if (mode === 'reply' && !sent) this.replyStage(profile, 'sending');
       profile.delivery = { operationId, status: 'sending', at: this.now(), source: mode === 'reply' ? 'reply' : 'proactive', segmentsSent: sent, segmentsTotal: segments.length }; await this.save();
       if (!this.canDeliver(profile, mode, revision, signal)) {
         profile.delivery.status = sent ? 'sent' : 'cancelled'; profile.delivery.interrupted = sent > 0;
@@ -2734,6 +2831,12 @@ export class AIAssistant {
       catch (error) { if (error.code === 'ai_account_changed') throw error; delivery = { status: 'uncertain' }; }
       if (delivery.status === 'not-sent') {
         profile.delivery.status = sent ? 'sent' : 'cancelled'; profile.delivery.interrupted = sent > 0;
+        if (delivery.diagnostic) profile.delivery.diagnostic = delivery.diagnostic;
+        const phaseNames = { 'native-start': '启动微信发送组件', 'native-session': '核对当前微信会话', 'native-navigation': '定位目标会话', 'native-prepare': '准备微信输入区' };
+        const codeNames = { timeout: '超时', cancelled: '操作中断', 'controls-unavailable': '微信控件不可用', unavailable: '暂不可用' };
+        const reasonNames = { 'group-not-listed': '目标群不在微信会话列表', 'conversation-outside-viewport': '目标会话未进入可见区域', 'conversation-candidate-changed': '会话列表刷新', 'popup-blocking-navigation': '弹窗遮挡', 'control-unavailable': '控件缺失', 'inspection-interrupted': '定位中断', 'conversation-changed': '会话切换', 'target-changed': '目标切换' };
+        const diagnosticDetail = delivery.diagnostic ? `${phaseNames[delivery.diagnostic.phase] || '微信发送'}${codeNames[delivery.diagnostic.code] || '失败'}${reasonNames[delivery.diagnostic.reason] ? `（${reasonNames[delivery.diagnostic.reason]}）` : ''}` : '微信发送组件未返回具体原因';
+        if (mode === 'reply') this.replyStage(profile, sent ? 'partial' : 'failed', `${sent ? '部分消息已发送，后续发送失败' : '消息未发送，等待自动重试'}；${diagnosticDetail}`);
         if (item) {
           item.attempts = (item.attempts || 0) + 1;
           item.status = sent ? 'done' : item.attempts >= 3 ? 'failed' : 'pending';
@@ -2745,13 +2848,14 @@ export class AIAssistant {
         // 发送受阻只暂停"发送"：联系人与聊天数据仍然可用，学习与分析不受影响。
         this.sendBlockedUntil = this.now() + 30000 * Math.min(item?.attempts || 1, 3);
         this.retryAt = this.sendBlockedUntil;
-        this.notice = item?.reason || `${this.nameFields(profile).label}：消息尚未发送，稍后重试`;
+        this.notice = item?.reason || `${this.nameFields(profile).label}：消息尚未发送，稍后重试；${diagnosticDetail}`;
         this.event('error', profile.id, mode, this.notice);
         await this.save(); return sent ? 'partial' : 'pending';
       }
       if (delivery.status !== 'sent' || !delivery.messageId) {
         profile.delivery.status = delivery.status === 'stale' ? sent ? 'sent' : 'cancelled' : 'unknown';
         profile.delivery.interrupted = sent > 0;
+        if (mode === 'reply') this.replyStage(profile, delivery.status === 'stale' ? 'cancelled' : 'failed', delivery.status === 'stale' ? '聊天有新消息，重新判断' : '发送结果未确认，不会自动重发');
         if (item) item.status = delivery.status === 'stale' ? sent ? 'done' : 'pending' : 'skipped';
         if (delivery.status !== 'stale') {
           // Unknown receipts remain audit-only; do not create pending chat rows
@@ -2785,6 +2889,7 @@ export class AIAssistant {
       Object.assign(cursor, { sent: delivery.messageId, own: delivery.messageId, last: delivery.messageId, pending: false, revision: delivery.revision || fresh.revision, changedAt: this.now() }); this.cursors.set(profile.id, cursor);
       await this.save();
     }
+    if (mode === 'reply') { this.replyStage(profile, 'sent'); await this.save(); }
     return 'complete';
   }
   async suspend() { this.invalidate(); this.data.settings.enabled = false; this.pauseQueue(); this.forgetContext(); await this.save(); }

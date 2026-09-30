@@ -29,6 +29,47 @@ function input(bridge, values = {}) { return { command: 'create', name: '测试�
 async function create(a, bridge, values) { const before = new Set(a.data.proactiveTasks.map(t => t.id)); await a.proactiveTaskAction(input(bridge, values)); return a.data.proactiveTasks.find(t => !before.has(t.id)); }
 async function ticks(a, count = 5) { for (let n = 0; n < count; n++) await a.tick(); }
 
+test('a proactive model skip gets one focused new-opening retry', async t => {
+  const { a, bridge, provider } = await fixture(t);
+  const task = await create(a, bridge, { goal: '自然地问候对方' });
+  const profile = a.profiles().find(item => item.contact === bridge.contacts[0].id);
+  provider.next = async () => ({ action: 'skip' });
+  const result = await a.generateProactiveMessage(task, profile, { messages: [
+    { id: 'old-illness', direction: 'other', timestamp: Math.floor((baseTime - 15 * 86400000) / 1000), text: '我感冒了' },
+  ] }, new AbortController().signal);
+  assert.equal(result.action, 'send');
+  assert.equal(provider.calls.length, 2);
+  assert.match(provider.calls[1].system, /旧病情、压力等临时状态不可作为普通问候的由头/);
+});
+
+test('an old illness follow-up is regenerated before a proactive greeting can send', async t => {
+  const { a, bridge, provider } = await fixture(t);
+  const task = await create(a, bridge, { goal: '自然地问候对方' });
+  const profile = a.profiles().find(item => item.contact === bridge.contacts[0].id);
+  provider.next = async () => ({ action: 'send', text: '最近怎么样，好点了吗' });
+  const result = await a.generateProactiveMessage(task, profile, { messages: [
+    { id: 'old-illness', direction: 'other', timestamp: Math.floor((baseTime - 15 * 86400000) / 1000), text: '我感冒了' },
+  ] }, new AbortController().signal);
+  assert.equal(result.text, 'GENERATED_PRIVATE_MARKER');
+  assert.equal(provider.calls.length, 2);
+  assert.match(provider.calls[1].system, /不问“好点了吗”/);
+});
+
+test('two stale model answers fall back to a fresh generic greeting', async t => {
+  const { a, bridge, provider } = await fixture(t);
+  const task = await create(a, bridge, { goal: '自然地问候对方' });
+  const profile = a.profiles().find(item => item.contact === bridge.contacts[0].id);
+  provider.complete = async (_config, system, input) => {
+    provider.calls.push({ system, input });
+    return { action: 'send', text: '最近怎么样，好点了吗' };
+  };
+  const result = await a.generateProactiveMessage(task, profile, { messages: [
+    { id: 'old-illness', direction: 'other', timestamp: Math.floor((baseTime - 15 * 86400000) / 1000), text: '我感冒了' },
+  ] }, new AbortController().signal);
+  assert.deepEqual(result, { action: 'send', text: '最近怎么样？', followUp: false });
+  assert.equal(provider.calls.length, 2);
+});
+
 test('calendar: immediate ignores hidden time fields; explicit Shanghai dates independent of host zone', () => {
   const once = proactiveSchedule({ cycle: 'once', mode: 'garbage', time: 'bad', startDate: 'bad' }, baseTime);
   assert.equal(nextProactiveOccurrence(once, baseTime, low).nextAt, baseTime);

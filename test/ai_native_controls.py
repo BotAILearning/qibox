@@ -56,6 +56,105 @@ class FakeFunction:
     def __call__(self, *args): return self.function(*args)
 
 
+class GroupSearchBoundaries(unittest.TestCase):
+    def test_search_suggestion_is_never_a_conversation_candidate(self):
+        inspector = object.__new__(native.NativeControls)
+        inspector.application = lambda: 1
+        inspector.tree = lambda *args, **kwargs: [node(10, 1, 'list', '', (73, 72, 320, 400))]
+        labels = ['搜索网络结果', '目标群', '群聊', '目标群', '联系人', '目标群']
+        inspector.list_rows = lambda container: [{'obj': index, 'label': label}
+                                                 for index, label in enumerate(labels)]
+        inspector.row_in_view = lambda row, container: True
+        self.assertEqual([row['obj'] for row, _ in inspector._group_search_results('目标群', group=True)], [3])
+        self.assertEqual([row['obj'] for row, _ in inspector._group_search_results('目标群')], [5])
+
+    def test_duplicate_group_names_require_the_private_session_identity_before_returning(self):
+        inspector = object.__new__(native.NativeControls)
+        inspector.main = lambda: {'app': 1, 'frame': 2}
+        inspector._visible_roots = lambda *args: []
+        inspector._group_search_field = lambda: 10
+        value = ['']
+        inspector._group_search_text = lambda field: value[0]
+        inspector._set_group_search_text = lambda field, text: value.__setitem__(0, text)
+        inspector._trigger_group_search = Mock()
+        inspector.states = lambda field: {12}
+        inspector._group_search_results = lambda label, group=False: [({'obj': 31, 'label': label}, 30), ({'obj': 41, 'label': label}, 40)]
+        inspector._observe = lambda operation: operation()
+        inspector.require_foreground = Mock()
+        inspector.press = Mock()
+        opened = []
+        inspector.press_row = lambda row, container: opened.append(row['obj'])
+        inspector.locate = lambda: {'label': '目标群'}
+        inspector._dismiss_group_search = Mock()
+        inspector.ensure_conversations = Mock()
+        verify = Mock()
+        with patch.object(native.time, 'sleep'):
+            result = inspector.search_background_conversation('目标群', lambda: opened[-1] == 41, verify, group=True)
+        self.assertTrue(result)
+        self.assertEqual(opened, [31, 41])
+        verify.assert_called_once_with()
+        self.assertEqual(value[0], '')
+        self.assertEqual(inspector._dismiss_group_search.call_count, 2)
+        self.assertEqual(inspector._trigger_group_search.call_count, 2)
+
+    def test_group_card_result_is_skipped_before_the_verified_chat_result(self):
+        inspector = object.__new__(native.NativeControls)
+        inspector.main = lambda: {'app': 1, 'frame': 2}
+        inspector._visible_roots = lambda *args: []
+        inspector._group_search_field = lambda: 10
+        value = ['']
+        inspector._group_search_text = lambda field: value[0]
+        inspector._set_group_search_text = lambda field, text: value.__setitem__(0, text)
+        inspector._trigger_group_search = Mock()
+        inspector.states = lambda field: {12}
+        inspector._group_search_results = lambda label, group=False: [({'obj': 31, 'label': label}, 30), ({'obj': 41, 'label': label}, 40)]
+        inspector._observe = lambda operation: operation()
+        inspector.require_foreground = Mock()
+        inspector.press = Mock()
+        opened = []
+        inspector.press_row = lambda row, container: opened.append(row['obj'])
+        inspector.locate = lambda: (_ for _ in ()).throw(native.ControlsUnavailable('control unavailable')) if opened[-1] == 31 else {'label': '目标群'}
+        inspector._dismiss_group_search = Mock()
+        inspector.ensure_conversations = Mock()
+        verify = Mock()
+        with patch.object(native.time, 'sleep'):
+            self.assertTrue(inspector.search_background_conversation('目标群', lambda: opened[-1] == 41, verify, group=True))
+        self.assertEqual(opened, [31, 41])
+        inspector.ensure_conversations.assert_called_once_with()
+        verify.assert_called_once_with()
+        self.assertEqual(value[0], '')
+
+    def test_search_preview_with_no_normal_session_tries_the_next_exact_name(self):
+        inspector = object.__new__(native.NativeControls)
+        inspector.main = lambda: {'app': 1, 'frame': 2}
+        inspector._visible_roots = lambda *args: []
+        inspector._group_search_field = lambda: 10
+        value = ['']
+        inspector._group_search_text = lambda field: value[0]
+        inspector._set_group_search_text = lambda field, text: value.__setitem__(0, text)
+        inspector._trigger_group_search = Mock()
+        inspector.states = lambda field: {12}
+        inspector._group_search_results = lambda label, group=False: [({'obj': 31, 'label': label}, 30), ({'obj': 41, 'label': label}, 40)]
+        inspector._observe = lambda operation: operation()
+        inspector.require_foreground = Mock()
+        inspector.press = Mock()
+        opened = []
+        inspector.press_row = lambda row, container: opened.append(row['obj'])
+        inspector.locate = lambda: {'label': '目标群'}
+        inspector._dismiss_group_search = Mock()
+        inspector.ensure_conversations = Mock()
+        verify = Mock()
+        def matches():
+            if opened[-1] == 31:
+                raise ValueError('session manager ambiguous or unavailable')
+            return True
+        with patch.object(native.time, 'sleep'):
+            self.assertTrue(inspector.search_background_conversation('目标群', matches, verify, group=True))
+        self.assertEqual(opened, [31, 41])
+        verify.assert_called_once_with()
+        self.assertEqual(value[0], '')
+
+
 class ContactsBoundaries(unittest.TestCase):
     def test_virtual_pages_are_joined_from_top_with_duplicate_names_preserved(self):
         inspector = object.__new__(native.NativeControls)
@@ -485,6 +584,13 @@ class Boundaries(unittest.TestCase):
         self.assertEqual(result['header'], 8)
         self.assertEqual(result['editor'], 9)
         self.assertEqual(result['send'], 10)
+        self.assertEqual(result['label'], '测试对象')
+
+    def test_selected_chat_in_folded_conversations_is_still_locatable(self):
+        nodes = chat_nodes()
+        nodes[2]['name'] = '折叠的聊天'
+        result = native.locate_nodes(nodes, 1)
+        self.assertEqual(result['conversation_list'], 3)
         self.assertEqual(result['label'], '测试对象')
 
     def test_editor_name_is_never_an_identifier(self):

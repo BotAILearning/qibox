@@ -36,6 +36,7 @@ function coverageText(value) {
 export function pendingMemoryFields(profile) {
   const pending = profile?.pendingMemory;
   if (!pending) return '';
+  if (profile.pendingMemorySource === 'combined') return `<div class="ai-pending-memory"><h5>本次学到的记忆（待应用）</h5><p class="ai-pending-memory-text">${esc(pending.summary || '本次没有提取到新的聊天记忆。')}</p><p class="ai-help">请到学习结果页与聊天风格一起应用。</p></div>`;
   const merge = profile.memoryMerge, running = merge?.status === 'running', failed = merge?.status === 'failed';
   const merged = profile.pendingMemorySource === 'merge';
   const empty = !pending.entries?.length;

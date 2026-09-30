@@ -112,6 +112,27 @@ class LiveMemory(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'unique live member'):
             self.reader.current()
 
+    def test_exact_build_mirror_requires_two_stable_matching_selected_objects(self):
+        p = self.reader.profile
+        p['mirror_current'] = 0x48
+        mirror, other = 0x16000, 0x17000
+        self.pointer(self.inner + p['mirror_current'], mirror)
+        self.write(mirror + p['username'], short('wxid_target'))
+        self.pointer(self.vector, other)
+        self.assertTrue(self.reader.matches(*self.identities()))
+        self.write(mirror + p['username'], short('wxid_other'))
+        with self.assertRaisesRegex(ValueError, 'mirror changed'):
+            self.reader.current()
+        self.write(mirror + p['username'], short('wxid_target'))
+        self.pointer(self.inner + p['mirror_current'], self.current)
+        with self.assertRaisesRegex(ValueError, 'mirror unavailable'):
+            self.reader.current()
+        self.pointer(self.inner + p['mirror_current'], mirror)
+        self.pointer(self.node + p['vector_end'], self.vector + 32)
+        self.pointer(self.vector + 16, other)
+        with self.assertRaisesRegex(ValueError, 'unique live member'):
+            self.reader.current()
+
     def test_cycle_empty_oversized_and_misaligned_vectors_fail(self):
         p = self.reader.profile
         for end in (self.vector, self.vector + 17, self.vector + 16 * (session.MAX_VECTOR + 1)):
@@ -242,9 +263,14 @@ class LiveMemory(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'hint scope changed'):
                 self.reader._apply_hint(wrong)
 
-    def test_expired_future_or_malformed_hint_cannot_trigger_fallback_scan(self):
+    def test_expired_hint_rediscovers_while_future_or_malformed_hints_fail(self):
         hint = self.reader.hint()
-        for issued in (hint['issuedAt'] - session.HINT_AGE_MS - 1, hint['issuedAt'] + 60000, True, '1'):
+        self.reader._apply_hint({**hint, 'issuedAt': hint['issuedAt'] - session.HINT_AGE_MS - 1})
+        self.assertIsNone(self.reader.manager)
+        self.reader._managers = Mock(return_value=int(hint['manager'], 16))
+        self.assertTrue(self.reader.matches(*self.identities()))
+        self.reader._managers.assert_called_once_with()
+        for issued in (hint['issuedAt'] + 60000, True, '1'):
             with self.assertRaisesRegex(ValueError, 'hint expired'):
                 self.reader._apply_hint({**hint, 'issuedAt': issued})
         for address in ('0x0', '0x10001', '0xffffffffffffffff', '1', 123):
