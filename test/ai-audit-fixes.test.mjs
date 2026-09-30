@@ -58,7 +58,7 @@ test('restart does not resolve ambiguous identical receipts or a different body'
   await a.saveReplyProfile({ contact: bridge.contacts[0].id, style: defaultStyle, strategy: {}, replyEnabled: true });
   const p=a.profiles()[0], at=a.now(), baseline=key('ambiguous-baseline');p.rounds=4;
   p.delivery={operationId:'unresolved-operation',baseline,status:'unknown',at,body:a.vault.seal({text:'相同文字'})};
-  p.sentMessages=[1,2].map(i=>({id:key('ambiguous-'+i),source:'reply',at,baseline,body:a.vault.seal({text:'相同文字'}),confirmed:true}));
+  p.sentMessages=[1,2].map(i=>({id:key('ambiguous-'+i),source:'reply',at,baseline,body:a.vault.seal({text:'相同文字'}),confirmed:true,deliveryConfidence:'confirmed'}));
   p.generatedIds=p.sentMessages.map(row=>row.id);a.restoreDeliveryReceipts(p);
   assert.equal(p.delivery.status,'unknown');assert.equal(p.rounds,4);assert.equal(p.sentMessages.length,2);
   a.event('error', p.id, 'reply', '发送结果无法确认'); await a.save();
@@ -83,6 +83,19 @@ test('restart repairs an older verified alias after a newer delivery succeeded w
     assert.equal(restored.delivery.segmentsSent, 1); assert.equal(restored.sentMessages.length, 1);
     assert.equal(restored.sentMessages[0].operationId, 'older-operation');
   } finally { await b.close(); }
+});
+
+test('a legacy authenticated receipt can resolve one adjacent historical error without an alias or counter change', async t => {
+  const { a, bridge, options } = await fixture(t);
+  await a.saveReplyProfile({ contact: bridge.contacts[0].id, style: defaultStyle, strategy: {}, replyEnabled: true });
+  const p = a.profiles()[0], at = a.now(), id = key('legacy-receipt');
+  p.rounds = 5; p.generatedIds = [id]; p.sentMessages = [{ id, source: 'reply', at, baseline: key('legacy-baseline'), confirmed: true, deliveryConfidence: 'confirmed' }];
+  a.event('error', p.id, 'reply', '发送结果无法确认'); await a.save();
+  const b = new AIAssistant(options); await b.init();
+  try { assert.equal(b.profiles()[0].rounds, 5); assert.equal(b.profiles()[0].sentMessages.length, 1); assert.equal(b.errorRecords().records[0].resolution, 'sent'); }
+  finally { await b.close(); }
+  a.event('error', p.id, 'reply', '发送结果无法确认');
+  a.confirmDeliveryReceipt(p, p.sentMessages[0]); assert.ok(a.errorRecords().records.every(error => !error.resolution));
 });
 
 test('a verified partial prefix cannot claim unsent segments or resolve unrelated historical exceptions', async t => {

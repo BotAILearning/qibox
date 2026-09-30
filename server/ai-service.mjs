@@ -224,7 +224,7 @@ export class AIAssistant {
         return [];
       });
       if (this.data.errorLog.some(error => error.target === profile.id && !error.resolution && String(error.message).includes('发送结果无法确认'))) {
-        for (const row of profile.sentMessages || []) if (row.operationId && row.confirmed === true && row.deliveryConfidence === 'confirmed') this.confirmDeliveryReceipt(profile, row);
+        for (const row of profile.sentMessages || []) if (row.confirmed === true && row.deliveryConfidence === 'confirmed') this.confirmDeliveryReceipt(profile, row);
       }
     }
     if (this.data.learnedDefaultStyle) {
@@ -2409,7 +2409,16 @@ export class AIAssistant {
     }
     // Preserve exception history, but distinguish an authenticated late receipt
     // from a still unresolved attempt. Old records have no operation ID.
-    if (!operationId) return;
+    if (!operationId) {
+      // Older authenticated late receipts lost the operation ID when replacing
+      // the intent. Do not link them while an ambiguous intent still exists.
+      if (row.source !== 'reply' || row.confirmed !== true || row.deliveryConfidence !== 'confirmed' || !validKey(row.id) || !validKey(row.baseline) || !(profile.generatedIds || []).includes(row.id)) return;
+      const overlaps = attempt => attempt?.baseline === row.baseline && row.at >= attempt.at && row.at <= attempt.at + 180000;
+      if (profile.delivery?.status === 'unknown' && overlaps(profile.delivery) || (profile.sentMessages || []).some(attempt => attempt.deliveryConfidence === 'unknown' && overlaps(attempt))) return;
+      const errors = (this.data.errorLog || []).filter(error => !error.resolution && !error.operationId && error.target === profile.id && error.code === 'error' && String(error.message).includes('发送结果无法确认') && error.at >= row.at && error.at <= row.at + 2000);
+      if (errors.length === 1) { errors[0].resolution = 'sent'; errors[0].resolvedAt = this.now(); }
+      return;
+    }
     for (const error of this.data.errorLog || []) {
       if (error.resolution || error.target !== profile.id || error.code !== 'error' || !String(error.message).includes('发送结果无法确认')) continue;
       const sameOperation = !!operationId && error.operationId === operationId;
