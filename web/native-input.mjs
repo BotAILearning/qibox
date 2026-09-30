@@ -12,7 +12,7 @@ const special = { Backspace: 0xff08, Tab: 0xff09, Enter: 0xff0d, Escape: 0xff1b,
   Home: 0xff50, ArrowLeft: 0xff51, ArrowUp: 0xff52, ArrowRight: 0xff53, ArrowDown: 0xff54,
   PageUp: 0xff55, PageDown: 0xff56, End: 0xff57, Insert: 0xff63 };
 export function nativeInput({ input, screen, client, paste, pasteFiles, notify, connected = () => true, recover = text => { input.value = text; input.classList.add('composing'); }, mac = false, touch = false }) {
-  let composing = false, ended = null, disposed = false, pending = Promise.resolve(), blocked = 0;
+  let composing = false, ended = null, disposed = false, pending = Promise.resolve(), blocked = 0, epoch = 0;
   let failed = false, retained = '';
   let anchor = { x: 0, y: 0 };
   const listeners = [];
@@ -26,14 +26,16 @@ export function nativeInput({ input, screen, client, paste, pasteFiles, notify, 
     input.style.top = `${Math.max(0, Math.min(box.height - 36, anchor.y))}px`;
   };
   const enqueue = (action, text = '', settled = () => {}) => {
+    const queuedEpoch = epoch;
     if (text) blocked++;
     pending = pending.then(async () => {
-      if (disposed || failed || !connected()) throw new Error('输入未完成，请核对微信草稿');
+      if (disposed || failed || queuedEpoch !== epoch || !connected()) throw new Error('输入未完成，请核对微信草稿');
       await action();
     }).catch(error => {
-      failed = true;
-      if (text) { retained += text; recover(retained); }
-      if (!disposed) notify(error.message || '输入未完成，请核对微信草稿');
+      const firstFailure = queuedEpoch === epoch;
+      if (firstFailure) epoch++;
+      if (text) { failed = true; retained += text; recover(retained); }
+      if (!disposed && firstFailure) notify(error.message || '输入未完成，请核对微信草稿');
     }).finally(() => { if (text) blocked--; settled(); });
   };
   const chord = (symbol, event = {}) => {
@@ -41,22 +43,39 @@ export function nativeInput({ input, screen, client, paste, pasteFiles, notify, 
     if (event.ctrlKey || (mac && event.metaKey)) modifiers.push([0xffe3, 'ControlLeft']);
     if (event.altKey && !mac) modifiers.push([0xffe9, 'AltLeft']);
     if (event.shiftKey) modifiers.push([0xffe1, 'ShiftLeft']);
-    for (const [key, code] of modifiers) client.sendKey(key, code, true);
-    client.sendKey(symbol);
-    for (const [key, code] of modifiers.reverse()) client.sendKey(key, code, false);
+    try {
+      for (const [key, code] of modifiers) client.sendKey(key, code, true);
+      client.sendKey(symbol);
+    } finally {
+      for (const [key, code] of modifiers.reverse()) {
+        try { client.sendKey(key, code, false); } catch {}
+      }
+    }
   };
   const pasteText = text => {
     if (!text) return;
     if (new TextEncoder().encode(text).length > 60000) { notify('文字过长，请分段粘贴'); return; }
     enqueue(async () => {
+      const activeEpoch = epoch;
       await paste(text);
-      if (disposed || !connected()) throw new Error('连接已断开，请核对微信草稿');
+      if (disposed || activeEpoch !== epoch || !connected()) throw new Error('输入未完成，请核对微信草稿');
       chord(0x76, { ctrlKey: true });
     }, text);
   };
   // Commit IME/Unicode through the instance's private clipboard. A Unicode
   // keysym can be silently ignored by the remote application/input method.
   const commit = text => { if (text) { if (/[^\x20-\x7e]/.test(text)) pasteText(text); else enqueue(() => sendCommittedText(client, text), text); } };
+  const pasteLocalFiles = files => {
+    if (!pasteFiles) { notify('当前连接暂不支持文件粘贴'); return; }
+    blocked++;
+    enqueue(async () => {
+      const activeEpoch = epoch;
+      const result = await pasteFiles(files);
+      if (disposed || activeEpoch !== epoch || !connected()) throw new Error('文件未粘贴，请回到微信重新粘贴');
+      if (result?.pasteRequired !== false) chord(0x76, { ctrlKey: true });
+      notify('文件已粘贴，请在微信中确认发送');
+    }, '', () => { blocked--; });
+  };
   input.hidden = false; client.focusOnClick = false;
   listen(input, 'compositionstart', () => { composing = true; ended = null; position(); input.classList.add('composing'); });
   listen(input, 'compositionend', event => { composing = false; ended = event.data || ''; commit(event.data); clear(); });
@@ -92,20 +111,19 @@ export function nativeInput({ input, screen, client, paste, pasteFiles, notify, 
     event.preventDefault();
     const files = [...(event.clipboardData?.files || [])];
     if (files.length) {
-      if(!pasteFiles) { notify('当前连接暂不支持文件粘贴'); return; }
-      blocked++;
-      enqueue(async () => {
-          await pasteFiles(files);
-          if(disposed || !connected()) throw new Error('连接已断开，请重新粘贴文件');
-          chord(0x76,{ctrlKey:true});
-      }, '', () => { blocked--; });
+      pasteLocalFiles(files);
       clear();return;
     }
     const text = event.clipboardData?.getData('text/plain');
     if (!text) { notify('请粘贴文字内容'); return; }
     pasteText(text); clear();
   });
-  listen(input, 'blur', () => { const draft = composing ? input.value : ''; composing = false; ended = null; clear(); if (draft) { retained += draft; failed = true; recover(retained); } });
+  listen(input, 'blur', () => {
+    if (blocked) epoch++;
+    const draft = composing ? input.value : ''; composing = false; ended = null; clear();
+    if (draft) { retained += draft; failed = true; }
+    if (retained) recover(retained);
+  });
   const focus = event => {
     if (disposed || touch || event.button > 0) return;
     const box = screen.getBoundingClientRect();
@@ -115,6 +133,21 @@ export function nativeInput({ input, screen, client, paste, pasteFiles, notify, 
   const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(position) : null;
   observer?.observe(screen);
   const localControl = event => event.target !== input && event.target.closest?.('#file-transfer, #input-recovery, button, input, textarea, select, a, dialog');
+  for (const type of ['pointerdown', 'touchstart', 'wheel']) listen(screen, type, event => {
+    if (blocked && !localControl(event)) { event.preventDefault(); event.stopImmediatePropagation(); }
+  }, { capture: true, passive: false });
+  listen(screen, 'dragover', event => { if (!localControl(event)) event.preventDefault(); });
+  listen(screen, 'drop', event => {
+    if (localControl(event)) return;
+    event.preventDefault();
+    if (blocked) { notify('正在准备粘贴内容，请稍候'); return; }
+    const files = [...(event.dataTransfer?.files || [])];
+    if (files.length) pasteLocalFiles(files);
+    else {
+      const text = event.dataTransfer?.getData('text/plain');
+      if (text) pasteText(text);
+    }
+  });
   listen(screen, 'mousedown', event => {
     if (localControl(event)) return;
     // A text paste must finish before a click changes the remote field.
@@ -129,7 +162,7 @@ export function nativeInput({ input, screen, client, paste, pasteFiles, notify, 
   // Canvas focus from noVNC touch handling / Tab still goes through the host IME.
   listen(screen, 'focusin', event => { if (!touch && event.target.tagName === 'CANVAS') input.focus({ preventScroll: true }); });
   return { focus: () => input.focus({ preventScroll: true }), flush: () => pending,
-    pause() { failed = true; },
-    resume() { retained = ''; failed = false; clear(); },
-    dispose() { if (composing && input.value) { retained += input.value; recover(retained); } disposed = true; observer?.disconnect(); listeners.forEach(remove => remove()); clear(); input.hidden = true; } };
+    pause() { epoch++; failed = true; },
+    resume() { epoch++; retained = ''; failed = false; clear(); },
+    dispose() { if (composing && input.value) { retained += input.value; recover(retained); } disposed = true; epoch++; observer?.disconnect(); listeners.forEach(remove => remove()); clear(); input.hidden = true; } };
 }

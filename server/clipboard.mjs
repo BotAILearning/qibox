@@ -23,7 +23,7 @@ export async function ownClipboard({ text, files, env, appRoot, runtimeRoot, pre
   if (files) validateClipboardFiles(files); else validateClipboard(text);
   // A bundled interpreter and bundled GTK keep this independent of host packages.
   const child = spawn(path.join(runtimeRoot, 'usr/bin/python3.11'), [path.join(appRoot, files ? 'server/clipboard-files.py' : 'server/clipboard.py')], {
-    env: { ...env, PYTHONHOME: path.join(runtimeRoot, 'usr'), PYTHONNOUSERSITE: '1' }, stdio: ['pipe', 'pipe', 'ignore'], detached: true,
+    env: { ...env, PYTHONHOME: path.join(runtimeRoot, 'usr'), PYTHONNOUSERSITE: '1', PYTHONDONTWRITEBYTECODE: '1' }, stdio: ['pipe', 'pipe', 'ignore'], detached: true,
   });
   try {
     await new Promise((resolve, reject) => {

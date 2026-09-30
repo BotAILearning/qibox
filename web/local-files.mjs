@@ -10,36 +10,45 @@ export function localFiles({ screen, input, panel, api, upload, download, openFo
   const label = panel.querySelector('[data-file-status]'), choose = panel.querySelector('[data-file-choose]'), cancel = panel.querySelector('[data-file-cancel]'), progress = panel.querySelector('progress');
   const nas = panel.querySelector('[data-file-nas]');
   const nameInput = panel.querySelector('[data-file-name]'), destinationHelp = panel.querySelector('[data-file-destination-help]');
+  const copy = document.createElement('button');
+  copy.type = 'button'; copy.dataset.fileCopy = ''; copy.className = 'primary'; copy.textContent = '复制到本机'; copy.hidden = true;
+  choose.before(copy);
+  const title = panel.querySelector('.file-transfer-titles strong'), subtitle = panel.querySelector('.file-transfer-titles span');
   if (nas) nas.hidden = !pickNas;
   const call = (action, data = {}) => api({ action, client, ...data });
   const show = message => { if (!disposed) { label.textContent = message; panel.hidden = false; } };
-  const hide = (force = false) => { if (disposed && !force) return; panel.hidden = true; progress.hidden = true; choose.hidden = false; input.value = ''; picked = false; };
+  const hide = (force = false) => { if (disposed && !force) return; panel.hidden = true; progress.hidden = true; choose.hidden = false; copy.hidden = true; input.value = ''; picked = false; };
   const schedule = delay => { clearTimeout(timer); if (!disposed) timer = setTimeout(check, delay); };
   const exporter = fileExporter({ call, download: value => download({ ...value, client }), openFolder, show, notify });
   const present = () => {
     const exporting = !!current.operation, folder = current.operation === 'folder';
+    const clipboard = current.operation === 'copy' && current.clipboardType !== 'files';
+    copy.hidden = !clipboard;
+    choose.className = clipboard ? 'secondary' : 'primary';
     choose.textContent = folder ? '打开 NAS 目录' : exporting ? '保存到当前设备' : '选择本地文件';
-    if (nas) { nas.hidden = !pickNas || folder; nas.textContent = exporting ? '保存到 NAS' : '选择 NAS 文件'; }
+    if (nas) { nas.hidden = !pickNas || folder || current.clipboardType === 'text'; nas.textContent = exporting ? '保存到 NAS' : '选择 NAS 文件'; }
     if (nameInput) { nameInput.hidden = !exporting || folder || current.count > 1; nameInput.value = current.name || ''; }
     if (destinationHelp) destinationHelp.hidden = !exporting || folder;
-    show(folder ? '打开文件所在目录' : exporting ? `选择保存位置 · ${current.count} 个文件` : '选择文件来源');
+    if (title) title.textContent = clipboard ? current.clipboardType === 'text' ? '文字复制' : '图片复制' : '文件传输';
+    if (subtitle) subtitle.textContent = clipboard ? '复制到本机后，可在其他应用中粘贴' : '在微信与当前设备之间传输文件';
+    show(clipboard ? '复制内容已准备好，可复制到本机或保存' : folder ? '打开文件所在目录' : exporting ? `选择保存位置 · ${current.count} 个文件` : '选择文件来源');
   };
   const exportWork = async operation => {
     if (!current || controller || disposed) return;
     const request = current, transfer = controller = new AbortController();
-    choose.disabled = true; if (nas) nas.disabled = true;
+    choose.disabled = true; copy.disabled = true; if (nas) nas.disabled = true;
     try {
       await operation(request, nameInput?.value || request.name, transfer.signal);
       if (disposed || current !== request || controller !== transfer) return;
+      exporter.discard(request.id);
       current = null; controller = null; hide(); focus?.();
     } catch (error) {
       const failed = !transfer.signal.aborted && error.name !== 'AbortError';
       if (current === request && controller === transfer) {
-        if (request.operation === 'copy') await abort(request);
-        else { controller = null; present(); }
+        controller = null; present();
       }
       if (!disposed && failed) notify(error.message || (request.operation === 'copy' ? '复制图片失败，请重试' : '保存未完成，请重试'));
-    } finally { choose.disabled = false; if (nas) nas.disabled = false; }
+    } finally { if (!controller) { choose.disabled = false; copy.disabled = false; if (nas) nas.disabled = false; } }
   };
   const open = () => {
     if (!current || picked || disposed) return;
@@ -59,6 +68,10 @@ export function localFiles({ screen, input, panel, api, upload, download, openFo
       const result = await call('state');
       if (disposed) return;
       if (!result.available) { if (current) await abort(current); schedule(2000); return; }
+      if (current?.operation === 'copy' && result.request?.id !== current.id) {
+        exporter.discard(current.id);
+        controller?.abort(); controller = null; current = null; hide();
+      }
       if (!result.request) {
         if (current && !controller) { current = null; hide(); }
       } else if (!current && document.hasFocus() && Date.now() < activeUntil) {
@@ -67,7 +80,7 @@ export function localFiles({ screen, input, panel, api, upload, download, openFo
         current = claimed.request;
         if (current) {
           activeUntil = 0;
-          if (current.operation === 'copy') void exportWork((request, _name, signal) => exporter.clipboard(request, signal));
+          if (current.operation === 'copy' && current.clipboardType !== 'files') void exportWork((request, _name, signal) => exporter.clipboard(request, signal));
           else present();
         }
       }
@@ -75,13 +88,14 @@ export function localFiles({ screen, input, panel, api, upload, download, openFo
     finally { checking = false; schedule(Date.now() < activeUntil ? 100 : 750); }
   }
   const gesture = event => {
-    if (event.isTrusted === false || (event.button !== undefined && event.button !== 0)) return;
+    if (event.isTrusted === false || (event.button !== undefined && ![0, 2].includes(event.button))) return;
     if (event.type === 'pointerup') { if (!pointerArmed) return; pointerArmed = false; }
     activeUntil = Date.now() + 4500;
     schedule(30);
   };
   const abort = async (request = current) => {
     const ownsCurrent = current === request;
+    if (request) exporter.discard(request.id);
     if (ownsCurrent) { current = null; controller?.abort(); controller = null; hide(); }
     if (request) await call('cancel', { id: request.id }).catch(() => {});
     if (ownsCurrent && !disposed && !current) focus?.();
@@ -140,13 +154,15 @@ export function localFiles({ screen, input, panel, api, upload, download, openFo
   input.addEventListener('cancel', pickerCancelled);
   // noVNC captures the release on a body-level overlay, then forwards an
   // untrusted mouseup. Retain only the genuine pointer gesture begun here.
-  const armPointer = event => { if (event.isTrusted && event.button === 0 && !panel.contains(event.target)) pointerArmed = true; };
+  const armPointer = event => { if (event.isTrusted && [0, 2].includes(event.button) && !panel.contains(event.target)) pointerArmed = true; };
   const cancelPointer = () => { pointerArmed = false; };
   screen.addEventListener('pointerdown', armPointer, true);
   window.addEventListener('pointerup', gesture, true);
   window.addEventListener('pointercancel', cancelPointer, true);
   screen.addEventListener('keyup', gesture, true);
   choose.addEventListener('click', open);
+  const copyCurrent = () => { void exportWork((request, _name, signal) => exporter.clipboard(request, signal)); };
+  copy.addEventListener('click', copyCurrent);
   nas?.addEventListener('click', chooseNas);
   cancel.addEventListener('click', cancelCurrent);
   // Block remote keyboard/pointer input while selecting/uploading, preserving
@@ -157,15 +173,16 @@ export function localFiles({ screen, input, panel, api, upload, download, openFo
   };
   // Let a release reach noVNC even when a chooser opened after its mousedown.
   // Blocking the release leaves the remote button and capture proxy held down.
-  const blockedEvents = ['pointerdown', 'mousedown', 'keydown', 'keyup', 'beforeinput', 'paste'];
+  const blockedEvents = ['pointerdown', 'mousedown', 'touchstart', 'wheel', 'keydown', 'keyup', 'beforeinput', 'paste', 'dragover', 'drop'];
   for (const type of blockedEvents) screen.addEventListener(type, block, true);
   schedule(750);
   return { selectNas, selectExportNas, dispose() {
     if (disposed) return;
-    disposed = true; clearTimeout(timer); void abort(current); hide(true);
+    disposed = true; clearTimeout(timer); void abort(current); exporter.dispose(); hide(true);
     input.removeEventListener('change', changed); input.removeEventListener('cancel', pickerCancelled);
     screen.removeEventListener('pointerdown', armPointer, true); window.removeEventListener('pointerup', gesture, true); window.removeEventListener('pointercancel', cancelPointer, true); screen.removeEventListener('keyup', gesture, true);
     choose.removeEventListener('click', open); cancel.removeEventListener('click', cancelCurrent);
+    copy.removeEventListener('click', copyCurrent); copy.remove();
     nas?.removeEventListener('click', chooseNas);
     for (const type of blockedEvents) screen.removeEventListener(type, block, true);
   } };

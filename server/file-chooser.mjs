@@ -31,13 +31,20 @@ export class FileChooser {
     const info = await lstat(this.root), resolved = await realpath(this.root);
     if (!info.isDirectory() || info.isSymbolicLink() || resolved !== path.join(await realpath(this.dataRoot), 'file-transfers')) throw new Error('Invalid transfer directory');
     this.root = resolved;
+    await mkdir(this.exports.clipboardRoot, { recursive: true, mode: 0o700 });
+    const clipboardInfo = await lstat(this.exports.clipboardRoot);
+    if (!clipboardInfo.isDirectory() || clipboardInfo.isSymbolicLink() || await realpath(this.exports.clipboardRoot) !== this.exports.clipboardRoot) throw new Error('Invalid clipboard directory');
   }
   armGeneratedMedia(file, { signal } = {}) {
     validateClipboardFiles([file]);
     if (file.type !== 'audio/mpeg' || !/^(?:AI合成|AI-generated)-[a-f0-9-]{36}\.mp3$/.test(file.name)) throw new AppError('生成的音频文件无效');
+    return this.armLocalFiles([file], { signal });
+  }
+  armLocalFiles(files, { signal } = {}) {
+    validateClipboardFiles(files);
     if (this.closed || this.pending || this.exports.pending || this.generatedMedia) throw new AppError('微信正在选择文件，请完成后重试', 409);
     signal?.throwIfAborted();
-    const lease = { file, client: randomUUID(), signal, pending: null, task: null, closed: false };
+    const lease = { files, client: randomUUID(), signal, pending: null, task: null, closed: false };
     let resolve, reject;
     lease.done = new Promise((yes, no) => { resolve = yes; reject = no; });
     lease.done.catch(() => {});
@@ -49,7 +56,7 @@ export class FileChooser {
       if (this.generatedMedia === lease) this.generatedMedia = null;
       if (lease.pending && this.pending === lease.pending) await this.cancelCurrent(true, lease.pending);
       await lease.task?.catch(() => {});
-      reject(new AppError('音频文件选择已结束', 409));
+      reject(new AppError('文件选择已结束', 409));
     };
     const abort = () => { void lease.close().catch(reject); };
     signal?.addEventListener('abort', abort, { once: true });
@@ -57,14 +64,16 @@ export class FileChooser {
     return lease;
   }
   async completeGeneratedMedia(lease) {
-    const { file, client, pending, signal } = lease;
+    const { files, client, pending, signal } = lease;
     try {
       signal?.throwIfAborted();
-      if (lease.closed) throw new AppError('音频文件选择已结束', 409);
-      const bytes = Buffer.from(file.data, 'base64');
-      const plan = await this.plan(pending.id, client, [{ name: file.name, size: bytes.length }]);
-      signal?.throwIfAborted();
-      await this.upload(pending.id, client, plan.files[0].id, Readable.from(bytes), bytes.length);
+      if (lease.closed) throw new AppError('文件选择已结束', 409);
+      const contents = files.map(file => Buffer.from(file.data, 'base64'));
+      const plan = await this.plan(pending.id, client, files.map((file, i) => ({ name: file.name, size: contents[i].length })));
+      for (let i = 0; i < files.length; i++) {
+        signal?.throwIfAborted();
+        await this.upload(pending.id, client, plan.files[i].id, Readable.from(contents[i]), contents[i].length);
+      }
       signal?.throwIfAborted();
       await this.complete(pending.id, client);
       lease.resolve({ ready: true });
@@ -74,6 +83,7 @@ export class FileChooser {
     }
   }
   receive(event) {
+    if (event.type === 'clipboard-clear') { this.exports.receive(event); return; }
     if (event.operation || event.type === 'saved' || event.type === 'cancelled' && this.exports.pending?.id === event.id) {
       if (event.operation && (this.closed || this.pending)) { if (event.operation === 'save') this.send({ id: event.id, response: 1 }); return; }
       this.exports.receive(event); return;
@@ -207,7 +217,7 @@ export async function startFileChooser({ appRoot, runtimeRoot, dataRoot, env }) 
   const chooser = new FileChooser({ dataRoot, home: env.HOME, send: value => { if (child?.stdin && !child.stdin.destroyed) child.stdin.write(JSON.stringify(value) + '\n'); } });
   await chooser.init();
   child = spawn(path.join(runtimeRoot, 'usr/bin/python3.11'), [path.join(appRoot, 'server/file-portal.py')], {
-    env: { ...env, PYTHONHOME: path.join(runtimeRoot, 'usr'), PYTHONNOUSERSITE: '1', PYTHONDONTWRITEBYTECODE: '1' },
+    env: { ...env, QIBOX_CLIPBOARD_ROOT: chooser.exports.clipboardRoot, PYTHONHOME: path.join(runtimeRoot, 'usr'), PYTHONNOUSERSITE: '1', PYTHONDONTWRITEBYTECODE: '1' },
     cwd: env.HOME, detached: true, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'],
   });
   let diagnostic = '';
@@ -222,7 +232,7 @@ export async function startFileChooser({ appRoot, runtimeRoot, dataRoot, env }) 
       child.stdout.setEncoding('utf8');
       child.stdout.on('data', data => {
         buffer += data;
-        if (buffer.length > 65536) { child.kill(); return; }
+        if (buffer.length > 400000) { child.kill(); return; }
         let end;
         while ((end = buffer.indexOf('\n')) >= 0) {
           const line = buffer.slice(0, end); buffer = buffer.slice(end + 1);

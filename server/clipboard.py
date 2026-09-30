@@ -1,6 +1,7 @@
 """Own the private X clipboard briefly; no text is saved to disk or logged."""
 import ctypes as c
 import sys
+from clipboard_payload import own_payloads
 
 gtk = c.CDLL('libgtk-3.so.0')
 gdk = c.CDLL('libgdk-3.so.0')
@@ -16,7 +17,10 @@ if not text or len(text) > 60000 or b'\0' in text:
     raise SystemExit(2)
 text.decode('utf-8', errors='strict')
 clipboard = gtk.gtk_clipboard_get(gdk.gdk_atom_intern(b'CLIPBOARD', 0))
-gtk.gtk_clipboard_set_text(clipboard, text, len(text))
+ownership = own_payloads(gtk, gdk, clipboard, {
+    b'UTF8_STRING': text, b'TEXT': text, b'text/plain;charset=utf-8': text,
+    b'text/plain': text, b'STRING': text.decode('utf-8').encode('latin-1', errors='replace'),
+})
 gdk.gdk_flush()
 print('ready', flush=True)
 callback_type = c.CFUNCTYPE(c.c_int, c.c_void_p)

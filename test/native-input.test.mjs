@@ -123,3 +123,53 @@ test('failed file paste never sends a paste chord and can recover without a stuc
  fire(input,'paste',{clipboardData:{files:[{}]}});await bridge.flush();assert.deepEqual(keys,[]);
  bridge.resume();assert.equal(fire(screen,'mousedown',{button:0,clientX:30,clientY:40}).defaultPrevented,false);bridge.dispose();
 });
+
+test('file paste failure discards the already queued Enter but permits fresh typing', async () => {
+  const { input, keys, bridge } = setup({ pasteFiles: async () => { throw Error('upload failed'); } });
+  fire(input, 'paste', { clipboardData: { files: [{}] } });
+  fire(input, 'keydown', { key: 'Enter' });
+  await bridge.flush(); assert.deepEqual(keys, []);
+  fire(input, 'input', { data: 'new' }); await bridge.flush();
+  assert.deepEqual(keys, [[110], [101], [119]]); bridge.dispose();
+});
+
+test('drop prepares files without navigating away or sending a message', async () => {
+  const received = [], files = [{ name: '拖入.png' }];
+  const { screen, keys, bridge } = setup({ pasteFiles: async value => received.push(value) });
+  assert.equal(fire(screen, 'dragover').defaultPrevented, true);
+  assert.equal(fire(screen, 'drop', { dataTransfer: { files } }).defaultPrevented, true);
+  await bridge.flush(); assert.deepEqual(received, [files]);
+  assert.deepEqual(keys, [[0xffe3, 'ControlLeft', true], [0x76], [0xffe3, 'ControlLeft', false]]);
+  bridge.dispose();
+});
+
+test('paste blocks pointer, touch and wheel changes until the remote paste is ready', async () => {
+  const ready = Promise.withResolvers(), { input, screen, bridge } = setup({ paste: () => ready.promise });
+  fire(input, 'paste', { clipboardData: { getData: () => '中文' } });
+  for (const type of ['pointerdown', 'touchstart', 'wheel']) assert.equal(fire(screen, type).defaultPrevented, true, type);
+  ready.resolve(); await bridge.flush();
+  for (const type of ['pointerdown', 'touchstart', 'wheel']) assert.equal(fire(screen, type).defaultPrevented, false, type);
+  bridge.dispose();
+});
+
+test('losing focus during clipboard preparation retains text and never presses paste', async () => {
+  const ready = Promise.withResolvers(), recovered = [];
+  const { input, keys, bridge } = setup({ paste: () => ready.promise, recover: text => recovered.push(text) });
+  fire(input, 'paste', { clipboardData: { getData: () => '待确认🙂' } });
+  await Promise.resolve(); fire(input, 'blur'); ready.resolve(); await bridge.flush();
+  assert.deepEqual(keys, []); assert.deepEqual(recovered, ['待确认🙂']); bridge.dispose();
+});
+
+test('failed shortcut transmission releases the remote modifier', async () => {
+  const keys = [], client = { sendKey: (...args) => { keys.push(args); if (args[0] === 99) throw Error('connection interrupted'); } };
+  const { input, bridge } = setup({ client });
+  fire(input, 'keydown', { key: 'c', ctrlKey: true }); await bridge.flush();
+  assert.deepEqual(keys, [[0xffe3, 'ControlLeft', true], [99], [0xffe3, 'ControlLeft', false]]);
+  bridge.dispose();
+});
+
+test('native file preparation never sends a second Ctrl+V into the confirmation preview', async () => {
+  const { input, keys, bridge } = setup({ pasteFiles: async () => ({ ready: true, pasteRequired: false }) });
+  fire(input, 'paste', { clipboardData: { files: [{ name: '资料.txt' }] } }); await bridge.flush();
+  assert.deepEqual(keys, []); bridge.dispose();
+});

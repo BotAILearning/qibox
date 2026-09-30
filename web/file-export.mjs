@@ -1,4 +1,7 @@
+import { writeClipboardText } from './clipboard-write.mjs';
+
 export function fileExporter({ call, download, openFolder, show, notify }) {
+  const clipboardCache = new Map();
   async function ready(request, name, signal) {
     if (request.operation !== 'save') return;
     await call('export-start', { id: request.id, name });
@@ -14,25 +17,61 @@ export function fileExporter({ call, download, openFolder, show, notify }) {
     }
   }
   return {
+    discard(id) { clipboardCache.delete(id); },
+    dispose() { clipboardCache.clear(); },
     async clipboard(request, signal) {
+      if (request.clipboardType === 'files') throw new Error('请选择文件保存位置');
+      if (request.clipboardType === 'text') {
+        let text = clipboardCache.get(request.id);
+        if (!text) {
+          text = (async () => {
+            const response = await download({ action: 'export-download', id: request.id, index: 0, signal });
+            const value = await response.text();
+            if (!value || value.includes('\0') || new TextEncoder().encode(value).length > 60000) throw new Error('复制内容无效，请在微信中重新复制');
+            return value;
+          })();
+          clipboardCache.set(request.id, text);
+          text.catch(() => clipboardCache.delete(request.id));
+        }
+        await writeClipboardText(await text, { signal });
+        signal.throwIfAborted();
+        await call('export-finish', { id: request.id });
+        clipboardCache.delete(request.id);
+        notify('文字已复制到本机，可在其他应用中粘贴');
+        return;
+      }
       if (!globalThis.isSecureContext || !navigator.clipboard?.write || !globalThis.ClipboardItem) {
-        throw new Error('当前浏览器无法写入图片剪贴板，请通过 HTTPS 打开栖盒后重试');
+        throw new Error('此连接无法写入图片剪贴板；可保存图片，或通过 HTTPS 打开栖盒后复制');
       }
       if (request.count !== 1) throw new Error('一次只能复制一张图片');
+      if (!document.hasFocus()) throw new Error('请回到微信页面，点击“复制到本机”');
       // Start the write while the WeChat menu click still has user activation.
       // Chromium accepts a promised PNG blob while the NAS image is fetched.
       const png = (async () => {
         signal.throwIfAborted();
         const response = await download({ action: 'export-download', id: request.id, index: 0, signal });
-        const image = await createImageBitmap(await response.blob());
+        const blob = await response.blob();
+        if (blob.size > 20 * 1024 * 1024) throw new Error('图片超过 20 MB，请保存到当前设备');
+        signal.throwIfAborted();
+        const image = await createImageBitmap(blob);
         try {
+          if (image.width * image.height > 24000000) throw new Error('图片尺寸过大，请保存到当前设备');
           const canvas = document.createElement('canvas');
           canvas.width = image.width; canvas.height = image.height;
           canvas.getContext('2d').drawImage(image, 0, 0);
-          return await new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('图片转换失败')), 'image/png'));
+          const png = await new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('图片转换失败')), 'image/png'));
+          signal.throwIfAborted();
+          if (!document.hasFocus()) throw new Error('请回到微信页面，点击“复制到本机”');
+          return png;
         } finally { image.close(); }
       })();
-      await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
+      // ClipboardItem may reject before consuming its promised image.
+      png.catch(() => {});
+      try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]); }
+      catch (error) {
+        signal.throwIfAborted();
+        throw new Error('图片已准备好，请点击“复制到本机”，或选择保存图片');
+      }
       signal.throwIfAborted();
       await call('export-finish', { id: request.id });
       notify('图片已复制到当前设备剪贴板');
@@ -54,16 +93,20 @@ export function fileExporter({ call, download, openFolder, show, notify }) {
         signal.throwIfAborted(); show(`正在保存文件 ${index + 1}/${request.count}…`);
         const response = await download({ action: 'export-download', id: request.id, index, signal });
         const remoteName = decodeURIComponent(/filename\*=UTF-8''([^;]+)/i.exec(response.headers.get('Content-Disposition') || '')?.[1] || '微信文件');
-        let file = target;
+        let file = target, created = false;
         if (directory) {
           try { await directory.getFileHandle(remoteName); throw new Error(`目标位置已存在 ${remoteName}，请更换文件夹`); }
           catch (error) { if (error.name !== 'NotFoundError') throw error; }
-          file = await directory.getFileHandle(remoteName, { create: true });
+          file = await directory.getFileHandle(remoteName, { create: true }); created = true;
         }
         if (file) {
           const writer = await file.createWritable();
           try { await response.body.pipeTo(writer, { signal }); }
-          catch (error) { await writer.abort().catch(() => {}); throw error; }
+          catch (error) {
+            await writer.abort().catch(() => {});
+            if (created) await directory.removeEntry(remoteName).catch(() => {});
+            throw error;
+          }
         } else {
           const blob = await response.blob(); signal.throwIfAborted();
           const url = URL.createObjectURL(blob), anchor = document.createElement('a');

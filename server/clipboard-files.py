@@ -1,6 +1,7 @@
 """Private instance clipboard; bounded local staging removed on owner exit."""
 import ctypes as c
 import base64,json,os,pathlib,signal,sys,tempfile
+from clipboard_payload import own_payloads
 
 gtk=c.CDLL('libgtk-3.so.0');gdk=c.CDLL('libgdk-3.so.0');glib=c.CDLL('libglib-2.0.so.0')
 gtk.gtk_init(None,None)
@@ -32,23 +33,19 @@ if True:
   pix.gdk_pixbuf_new_from_file.argtypes=[c.c_char_p,c.c_void_p];pix.gdk_pixbuf_new_from_file.restype=c.c_void_p
   image=pix.gdk_pixbuf_new_from_file(filename,None)
   if not image:raise ValueError('invalid image')
-  gtk.gtk_clipboard_set_image.argtypes=[c.c_void_p,c.c_void_p];gtk.gtk_clipboard_set_image(clipboard,image)
+  png,size=c.c_void_p(),c.c_size_t()
+  pix.gdk_pixbuf_save_to_bufferv.argtypes=[c.c_void_p,c.POINTER(c.c_void_p),c.POINTER(c.c_size_t),c.c_char_p,c.c_void_p,c.c_void_p,c.c_void_p]
+  if not pix.gdk_pixbuf_save_to_bufferv(image,c.byref(png),c.byref(size),b'png',None,None,None):raise ValueError('image encoding failed')
+  try:
+   if size.value>20*1024*1024:raise ValueError('image too large')
+   payloads={b'image/png':c.string_at(png,size.value)}
+  finally:
+   glib.g_free.argtypes=[c.c_void_p];glib.g_free(png)
   obj.g_object_unref.argtypes=[c.c_void_p];obj.g_object_unref(image)
  else:
-  class Target(c.Structure):_fields_=[('target',c.c_char_p),('flags',c.c_uint),('info',c.c_uint)]
-  names=[b'text/uri-list',b'x-special/gnome-copied-files']
-  targets=(Target*2)(*(Target(name,0,i) for i,name in enumerate(names)))
-  get_type=c.CFUNCTYPE(None,c.c_void_p,c.c_void_p,c.c_uint,c.c_void_p)
-  clear_type=c.CFUNCTYPE(None,c.c_void_p,c.c_void_p)
-  gtk.gtk_selection_data_set.argtypes=[c.c_void_p,c.c_void_p,c.c_int,c.c_void_p,c.c_int]
-  @get_type
-  def get_data(owner,selection,info,user):
-   payload=(('copy\n' if info==1 else '')+ ('\n' if info==1 else '\r\n').join(p.as_uri() for p in paths)+ ('\r\n' if info==0 else '')).encode()
-   gtk.gtk_selection_data_set(selection,gdk.gdk_atom_intern(names[info],0),8,payload,len(payload))
-  @clear_type
-  def clear_data(owner,user):gtk.gtk_main_quit()
-  gtk.gtk_clipboard_set_with_data.argtypes=[c.c_void_p,c.POINTER(Target),c.c_uint,get_type,clear_type,c.c_void_p]
-  if not gtk.gtk_clipboard_set_with_data(clipboard,targets,2,get_data,clear_data,None):raise ValueError('clipboard unavailable')
+  payloads={b'text/uri-list':('\r\n'.join(p.as_uri() for p in paths)+'\r\n').encode(),
+            b'x-special/gnome-copied-files':('copy\n'+'\n'.join(p.as_uri() for p in paths)).encode()}
+ ownership=own_payloads(gtk,gdk,clipboard,payloads)
  callback_type=c.CFUNCTYPE(c.c_int,c.c_void_p)
  @callback_type
  def finish(_):gtk.gtk_main_quit();return 0

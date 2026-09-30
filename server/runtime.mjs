@@ -12,6 +12,7 @@ import { LoginState } from './login-state.mjs';
 
 import { architecture, runtimeLibraries, runtimePayload, runtimeArchive } from './platform.mjs';
 import { ownClipboard } from './clipboard.mjs';
+import { prepareManualFiles } from './manual-files.mjs';
 import { startAudio, ensureAudio } from './audio.mjs';
 import { startFileChooser } from './file-chooser.mjs';
 import { prepareXvfb, displayReady } from './x11.mjs';
@@ -215,6 +216,11 @@ export class Runtime {
         DBUS_SESSION_BUS_ADDRESS: `unix:path=${encodeURIComponent(path.join(session, 'bus'))}`,
         AT_SPI_BUS_ADDRESS: `unix:path=${encodeURIComponent(path.join(session, 'bus'))}`,
       };
+      // fnOS may have no zh_CN locale. Qt then cannot open Unicode filenames.
+      // Compile it privately with the host libc; preserve the Chinese UI.
+      const localeEnv = JSON.parse(await command(`${root}/usr/bin/python3.11`, [path.join(this.appRoot, 'server/native-locale.py'), root],
+        { ...env, LC_ALL: 'C.UTF-8', PYTHONHOME: path.join(root, 'usr'), PYTHONNOUSERSITE: '1', PYTHONDONTWRITEBYTECODE: '1' }));
+      for (const key of ['LANG', 'LC_ALL', 'LANGUAGE', 'LOCPATH']) if (typeof localeEnv[key] === 'string') env[key] = localeEnv[key];
       for (const dir of [env.XDG_CONFIG_HOME, env.XDG_DATA_HOME, env.XDG_CACHE_HOME]) await mkdir(dir, { recursive: true, mode: 0o700 });
       await writeFile(env.FONTCONFIG_FILE, fontConfiguration(root, path.join(env.XDG_CACHE_HOME, 'fontconfig'), path.join(this.appRoot, 'fonts')), { mode: 0o600 });
       await writeFile(env.GTK_IM_MODULE_FILE, await command(`${root}/usr/lib/${triple}/libgtk-3-0/gtk-query-immodules-3.0`, [`${root}/usr/lib/${triple}/gtk-3.0/3.0.0/immodules/im-fcitx5.so`], env), { mode: 0o600 });
@@ -342,6 +348,10 @@ export class Runtime {
   async setClipboard(text) {
     if (this.status !== 'running' || !this.desktopEnv) throw new AppError('请先打开应用', 409);
     if (this.clipboardSetting) throw new AppError('正在粘贴，请稍候', 409);
+    if (this.isWechat && typeof text === 'object' && (text.files?.length !== 1 || !['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(text.files[0].type))) {
+      this.clipboardSetting = prepareManualFiles(this, text.files);
+      try { return await this.clipboardSetting; } finally { this.clipboardSetting = null; }
+    }
     this.clipboardSetting = ownClipboard({ ...(typeof text === 'object' ? { files: text.files } : { text }), env: this.desktopEnv, appRoot: this.appRoot, runtimeRoot: this.runtimeRoot, previous: this.clipboardProcess });
     let process;
     try { process = await this.clipboardSetting; } finally { this.clipboardSetting = null; }

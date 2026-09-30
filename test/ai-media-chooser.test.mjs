@@ -39,3 +39,12 @@ test('aborting generated upload cancels only its owned request and does not retu
  const id=randomUUID();chooser.receive({type:'request',id,multiple:true});controller.abort();await lease.close();
  assert.equal(chooser.pending,null);assert.equal(sent.length,1);assert.deepEqual(sent[0],{id,response:1});
 });
+
+test('manual file paste fills one owned native picker with an exact Unicode batch', async t => {
+ const {chooser,sent}=await setup(t);
+ const files=[{name:'资料🙂.txt',type:'text/plain',data:Buffer.from('first').toString('base64')},{name:'报告.pdf',type:'application/pdf',data:Buffer.from('second').toString('base64')}];
+ const lease=chooser.armLocalFiles(files),id=randomUUID();chooser.receive({type:'request',id,multiple:true});
+ await lease.done;assert.equal(sent.length,1);assert.equal(sent[0].uris.length,2);
+ assert.deepEqual(await Promise.all(sent[0].uris.map(uri=>readFile(fileURLToPath(uri),'utf8'))),['first','second']);
+ await lease.close();assert.equal(chooser.pending,null);
+});

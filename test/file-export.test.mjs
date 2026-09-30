@@ -65,3 +65,52 @@ test('cancel during save preparation removes only the owned staging directory', 
   await chooser.cancel(id, client); await rejected;
   assert.deepEqual(await readdir(chooser.exports.root), []); assert.equal(await readFile(path.join(home, 'keep.txt'), 'utf8'), 'keep');
 });
+
+test('Unicode clipboard text is transient, opaque in state and isolated to the claiming client', async t => {
+  const { chooser, id, client } = await setup(t);
+  const text = '中文🙂\r\n第二行 é';
+  chooser.receive({ operation: 'copy', id, clipboardType: 'text', text });
+  assert.equal(chooser.state(client).request.clipboardType, 'text');
+  assert.equal(JSON.stringify(chooser.state(client)).includes(text), false);
+  chooser.claim(id, client);
+  await assert.rejects(chooser.exports.download(id, randomUUID()), /结束/);
+  const file = await chooser.exports.download(id, client);
+  const chunks = []; for await (const chunk of file.handle.createReadStream()) chunks.push(chunk);
+  assert.equal(Buffer.concat(chunks).toString(), text);
+  assert.deepEqual(await readdir(chooser.exports.clipboardRoot), []);
+  await chooser.exports.finish(id, client); assert.equal(chooser.state(client).request, null);
+});
+
+test('a newer copy invalidates the old stream and old completion cannot clear the new copy', async t => {
+  const { chooser, id, client } = await setup(t);
+  chooser.receive({ operation: 'copy', id, clipboardType: 'text', text: 'old' }); chooser.claim(id, client);
+  const previous = await chooser.exports.download(id, client), next = randomUUID();
+  chooser.receive({ operation: 'copy', id: next, clipboardType: 'text', text: 'new' });
+  assert.equal(previous.signal.aborted, true);
+  await assert.rejects(chooser.exports.finish(id, client), /结束/);
+  assert.equal(chooser.state(client).request.id, next);
+});
+
+test('only an exact owned image snapshot may be exported and cleanup preserves originals', async t => {
+  const { chooser, id, client, home } = await setup(t);
+  const original = path.join(home, 'original.png'); await writeFile(original, 'original');
+  chooser.receive({ operation: 'copy', id, clipboardType: 'image', snapshot: true, uris: [pathToFileURL(original).href] });
+  assert.equal(chooser.state(client).request, null);
+  const image = path.join(chooser.exports.clipboardRoot, id + '.png'); await writeFile(image, 'png');
+  chooser.receive({ operation: 'copy', id, clipboardType: 'image', snapshot: true, name: '微信图片.png', uris: [pathToFileURL(image).href] });
+  chooser.claim(id, client); const downloaded = await chooser.exports.download(id, client);
+  assert.equal(downloaded.name, '微信图片.png'); await downloaded.handle.close();
+  await chooser.exports.finish(id, client);
+  assert.deepEqual(await readdir(chooser.exports.clipboardRoot), []);
+  assert.equal(await readFile(original, 'utf8'), 'original');
+});
+
+test('ordinary file copies are distinguished from images and local-input markers clear pending copies', async t => {
+  const { chooser, id, client, home } = await setup(t);
+  chooser.receive({ operation: 'copy', id, uris: [pathToFileURL(path.join(home, '资料.pdf')).href] });
+  assert.equal(chooser.state(client).request.clipboardType, 'files');
+  chooser.receive({ type: 'clipboard-clear' }); assert.equal(chooser.state(client).request, null);
+  for (const text of ['', 'a\0b', '好'.repeat(20001)]) {
+    chooser.receive({ operation: 'copy', id, clipboardType: 'text', text }); assert.equal(chooser.state(client).request, null);
+  }
+});

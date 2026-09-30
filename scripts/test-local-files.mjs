@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { createApplication } from '../server/index.mjs';
 import { FileChooser } from '../server/file-chooser.mjs';
 import { root, playwrightPath } from './tooling.mjs';
-import { temp, cleanup, runtimeFactory, extractor, fetcher } from '../test/fixtures.mjs';
+import { temp, cleanup, runtimeFactory, extractor, fetcher, packageSha256 } from '../test/fixtures.mjs';
 import { rfbFixture } from '../test/rfb-fixture.mjs';
 
 const { chromium } = createRequire(import.meta.url)(playwrightPath);
@@ -28,6 +28,7 @@ const base = `http://127.0.0.1:${app.server.address().port}${app.prefix}`;
 const report = { note: 'Real Edge, noVNC, authenticated upload APIs and local chooser. A simulated native portal request follows the remote mouse event; this does not verify the official WeChat portal selection on a NAS.', checks: [] };
 let browser, trigger, page;
 const fileRequests = [];
+app.library.trustedHashes.push(packageSha256);
 try {
   browser = await chromium.launch({ channel: 'msedge', headless: true });
   page = await browser.newPage({ viewport: { width: 1440, height: 900 } }); const errors = [];
@@ -54,6 +55,7 @@ try {
   }, 10);
   const pickerPromise = page.waitForEvent('filechooser', { timeout: 10000 });
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await page.locator('[data-file-choose]').click();
   const picker = await pickerPromise;
   assert.equal(picker.isMultiple(), true);
   const bytes = Buffer.from('栖盒本机选文件校验\n');
@@ -63,15 +65,18 @@ try {
   assert.equal(responses.length, 1); assert.equal(responses[0].response, 0);
   assert.deepEqual(await readFile(fileURLToPath(responses[0].uris[0])), bytes);
   assert.equal(peer.keys.length, beforeKeys, 'Returning a file never presses Enter or sends a chat');
-  report.checks.push('One remote canvas click opens the local browser picker without an added toolbar button', 'Unicode filename and exact local bytes arrive through the authenticated per-instance upload', 'Only a selected-file URI is returned; no keyboard send action occurs');
+  report.checks.push('The native request offers local/NAS source choice; choosing local opens the browser picker', 'Unicode filename and exact local bytes arrive through the authenticated per-instance upload', 'Only a selected-file URI is returned; no keyboard send action occurs');
   // A pending picker can also be cancelled, without returning any file URI.
   chooser.receive({ type: 'request', id: randomUUID(), multiple: false });
   await page.getByRole('button', { name: '全屏', exact: true }).focus();
   await page.waitForTimeout(300);
   const nextPicker = page.waitForEvent('filechooser', { timeout: 10000 });
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await page.locator('[data-file-choose]').click();
   await nextPicker;
   await page.locator('#chat-file').dispatchEvent('cancel');
+  await page.locator('#file-transfer').waitFor({ state: 'visible' });
+  await page.locator('[data-file-cancel]').click();
   await page.locator('#file-transfer').waitFor({ state: 'hidden' });
   assert.equal(responses.at(-1).response, 1);
   assert.equal(responses.at(-1).uris, undefined);
@@ -85,22 +90,25 @@ try {
   for (const interrupt of ['reconnect','cancel']) {
     oldPlan=null; chooser.receive({ type: 'request', id: randomUUID(), multiple: false });
     const oldPicker = page.waitForEvent('filechooser'); await page.mouse.click(box.x + 50, box.y + 50);
+    await page.locator('[data-file-choose]').click();
     await (await oldPicker).setFiles([{ name:'old.txt',mimeType:'text/plain',buffer:Buffer.from('old') }]);
     for (let i=0;i<100&&!oldPlan;i++) await new Promise(resolve=>setTimeout(resolve,20));
     assert.ok(oldPlan);
     if (interrupt==='reconnect') {
-      peer.disconnect(); await page.getByRole('button',{name:'连接微信',exact:true}).click();
+      peer.disconnect(); await page.locator('#desktop-reconnect').click();
       await page.waitForFunction(()=>document.querySelector('#desktop-status').hidden);
     } else await page.locator('[data-file-cancel]').click();
     for (let i=0;i<100&&chooser.pending;i++) await new Promise(resolve=>setTimeout(resolve,20));
     assert.equal(chooser.pending,null);
     chooser.receive({ type:'request',id:randomUUID(),multiple:false });
-    const freshPicker=page.waitForEvent('filechooser'); await page.mouse.click(box.x+50,box.y+50); await freshPicker;
+    const freshPicker=page.waitForEvent('filechooser'); await page.mouse.click(box.x+50,box.y+50);
+    await page.locator('[data-file-choose]').click(); await freshPicker;
     await page.locator('#file-transfer').waitFor({state:'visible'});
     await oldPlan.abort(); await new Promise(resolve=>setTimeout(resolve,200));
     report.staleResponseHidPicker[interrupt]=await page.locator('#file-transfer').isHidden();
     if (!process.argv.includes('--race-baseline')) assert.equal(report.staleResponseHidPicker[interrupt],false,`${interrupt}: an old response hid or cancelled the new chooser`);
     await page.locator('#chat-file').dispatchEvent('cancel');
+    await page.locator('[data-file-cancel]').click();
     for (let i=0;i<100&&chooser.pending;i++) await new Promise(resolve=>setTimeout(resolve,20));
   }
   await page.unroute('**/files');

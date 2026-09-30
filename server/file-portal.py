@@ -13,6 +13,8 @@ import sys
 import time
 import uuid
 import struct
+import pathlib
+from clipboard_payload import LOCAL_TARGET
 
 
 def main():
@@ -295,20 +297,71 @@ def main():
     def owner_changed(*_args): clipboard_dirty[0] = True
     api(gobject, 'g_signal_connect_data', c.c_ulong, [ptr, string, owner_type, ptr, ptr, c.c_int])(clipboard, b'owner-change', owner_changed, None, None, 0)
 
-    def copied_files():
+    clipboard_root = pathlib.Path(os.environ.get('QIBOX_CLIPBOARD_ROOT', os.environ.get('TMPDIR', '/tmp') + '/qibox-clipboard-snapshots'))
+    clipboard_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    snapshots = {}
+
+    def clipboard_contents(target, limit):
+        selection = api(gtk, 'gtk_clipboard_wait_for_contents', ptr, [ptr, ptr])(clipboard, atom(target, 0))
+        if not selection: return None
+        try:
+            size = api(gtk, 'gtk_selection_data_get_length', c.c_int, [ptr])(selection)
+            if not 0 < size <= limit: return None
+            data = api(gtk, 'gtk_selection_data_get_data', ptr, [ptr])(selection)
+            return c.string_at(data, size) if data else None
+        finally:
+            api(gtk, 'gtk_selection_data_free', None, [ptr])(selection)
+
+    def copied_clipboard():
+        targets, count = c.POINTER(ptr)(), c.c_int()
+        if not api(gtk, 'gtk_clipboard_wait_for_targets', c.c_int, [ptr, c.POINTER(c.POINTER(ptr)), c.POINTER(c.c_int)])(clipboard, c.byref(targets), c.byref(count)):
+            print('{"type":"clipboard-clear"}', flush=True)
+            return
+        try:
+            available = {targets[i] for i in range(min(count.value, 256))}
+        finally:
+            api(glib, 'g_free', None, [ptr])(targets)
+        # Native IME commits and local paste are already known to the browser.
+        # Never echo them back and overwrite the user's own system clipboard.
+        if atom(LOCAL_TARGET, 0) in available:
+            print('{"type":"clipboard-clear"}', flush=True)
+            return
         for target in (b'text/uri-list', b'x-special/gnome-copied-files'):
-            selection = api(gtk, 'gtk_clipboard_wait_for_contents', ptr, [ptr, ptr])(clipboard, atom(target, 0))
-            if not selection: continue
-            try:
-                size = api(gtk, 'gtk_selection_data_get_length', c.c_int, [ptr])(selection)
-                if not 0 < size <= 65536: continue
-                data = api(gtk, 'gtk_selection_data_get_data', ptr, [ptr])(selection)
-                lines = c.string_at(data, size).decode('utf-8').splitlines()
-                uris = [line for line in lines if line.startswith('file:///') and '\0' not in line]
-                if 0 < len(uris) <= 20:
-                    print(json.dumps({'type': 'request', 'id': str(uuid.uuid4()), 'operation': 'copy', 'uris': uris}), flush=True)
-                    return
-            finally: api(gtk, 'gtk_selection_data_free', None, [ptr])(selection)
+            if atom(target, 0) not in available: continue
+            data = clipboard_contents(target, 65536)
+            if not data: continue
+            uris = [line for line in data.decode('utf-8').splitlines() if line.startswith('file:///') and '\0' not in line]
+            if 0 < len(uris) <= 20:
+                print(json.dumps({'type': 'request', 'id': str(uuid.uuid4()), 'operation': 'copy', 'uris': uris}), flush=True)
+                return
+        if atom(b'image/png', 0) in available:
+            pixbuf = api(gtk, 'gtk_clipboard_wait_for_image', ptr, [ptr])(clipboard)
+            if pixbuf:
+                pix = c.CDLL('libgdk_pixbuf-2.0.so.0')
+                try:
+                    width = api(pix, 'gdk_pixbuf_get_width', c.c_int, [ptr])(pixbuf)
+                    height = api(pix, 'gdk_pixbuf_get_height', c.c_int, [ptr])(pixbuf)
+                    if not 0 < width * height <= 24000000: return
+                    request_id = str(uuid.uuid4())
+                    destination = clipboard_root / (request_id + '.png')
+                    if api(pix, 'gdk_pixbuf_savev', c.c_int, [ptr, string, string, ptr, ptr, ptr])(pixbuf, os.fsencode(destination), b'png', None, None, None):
+                        if destination.stat().st_size > 20 * 1024 * 1024:
+                            destination.unlink(missing_ok=True); return
+                        destination.chmod(0o600)
+                        snapshots[destination] = time.monotonic()
+                        print(json.dumps({'type': 'request', 'id': request_id, 'operation': 'copy', 'clipboardType': 'image', 'snapshot': True, 'name': '微信图片.png', 'uris': [destination.as_uri()]}), flush=True)
+                        return
+                finally:
+                    api(gobject, 'g_object_unref', None, [ptr])(pixbuf)
+        for target in (b'UTF8_STRING', b'text/plain;charset=utf-8', b'text/plain', b'STRING'):
+            if atom(target, 0) not in available: continue
+            data = clipboard_contents(target, 60001)
+            if not data: continue
+            text = data.rstrip(b'\0').decode('latin-1' if target == b'STRING' else 'utf-8')
+            if text and '\0' not in text and len(text.encode('utf-8')) <= 60000:
+                print(json.dumps({'type': 'request', 'id': str(uuid.uuid4()), 'operation': 'copy', 'clipboardType': 'text', 'text': text}, ensure_ascii=False), flush=True)
+                return
+        print('{"type":"clipboard-clear"}', flush=True)
     os.set_blocking(sys.stdin.fileno(), False)
     buffer = bytearray()
     tick_type = c.CFUNCTYPE(c.c_int, ptr)
@@ -360,7 +413,12 @@ def main():
                     forget_watch(item['id'])
             if clipboard_dirty[0]:
                 clipboard_dirty[0] = False
-                copied_files()
+                try: copied_clipboard()
+                except (ValueError, UnicodeError, OSError): pass
+            for file, created in list(snapshots.items()):
+                if not file.exists() or time.monotonic() - created > 60:
+                    file.unlink(missing_ok=True)
+                    del snapshots[file]
             for key, request in list(requests.items()):
                 if time.monotonic() - request['created'] > 30 * 60:
                     reply(key, 1)
