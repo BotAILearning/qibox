@@ -22,6 +22,7 @@ async function wechatWindows({ root, env, command, pid }) {
 export async function wechatWindowVisible(options) { return (await wechatWindows(options)).some(window => window.visible); }
 export async function restoreWechatWindow(options) {
   const windows = await wechatWindows(options);
+  if (windows.some(window => window.visible)) return false;
   for (const window of windows) {
     if (window.visible) continue;
     await options.command(`${options.root}/usr/bin/x11vnc`, ['-R', `id_cmd:win=${window.id}:map`], options.env, 5000);
@@ -31,11 +32,21 @@ export async function restoreWechatWindow(options) {
 }
 export async function activateWechatWindow(options) {
   const windows = (await wechatWindows(options)).filter(window => window.visible);
-  if (windows.length !== 1) throw new Error('WeChat main window unavailable');
-  const [window] = windows;
   const tool = `${options.root}/usr/bin/xdotool`;
   const active = (await options.command(tool, ['getactivewindow'], options.env, 5000)).trim();
-  if (Number(active) === Number(window.id)) return false;
+  // Detached chats are owned NORMAL windows too. Reconnecting should preserve
+  // the user's current chat instead of rejecting the whole desktop as ambiguous.
+  if (windows.some(window => Number(active) === Number(window.id))) return false;
+  let window = windows.length === 1 ? windows[0] : null;
+  if (!window && windows.length > 1) {
+    const main = [];
+    for (const candidate of windows) {
+      const title = await options.command(`${options.root}/usr/bin/obxprop`, ['--id', candidate.id, '_NET_WM_NAME'], options.env, 5000);
+      if (/^_NET_WM_NAME\(UTF8_STRING\) = "微信"$/m.test(title)) main.push(candidate);
+    }
+    if (main.length === 1) [window] = main;
+  }
+  if (!window) throw new Error('WeChat main window unavailable');
   await options.command(tool, ['windowactivate', '--sync', window.id], options.env, 5000);
   const verified = (await options.command(tool, ['getactivewindow'], options.env, 5000)).trim();
   if (Number(verified) !== Number(window.id)) throw new Error('WeChat main window did not activate');

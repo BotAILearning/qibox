@@ -45,8 +45,41 @@ test('activation targets only the unique visible WeChat main window owned by thi
   assert.equal(await activateWechatWindow(options), true);
   assert.deepEqual(activated, [['windowactivate', '--sync', '0x123']]);
   assert.equal(await activateWechatWindow(options), false);
-  windows = '0x123, 0x456';
+  windows = '0x123, 0x456'; active = '999';
   await assert.rejects(activateWechatWindow(options), /unavailable/);
+});
+
+function detachedWindows() {
+  let active = '222'; const actions = [], mapped = [];
+  const options = { root: '/runtime', env: {}, pid: 100, command: async (bin, args) => {
+    if (bin.endsWith('xdotool')) {
+      if (args[0] === 'getactivewindow') return active;
+      actions.push(args); active = String(Number(args[2])); return '';
+    }
+    if (bin.endsWith('x11vnc')) { mapped.push(args); return ''; }
+    if (args[0] === '--root') return '_NET_CLIENT_LIST(WINDOW) = 0x123, 222, 333\n';
+    if (args[2] === '_NET_WM_NAME') return `_NET_WM_NAME(UTF8_STRING) = "${args[1] === '0x123' ? '微信' : 'fixture chat'}"\n`;
+    return `WM_CLASS(STRING) = "wechat", "wechat"\nWM_STATE(WM_STATE) = ${args[1] === '333' ? 3 : 1}, 0\n_NET_WM_WINDOW_TYPE(ATOM) = _NET_WM_WINDOW_TYPE_NORMAL\n_NET_WM_PID(CARDINAL) = 100\n`;
+  } };
+  return { options, actions, mapped, external: () => { active = '999'; } };
+}
+
+test('reconnection preserves the active detached chat owned by the current process', async () => {
+  const fixture = detachedWindows();
+  assert.equal(await activateWechatWindow(fixture.options), false);
+  assert.deepEqual(fixture.actions, []);
+});
+
+test('reconnection from outside WeChat selects its uniquely identified main window', async () => {
+  const fixture = detachedWindows(); fixture.external();
+  assert.equal(await activateWechatWindow(fixture.options), true);
+  assert.deepEqual(fixture.actions, [['windowactivate', '--sync', '0x123']]);
+});
+
+test('restoring a visible WeChat does not reopen a different minimized chat', async () => {
+  const fixture = detachedWindows();
+  assert.equal(await restoreWechatWindow(fixture.options), false);
+  assert.deepEqual(fixture.mapped, []);
 });
 test('window observation is throttled, expires and rejects results from an old session', async () => {
   let time = 100, visible = true, resolve;
