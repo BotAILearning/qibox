@@ -99,6 +99,7 @@ try {
     await picker.locator('[data-picker-confirm]').click();
   };
   const generate = async request => {
+    if (await page.locator('.ai-analysis-request-fields').getAttribute('open') === null) await page.locator('.ai-analysis-request-fields>summary').click();
     await page.locator('[name=request]').fill(request);
     await chooseContacts([0]);
     const before = provider.calls.length;
@@ -132,6 +133,8 @@ try {
   assert.ok(desktopLayout.timeStartsAfterRequest, '时间范围应位于分析要求下方');
   assert.equal(await page.locator('.ai-analysis-presets button').count(), 8, 'request composer shows original directions and custom question');
   await screenshot('00-analysis-request');
+  assert.equal(await page.locator('.ai-analysis-request-fields').getAttribute('open'), null, 'optional analysis request starts collapsed');
+  await page.locator('.ai-analysis-request-fields>summary').click();
   await page.locator('[data-ai-analysis-preset=review]').click();
   assert.match(await page.locator('[name=request]').inputValue(), /重点事项/);
   await page.locator('[data-ai-analysis-other]').click();

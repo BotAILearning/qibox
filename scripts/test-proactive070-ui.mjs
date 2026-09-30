@@ -34,6 +34,7 @@ try {
   await page.locator('.ap-contact-dialog [data-picker-confirm]').click();
   await page.locator('[name=taskType]').selectOption('relationship');
   await page.locator('[name=goal]').fill('询问最近是否有空喝咖啡');
+  await page.locator('.ap-optional-requirements>summary').click();
   await page.locator('[name=requirements]').fill('语气轻松，不承诺具体时间。');
   await page.locator('[name=cycle][value=weekly]').check();
   await page.locator('[name=weekdays][value="5"]').check();
@@ -52,6 +53,7 @@ try {
   assert.equal(await page.locator('[name=taskType]').inputValue(), 'relationship');
   assert.equal(await page.locator('[name=weekdays][value="5"]').isChecked(), true);
   assert.equal(await page.locator('#ai-proactive-selected .ap-chip').count(), 2);
+  await page.locator('.ap-optional-requirements>summary').click();
   await page.locator('[name=requirements]').fill('不要提工作压力。');
   await page.locator('[data-proactive-submit]').click(); await settled();
   assert.equal(task.requirements, '不要提工作压力。'); assert.equal(task.status, 'paused');

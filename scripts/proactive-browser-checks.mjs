@@ -11,6 +11,7 @@ export async function proactiveDraftCheck(page) {
   await page.locator('.ap-contact-dialog [data-picker-id]').first().check();
   await page.locator('.ap-contact-dialog [data-picker-confirm]').click();
   await page.locator('#ai-proactive-form [name=goal]').fill('确认周末安排');
+  await page.locator('#ai-proactive-form .ap-optional-requirements>summary').click();
   await page.locator('#ai-proactive-form [name=requirements]').fill('不要承诺具体地点');
   await page.locator('[data-proactive-back]').click();
   await page.locator('[data-proactive-new]').click();

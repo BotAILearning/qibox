@@ -17,9 +17,10 @@ async function fixture(t) {
   return { a, bridge, provider, root, now: () => now, setNow(value) { now = value; } };
 }
 
-test('record lists expose confirmed deletion, summary ranges, and reply-needed action', () => {
+test('record lists expose right-click deletion, summary ranges, and reply-needed action', () => {
   const html = activityRows({ activity: [{ id: 'p1', label: '甲', kind: 'person', hasSent: true, at: Date.now() }] }, { source: 'reply', page: 0 }, [{ id: 'p1', messages: [{ id: 'sent-1', at: Date.now(), text: 'AI答复' }] }], false);
-  assert.match(html, /data-ai-delete-record="sent-1"/);
+  assert.match(html, /data-ai-record-menu="sent-1" data-ai-record-menu-source="reply"/);
+  assert.doesNotMatch(html, /data-ai-delete-record=/);
   assert.match(html, /ai-reply-record-card/);
   assert.match(html, /data-ai-summary-result="p1" role="status" hidden/);
   const refreshed = activityRows({ activity: [{ id: 'p1', label: '甲', kind: 'person', hasSent: true, at: Date.now() }] }, { source: 'reply', page: 0 }, [], false, new Map([['p1', { range: 'month', text: '已生成总结', pending: false }]]));
@@ -33,10 +34,11 @@ test('record lists expose confirmed deletion, summary ranges, and reply-needed a
   for (const range of ['takeover', 'all', 'day', 'week', 'month']) assert.match(html, new RegExp(`value="${range}"`));
   const skips = skipRecordsView({ profiles: [{ id: 'p1', contact: 'c1', label: '甲' }], contacts: [], events: [{ id: 'e1', target: 'p1', at: Date.now(), code: 'skip', source: 'system-skip', reasonCode: 'model-no-reply', messageId: 'incoming-1' }] });
   assert.match(skips, /data-ai-open-conversation/);
-  assert.match(skips, /打开聊天/);
+  assert.match(skips, /打开甲的微信聊天/);
   assert.doesNotMatch(skips, /data-ai-locate-message|定位触发消息|定位到该消息/);
   assert.match(skips, /data-ai-mark-reply="p1"/);
-  assert.match(skips, /data-ai-delete-source="skip"/);
+  assert.match(skips, /data-ai-record-menu="e1" data-ai-record-menu-source="skip"/);
+  assert.doesNotMatch(skips, /data-ai-delete-record=/);
   const marked = skipRecordsView({ profiles: [{ id: 'p1', contact: 'c1', label: '甲' }], skipRecords: [{ id: 'e1', target: 'p1', at: Date.now(), messageId: 'incoming-1', markedForReply: true }] });
   assert.match(marked, /data-ai-mark-reply="p1"[^>]+disabled>已标记为需回复/);
   assert.match(marked, /下一次自动回复前总结/);

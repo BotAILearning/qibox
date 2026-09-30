@@ -1248,6 +1248,32 @@
 #ai-panel .ai-reply-record-person>span:last-child{min-width:0;flex:1}
 #ai-panel .ai-reply-record-person strong{white-space:normal;overflow-wrap:anywhere;line-height:1.5}
 #ai-panel .ai-reply-record-person .ai-contact-nick{display:block;font-size:12px;font-weight:400;color:var(--ai-hint)}
+#ai-panel .ai-reply-record-person .ai-contact-nick{display:inline;font-size:inherit}
+#ai-panel .ai-reply-record-head{grid-template-columns:minmax(210px,1fr) 150px minmax(0,1.3fr)}
+#ai-panel .ai-record-contact-link{display:inline-flex;align-items:center;gap:9px;min-width:0;max-width:100%;padding:0;border:0;background:transparent;color:inherit;text-align:left;font:inherit;cursor:pointer}
+#ai-panel .ai-record-contact-link:focus-visible{outline:2px solid #5869ec;outline-offset:3px;border-radius:5px}
+#ai-panel .ai-record-contact-name{min-width:0;overflow-wrap:anywhere}
+#ai-panel .ai-record-contact-link .ai-contact-nick{display:inline}
+#ai-panel .ai-record-contact-link .ai-reply-record-avatar{position:relative;overflow:hidden;width:38px;height:38px}
+#ai-panel .ai-reply-record-person.ai-record-contact-link{width:100%}
+#ai-panel .ai-optional-fields{min-width:0;border:1px solid #e5eaf5;border-radius:12px;background:#f8faff}
+#ai-panel .ai-optional-fields>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px;padding:12px 15px;color:#243253;font-size:13px;font-weight:750;cursor:pointer;list-style:none}
+#ai-panel .ai-optional-fields>summary::-webkit-details-marker{display:none}
+#ai-panel .ai-optional-fields>summary::after{content:'⌄';font-size:18px;line-height:1;color:#65749a}
+#ai-panel .ai-optional-fields[open]>summary::after{transform:rotate(180deg)}
+#ai-panel .ai-optional-fields>summary:focus-visible{outline:2px solid #5369f4;outline-offset:2px;border-radius:10px}
+#ai-panel .ai-optional-fields>summary small{margin-left:5px;color:#8a95aa;font-size:11px;font-weight:400}
+#ai-panel .ai-optional-fields .ai-optional-status{margin-left:auto;color:#7786a4;font-size:11px;font-weight:400;white-space:nowrap}
+#ai-panel .ai-optional-fields[open]>summary{border-bottom:1px solid #e5eaf5}
+#ai-panel .ai-analysis-optional-body,#ai-panel .ap-optional-body{padding:16px}
+#ai-panel .ap-optional-requirements{margin-top:4px}
+#ai-panel .ai-profile-optional{margin:14px 0}
+#ai-panel .ai-profile-optional>.ai-field{margin:14px 15px 16px}
+#ai-panel .ai-record-context-menu{z-index:10002}
+dialog.ai-record-delete-dialog{max-width:min(400px,calc(100vw - 32px));padding:26px;border:1px solid #e6e3eb;border-radius:18px;box-shadow:0 24px 70px #25234430}
+dialog.ai-record-delete-dialog .ai-record-delete-symbol{display:grid;place-items:center;width:42px;height:42px;margin-bottom:14px;border-radius:12px;background:#fff0ee;color:#bb4038;font-size:23px;font-weight:800}
+dialog.ai-record-delete-dialog h3{margin:0 0 8px}
+dialog.ai-record-delete-dialog p{margin:0 0 20px;line-height:1.65}
 #ai-panel .ai-reply-record-time{min-width:0}
 #ai-panel .ai-reply-record-actions{flex-shrink:0}
 #ai-panel .ai-reply-summary-toolbar .ai-summary-controls{display:flex;align-items:center;gap:8px;flex:0 0 auto;width:auto;min-width:0}

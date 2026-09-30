@@ -2087,7 +2087,7 @@ export class AIAssistant {
       const sent = (p.sentMessages || []).filter(accepts), ids = (p.generatedIds || []).filter(id => accepts(metadata.get(id)));
       const event = this.data.events.find(e => e.target === p.id && e.account === this.data.account && accepts(e) && ['replied', 'contacted', 'uncertain', 'limit', 'failed'].includes(e.code));
       const helpAt = needsHelp ? failed?.failedAt || p.pausedAt || this.data.events.find(e => e.target === p.id && e.account === this.data.account && ['uncertain', 'limit', 'failed', 'review'].includes(e.code))?.at || event?.at || 0 : null;
-      return { id: p.id, ...this.nameFields(p), kind: p.kind, at: Math.max(sent.at(-1)?.at || 0, event?.at || 0),
+      return { id: p.id, contact: p.contact, ...this.nameFields(p), kind: p.kind, at: Math.max(sent.at(-1)?.at || 0, event?.at || 0),
         sentTimes: sent.map(m => m.at).filter(Number.isFinite), hasUndatedSent: ids.some(id => !sent.some(m => m.id === id && Number.isFinite(m.at))), helpAt, queueFailed: !!failed,
         needsHelp: !!needsHelp, needsReview: !!pendingReview, reason: failed ? failed.reason : needsHelp ? pendingReview ? '发送结果尚未确认，待核验' : (p.pauseReason === 'limit' ? '已达到连续回复上限，需要本人处理' : '自动回复已暂停') : '',
         hasSent: !!ids.length || !!sent.length, source };
