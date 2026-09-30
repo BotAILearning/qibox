@@ -351,7 +351,7 @@ fnOS x86_64/ARM64 双架构 FPK：`dist/releases/0.8.10/0.8.10-debug.001/qibox-0
 ### 0.2.3 接管登记
 
 - 源码声明版本：`config/product.json`、`package.json`、`package-lock.json` 顶层及根包均为 `0.2.3`。
-- 安装包：`dist/qibox-0.2.3-all.fpk`。
+- 安装包：`dist/releases/0.2.3/legacy-root/qibox-0.2.3-all.fpk`。
 - 大小：`595155707` 字节。
 - SHA-256：`2531cf14c58bb32ed7d334dad5783c187823761d0fa56ab55cfa5ad7f6ebf222`；本次实际计算值与旁置校验文件及版本报告一致。
 - 原报告本地结果：Node 368 项通过、1 项 UGOS 实机检查跳过；Python 191 项通过；版本、语法、应用标识和包完整性检查通过。这些不是本次重跑结果。
