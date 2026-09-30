@@ -29,7 +29,7 @@ export class Instances {
     await this.assetsTask;
   }
   async get(uid) {
-    if (!validUserKey(uid, this)) throw new AppError(this.host === 'ugos' ? '请重新登录绿联后打开栖盒' : '请重新登录飞牛', 401);
+    if (!validUserKey(uid, this)) throw new AppError('请重新登录飞牛', 401);
     if (this.closing) throw new AppError('栖盒正在退出', 503);
     if (this.spaces.has(uid)) return this.spaces.get(uid);
     if (this.pending.has(uid)) return this.pending.get(uid);
@@ -122,7 +122,7 @@ class UserInstances {
     runtime.manualInput = event => instance.ai.manualInput(event);
     await instance.ai.init(); instance.ai.begin();
     this.instances.set(meta.id, instance);
-    if (this.host !== 'ugos') {
+    {
       const resumeFile = path.join(dataRoot, 'session-resume.json'), saved = await jsonFile(resumeFile, {});
       // Consume before starting: a failed recovery must never loop or override a
       // later explicit stop. The stable instance home is used unchanged.
@@ -240,7 +240,7 @@ class UserInstances {
     await this.queue;
     await Promise.all([...this.instances.values()].map(async item => {
       await item.ai.close(); await item.scheduler.close(); await item.tail; await item.preparing;
-      const retain = this.host !== 'ugos' && item.meta.appId === 'wechat';
+      const retain = item.meta.appId === 'wechat';
       const resume = retain && this.consent.accepted && !item.meta.removedAt && item.runtime.status === 'running';
       const loggedIn = resume && item.runtime.publicState().loginStatus === 'logged-in';
       const file = path.join(item.dataRoot, 'session-resume.json');

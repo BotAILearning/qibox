@@ -1,3 +1,4 @@
+import { validateClipboardFiles } from './clipboard.mjs';
 import { open } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -6,6 +7,7 @@ import { NativeChatBridge } from './ai-native.mjs';
 import { DataWorker } from './ai-data-worker.mjs';
 import { preparedSend } from './ai-prepared-send.mjs';
 import { safeAvatarUrl } from './ai-avatar.mjs';
+import { groupContextCanAdvance } from './ai-group-inbox.mjs';
 
 const key = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 const label = value => typeof value === 'string' && !!value.trim() && value.length <= 120 && !/[\x00-\x1f\x7f]/.test(value);
@@ -78,6 +80,7 @@ export class DataChatBridge extends NativeChatBridge {
     this.openMemory = openMemory;
     this.resolveAccountRoot = resolveAccountRoot;
     this.invokeData = invokeData || ((action, args, context) => this.invokeDataProcess(action, args, context));
+    this.supportsMediaOutput = !options.invoke || !!invokePrepared;
     this.invokePrepared = invokePrepared || (options.invoke ? null : ((route, text, context, verify) => preparedSend(this, route, text, context, verify)));
   }
   clearContext() {
@@ -394,18 +397,22 @@ export class DataChatBridge extends NativeChatBridge {
     // The current session is independently checked through the inherited
     // read-only memory descriptor. Names are navigation hints, never identity.
     // Its native snapshot revision is not a database revision.
+    if (args.mediaFile) validateClipboardFiles([args.mediaFile]);
+    context.mediaFile = args.mediaFile || null;
     let route, native, delivered, baseline;
     try {
-      baseline = await this.readData(args, context);
-      if (baseline.revision !== args.revision) return { status: 'stale' };
-      route = { ...binding.native, label: binding.label, kind: binding.kind, source: 'contacts',
+      baseline = await this.readData({ ...args, priority: true }, context);
+      const allowIncoming = args.allowIncoming === true && binding.kind === 'group';
+      if (baseline.revision !== args.revision && !(allowIncoming && baseline.messages.findLast(message => message.direction === 'self')?.id === before.lastSelfId)) return { status: 'stale' };
+      route = { ...binding.native, label: binding.label, kind: binding.kind, source: 'contacts', ...(allowIncoming ? { allowIncoming: true } : {}),
         ...(this.invokePrepared ? { background: { account: binding.account, contact: binding.id },
           ...(binding.sessionHint ? { sessionHint: binding.sessionHint } : {}) } : {}) };
       if (this.invokePrepared) {
         delivered = await this.invokePrepared(route, args.text, context, async prepared => {
           if (prepared.account !== route.account) throw new AppError('微信账号已变化', 409, 'ai_account_changed');
           if (prepared.contact !== route.contact || !key(prepared.revision)) throw unavailable();
-          return (await this.readData(args, context)).revision === args.revision;
+          const current = await this.readData({ ...args, priority: true }, context);
+          return allowIncoming ? groupContextCanAdvance(baseline, current) : current.revision === args.revision;
         });
       } else {
         native = await this.request('read-guard', route, context);
@@ -443,13 +450,13 @@ export class DataChatBridge extends NativeChatBridge {
       try {
         this.check(receiptContext);
         if (this.bindings.get(binding.id) !== binding) return { status: 'uncertain' };
-        const after = await this.readData(args, receiptContext);
+        const after = await this.readData({ ...args, priority: true }, receiptContext);
         if (this.bindings.get(binding.id) !== binding) return { status: 'uncertain' };
         const anchor = baseline.messages.at(-1)?.id;
         const boundary = anchor ? after.messages.findIndex(message => message.id === anchor) : -1;
         if (anchor && boundary < 0) return { status: 'uncertain' };
         const candidates = after.messages.map((message, index) => ({ message, index })).filter(({ message, index }) =>
-          index > boundary && message.direction === 'self' && message.text === args.text && !before.ids.has(message.id));
+          index > boundary && message.direction === 'self' && (args.mediaFile ? args.mediaFile.mediaType === 'image' ? message.type === 'image' : message.text.includes(args.mediaFile.name) : message.text === args.text) && !before.ids.has(message.id));
         if (candidates.length > 1) return { status: 'uncertain' };
         if (after.revision !== args.revision && candidates.length === 1) {
           const { message, index } = candidates[0];

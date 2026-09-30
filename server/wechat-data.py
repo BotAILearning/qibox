@@ -483,7 +483,16 @@ def check_versions(files, before):
                 continue
             if old is None or new is None or old[:2] != new[:2]:
                 raise ValueError('database path changed')
-    raise sql.SnapshotChanged('database set changing')
+        # A new commit appended to the same WAL does not alter the committed
+        # prefix already used by each read-only Pages snapshot. A checkpoint,
+        # rewind or invalid index still requires a complete reread.
+        if before[index] != after[index]:
+            raise sql.SnapshotChanged('database set changing')
+        old_wal, new_wal = before[index + 1], after[index + 1]
+        if old_wal != new_wal or before[index + 2] != after[index + 2]:
+            if (not old_wal or not new_wal or new_wal[2] < old_wal[2]
+                    or not sql.wal_append_compatible(before[index + 2], after[index + 2])):
+                raise sql.SnapshotChanged('database set changing')
 
 
 def self_username(root, rows):

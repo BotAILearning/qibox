@@ -45,7 +45,7 @@ export async function prepareXvfb(appRoot, runtimeRoot) {
 }
 
 // Xvfb chooses a free abstract Unix socket and signals readiness on this pipe.
-// UGOS has no /tmp; filesystem socket/lock polling cannot detect this listener.
+// Wait for the server's readiness signal rather than polling lock files.
 export function displayReady(child, timeout = 20000) {
   return new Promise((resolve, reject) => {
     const pipe = child.stdio[3]; let output = '';

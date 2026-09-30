@@ -68,7 +68,7 @@ export function strategyValue(value) {
 export function replyLimitValue(value) {
   if (value === 'unlimited') return 'unlimited';
   const number = Number(value ?? 50);
-  if (!Number.isSafeInteger(number) || number < 1) throw new AppError('自动回复上限应为正整数或不限');
+  if (!Number.isSafeInteger(number) || number < 1 || number > 99999) throw new AppError('回复次数上限应为1到99999或不限');
   return number;
 }
 export function strategyReady(value, mode) {

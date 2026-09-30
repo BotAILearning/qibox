@@ -59,7 +59,8 @@ with tarfile.open(fpk, 'r:*') as package:
                     verified_payloads.add(filename)
         for name in ['server/index.mjs', 'server/install-deb.py', 'server/packages.mjs', 'server/progress.mjs', 'public/app.js', 'public/style.css', 'public/backgrounds/mist.jpg']:
             assert name in members
-        for name in ['server/platform.mjs', 'server/desktop-stream.mjs', 'server/catalog.mjs', 'public/index.html', 'server/index.mjs', 'server/instances.mjs', 'server/packages.mjs', 'server/progress.mjs', 'server/files.mjs', 'server/install-deb.py', 'server/runtime.mjs', 'server/scheduler.mjs', 'server/auto-login.mjs', 'server/auto-login.py', 'server/accessibility-bus.py', 'public/app.js', 'public/style.css']:
+        assert not any(re.search(r'ugos|ugreen|desktop-stream|native-identity|http-desktop', name, re.I) for name in members), 'Removed platform components must not be packaged'
+        for name in ['server/platform.mjs', 'server/catalog.mjs', 'public/index.html', 'server/index.mjs', 'server/instances.mjs', 'server/packages.mjs', 'server/progress.mjs', 'server/files.mjs', 'server/install-deb.py', 'server/runtime.mjs', 'server/scheduler.mjs', 'server/auto-login.mjs', 'server/auto-login.py', 'server/accessibility-bus.py', 'public/app.js', 'public/style.css']:
             assert source_matches(name, pathlib.Path(__file__).resolve().parent.parent / name), name
         assert source_matches('public/backgrounds/mist.jpg', pathlib.Path(__file__).resolve().parent.parent / 'web/backgrounds/mist.jpg')
         assert source_matches('public/icon.png', pathlib.Path(__file__).resolve().parent.parent / 'web/icon.png')
@@ -71,7 +72,7 @@ with tarfile.open(fpk, 'r:*') as package:
         assert source_matches('server/fonts.mjs', pathlib.Path(__file__).resolve().parent.parent / 'server/fonts.mjs')
         for name in ['server/file-chooser.mjs', 'server/file-export.mjs', 'server/file-portal.py', 'server/login-state.mjs', 'server/desktop.mjs', 'server/ai-analysis.mjs', 'public/ai-workspace.css']:
             assert source_matches(name, pathlib.Path(__file__).resolve().parent.parent / name), name
-        for name in ['ai-service.mjs', 'ai-data.mjs', 'wechat-data.py', 'wechat-sqlite.py', 'ai-schema.mjs', 'ai-provider.mjs', 'ai-presets.mjs', 'ai-capabilities.mjs', 'ai-native.mjs', 'ai-native.py', 'ai-native-controls.py', 'ai-native-render.py', 'ai-ledger.mjs', 'rfb-input.mjs']:
+        for name in ['ai-service.mjs', 'ai-account-configuration.mjs', 'ai-chat-context.mjs', 'ai-group-inbox.mjs', 'ai-media-output.mjs', 'ai-activity-records.mjs', 'ai-proactive.mjs', 'ai-prompts.mjs', 'ai-prepared-send.mjs', 'ai-data.mjs', 'wechat-data.py', 'wechat-sqlite.py', 'ai-schema.mjs', 'ai-provider.mjs', 'ai-presets.mjs', 'ai-capabilities.mjs', 'ai-native.mjs', 'ai-native.py', 'ai-native-controls.py', 'ai-native-render.py', 'ai-ledger.mjs', 'rfb-input.mjs']:
             assert source_matches('server/' + name, pathlib.Path(__file__).resolve().parent.parent / 'server' / name), name
         fonts = json.loads(read('config/fonts.json'))
         for item in fonts['fonts'] + fonts['licenses']:

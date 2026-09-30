@@ -32,7 +32,7 @@ for (const kind of ['person', 'group']) test(`${kind}: skip waiting starts this 
  await Promise.all([...f.a.activeRuns.values()]);
  assert.equal(f.bridge.sent.length, 1);
  assert.equal(f.p.manualWait, undefined);
- await assert.rejects(f.a.skipReplyWait(profileId), /当前没有可跳过/);
+ await assert.rejects(f.a.skipReplyWait(profileId), /当前没有可立即处理/);
 });
 test('normal reply merge wait can be skipped for one contact', async t => {
  const f = await fixture(t);

@@ -15,7 +15,6 @@ import { NasFiles } from './nas-files.mjs';
 import { validateClipboard, validateClipboardFiles } from './clipboard.mjs';
 import { applicationDefinition, marketState } from './catalog.mjs';
 import { gatewayIdentity, platformConfig } from './platform.mjs';
-import { DesktopStreams } from './desktop-stream.mjs';
 import { RfbInputGate } from './rfb-input.mjs';
 import { streamAudio } from './audio.mjs';
 import { proxyWebApp } from './web-app.mjs';
@@ -32,9 +31,9 @@ async function body(req, limit = 360064) {
   catch { throw new AppError('请求格式错误'); }
 }
 export async function createApplication({ appRoot = moduleRoot, dataRoot = path.join(appRoot, '.dev-data'), dev = false, runtimeFactory, fetcher, extract, aiProvider, trustedHashes, nasFiles = new NasFiles(), host = 'fnos', arch = process.arch } = {}) {
+  if (host !== 'fnos') throw new AppError('当前平台不受支持', 403);
   dataRoot = path.resolve(dataRoot); await mkdir(dataRoot, { recursive: true, mode: 0o700 });
-  const product = await jsonFile(path.join(appRoot, 'config/product.json')), prefix = host === 'ugos' ? '/api/qibox' : product.gatewayPrefix;
-  const streams = new DesktopStreams();
+  const product = await jsonFile(path.join(appRoot, 'config/product.json')), prefix = product.gatewayPrefix;
   const secret = randomBytes(32), devKey = randomBytes(24).toString('hex');
   const token = uid => createHmac('sha256', secret).update(uid).digest('hex');
   const tickets = new Map();
@@ -67,18 +66,6 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
       const user = identity(req);
       const webApp = /^\/applications\/([a-f0-9-]{36})(\/.*)$/.exec(route);
       if (webApp) { const space = await users.get(user.uid); space.requireConsent(); return await proxyWebApp(space.get(webApp[1]).runtime, req, res, webApp[2] + url.search); }
-      if (host === 'ugos' && route === '/desktop/stream' && req.method === 'GET') {
-        const key = url.searchParams.get('ticket'), ticket = tickets.get(key);
-        if (!ticket || ticket.uid !== user.uid || ticket.expires < Date.now()) throw new AppError('请重新打开桌面', 403);
-        tickets.delete(key);
-        const space = await users.get(user.uid); space.requireConsent(); const item = space.get(ticket.id);
-        if (item.runtime.status !== 'running' || !item.runtime.port) throw new AppError('请先打开应用', 409);
-        await streams.open(key, user.uid, item.runtime, req, res); return;
-      }
-      if (host === 'ugos' && route === '/desktop/input' && req.method === 'POST') {
-        check(req, user); const space = await users.get(user.uid); space.requireConsent();
-        await streams.input(url.searchParams.get('ticket'), user.uid, req); res.writeHead(204); res.end(); return;
-      }
       if (route.startsWith('/api/')) {
         const space = await users.get(user.uid);
         if (req.method === 'GET' && route === '/api/session') return send(res, 200, { user, product, dev, host, capabilities: { nasPicker: host === 'fnos' }, csrf: token(user.uid), consent: space.consent });
@@ -105,7 +92,7 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
         }
         if (req.method === 'GET' && (aiMatch || aiReportMatch)) {
           space.requireConsent(); const item = space.get((aiMatch || aiReportMatch)[1]); if (item.meta.appId !== 'wechat') throw new AppError('此应用不支持 AI', 409);
-          return send(res, 200, aiReportMatch ? item.ai.analysisReport(aiReportMatch[2]) : item.ai.publicState());
+          return send(res, 200, aiReportMatch ? item.ai.analysisReport(aiReportMatch[2]) : url.searchParams.get('view') === 'live' ? item.ai.publicLiveState(url.searchParams.get('contact')) : item.ai.publicState());
         }
         if (req.method !== 'POST') throw new AppError('请求方式不支持', 405);
         check(req, user);
@@ -152,12 +139,12 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
             'group-options': () => ai.setGroupOptions(data.value || {}),
             calendar: () => ai.calendar(data.value || {}), learn: () => ai.learn(data.value || {}), analyze: () => ai.analyze(data.value || {}), cancel: () => ai.cancel(), settings: () => ai.settings(data.value || {}),
             strategy: () => ai.saveStrategy(data.value, data.id, data.mode), 'apply-reply-limit': () => ai.applyReplyLimitToKind(data.value?.kind, data.value?.maxRounds), profile: () => ai.editProfile(data.id, data.value || {}),
-            'reply-profile': () => ai.saveReplyProfile(data.value || {}),
+            'reply-profile': () => ai.saveReplyProfile(data.value || {}), configuration: () => ai.configuration(data.value || {}),
             'save-default-style': () => ai.saveDefaultStyle(data.value || {}), 'clear-default-style': () => ai.clearDefaultStyle(), 'apply-default-style': () => ai.applyDefaultStyle(),
             'cancel-default-style': () => ai.cancelDefaultStyle(), 'commit-default-style': () => ai.commitDefaultStyle(data.value || {}),
             schedule: () => ai.scheduleAction(data.value || {}), review: () => ai.review(data.id, data.value || {}),
             targets: () => ai.targets(data.ids, data.mode), 'prepare-targets': () => ai.prepareTargets(data.value || {}), queue: () => ai.queueAction(data.command), activity: () => ai.userActivity(),
-            'activity-records': () => ai.activityRecords(data.ids || [], data.filters || {}), 'delete-activity-record': () => ai.deleteActivityRecord(data.value || {}), 'mark-reply-needed': () => ai.markReplyNeeded(data.value || {}), 'skip-record-content': () => ai.loadSkipRecordContent(data.value || {}), 'activity-summary': () => ai.summarizeActivity(data.id, data.value?.range),
+            'activity-records': () => ai.activityRecords(data.ids || [], data.filters || {}), 'delete-activity-record': () => ai.deleteActivityRecord(data.value || {}), 'mark-reply-needed': () => ai.markReplyNeeded(data.value || {}), 'skip-record-content': () => ai.loadSkipRecordContent(data.value || {}), 'skip-records': () => ai.skipRecords(data.value || {}), 'activity-summary': () => ai.summarizeActivity(data.id, data.value?.range),
             'clear-activity-errors': () => ai.clearActivityErrors(), 'error-records': () => ai.errorRecords(data.value || {}),
             'proactive-task': () => ai.proactiveTaskAction(data.value || {}),
             'proactive-records': () => ai.proactiveRecords(data.value || {}),
@@ -242,7 +229,6 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
             await item.runtime.foregroundRequested?.();
             await item.runtime.showWindow?.({ activate: true }); await item.runtime.setInputMethod?.(false);
             const key = randomBytes(24).toString('hex'); tickets.set(key, { uid: user.uid, id, expires: Date.now() + 60000 });
-            if (host === 'ugos') return send(res, 200, { password: item.runtime.password, transport: 'http', path: `${prefix}/desktop/stream?ticket=${key}`, input: `${prefix}/desktop/input?ticket=${key}` });
             return send(res, 200, { password: item.runtime.password, path: `${prefix}/desktop?ticket=${key}` });
           });
         }
@@ -296,7 +282,7 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
     } catch { socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n'); }
   });
   return { server, users, library, prefix, devKey,
-    async close() { clearInterval(ticketTimer); streams.close(); for (const ws of wss.clients) ws.terminate(); await library.close(); await users.close({ deadline: host === 'ugos' ? Date.now() + 6500 : Infinity }); for (const socket of sockets) socket.destroy(); if (server.listening) await new Promise(resolve => server.close(resolve)); wss.close(); } };
+    async close() { clearInterval(ticketTimer); for (const ws of wss.clients) ws.terminate(); await library.close(); await users.close(); for (const socket of sockets) socket.destroy(); if (server.listening) await new Promise(resolve => server.close(resolve)); wss.close(); } };
 }
 
 // One main process per installation owns the desktop session (Xvfb, WeChat and
@@ -322,11 +308,11 @@ async function socketHasOwner(socketPath) {
   });
 }
 
-if (process.env.UGAPP_INSTALL_DIR && process.argv.includes('--ugos-entry') || process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const dev = process.argv.includes('--dev');
   const platform = platformConfig(), appRoot = dev ? moduleRoot : platform.appRoot || moduleRoot;
   if (!dev && !platform.dataRoot) throw new Error('Application data directory is required');
-  if (!dev && platform.host !== 'ugos' && await socketHasOwner(path.join(appRoot, 'app.sock'))) {
+  if (!dev && await socketHasOwner(path.join(appRoot, 'app.sock'))) {
     console.log('栖盒已在运行（app.sock 有实例应答）；本次启动直接退出，避免两个主进程争抢同一套微信会话');
     process.exit(0);
   }
@@ -336,8 +322,6 @@ if (process.env.UGAPP_INSTALL_DIR && process.argv.includes('--ugos-entry') || pr
     const port = Number(process.env.QIBOX_PORT || 8790);
     await new Promise(resolve => app.server.listen(port, '127.0.0.1', resolve));
     console.log(`栖盒预览：http://127.0.0.1:${app.server.address().port}${app.prefix}/?dev=${app.devKey}`);
-  } else if (platform.host === 'ugos') {
-    await new Promise((resolve, reject) => { app.server.once('error', reject); app.server.listen(platform.port, '127.0.0.1', resolve); });
   } else {
     const socket = path.join(appRoot, 'app.sock');
     try { const file = await lstat(socket); if (!file.isSocket()) throw new Error('Refusing to replace a non-socket file'); await rm(socket); } catch (e) { if (e.code !== 'ENOENT') throw e; }
@@ -345,7 +329,6 @@ if (process.env.UGAPP_INSTALL_DIR && process.argv.includes('--ugos-entry') || pr
   }
   let closing = false;
   const close = async () => { if (closing) return; closing = true; try { await app.close(); process.exit(0); } catch (error) { console.error(error); process.exit(1); } };
-  // UGOS signals the entire service group; the native entry also forwards the
-  // signal. Keep handlers installed so a duplicate cannot interrupt cleanup.
+  // Keep signal handlers installed so duplicate signals cannot interrupt cleanup.
   process.on('SIGTERM', close); process.on('SIGINT', close);
 }

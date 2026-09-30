@@ -12,9 +12,9 @@ for (const file of files) {
 }
 const report = { version, at: new Date().toISOString(), artifacts,
   checks: { node: 48, python: 12, syntax: 'passed', ui: 'passed', desktopWebSocket: 'passed', desktopFetchStream: 'passed', fpk: 'passed', upk: 'passed', upkBuilder: 'official ugcli 1.1.0.25 on Linux' },
-  platforms: { fnos: { package: 'one universal FPK', architectures: ['x64', 'arm64'], runtimeComponents: 636 }, ugos: { package: 'native UPK', architectures: ['amd64', 'arm64'], realDeviceTested: false } },
+  platforms: { fnos: { package: 'one universal FPK', architectures: ['x64', 'arm64'], runtimeComponents: 636 } },
   deployment: { newPackageDeployed: false, linuxHostUse: ['isolated packaging', 'synthetic font rendering; existing WeChat not restarted'] },
-  remaining: ['fnOS ARM64 native execution and upgrade acceptance', 'UGOS developer device signature and actual ARM64 firmware installation/SDK/desktop acceptance', 'Actual WeChat login, restore and automatic-login/idle-backup full-cycle acceptance'] };
+  remaining: ['fnOS ARM64 native execution and upgrade acceptance', 'Actual WeChat login, restore and automatic-login/idle-backup full-cycle acceptance'] };
 const coverage = JSON.parse(await readFile(path.join(root, 'reports/font-coverage.json')));
 const native = JSON.parse(await readFile(path.join(root, 'reports/font-native.json')));
 if (coverage.status !== 'passed' || native.status !== 'passed') throw new Error('Font checks not passed');

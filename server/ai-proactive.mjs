@@ -418,8 +418,8 @@ export class ProactiveTasks {
           segment.status = 'sent'; segment.messageId = delivery.messageId;
           item.messageId = delivery.messageId; this.record(task, item, 'sent', '', texts.slice(0, sent).join('\n')); record.segmentsSent = sent;
           profile.proactiveDelivery.status = 'sent'; profile.proactiveDelivery.segmentsSent = sent;
-          profile.generatedIds = [...(profile.generatedIds || []), delivery.messageId].slice(-300);
-          profile.sentMessages = [...(profile.sentMessages || []), { id: delivery.messageId, at: a.now(), body: a.vault.seal({ text }), source: 'proactive', taskId: task.id }].slice(-300);
+          profile.generatedIds = [...(profile.generatedIds || []), delivery.messageId];
+          profile.sentMessages = [...(profile.sentMessages || []), { id: delivery.messageId, at: a.now(), body: a.vault.seal({ text }), source: 'proactive', taskId: task.id }];
           if (a.data.account === task.account) {
             a.cursors.set(profile.id, { sent: delivery.messageId, own: delivery.messageId, last: delivery.messageId, pending: false, revision: delivery.revision || fresh.revision, changedAt: a.now() });
             if (sent === 1) a.event('contacted', profile.id, 'proactive');

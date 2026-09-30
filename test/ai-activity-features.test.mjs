@@ -40,7 +40,7 @@ test('record lists expose right-click deletion, summary ranges, and reply-needed
   assert.match(skips, /data-ai-record-menu="e1" data-ai-record-menu-source="skip"/);
   assert.doesNotMatch(skips, /data-ai-delete-record=/);
   const marked = skipRecordsView({ profiles: [{ id: 'p1', contact: 'c1', label: '甲' }], skipRecords: [{ id: 'e1', target: 'p1', at: Date.now(), messageId: 'incoming-1', markedForReply: true }] });
-  assert.match(marked, /data-ai-mark-reply="p1"[^>]+disabled>已标记为需回复/);
+  assert.match(marked, /data-ai-mark-reply="p1"[^>]+disabled>已标记/);
   assert.match(marked, /下一次自动回复前总结/);
   const marking = skipRecordsView({ profiles: [{ id: 'p1', contact: 'c1', label: '甲' }], skipRecords: [{ id: 'e1', target: 'p1', at: Date.now(), messageId: 'incoming-1', markingForReply: true }] });
   assert.match(marking, /data-ai-mark-reply="p1"[^>]+disabled>正在标记…/);

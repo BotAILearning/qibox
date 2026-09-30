@@ -7,15 +7,15 @@ import { createApplication } from '../server/index.mjs';
 import { root } from '../scripts/tooling.mjs';
 import { temp, cleanup, runtimeFactory, extractor, fetcher, packageSha256 } from './fixtures.mjs';
 
-for (const host of ['fnos', 'ugos']) for (const arch of ['x64', 'arm64']) test(`${host}/${arch}: uninstall/reinstall retains original homes; optional purge removes only the requesting user data and retained copies`, async () => {
+for (const host of ['fnos']) for (const arch of ['x64', 'arm64']) test(`${host}/${arch}: uninstall/reinstall retains original homes; optional purge removes only the requesting user data and retained copies`, async () => {
   const dataRoot = await temp();
   const app = await createApplication({ appRoot: root, dataRoot, host, arch, runtimeFactory, extract: extractor, fetcher, trustedHashes: [packageSha256] });
   const socketPath = process.platform === 'win32' ? `\\\\.\\pipe\\qibox-test-uninstall-${process.pid}-${Date.now()}` : path.join(dataRoot, 'test.sock');
-  await new Promise(resolve => host === 'ugos' ? app.server.listen(0, '127.0.0.1', resolve) : app.server.listen(socketPath, resolve));
+  await new Promise(resolve => app.server.listen(socketPath, resolve));
   const call = (route, uid, data, csrf, admin = false) => new Promise((resolve, reject) => {
-    const identity = host === 'ugos' ? { 'ugreen-user-id': uid, ...admin ? { 'ugreen-user-type': 'admin' } : {} } : { 'x-trim-userid': uid, 'x-trim-isadmin': String(admin) };
+    const identity = { 'x-trim-userid': uid, 'x-trim-isadmin': String(admin) };
     const headers = { ...identity, ...(csrf ? { 'x-csrf-token': csrf } : {}), ...(data !== undefined ? { 'content-type': 'application/json' } : {}) };
-    const target = host === 'ugos' ? { host: '127.0.0.1', port: app.server.address().port } : { socketPath };
+    const target = { socketPath };
     const req = http.request({ ...target, path: app.prefix + '/api' + route, method: data === undefined ? 'GET' : 'POST', headers }, res => { let text = ''; res.on('data', d => text += d); res.on('end', () => resolve({ status: res.statusCode, data: JSON.parse(text) })); }); req.on('error', reject); req.end(data === undefined ? undefined : JSON.stringify(data));
   });
   try {

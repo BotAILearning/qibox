@@ -14,7 +14,7 @@ test('runtime loader supports original archives and verifies content-addressed s
   for (const payloadFile of ['../evil','source.tar.xz']) assert.throws(() => runtimeArchive('/app','/payload',{ payloadFile, payloadSha256:digest }));
 });
 
-test('one FPK selects only the current architecture, with flat payload compatibility for UPK', async () => {
+test('one FPK selects only the current architecture, with older flat payload compatibility', async () => {
   const appRoot = await temp();
   try {
     assert.equal(await runtimePayload(appRoot, 'arm64'), path.join(appRoot, 'payload'));
@@ -37,15 +37,12 @@ test('target architecture selects executable format, runtime libraries and offic
   assert.throws(() => architecture('arm'), /ARM64/);
 });
 
-test('UGOS uses its own directories and only accepts locally proxied, authenticated user headers', () => {
-  const config = platformConfig({ UGAPP_INSTALL_DIR: '/app', UGAPP_DATA_DIR: '/data', TRIM_PKGVAR: '/wrong' });
-  assert.equal(config.dataRoot, '/data'); assert.equal(config.host, 'ugos'); assert.equal(config.prefix, '/api/qibox');
-  const req = { socket: { remoteAddress: '127.0.0.1' }, headers: { 'ugreen-user-id': '1000', 'ugreen-user-type': 'admin' } };
-  assert.equal(gatewayIdentity(req, 'ugos').isAdmin, true);
-  assert.equal(gatewayIdentity({ ...req, headers: { ...req.headers, 'ugreen-user-type': 'users' } }, 'ugos').isAdmin, false);
-  assert.throws(() => gatewayIdentity({ ...req, socket: { remoteAddress: '192.168.3.22' } }, 'ugos'), /应用入口/);
-  assert.throws(() => gatewayIdentity({ ...req, headers: { 'x-trim-userid': '1000', 'x-trim-isadmin': 'true' } }, 'ugos'), error => error.code === 'UGOS_USER_ID_MISSING');
-  assert.throws(() => gatewayIdentity(req, 'fnos'), /飞牛应用入口/);
+test('fnOS accepts authenticated Unix gateway headers and rejects network identity spoofing', () => {
+  assert.equal(platformConfig({ TRIM_APPDEST: '/app', TRIM_PKGVAR: '/data' }).dataRoot, '/data');
+  const req = { socket: {}, headers: { 'x-trim-userid': '1000', 'x-trim-isadmin': 'true' } };
+  assert.equal(gatewayIdentity(req).isAdmin, true);
+  assert.throws(() => gatewayIdentity({ ...req, socket: { remoteAddress: '127.0.0.1' } }), /应用入口/);
+  assert.throws(() => gatewayIdentity({ ...req, headers: {} }), /重新登录/);
 });
 
 test('ARM installation filters trusted imports and never reuses a stored x64 executable after migration', async () => {

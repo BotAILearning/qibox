@@ -45,7 +45,7 @@ test('judgment on preserves legitimate skip with a single model call',async t=>{
   assert.equal(a.data.events[0].code,'skip');
 });
 
-test('verified group @me retries model skip then reports an error without consuming the message', async t => {
+test('verified group @me asks for clarification after two model skips', async t => {
   const root = await temp(), bridge = new ChatFixture(), provider = new AIModelFixture();
   let now = 1700000000000; bridge.stableMessageIds = true;
   const a = new AIAssistant({ dataRoot: root, bridge, provider, now: () => now, delay: async () => {} });
@@ -59,13 +59,13 @@ test('verified group @me retries model skip then reports an error without consum
     mentions: { verified: true, self: true, all: false, others: false },
   });
   await a.tick(); now += 3000; await a.tick();
-  assert.equal(bridge.sent.length, 0);
+  assert.equal(bridge.sent.length, 1);
+  assert.match(bridge.sent[0].text, /补充.*情况/);
   assert.equal(calls, 2);
   assert.equal(a.data.events.some(e => e.code === 'skip' && e.target === a.profiles()[0].id), false);
-  assert.equal(a.data.events.some(e => e.code === 'error' && e.target === a.profiles()[0].id), true);
+  assert.equal(a.data.events.some(e => e.code === 'error' && e.target === a.profiles()[0].id), false);
   assert.equal(a.profiles()[0].paused, false);
-  assert.equal(a.profiles()[0].handledIncomingId, undefined);
-  assert.ok(incoming.id);
+  assert.deepEqual(a.profiles()[0].sentMessages[0].replyTo, [incoming.id]);
   await a.close(); await cleanup(root);
 });
 
@@ -110,7 +110,7 @@ test('@me explicit stop request sets stopUntil like required private replies', a
   await a.close(); await cleanup(root);
 });
 
-test('verified group @all retries an invalid skip and sends a reply', async t => {
+test('verified group @all may skip when the model sees no reason to participate', async t => {
   const root = await temp(), bridge = new ChatFixture(), provider = new AIModelFixture();
   let now = 1700000000000; bridge.stableMessageIds = true;
   const a = new AIAssistant({ dataRoot: root, bridge, provider, now: () => now, delay: async () => {} });
@@ -120,10 +120,10 @@ test('verified group @all retries an invalid skip and sends a reply', async t =>
   provider.next = async () => ({ action: 'skip' });
   Object.assign(bridge.push(target.id, 'other', '@所有人 通知'), { timestamp: Math.floor(now / 1000), sender: 'a'.repeat(64), mentions: { verified: true, self: false, all: true, others: false } });
   await a.tick(); now += 3000; await a.tick();
-  assert.equal(provider.calls.length, 2); assert.equal(bridge.sent.length, 1);
-  assert.equal(provider.calls[0].input.judgeReply, false);
-  assert.match(provider.calls[0].system, /普通决策的action只能为 send/);
-  assert.equal(a.data.events.some(e => e.code === 'skip'), false);
+  assert.equal(provider.calls.length, 1); assert.equal(bridge.sent.length, 0);
+  assert.equal(provider.calls[0].input.judgeReply, true);
+  assert.match(provider.calls[0].system, /普通决策的action只能为 send、skip、wait/);
+  assert.equal(a.data.events.some(e => e.code === 'skip'), true);
   await a.close(); await cleanup(root);
 });
 
@@ -176,7 +176,7 @@ test('unreadable voice on @all gets a text reply instead of a silent skip', asyn
   await a.close(); await cleanup(root);
 });
 
-test('@me retries model wait then reports an error without pausing the group', async t => {
+test('@me briefly waits then clarifies without pausing or losing the mention', async t => {
   const root = await temp(), bridge = new ChatFixture(), provider = new AIModelFixture();
   let now = 1700000000000; bridge.stableMessageIds = true;
   const a = new AIAssistant({ dataRoot: root, bridge, provider, now: () => now, delay: async () => {} });
@@ -186,11 +186,15 @@ test('@me retries model wait then reports an error without pausing the group', a
   let calls = 0; provider.complete = async () => { calls++; return { action: 'wait' }; };
   Object.assign(bridge.push(target.id, 'other', '@我 这个问题'), { timestamp: Math.floor(now / 1000), sender: 'a'.repeat(64), mentions: { verified: true, self: true, all: false, others: false } });
   await a.tick(); now += 3000; await a.tick();
-  assert.equal(calls, 2); assert.equal(bridge.sent.length, 0);
+  assert.equal(calls, 1); assert.equal(bridge.sent.length, 0);
+  assert.ok(a.profiles()[0].groupContextWait);
+  now += 8000; await a.tick();
+  assert.equal(calls, 3); assert.equal(bridge.sent.length, 1);
+  assert.match(bridge.sent[0].text, /补充.*情况/);
   assert.equal(a.profiles()[0].paused, false);
   assert.equal(a.profiles()[0].groupPauseReason, undefined);
   assert.equal(a.data.events.some(e => e.code === 'wait' && e.source === 'model'), false);
-  assert.equal(a.data.events.some(e => e.code === 'error' && e.target === a.profiles()[0].id), true);
+  assert.equal(a.data.events.some(e => e.code === 'error' && e.target === a.profiles()[0].id), false);
   await a.close(); await cleanup(root);
 });
 

@@ -136,7 +136,7 @@ test('unknown send is recorded without a review flow and later incoming messages
   await receive(bridge.contacts[0].id, '收到吗？', { action: 'send', text: '收到了。' });
   const profile = a.profiles().find(p => p.contact === bridge.contacts[0].id);
   assert.equal(profile.paused, false); assert.equal(profile.delivery.status, 'unknown');
-  assert.equal((profile.sentMessages || []).some(message => message.confirmed === false), false);
+  assert.equal(profile.sentMessages[0].confirmed, false); assert.equal(profile.sentMessages[0].deliveryConfidence, 'unknown');
   bridge.delivery = null;
   advance(20000); await tick(); assert.equal(bridge.sent.length, 0);
   await receive(profile.contact, '下一个问题', { action: 'send', text: '好的。' }); assert.equal(bridge.sent.length, 1);

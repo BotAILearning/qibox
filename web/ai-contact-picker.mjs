@@ -3,7 +3,7 @@ import { contactName, contactSearch, esc } from './ai-contact-name.mjs';
 
 let avatarInstance = null;
 const failedAvatars = new Set();
-const avatarPrefix = () => typeof __QIBOX_HOST__ !== 'undefined' && __QIBOX_HOST__ === 'ugos' ? '/api/qibox' : globalThis.location?.pathname?.replace(/\/$/, '') || '';
+const avatarPrefix = () => globalThis.location?.pathname?.replace(/\/$/, '') || '';
 export function setContactAvatarInstance(id) {
   if (avatarInstance !== id) failedAvatars.clear();
   avatarInstance = id;

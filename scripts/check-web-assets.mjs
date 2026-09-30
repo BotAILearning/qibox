@@ -18,5 +18,5 @@ export async function checkWebAssets(directory) {
   return count;
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === path.join(root, 'scripts/check-web-assets.mjs')) {
-  for (const name of ['public', 'public-ugos']) console.log(`${name}: ${await checkWebAssets(path.join(root, name))} HTML asset references verified`);
+  for (const name of ['public']) console.log(`${name}: ${await checkWebAssets(path.join(root, name))} HTML asset references verified`);
 }

@@ -29,7 +29,7 @@ test('group timing has no rolling message-count cap and keeps ordinary realtime 
   for (const trigger of ['atMe', 'atAll', 'realtime']) assert.doesNotMatch(groupPrompt(trigger, true), /每群.{0,12}10分钟最多\d|同一话题最多3轮/);
 });
 
-test('mention reply cap counts only @me and @all while realtime remains available', async t => {
+test('all group triggers share one cap that ordinary new messages cannot reset', async t => {
   const { a, bridge, profile, push, advance } = await fixture(t);
   await a.setGroupOptions({ contact: profile.contact, atAll: true });
   await a.saveStrategy({ maxRounds: 1 }, profile.id, 'reply');
@@ -41,17 +41,20 @@ test('mention reply cap counts only @me and @all while realtime remains availabl
   const secondMention = push(false);
   secondMention.mentions.all = true;
   await a.tick(); advance(3000); await a.tick();
-  assert.equal(bridge.sent.length, 1, '@所有人回复已被提及上限阻止');
-  assert.equal(profile.paused, false, '提及上限不暂停整个群聊');
+  assert.equal(bridge.sent.length, 1, '@所有人回复已被群聊上限阻止');
+  assert.equal(profile.paused, false, '次数达到上限时保留待回复消息');
   assert.ok(a.data.events.some(entry => entry.code === 'limit' && entry.source === 'atAll'));
 
   push(false); await a.tick(); advance(60000); await a.tick();
-  assert.equal(bridge.sent.length, 2, '实时回复不受提及上限截断');
-  assert.equal(profile.mentionRounds, 0, '新消息开启下一轮，实时回复不计入提及次数');
-  assert.equal(profile.rounds, 2);
+  assert.equal(bridge.sent.length, 1, '实时回复同样受该群上限限制');
+  assert.equal(profile.rounds, 1);
   push(true); await a.tick(); advance(3000); await a.tick();
-  assert.equal(bridge.sent.length, 3, '下一轮的提及回复恢复可用');
+  assert.equal(bridge.sent.length, 1, '新消息不能重置该群次数');
   assert.equal(profile.mentionRounds, 1);
+  await a.saveStrategy({ maxRounds: 2 }, profile.id, 'reply');
+  await a.tick();
+  assert.equal(bridge.sent.length, 2, '提高次数上限后继续处理已保存的消息');
+  assert.equal(profile.rounds, 2);
 });
 
 test('realtime mode is saved and changes only the realtime prompt', async t => {
@@ -85,8 +88,8 @@ test('proactive realtime evaluates a substantive group turn after 12 seconds whi
   assert.equal(calls, 0);
   advance(1); await a.tick();
   assert.equal(calls, 1); assert.equal(bridge.sent.length, 1);
-  assert.match(system, /默认积极参与每轮有实质内容的新讨论/);
-  assert.match(groupPrompt('realtime', false, 'normal'), /偶尔参与即可/);
+  assert.match(system, /尽量接话/);
+  assert.match(groupPrompt('realtime', false, 'normal'), /有适合插入的话题/);
 });
 
 test('realtime coalesces new group messages for 60 seconds, then evaluates once', async t => {
@@ -191,20 +194,19 @@ test('@all continues to ask the model after more than 20 recent replies', async 
   assert.equal(profile.groupWait, undefined);
 });
 
-test('model wait on @all is retried without creating a model-controlled group wait', async t => {
+test('model wait on @all preserves the batch until new context, ignoring model duration', async t => {
   const { a, bridge, provider, profile, advance } = await fixture(t);
   await a.setGroupOptions({ contact: profile.contact, atMe: false, atAll: true, realtime: false });
   Object.assign(bridge.push(profile.contact, 'other', '@所有人 请判断'), { timestamp: Math.floor(a.now() / 1000), sender: key('member'), mentions: { verified: true, self: false, all: true, others: false } });
-  await a.tick(); advance(4000);
-  provider.next = async () => ({ action: 'wait', waitSeconds: 1 });
-  await a.tick();
-  assert.equal(profile.groupWait, undefined);
-  assert.equal(a.data.events.some(e => e.code === 'wait' && e.source === 'model'), false);
+  await a.tick(); advance(4000); provider.next = async () => ({ action: 'wait', waitSeconds: 1 }); await a.tick();
+  assert.equal(profile.groupWait, undefined); assert.equal(provider.calls.length, 1); assert.equal(bridge.sent.length, 0);
+  assert.equal(profile.groupContextWait.dueAt, a.now()+8000);
+  advance(60000); await a.tick(); assert.equal(provider.calls.length, 1);
+  Object.assign(bridge.push(profile.contact, 'other', '@所有人 补充完成'), { timestamp: Math.floor(a.now()/1000), sender: key('member'), mentions: { verified: true, self: false, all: true, others: false } });
+  await a.tick(); advance(4000); await a.tick();
   assert.equal(provider.calls.length, 2); assert.equal(bridge.sent.length, 1);
   assert.equal(a.data.events.some(e => e.code === 'error' && e.target === profile.id), false);
-  assert.equal(a.data.events.some(e => e.code === 'wait' && e.source === 'model'), false);
 });
-
 test('group multi-segment sends are unrestricted across turns and restarts', async t => {
   const { a, bridge, provider, profile, options, push, advance } = await fixture(t);
   profile.replyOptions = { multiTurn: true };

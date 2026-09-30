@@ -5,7 +5,7 @@ export function degreeOptions(value = '') {
   const choices = current && !degreeChoices.includes(current) ? [...degreeChoices, current] : degreeChoices;
   return `<option value="" ${current ? '' : 'selected'}>未选择学历</option>${choices.map(choice => `<option value="${esc(choice)}" ${current === choice ? 'selected' : ''}>${esc(choice)}</option>`).join('')}`;
 }
-const wikiOptions = [['name','姓名'],['addressing','对对方的称呼'],['phone','手机号码'],['birthday','生日'],['date','其他日期'],['school','学校'],['household','户籍地'],['residence','居住地址'],['workplace','工作地点'],['employer','工作单位'],['shipping','收货地址'],['group_info','群概况'],['group_member','成员与分工'],['group_rule','群内约定'],['group_topic','话题与偏好'],['group_plan','共同事项'],['group_event','重要活动'],['other','其他']];
+const wikiOptions = [['name','姓名'],['addressing','称呼'],['phone','手机号码'],['birthday','生日'],['date','其他日期'],['school','学校'],['household','户籍地'],['residence','居住地址'],['workplace','工作地点'],['employer','工作单位'],['shipping','收货地址'],['group_info','群概况'],['group_member','成员与分工'],['group_rule','群内约定'],['group_topic','话题与偏好'],['group_plan','共同事项'],['group_event','重要活动'],['other','其他']];
 export const personMemoryTypes = [['name','姓名'],['phone','手机号码'],['date_info','日期'],['school','学校'],['address','地址'],['work','工作信息'],['other','其他记忆']];
 export const groupMemoryTypes = [['group_info','群概况'],['group_member','成员与分工'],['group_rule','群内约定'],['group_topic','话题与偏好'],['group_plan','共同事项'],['group_event','重要活动'],['other','其他记忆']];
 const personFields = new Set(['name','addressing','phone','birthday','date','school','household','residence','workplace','employer','shipping']);
@@ -59,7 +59,7 @@ export function memoryFields(profile, draft, { heading = true, history = true } 
   const allFields = isGroup ? [...groupMemoryTypes, ...(legacy ? [['legacy','旧版记忆']] : [])] : personMemoryTypes;
   const sections = allFields.map(([field,label]) => {
     const entries = rows.filter(entry => field === 'legacy' ? personFields.has(entry.field) : memoryCategoryForField(entry.field || 'other') === field);
-    const addButtons = field === 'name' ? [['name','添加姓名'],['addressing','添加对对方的称呼']]
+    const addButtons = field === 'name' ? [['name','添加姓名'],['addressing','添加称呼']]
       : field === 'date_info' ? [['birthday','添加生日'],['date','添加其他日期']]
       : field === 'address' ? [['household','添加户籍地'],['residence','添加居住地址'],['shipping','添加收货地址']]
       : field === 'work' ? [['workplace','添加工作地点'],['employer','添加工作单位']]
@@ -68,5 +68,5 @@ export function memoryFields(profile, draft, { heading = true, history = true } 
     const help = isGroup ? ({group_info:'记录群名称、用途及稳定的群定位。',group_member:'记录已确认的成员身份、群昵称与分工，注明对应成员。',group_rule:'记录群内明确约定的规则，区分提议和已生效的规则。',group_topic:'记录群内长期讨论的话题和共同偏好。',group_plan:'记录群内已确认的待办、安排与负责人。',group_event:'记录群内共同经历和重要活动，保留时间语境。',legacy:'这些是旧版个人字段，保存前可自行整理。'})[field] : field === 'other' ? '记录兴趣爱好、稳定偏好，以及双方其他聊天中值得保留的内容。旧版自由文本也会放在这里。' : field === 'date_info' ? '生日与其他重要日期分别记录；其他日期用于双方纪念日。' : '';
     return `<section class="ai-wiki-field" data-ai-wiki-field="${field}"><h5>${label}</h5><div class="ai-wiki-field-values">${entries.map(entry=>wikiEntryMarkup({...entry,field:entry.field || 'other'},canSetWechatRemark,profile?.kind)).join('')}</div>${buttons}${help ? `<p class="ai-help">${help}</p>` : ''}</section>`;
   }).join('');
-  return `${heading ? '<h4>聊天记忆</h4>' : ''}${pendingMemoryFields(profile)}${profile?.memoryCoverage ? `<p class="ai-help">${esc(coverageText(profile.memoryCoverage))}</p>` : ''}<div class="ai-wiki-entities" data-ai-wiki-entities>${sections}</div><button type="button" class="secondary" data-ai-wiki-add data-ai-wiki-add-field="other">添加信息</button><input type="hidden" name="memorySummary" value="">${history ? memoryHistoryMarkup(profile) : ''}${profile?.memory?.unavailable ? '<p class="ai-help">当前记忆暂时无法读取，请稍后重试。</p>' : ''}${profile?.memoryNotice ? `<p class="ai-help">${esc(profile.memoryNotice)}</p>` : ''}${profile?.memorySuggestion ? `<details class="ai-memory-suggestion"><summary>查看本次学习的记忆</summary><p>${esc(profile.memorySuggestion.summary || '本次没有提取到明确记忆。')}</p><button type="button" class="secondary" data-ai-adopt-memory="${profile.id}">将本次学习结果填入编辑框</button></details>` : ''}`;
+  return `${heading ? '<h4>聊天记忆</h4>' : ''}${pendingMemoryFields(profile)}${profile?.memoryCoverage ? `<p class="ai-help">${esc(coverageText(profile.memoryCoverage))}</p>` : ''}<div class="ai-wiki-entities" data-ai-wiki-entities>${sections}</div><input type="hidden" name="memorySummary" value="">${history ? memoryHistoryMarkup(profile) : ''}${profile?.memory?.unavailable ? '<p class="ai-help">当前记忆暂时无法读取，请稍后重试。</p>' : ''}${profile?.memoryNotice ? `<p class="ai-help">${esc(profile.memoryNotice)}</p>` : ''}${profile?.memorySuggestion ? `<details class="ai-memory-suggestion"><summary>查看本次学习的记忆</summary><p>${esc(profile.memorySuggestion.summary || '本次没有提取到明确记忆。')}</p><button type="button" class="secondary" data-ai-adopt-memory="${profile.id}">将本次学习结果填入编辑框</button></details>` : ''}`;
 }

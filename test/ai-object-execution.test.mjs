@@ -18,29 +18,30 @@ test('generating and non-skippable waits do not offer skip action', () => {
  assert.doesNotMatch(objectExecutionStatus(state([{ id: 'p1', phase: 'generating' }]), 'c1'), /data-ai-skip-reply-wait/);
  assert.doesNotMatch(objectExecutionStatus(state([{ id: 'p1', phase: 'waiting', reason: '追问等待' }]), 'c1'), /data-ai-skip-reply-wait/);
 });
-test('enabled reply reports a temporary data outage instead of idle', () => {
+test('enabled reply explains data recovery without a generic unavailable state', () => {
  const html = objectExecutionStatus({ ...state([]), available: false, waiting: true, notice: '微信聊天数据库正在写入，请稍后重试' }, 'c1');
- assert.match(html, /暂不可用/);
+ assert.match(html, /正在恢复微信读取/);
  assert.match(html, /微信聊天数据库正在写入/);
  assert.doesNotMatch(html, /当前没有正在执行的自动回复/);
 });
 
-test('execution shows every stage, a live countdown, and a confirmed result', () => {
- const base = state([{ id: 'p1', phase: 'waiting', reason: '群聊合并等待', dueAt: Date.now() + 8000 }]);
+test('execution shows only the current phase and preserves a skip button after countdown', () => {
+ const base = state([{ id: 'p1', phase: 'waiting', reason: '群聊合并等待', dueAt: Date.now() + 8000, canSkipWait: true }]);
  const waiting = objectExecutionStatus(base, 'c1');
- for (const label of ['等待汇总', '汇总上下文', 'AI 请求中', '发送中', '已发送']) assert.match(waiting, new RegExp(label));
+ assert.match(waiting, /等待汇总/);
+ assert.doesNotMatch(waiting, /汇总上下文|AI 请求中|发送中|已发送/);
  assert.match(waiting, /data-ai-countdown=/);
- assert.match(waiting, /跳过倒计时/);
+ assert.match(waiting, /跳过等待/);
  const completed = objectExecutionStatus({ ...base, live: [], profiles: [{ ...base.profiles[0], replyFlow: { phase: 'sent', steps: { waiting: 1, summarizing: 2, requesting: 3, sending: 4, sent: 5 } } }] }, 'c1');
- assert.match(completed, /微信已确认发送/);
+ assert.match(completed, /当前没有正在执行/);
  assert.doesNotMatch(completed, /data-ai-skip-reply-wait/);
 });
 
-test('send failure remains visible with retry countdown and no skip button', () => {
- const base = state([{ id: 'p1', phase: 'waiting', reason: '发送失败，等待重试', dueAt: Date.now() + 30000 }]);
+test('send failure remains visible and can retry directly', () => {
+ const base = state([{ id: 'p1', phase: 'waiting', reason: '发送失败，等待重试', dueAt: Date.now() + 30000, canSkipWait: true, canRetry: true }]);
  base.profiles[0].replyFlow = { phase: 'failed', detail: '消息未发送，等待自动重试', steps: { waiting: 1, summarizing: 2, requesting: 3, sending: 4, failed: 5 } };
  const html = objectExecutionStatus(base, 'c1');
- assert.match(html, /本轮未发送/);
+ assert.match(html, /发送失败，等待重试/);
  assert.match(html, /剩余 \d+ 秒/);
- assert.doesNotMatch(html, /data-ai-skip-reply-wait/);
+ assert.match(html, /data-ai-skip-reply-wait/); assert.match(html, /直接重试/);
 });

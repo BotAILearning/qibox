@@ -3,7 +3,6 @@ import { nativeInput } from './native-input.mjs';
 import { clipboardFiles } from './clipboard-files.mjs';
 import { appIcon } from './app-icons.mjs';
 import { host, apiPrefix, hostHeaders, invalidateHostToken } from './host.mjs';
-import { HttpDesktop } from './http-desktop.mjs';
 import { localFiles } from './local-files.mjs';
 import { loginLabel, desktopAction, desktopStatus, aiAvailable } from './wechat-state.mjs';
 import { desktopPointer } from './desktop-pointer.mjs';
@@ -552,9 +551,7 @@ async function openDesktop(id, start = true, login = false, allowMobile = false,
     const generation = remoteGeneration;
     desktopConnecting = true; renderDesktop();
     const url = new URL(connection.path, location.href); url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const channel = connection.transport === 'http' ? new HttpDesktop({ stream: connection.path, input: connection.input,
-      headers: async () => ({ ...await hostHeaders(), 'X-CSRF-Token': session.csrf }) }) : url.href;
-    const client = rfb = new RFB($('#remote-canvas'), channel, { credentials: { password: connection.password } });
+    const client = rfb = new RFB($('#remote-canvas'), url.href, { credentials: { password: connection.password } });
     const mobileLoginView = mobile() && mobileLoginId === id;
     client.scaleViewport = !mobileLoginView; client.clipViewport = mobileLoginView;
     client.resizeSession = false; client.background = '#eaf0ec';

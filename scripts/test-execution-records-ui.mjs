@@ -75,6 +75,13 @@ try {
   await identity.locator('img').waitFor({ timeout: 8000 });
   assert.equal(await identity.locator('img').count(), 1, await identity.evaluate(node => node.outerHTML));
   await identity.locator('img').evaluate(image => image.decode());
+  const opening = page.waitForResponse(response => response.url().includes('/ai') && response.request().method() === 'POST' && response.request().postData()?.includes('open-conversation'));
+  await identity.click(); await opening; assert.equal(opened, contact.id);
+  await page.waitForFunction(() => document.querySelector('#ai-panel').hidden);
+  await page.locator('#ai-open').click();
+  await page.locator('[data-ai-nav="activity"]').click();
+  await identity.waitFor({ state: 'visible' });
+  await identity.locator('.ai-contact-nick').waitFor({ state: 'visible' });
   assert.equal(await identity.locator('.ai-contact-nick').evaluate(node => getComputedStyle(node).display), 'inline');
   await page.locator(`[data-ai-reply-card="${profile.id}"] details summary`).click();
   const reply = page.locator(`[data-ai-record-menu="${replyId}"]`);
@@ -91,8 +98,7 @@ try {
   await reply.waitFor({ state: 'detached' });
   assert.equal(profile.sentMessages.some(message => message.id === replyId), true);
   assert.equal(ai.data.deletedActivityRecords?.some(item => item.id === replyId), true);
-  await identity.click();
-  assert.equal(opened, contact.id);
+  assert.equal(await identity.count(), 0, 'the empty record group disappears after deletion');
   if (errors.length) throw new Error(JSON.stringify(errors));
   console.log('PASS: both live record avatars, chat opening, right-click deletion, Escape/cancel safety, confirmed deletion');
 } finally {

@@ -38,15 +38,15 @@ test('first poll handles a message received after strategy configuration without
 test('humorous style is selectable for a contact and persists with its preset identity', async t => {
   const { a, bridge, options } = await fixture(t);
   const preset = a.publicState().schema.replyPresets.find(p => p.id === 'humorous');
-  assert.equal(preset.label, '幽默风趣');
-  assert.equal(preset.style.humor, '轻松');
+  assert.equal(preset.label, '轻松幽默');
+  assert.equal(preset.style.humor, '偶尔');
   await a.saveReplyProfile({ contact: bridge.contacts[0].id, style: preset.style, strategy: preset.strategy,
     styleId: 'preset:humorous', preserveSwitches: true });
   const html = objectPage(a.publicState(), { selected: bridge.contacts[0].id, kind: 'person', section: 'style' });
-  assert.match(html, /data-ai-style="preset:humorous" aria-pressed="true">幽默风趣/);
+  assert.match(html, /data-ai-style="preset:humorous" aria-pressed="true">轻松幽默/);
   bridge.contacts[0].kind = 'group'; await a.scan();
   const groupHtml = objectPage(a.publicState(), { selected: bridge.contacts[0].id, kind: 'group', section: 'style' });
-  assert.match(groupHtml, /data-ai-style="preset:humorous" aria-pressed="true">幽默风趣/);
+  assert.match(groupHtml, /data-ai-style="preset:humorous" aria-pressed="true">轻松幽默/);
   await a.close();
   const restarted = new AIAssistant(options); await restarted.init();
   try { assert.equal(restarted.profiles()[0].styleId, 'preset:humorous'); }
@@ -118,7 +118,7 @@ test('a failed read-only send preparation retries the pending reply without paus
   const send = bridge.send.bind(bridge); bridge.send = async () => ({ status: 'not-sent' });
   await a.tick(); const profile = a.profiles()[0];
   assert.equal(profile.paused, false); assert.equal(profile.delivery.status, 'cancelled');
-  assert.equal(a.data.settings.enabled, true); assert.equal(a.publicState().waiting, true);
+  assert.equal(a.data.settings.enabled, true); assert.equal(a.publicState().waiting, false); assert.ok(profile.sendRetryAt > a.now());
   assert.equal(a.cursors.get(profile.id).pending, true); assert.equal(bridge.sent.length, 0);
   bridge.send = send; advance(30000); await a.tick(); await a.tick();
   assert.equal(bridge.sent.length, 1); assert.equal(profile.paused, false);

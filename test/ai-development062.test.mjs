@@ -138,10 +138,10 @@ test('chat memory renders a fixed empty field template, groups addresses and kee
  assert.doesNotMatch(markup,/data-ai-wiki-field="workplace"|data-ai-wiki-field="employer"/);
  assert.match(markup,/添加生日[\s\S]*添加其他日期/);
  assert.match(markup,/添加户籍地[\s\S]*添加居住地址[\s\S]*添加收货地址/);
- assert.match(markup,/添加姓名[\s\S]*添加对对方的称呼/);
+ assert.match(markup,/添加姓名[\s\S]*添加称呼/);
  assert.match(markup,/data-ai-wiki-field="other"[\s\S]*旧版自由文本/);
  assert.match(markup,/兴趣爱好、稳定偏好，以及双方其他聊天中值得保留的内容/);
- assert.match(markup,/data-ai-wiki-add data-ai-wiki-add-field="other">添加信息/);
+ assert.match(markup,/data-ai-wiki-add data-ai-wiki-add-field="other">添加其他记忆/);
  assert.doesNotMatch(markup,/每条信息单独编辑和删除/);
  const names=memoryFields({memory:{entries:[{field:'name',text:'小王'},{field:'addressing',text:'王女士'}]}});
  assert.equal((names.match(/data-ai-wiki-field="name"/g)||[]).length,1);
@@ -245,10 +245,10 @@ test('applying a reply limit updates only the selected object type and preserves
  const group={id:'group-profile',account:a.data.account,contact:'group-contact',kind:'group',replyStrategy:{replyGoal:'群目标',facts:'群事实',boundaries:'群边界',maxRounds:4}};a.data.profiles[group.id]=group;
  const wikiOnly={id:'wiki-only',account:a.data.account,contact:'wiki-only-contact',kind:'person',memoryCiphertext:'fixture'};a.data.profiles[wikiOnly.id]=wikiOnly;
  const result=await a.applyReplyLimitToKind('person',12);
- assert.equal(result.appliedReplyLimit.count,1); assert.equal(profile.replyStrategy.maxRounds,12);
+ assert.equal(result.appliedReplyLimit.count,3); assert.equal(profile.replyStrategy.maxRounds,12);
  assert.equal(profile.paused,true);assert.equal(profile.manualPause,true);assert.equal(profile.rounds,2);
  assert.equal(a.data.replyStrategy.maxRounds,50); assert.equal(group.replyStrategy.maxRounds,4);
- assert.equal(wikiOnly.replyStrategy,undefined,'批量上限不应给 Wiki-only 档案创建回复策略');
+ assert.deepEqual(wikiOnly.replyStrategy,{maxRounds:12},'批量设置只改变次数上限，保留其余空白');
  assert.equal(a.data.replyRoundLimits.person,12,'Wiki-only 新联系人使用联系人类型默认上限');
  assert.equal(a.strategy({kind:'person'},'reply').maxRounds,12); assert.equal(a.strategy({kind:'group'},'reply').maxRounds,50);
  await a.applyReplyLimitToKind('group',8);
@@ -263,7 +263,7 @@ test('applying a reply limit updates only the selected object type and preserves
  assert.equal(a.strategy(continuingGroup,'reply').maxRounds,8);
  const state=a.publicState();
  assert.deepEqual(state.replyRoundLimits,{person:12,group:8});
- const listState={...state,contacts:[{id:'new-person',kind:'person',label:'新联系人'},{id:'new-group',kind:'group',label:'新群聊'}],profiles:[{contact:'new-person',rounds:12},{contact:'new-group',rounds:100,mentionRounds:8,groupOptions:{atMe:true}}],replyRoundLimits:{person:12,group:8}};
+ const listState={...state,contacts:[{id:'new-person',kind:'person',label:'新联系人'},{id:'new-group',kind:'group',label:'新群聊'}],profiles:[{contact:'new-person',rounds:12},{contact:'new-group',rounds:8,groupOptions:{atMe:true}}],replyRoundLimits:{person:12,group:8}};
  const personList=objectList(listState,{search:'',kind:'person'}),groupList=objectList(listState,{search:'',kind:'group'});
  assert.match(personList,/12\/12/);assert.match(groupList,/8\/8/);
  const personDetail=objectPage(listState,{selected:'new-person',kind:'person',search:''}),groupDetail=objectPage(listState,{selected:'new-group',kind:'group',search:''});
@@ -273,7 +273,7 @@ test('unlimited bulk setting reaches the selected type without showing a limit b
  const {a,bridge}=await fixture(t),contact=bridge.contacts[0];
  await a.saveReplyProfile({contact:contact.id,style:a.publicState().schema.defaultStyle,strategy:{maxRounds:50}});
  const result=await a.applyReplyLimitToKind('person','unlimited');
- assert.equal(result.replyRoundLimits.person,'unlimited');assert.equal(result.appliedReplyLimit.count,1);
+ assert.equal(result.replyRoundLimits.person,'unlimited');assert.equal(result.appliedReplyLimit.count,3);
  const profile=a.profiles().find(p=>p.contact===contact.id);profile.rounds=10000;
  assert.equal(a.strategy(profile,'reply').maxRounds,'unlimited');
  const row=objectList({...a.publicState(),profiles:[profile],contacts:[contact]},{search:'',kind:'person'});

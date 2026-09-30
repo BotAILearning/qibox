@@ -944,6 +944,36 @@ class DataTest(unittest.TestCase):
                 with self.assertRaises(sql.SnapshotChanged): db.query('SELECT * FROM t')
             finally: db.close()
 
+    def test_live_wal_append_keeps_the_published_prefix_but_reset_invalidates_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            file = pathlib.Path(directory, 'db')
+            make_database(file, 'CREATE TABLE t(x); INSERT INTO t VALUES(1);')
+            encrypted = file.read_bytes()
+            frames = [(i // 4096 + 1, encrypted[i:i+4096]) for i in range(0, len(encrypted), 4096)]
+            wal = pathlib.Path(str(file) + '-wal'); original = wal_bytes(frames); wal.write_bytes(original)
+            shm = pathlib.Path(str(file) + '-shm')
+            def index(frame, salt=original[16:24]):
+                header = bytearray(40); struct.pack_into('<I', header, 0, 3007000); header[12] = 1
+                struct.pack_into('<H', header, 14, 4096); struct.pack_into('<I', header, 16, frame)
+                header[32:40] = salt
+                head = header + struct.pack('<II', *sql.checksum(header, '<'))
+                return head * 2
+            shm.write_bytes(index(len(frames)))
+            db = sql.Database(sql.Pages(file, KEY))
+            try:
+                self.assertEqual(db.query('SELECT * FROM t'), [[1]])
+                versions = data.file_versions([file])
+                head = struct.pack('>4I', frames[0][0], len(frames), 11, 22)
+                rolling = sql.checksum(head[:8] + frames[0][1], '<', struct.unpack('>II', original[-4096-8:-4096]))
+                with wal.open('ab') as stream: stream.write(head + struct.pack('>II', *rolling) + frames[0][1])
+                shm.write_bytes(index(len(frames) + 1))
+                data.check_versions([file], versions)
+                self.assertEqual(db.query('SELECT * FROM t'), [[1]])
+                # A rewind or new WAL generation must not be accepted as append.
+                shm.write_bytes(index(0, b'new salt'))
+                with self.assertRaises(sql.SnapshotChanged): db.query('SELECT * FROM t')
+            finally: db.close()
+
     def test_authenticated_lazy_sqlite_queries_and_no_plaintext_files(self):
         with tempfile.TemporaryDirectory() as directory:
             file = pathlib.Path(directory, 'contact.db')

@@ -1,3 +1,4 @@
+import { confirmDialog } from './dialogs.mjs';
 import { contactName, contactSearch } from './ai-contact-name.mjs';
 import { renderProactiveTable } from './ai-proactive-table-new.mjs';
 import { personReplyEnabled } from './ai-reply-state.mjs';
@@ -138,7 +139,7 @@ function taskEditor(state, draft) {
     </fieldset><div class="ap-editor-confirm"><div><span class="ap-editor-confirm-label">提交前核对</span><strong id="ai-proactive-review">${draft.contacts.length} 位联系人 · ${esc(editorScheduleLabel(s))}</strong><p>任务按安排主动发起；对方后续消息按该联系人的自动回复设置处理。</p></div><footer class="ap-editor-footer"><button type="button" class="secondary" data-proactive-cancel>${readonly ? '返回列表' : '取消'}</button>${readonly ? '' : `<button type="submit" class="primary" data-proactive-submit>${draft.id ? '保存修改' : '新建任务'}</button>`}</footer></div></form>`;
 }
 export function proactivePage(state, view = {}) {
-  return `<div class="ai-proactive-page" data-proactive-root>${view.editing && view.draft ? taskEditor(state, view.draft) : `<header class="ap-heading"><div><h3>主动聊天</h3><p>让每一次主动联系都有目标、有边界，也随时可接管。</p></div><button type="button" class="primary" data-proactive-new>＋ ${view.draft ? '继续编辑任务' : '新建任务'}</button></header><div id="ai-proactive-list">${proactiveTable(state, view)}</div>`}</div>`;
+  return `<div class="ai-proactive-page" data-proactive-root>${view.editing && view.draft ? taskEditor(state, view.draft) : `<header class="ap-heading"><div><h3>主动聊天</h3><p>让每一次主动联系都有目标、有边界，也随时可接管。</p></div><button type="button" class="secondary" data-ai-clear-ended>清空已结束</button><button type="button" class="primary" data-proactive-new>＋ ${view.draft ? '继续编辑任务' : '新建任务'}</button></header><div id="ai-proactive-list">${proactiveTable(state, view)}</div>`}</div>`;
 }
 // View-local state survives polling and rerenders, and resets on instance changes.
 export function createProactiveUI({ panel, getState, context, isBusy, mutate, render, showRecords, refreshContacts, enableReply = async () => {} }) {
@@ -178,7 +179,7 @@ export function createProactiveUI({ panel, getState, context, isBusy, mutate, re
     else if (button.hasAttribute('data-proactive-back')) { view.editing = false; render(); }
     else if (button.hasAttribute('data-proactive-cancel')) { view.editing = false; view.draft = null; render(); }
     else if (button.hasAttribute('data-proactive-pick')) pickContacts();
-    else if (button.hasAttribute('data-proactive-remove')) { if (!window.confirm('确认从任务中移除这个联系人？保存任务后生效。')) return true; view.draft.contacts = view.draft.contacts.filter(c => c.id !== button.dataset.proactiveRemove); render(); }
+    else if (button.hasAttribute('data-proactive-remove')) { if (!await confirmDialog('确认从任务中移除这个联系人？保存任务后生效。')) return true; view.draft.contacts = view.draft.contacts.filter(c => c.id !== button.dataset.proactiveRemove); render(); }
     else if (button.hasAttribute('data-proactive-enable-reply')) {
       const contacts = replyOffContacts(getState(), view.draft?.contacts || []).map(c => c.id);
       if (!contacts.length) { render(); return true; }

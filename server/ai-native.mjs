@@ -168,7 +168,7 @@ export class NativeChatBridge {
     const messages = this.ledger.reconcile(scope, value.messages);
     return { account: binding.account, contact: binding.id, revision: value.revision, messages };
   }
-  remember(snapshot) { this.snapshots.set(snapshot.contact, { revision: snapshot.revision, ids: new Set(snapshot.messages.map(message => message.id)) }); }
+  remember(snapshot) { this.snapshots.set(snapshot.contact, { revision: snapshot.revision, ids: new Set(snapshot.messages.map(message => message.id)), lastSelfId: snapshot.messages.findLast(message => message.direction === 'self')?.id }); }
   async readNative(args, context) {
     const binding = this.binding(args);
     const result = await this.request('read', { account: binding.account, contact: binding.id, label: binding.label, ...(binding.source ? { source: binding.source } : {}) }, context);

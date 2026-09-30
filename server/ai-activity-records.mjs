@@ -1,7 +1,20 @@
 import { AppError } from './files.mjs';
 import { readStableRange } from './ai-range.mjs';
 export const recordSource = meta => ['reply', 'atMe', 'atAll', 'realtime'].includes(meta?.source) ? 'reply' : meta?.source === 'proactive' ? 'proactive' : 'unknown';
-export const isDeletedActivityRecord = (a, source, id) => (a.data.deletedActivityRecords || []).some(row => row.account === a.data.account && row.source === source && row.id === id);
+const deletionCache = new WeakMap();
+export function deletedActivityIds(a, source) {
+  const rows = a.data.deletedActivityRecords || [];
+  let cached = deletionCache.get(a);
+  if (!cached || cached.rows !== rows || cached.account !== a.data.account || cached.length !== rows.length) {
+    cached = { rows, account: a.data.account, length: rows.length, sources: new Map() }; deletionCache.set(a, cached);
+    for (const row of rows) if (row.account === a.data.account) {
+      if (!cached.sources.has(row.source)) cached.sources.set(row.source, new Set());
+      cached.sources.get(row.source).add(row.id);
+    }
+  }
+  return cached.sources.get(source) || new Set();
+}
+export const isDeletedActivityRecord = (a, source, id) => deletedActivityIds(a, source).has(id);
 
 // New confirmed AI sends keep an encrypted copy. Older metadata is recovered
 // from authenticated history by message ID, never by body text or display name.

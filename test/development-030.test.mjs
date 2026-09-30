@@ -42,7 +42,7 @@ test('contact parent toggle preserves children, aborts its pending work and reen
   const profile = a.profiles().find(p => p.contact === contact), controller = new AbortController();
   a.replyControllers.set(profile.id, controller);
   await a.setReplyOptions({ contact, enabled: false }); assert.equal(controller.signal.aborted, true);
-  assert.deepEqual(a.replyOptions(profile), { enabled: false, multiTurn: true, judgeReply: false });
+  assert.deepEqual(a.replyOptions(profile), { enabled: false, multiTurn: true, judgeReply: false, sendImages: false, sendAudio: false });
   bridge.push(contact, 'other', 'disabled-period');
   await a.setReplyOptions({ contact, enabled: true });
   assert.equal(a.cursors.get(profile.id)?.pending ?? false, false); assert.equal(a.replyOptions(profile).judgeReply, false);

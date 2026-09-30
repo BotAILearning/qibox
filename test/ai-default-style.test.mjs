@@ -125,7 +125,7 @@ test('applying the default style refreshes only the objects on the default style
   await a.saveReplyProfile({ contact: contacts[1], style: { summary: '更新后的默认风格。' }, styleId: '', strategy: {}, preserveSwitches: true });
   assert.equal(plain().styleId, '');
   await a.saveReplyProfile({ contact: contacts[1], style: { summary: '我自己改过的口吻。' }, styleId: '', strategy: {}, preserveSwitches: true });
-  assert.equal(plain().styleId, 'custom');
+  assert.match(plain().styleId, /^custom:/);
   assert.equal(a.generationStyle(plain(), {}, 'reply').summary, '我自己改过的口吻。');
   await a.clearDefaultStyle();
   await assert.rejects(a.applyDefaultStyle(), /还没有默认风格/);

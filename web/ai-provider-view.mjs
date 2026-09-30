@@ -3,8 +3,8 @@ import { keyIcon } from './ai-key-icon.mjs';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const option = (value, label, selected) => `<option value="${esc(value)}" ${selected ? 'selected' : ''}>${esc(label)}</option>`;
 const features = [
-  { key: 'chat', label: '聊天类', hint: '自动回复和主动聊天' },
-  { key: 'learningAnalysis', label: '学习分析类', hint: '学习风格和记忆、分析报告' },
+  { key: 'chat', label: '聊天类', hint: '自动回复、主动聊天、需回复事项总结、聊天中的记忆补充' },
+  { key: 'learningAnalysis', label: '学习分析类', hint: '风格与记忆学习、记忆合并、分析报告、执行记录总结' },
 ];
 function modelsFor(state, draft) {
   if (draft?.models) return draft.models;

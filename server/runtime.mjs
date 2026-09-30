@@ -15,7 +15,6 @@ import { ownClipboard } from './clipboard.mjs';
 import { startAudio, ensureAudio } from './audio.mjs';
 import { startFileChooser } from './file-chooser.mjs';
 import { prepareXvfb, displayReady } from './x11.mjs';
-import { nativeIdentity } from './native-identity.mjs';
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function exists(file) { try { await access(file); return true; } catch { return false; } }
@@ -177,8 +176,7 @@ export class Runtime {
       const installed = this.application?.();
       if (!installed) throw new AppError('请先安装微信', 409);
       const applicationRoot = installed.directory;
-      // Keep Unix socket paths below Linux's 108-byte limit, including UGOS's
-      // longer package prefix and opaque account IDs. Each instance stays private.
+      // Keep private Unix socket paths below Linux's 108-byte limit.
       const session = path.join(path.dirname(this.runtimeRoot), 'sessions', this.tag.slice(0, 32));
       await mkdir(session, { recursive: true, mode: 0o700 }); await chmod(session, 0o700);
       await rm(path.join(session, 'clipboard-files'), { recursive: true, force: true });
@@ -205,7 +203,6 @@ export class Runtime {
         DBUS_SESSION_BUS_ADDRESS: `unix:path=${encodeURIComponent(path.join(session, 'bus'))}`,
         AT_SPI_BUS_ADDRESS: `unix:path=${encodeURIComponent(path.join(session, 'bus'))}`,
       };
-      Object.assign(env, await nativeIdentity({ session, home: profile.home, runtimeRoot: root }));
       for (const dir of [env.XDG_CONFIG_HOME, env.XDG_DATA_HOME, env.XDG_CACHE_HOME]) await mkdir(dir, { recursive: true, mode: 0o700 });
       await writeFile(env.FONTCONFIG_FILE, fontConfiguration(root, path.join(env.XDG_CACHE_HOME, 'fontconfig'), path.join(this.appRoot, 'fonts')), { mode: 0o600 });
       await writeFile(env.GTK_IM_MODULE_FILE, await command(`${root}/usr/lib/${triple}/libgtk-3-0/gtk-query-immodules-3.0`, [`${root}/usr/lib/${triple}/gtk-3.0/3.0.0/immodules/im-fcitx5.so`], env), { mode: 0o600 });
@@ -263,8 +260,7 @@ export class Runtime {
       if (!binary) throw new Error('Application executable not found');
       if (this.isWechat) try { await startAudio(this, env); } catch (error) { this.audioError = error.message; this.audioSocket = null; }
       if (this.isWechat) { clearInterval(this.audioRecovery); this.audioRecovery = setInterval(() => { if (this.status === 'running') void ensureAudio(this).catch(error => { this.audioError = error.message; }); }, 5000); this.audioRecovery.unref(); }
-      // Both official executables have private libraries. UGOS exposes the
-      // system libraries under /lib, including PulseAudio's private directory.
+      // Official executables include private libraries; retain PulseAudio lookup.
       const wechat = this.child(binary, [], this.isWechat ? { ...env, LD_LIBRARY_PATH: `${path.join(applicationRoot, 'opt/wechat')}:${path.join(applicationRoot, 'opt/wechat/RadiumWMPF/runtime')}:${env.LD_LIBRARY_PATH}:/lib/${triple}/pulseaudio` } : env, this.isWechat ? 'wechat' : 'application');
       await delay(2500);
       if (wechat.exitCode !== null || wechat.signalCode !== null) throw new Error(`WeChat exited with ${wechat.signalCode || wechat.exitCode}`);

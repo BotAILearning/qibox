@@ -300,13 +300,14 @@ class ChatAdapter:
         layout = ins.locate()
         if layout['label'] != label or ins._visible_roots(layout['app'], layout['frame']):
             raise ValueError('target changed')
-        viewport, rows = ins.bounds(layout['message_list']), self.rows(layout)
+        identity_only = getattr(self, 'allow_incoming', False)
+        viewport, rows = ins.bounds(layout['message_list']), [] if identity_only else self.rows(layout)
         fresh = ins.locate()
         if (any(fresh[key] != layout[key] for key in ('app', 'frame', 'header', 'editor', 'message_list', 'label'))
                 or fresh['label'] != label or ins._visible_roots(fresh['app'], fresh['frame'])
                 or ins.bounds(fresh['message_list']) != viewport):
             raise ValueError('target changed')
-        fresh_rows = self.rows(fresh)
+        fresh_rows = [] if identity_only else self.rows(fresh)
         ins.require_foreground('微信')
         self.verify_session()
         if fresh_rows != rows:
@@ -370,6 +371,9 @@ class ChatAdapter:
         if action == 'open-chat':
             return self.open_chat(request, account, contact)
         guarded = action in ('read-guard', 'send-guard', 'prepare-send')
+        # Incoming bubbles may change; the parent guards the outgoing DB boundary.
+        # Account, target, foreground, overlays and owned draft stay guarded.
+        self.allow_incoming = action == 'prepare-send' and request.get('kind') == 'group' and request.get('allowIncoming') is True
         snapshot = self.guard_snapshot if guarded else self.snapshot
         before, layout = snapshot(account, contact['id'], contact['label'])
         if action in ('read', 'read-guard'):
@@ -390,6 +394,8 @@ class ChatAdapter:
             return {'status': 'stale'}
         if getattr(self, 'background_target', None) is not None and not self.send_pane_clear(layout):
             return {'status': 'stale'}
+        if request.get('media') is not None:
+            return self.send_media(request['media'], layout)
         ins.check()
         self.verify_session()
         self.owned_draft = {key: layout[key] for key in ('app', 'frame', 'header', 'editor', 'label')}
@@ -425,9 +431,79 @@ class ChatAdapter:
                 return {'status': 'submitted'} if guarded else {'status': 'sent', 'snapshot': after}
         return {'status': 'uncertain'}
 
+    def send_media(self, media, layout):
+        """Paste one parent-validated file, submit only its newly owned preview."""
+        if (not isinstance(media, dict) or set(media) != {'name', 'type'}
+                or not re.fullmatch(r'AI合成-[a-f0-9-]{36}\.(png|jpg|mp3)', media.get('name', ''))
+                or media.get('type') not in ('image/png', 'image/jpeg', 'audio/mpeg')):
+            raise ValueError('invalid media')
+        ins = self.controls
+        self.verify_session(); ins.require_foreground('微信')
+        if ins._visible_roots(layout['app'], layout['frame']) or self.editor_text(layout['editor']):
+            return {'status': 'stale'}
+        before_roots = set(ins._visible_roots(layout['app']))
+        self.owned_media = {'app': layout['app'], 'frame': layout['frame'], 'label': layout['label'], 'media': media}
+        ins.press(layout['editor'])
+        ins.check(); self.verify_session(); ins.require_foreground('微信')
+        xlib = c.CDLL('libX11.so.6')
+        xlib.XKeysymToKeycode.argtypes = [c.c_void_p, c.c_ulong]; xlib.XKeysymToKeycode.restype = c.c_uint
+        control = xlib.XKeysymToKeycode(ins.display, 0xffe3); paste = xlib.XKeysymToKeycode(ins.display, ord('v'))
+        if not control or not paste: raise ValueError('media paste unavailable')
+        self.possibly_written = True
+        try:
+            ins.xtest.XTestFakeKeyEvent(ins.display, control, 1, 0)
+            ins.xtest.XTestFakeKeyEvent(ins.display, paste, 1, 0)
+            ins.xtest.XTestFakeKeyEvent(ins.display, paste, 0, 0)
+        finally:
+            ins.xtest.XTestFakeKeyEvent(ins.display, control, 0, 0); ins.xlib.XFlush(ins.display)
+        for _ in range(20):
+            time.sleep(.1); ins.check(); self.verify_session()
+            roots = [root for root in ins._visible_roots(layout['app']) if root not in before_roots]
+            if not roots: continue
+            if len(roots) != 1: raise ValueError('media preview unavailable')
+            root = roots[0]
+            self.owned_media['root'] = root
+            send = ins.find(root, '发送', 'push button', True); cancel = ins.find(root, '取消', 'push button', True)
+            if not send or not cancel: continue
+            if media['type'] == 'audio/mpeg' and not any(media['name'] in node['name'] for node in ins.tree(root)):
+                raise ValueError('media preview unavailable')
+            ins.require_foreground(); self.verify_session(); ins.check()
+            self.owned_media['cancel'] = cancel
+            self.send_pressed = True
+            ins.press(send)
+            for _ in range(20):
+                time.sleep(.15); ins.check(); self.verify_session()
+                if root not in ins._visible_roots(layout['app']):
+                    fresh = ins.locate()
+                    if fresh['label'] == layout['label'] and not self.editor_text(fresh['editor']):
+                        self.send_confirmed = True
+                        return {'status': 'submitted'}
+            return {'status': 'uncertain'}
+        raise ValueError('media preview unavailable')
+
+    def cleanup_media(self):
+        ins, owned = self.controls, self.owned_media
+        status = 'blocked'
+        def cleanup():
+            nonlocal status
+            self.verify_session()
+            roots = ins._visible_roots(owned['app'])
+            root = owned.get('root')
+            if root and root not in roots:
+                status = 'not-needed'; return
+            if self.send_pressed or not root or not owned.get('cancel'): return
+            if root not in roots or not ins.visible(owned['cancel']): return
+            ins.require_foreground(); self.verify_session()
+            ins.press(owned['cancel'])
+            if root not in ins._visible_roots(owned['app']): status = 'cleared'
+        ins._cleanup_budget(cleanup, seconds=2)
+        return status
+
     def cleanup_draft(self):
         if not self.possibly_written or self.send_confirmed:
             return 'not-needed'
+        if getattr(self, 'owned_media', None):
+            return self.cleanup_media()
         if not self.owned_draft:
             return 'blocked'
         if self.send_pressed and getattr(self, 'session_identity', None) is None:

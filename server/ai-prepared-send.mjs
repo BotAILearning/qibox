@@ -53,8 +53,9 @@ export async function preparedSend(bridge, route, text, context, verify) {
               if (killed || exited) return;
               clearTimeout(timer); timer = setTimeout(abort, 32000);
               if (authorized) {
+                if (context.mediaFile) { await bridge.runtime.setClipboard({ files: [context.mediaFile] }); bridge.check(context); if (killed || exited) return; }
                 context.delivery.started = true;
-                child.stdin.end(JSON.stringify({ action: 'commit', revision: value.revision, text }) + '\n');
+                child.stdin.end(JSON.stringify({ action: 'commit', revision: value.revision, text, ...(context.mediaFile ? { media: { name: context.mediaFile.name, type: context.mediaFile.type } } : {}) }) + '\n');
               } else child.stdin.end(JSON.stringify({ action: 'cancel' }) + '\n');
             } catch (error) { failure = error; abort(); }
           })();

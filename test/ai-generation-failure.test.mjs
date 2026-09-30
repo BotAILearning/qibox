@@ -4,7 +4,7 @@ import { AIAssistant } from '../server/ai-service.mjs';
 import { AIModelFixture, ChatFixture, modelConfig } from './ai-fixtures.mjs';
 import { temp, cleanup } from './fixtures.mjs';
 
-test('a failed reply request is not regenerated until a new incoming message arrives', async t => {
+test('a failed model request preserves its incoming message and retries after backoff', async t => {
   const root = await temp();
   const bridge = new ChatFixture();
   const provider = new AIModelFixture();
@@ -31,18 +31,22 @@ test('a failed reply request is not regenerated until a new incoming message arr
   now += 20000;
   await assistant.tick();
   assert.equal(provider.calls.length, 1);
-  assert.equal(assistant.cursors.get(profile.id).pending, false);
-  assert.equal(profile.handledIncomingId, incoming.id);
+  assert.equal(assistant.cursors.get(profile.id).pending, true);
+  assert.notEqual(profile.handledIncomingId, incoming.id);
+  assert.ok(assistant.liveStates().find(row => row.id === profile.id)?.canRetry);
 
   now += 30000;
   await assistant.tick();
-  assert.equal(provider.calls.length, 1, 'the same failed message must not trigger another generation');
+  assert.equal(provider.calls.length, 2, 'retry the original message instead of dropping it');
+  assert.equal(bridge.sent.length, 1);
+  assert.equal(assistant.cursors.get(profile.id).pending, false);
+  await assistant.tick(); assert.equal(bridge.sent.length, 1);
 
   bridge.push(profile.contact, 'other', '第二条来信');
   now += 20000;
   await assistant.tick();
   now += 20000;
   await assistant.tick();
-  assert.equal(provider.calls.length, 2, 'a new incoming message must resume normal generation');
-  assert.equal(bridge.sent.length, 1);
+  assert.equal(provider.calls.length, 3, 'a new incoming message must resume normal generation');
+  assert.equal(bridge.sent.length, 2);
 });

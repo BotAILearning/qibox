@@ -1682,15 +1682,6 @@
       "sha256": "cc582539b75dfda523c20a3a37e021b13f453636f3edd0ddc6f07229483b4d1c"
     },
     {
-      "name": "libnss-wrapper",
-      "version": "1.1.12-1",
-      "architecture": "amd64",
-      "url": "https://deb.debian.org/debian/pool/main/n/nss-wrapper/libnss-wrapper_1.1.12-1_amd64.deb",
-      "debSha256": "8bdc077d4f69f152da4ebd75f3a60ecbfa7e449e7a73915f11f269699aee4163",
-      "file": "libnss-wrapper-data.tar.xz",
-      "sha256": "2e396d53f12775e418ad3890c0d8e3c234d32b3409242d1155b4fc1f3985d339"
-    },
-    {
       "name": "libnss3",
       "version": "2:3.87.1-1+deb12u4",
       "url": "https://security.debian.org/debian-security/pool/updates/main/n/nss/libnss3_3.87.1-1+deb12u4_amd64.deb",

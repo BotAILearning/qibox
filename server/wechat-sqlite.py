@@ -85,6 +85,22 @@ def checksum(data, order, initial=(0, 0)):
     return a, b
 
 
+def wal_append_compatible(before, after):
+    """A committed WAL prefix remains a snapshot while the writer appends.
+
+    Never accept a rewind, salt change, torn index or database checkpoint here.
+    Callers separately guard the database inode/content and WAL header.
+    """
+    native = '<' if sys.byteorder == 'little' else '>'
+    for header in (before, after):
+        if (not header or len(header) != 96 or header[:48] != header[48:]
+                or header[12] != 1 or struct.unpack(native + 'I', header[:4])[0] != 3007000
+                or checksum(header[:40], native) != struct.unpack(native + 'II', header[40:48])):
+            return False
+    return (before[32:40] == after[32:40] and before[14:16] == after[14:16]
+            and struct.unpack(native + 'I', after[16:20])[0] >= struct.unpack(native + 'I', before[16:20])[0])
+
+
 class Pages:
     def __init__(self, filename, key, check=lambda: None):
         self.filename, self.check = pathlib.Path(filename), check
@@ -116,6 +132,7 @@ class Pages:
 
     def load_wal(self):
         head = self.wal.read(32)
+        self.wal_head = head
         if len(head) != 32:
             raise ValueError('incomplete WAL header')
         magic, version, page_size = struct.unpack('>III', head[:12])
@@ -185,10 +202,18 @@ class Pages:
             raise ValueError('WAL appeared')
         if fingerprint(self.db) != self.before:
             raise SnapshotChanged('database changing')
-        if self.shm_header() != self.shm_before:
+        shm_now = self.shm_header()
+        append_only = wal_append_compatible(self.shm_before, shm_now)
+        if shm_now != self.shm_before and not append_only:
             raise SnapshotChanged('WAL commit changing')
         if self.wal and fingerprint(self.wal) != self.wal_before:
-            raise SnapshotChanged('WAL changing')
+            position = self.wal.tell()
+            self.wal.seek(0)
+            head = self.wal.read(32)
+            self.wal.seek(position)
+            if (not append_only or fingerprint(self.wal)[2] < self.wal_before[2]
+                    or head != getattr(self, 'wal_head', None)):
+                raise SnapshotChanged('WAL changing')
 
     def read(self, offset, amount):
         self.check()

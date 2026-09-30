@@ -24,17 +24,18 @@ test('AI-01 default profile retains custom style after memory/reply-goal saves a
   const contact = bridge.contacts[0].id, text = '始终称呼对方王老师，表达正式简短。';
   await a.saveReplyProfile({ contact, style: { summary: text }, styleId: 'custom', strategy: {}, preserveSwitches: true, replyEnabled: true });
   let p = a.profiles().find(p => p.contact === contact);
-  assert.equal(p.source, 'manual'); assert.deepEqual(styleChoice(p), { summary: text, styleId: 'custom' });
+  assert.equal(p.source, 'manual'); assert.match(p.styleId, /^custom:/);
+  const customId = p.styleId; assert.deepEqual(styleChoice(p), { summary: text, styleId: customId });
   const html = objectPage(a.publicState(), { selected: contact, kind: 'person', search: '' });
-  assert.match(html, /始终称呼对方王老师/); assert.match(html, /data-ai-style="custom" aria-pressed="true"/);
-  const draftHtml = objectPage(a.publicState(), { selected: contact, kind: 'person', search: '', draft: { styleId: 'custom', summary: '临时自定义' } });
-  assert.match(draftHtml, /data-ai-style="custom" aria-pressed="true"/);
+  assert.match(html, /始终称呼对方王老师/); assert.ok(html.includes(`data-ai-style="${customId}" aria-pressed="true"`));
+  const draftHtml = objectPage(a.publicState(), { selected: contact, kind: 'person', search: '', draft: { styleId: customId, summary: '临时自定义' } });
+  assert.ok(draftHtml.includes(`data-ai-style="${customId}" aria-pressed="true"`));
   await a.editMemory(p.id, { summary: '对方周六有空。' });
   await a.saveReplyProfile({ contact, style: p.style, styleId: p.styleId, strategy: { replyGoal: '确认周六时间' }, preserveSwitches: true });
   const b = new AIAssistant(options); await b.init(); await b.scan();
   try {
     p = b.profiles().find(p => p.contact === contact);
-    assert.equal(p.style.summary, text); assert.equal(styleChoice(p).styleId, 'custom');
+    assert.equal(p.style.summary, text); assert.equal(styleChoice(p).styleId, customId);
     await b.tick(); bridge.push(contact, 'other', '周六几点见？'); await b.tick();
     const snapshot = await b.read(p, b.controller.signal);
     await b.generate(p, snapshot, 'reply', b.revision, b.controller.signal);
@@ -61,7 +62,7 @@ test('AI-07 learned snapshot survives preset/custom/default selections and resta
   await a.saveReplyProfile({ contact, style: preset.style, styleId: `preset:${preset.id}`, strategy: {} });
   assert.equal(p.styleId, `preset:${preset.id}`); assert.deepEqual(p.learnedStyle, learned);
   await a.saveReplyProfile({ contact, style: { summary: '手动补充。' }, styleId: 'learned', strategy: {} });
-  assert.equal(p.styleId, 'custom'); assert.deepEqual(p.learnedStyle, learned);
+  assert.match(p.styleId, /^custom:/); assert.deepEqual(p.learnedStyle, learned);
   await a.saveReplyProfile({ contact, style: learned, styleId: 'learned', strategy: {} });
   assert.equal(p.styleId, 'learned'); assert.deepEqual(p.style, learned);
   const b = new AIAssistant(options); await b.init();
@@ -110,33 +111,24 @@ for (const mention of ['self', 'all']) for (const otherSpeaker of [false, true])
   push('普通补充。', '', 'one'); await a.tick(); advance(4000); await a.tick();
   assert.equal(provider.calls.length, 1);
 });
-test('AI-03 @me skip reports an error while @all skip retries and sends', async t => {
+test('AI-03 @me cannot be lost and @all participation stays conditional', async t => {
   const { a, bridge, provider, advance } = await fixture(t), c = bridge.contacts[0]; c.kind = 'group'; await a.scan();
-  const push = field => Object.assign(bridge.push(c.id, 'other', '测试'), { sender: key('one'), mentions: { verified: true, self: field === 'self', all: field === 'all', others: false } });
-  const complete = provider.complete.bind(provider);
-  push('self'); await a.setGroupOptions({ contact: c.id, atMe: true }); await a.settings({ enabled: true, replyScope: 'selected' });
-  push(''); await a.tick(); advance(4000); await a.tick(); assert.equal(provider.calls.length, 0);
-
+  const push = field => Object.assign(bridge.push(c.id, 'other', '测试'), { timestamp: Math.floor(a.now()/1000), sender: key('one'), mentions: { verified: true, self: field === 'self', all: field === 'all', others: false } });
+  push('self'); advance(2000);
+  await a.setGroupOptions({ contact: c.id, atMe: true }); await a.settings({ enabled: true, replyScope: 'selected' });
+  push(''); await a.tick(); advance(4000); await a.tick(); assert.equal(provider.calls.length, 0, 'do not answer historical mentions from before enable');
   const profile = a.profiles().find(value => value.contact === c.id);
-  provider.complete = async (config, system, input) => { provider.calls.push({ system, input }); return { action: 'skip' }; };
-  push('self'); await a.tick(); advance(4000); await a.tick();
-  assert.equal(provider.calls.length, 2);
-  assert.equal(bridge.sent.length, 0);
-  assert.equal(profile.handledIncomingId, undefined);
-  assert.ok(a.data.events.some(e => e.code === 'error' && e.target === profile.id));
-  assert.equal(profile.paused, false);
-  push(''); await a.tick(); advance(4000); await a.tick(); assert.equal(provider.calls.length, 2);
-
-  provider.complete = complete;
-  await a.setGroupOptions({ contact: c.id, atMe: false, atAll: true });
-  await a.tick(); // Establish the all-mention boundary before generating new input.
-  provider.next = async () => ({ action: 'skip' });
+  provider.complete = async (_config, system, input) => { provider.calls.push({ system, input }); return { action: 'skip' }; };
+  const mention = push('self'); await a.tick(); advance(4000); await a.tick();
+  assert.equal(provider.calls.length, 2); assert.equal(bridge.sent.length, 1);
+  assert.deepEqual(profile.sentMessages.at(-1).replyTo, [mention.id]);
+  assert.equal(a.data.events.some(e => e.code === 'error' && e.target === profile.id), false);
+  await a.setGroupOptions({ contact: c.id, atMe: false, atAll: true }); await a.tick();
   const priorSkips = a.data.events.filter(e => e.code === 'skip' && e.target === profile.id).length;
   push('all'); await a.tick(); advance(4000); await a.tick();
-  assert.equal(provider.calls.length, 4);
-  assert.equal(bridge.sent.length, 1);
-  assert.equal(a.data.events.filter(e => e.code === 'skip' && e.target === profile.id).length, priorSkips);
-  push(''); await a.tick(); advance(4000); await a.tick(); assert.equal(provider.calls.length, 4);
+  assert.equal(provider.calls.length, 3); assert.equal(bridge.sent.length, 1);
+  assert.equal(a.data.events.filter(e => e.code === 'skip' && e.target === profile.id).length, priorSkips+1);
+  push(''); await a.tick(); advance(4000); await a.tick(); assert.equal(provider.calls.length, 3);
 });
 test('AI-03 pending burst survives restart with its original unprocessed boundary', async t => {
   const { a, bridge, provider, advance, options } = await fixture(t), c = bridge.contacts[0]; bridge.stableMessageIds = true; c.kind = 'group'; await a.scan();

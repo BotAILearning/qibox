@@ -11,10 +11,10 @@ import { prepareFonts } from './prepare-fonts.mjs';
 import { checkWebAssets } from './check-web-assets.mjs';
 const requestedArch = process.argv.find(x => x.startsWith('--arch='))?.slice(7) || 'all';
 const targets = requestedArch === 'all' ? [architecture('x64'), architecture('arm64')] : [architecture(requestedArch)];
-const host = process.argv.includes('--ugos') ? 'ugos' : 'fnos';
+const host = 'fnos';
 const product = { ...JSON.parse(await readFile(path.join(root, 'config/product.json'), 'utf8')), platform: targets.length === 2 ? 'all' : targets[0].fnos };
 const iconRevision = createHash('sha256').update(await readFile(path.join(root, 'web/icon.png'))).digest('hex').slice(0, 16);
-const out = path.join(root, host === 'ugos' ? 'public-ugos' : 'public'); await mkdir(out, { recursive: true });
+const out = path.join(root, 'public'); await mkdir(out, { recursive: true });
 await rm(path.join(out, 'icon.svg'), { force: true });
 for (const file of ['index.html', 'style.css', 'ai-workspace.css', 'ui-foundation.css', 'qibox-components.css', 'icon.png', 'auth-callback.html', 'privacy.html', 'terms.html']) await cp(path.join(root, 'web', file), path.join(out, file));
 await cp(path.join(root, 'web/vendor/qiapp-ui'), path.join(out, 'vendor/qiapp-ui'), { recursive: true });
@@ -36,13 +36,12 @@ for (const name of (await readdir(out)).filter(name => name.endsWith('.html'))) 
 await checkWebAssets(out);
 console.log('Web application built');
 if (!process.argv.includes('--ui-only')) {
-  if (host === 'ugos') throw new Error('Use scripts/build-ugos.mjs to package UPK');
   await prepareFonts();
   const directory = within(path.join(root, 'build'), path.join(root, 'build', `${product.appname}-${requestedArch}`));
   await rm(directory, { recursive: true, force: true });
   const app = path.join(directory, 'app'); await mkdir(app, { recursive: true });
   await cp(path.join(root, 'packaging'), directory, { recursive: true });
-  for (const name of ['server', 'public', 'config', 'licenses', 'fonts']) await cp(path.join(root, name), path.join(app, name), { recursive: true, filter: file => !file.includes('__pycache__') && !/\.(?:bak|before)(?:$|[.\-_])/i.test(path.basename(file)) });
+  for (const name of ['server', 'public', 'config', 'licenses', 'fonts']) await cp(path.join(root, name), path.join(app, name), { recursive: true, filter: file => !file.includes('__pycache__') && !/[\\/](?:ugos-native|@ugreen-nas)(?:[\\/]|$)/i.test(file) && !/\.(?:bak|before)(?:$|[.\-_])/i.test(path.basename(file)) });
   await writeFile(path.join(app, 'config/product.json'), JSON.stringify(product, null, 2) + '\n');
   for (const name of ['README.md', 'NOTICE.md']) await cp(path.join(root, name), path.join(app, name));
   for (const name of ['ws', 'pdfkit', 'fflate', 'fontkit', 'linebreak', 'png-js', '@noble', '@swc', 'brotli', 'base64-js', 'clone', 'dfa', 'fast-deep-equal', 'restructure', 'tiny-inflate', 'unicode-properties', 'unicode-trie', 'tslib']) {

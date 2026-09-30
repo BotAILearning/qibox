@@ -14,8 +14,8 @@ const isDigest = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(val
 export async function deviceIdentity() {
   let id; try { id = (await readFile('/etc/machine-id', 'utf8')).trim(); } catch {}
   if (/^[a-f0-9]{32}$/i.test(id || '') && !/^0+$/.test(id)) return digest(`qibox-device\0${id}`);
-  // UGOS may hide /etc in its application sandbox. Physical network interfaces
-  // remain visible in /sys; never use a random ID copied along with app data.
+  // Use physical network interfaces if machine-id is unavailable; never use a
+  // random identity copied along with app data.
   const addresses = [];
   for (const name of await readdir('/sys/class/net')) {
     if (!/^(eth|en)[a-zA-Z0-9_.-]*$/.test(name)) continue;

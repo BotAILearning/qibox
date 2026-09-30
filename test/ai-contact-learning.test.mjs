@@ -250,7 +250,7 @@ test('manual strategy changes retain all other contacts and survive restart afte
   try {
     assert.equal(restarted.data.settings.enabled, false); await restarted.scan();
     assert.equal(restarted.prerequisites('reply'), '');
-    assert.equal(restarted.profiles().find(p => p.contact === contacts[1]).style.length, '详细');
+    assert.equal(restarted.profiles().find(p => p.contact === contacts[1]).style.summary, replyPresets[3].style.summary);
   } finally { await restarted.close(); }
 });
 

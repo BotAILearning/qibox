@@ -246,7 +246,7 @@ test('a manual reply strategy applies an unlearned contact without invoking lear
   } });
   t.after(() => { controller.detach(); globalThis.document = originalDocument; globalThis.FormData = OriginalFormData; });
   await controller.attach('instance-a'); await dom.button({ aiManualContact: 'contact' });
-  assert.match(dom.node('#ai-content').innerHTML, /自然交流/);
+  assert.match(dom.node('#ai-content').innerHTML, /自然随和/);
   assert.match(dom.node('#ai-content').innerHTML, /简短直接/);
   assert.deepEqual(calls, []);
   const form = dom.form('#ai-manual-reply-form', manualEntries()); form.dataset = { contact: 'contact' };

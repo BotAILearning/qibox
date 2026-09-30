@@ -13,7 +13,7 @@ const down = Buffer.from([4, 1, 0, 0, 0, 0, 0, 97]);
 const up = Buffer.from([4, 0, 0, 0, 0, 0, 0, 97]);
 const heldPointer = Buffer.from([5, 1, 0, 0, 0, 0]);
 
-for (const host of ['fnos', 'ugos']) test(`${host} desktop proxy waits for AI handover before native input and releases held state on close`, { timeout: 15000 }, async () => {
+for (const host of ['fnos']) test(`${host} desktop proxy waits for AI handover before native input and releases held state on close`, { timeout: 15000 }, async () => {
   const dataRoot = await temp(), sockets = new Set(), received = [], waiters = [];
   let count = 0, app, ws, stream, release;
   const seen = length => count >= length ? Promise.resolve() : new Promise(resolve => waiters.push({ length, resolve }));
@@ -52,19 +52,11 @@ for (const host of ['fnos', 'ugos']) test(`${host} desktop proxy waits for AI ha
     };
     const connection = await call(`/instances/${info.id}/desktop`, {});
     let send, close;
-    if (host === 'fnos') {
+    {
       ws = new WebSocket(`${origin.replace('http:', 'ws:')}${connection.path}`, { headers: { cookie } });
       ws.on('error', () => {}); await once(ws, 'open');
       send = bytes => new Promise((resolve, reject) => ws.send(bytes, error => error ? reject(error) : resolve()));
       close = async () => { const closed = once(ws, 'close'); ws.close(); await closed; };
-    } else {
-      stream = await fetch(`${origin}${connection.path}`, { headers: { cookie } });
-      assert.equal(stream.status, 200);
-      send = async bytes => {
-        const result = await fetch(`${origin}${connection.input}`, { method: 'POST', headers: { cookie, 'X-CSRF-Token': csrf, 'Content-Type': 'application/octet-stream' }, body: bytes });
-        assert.equal(result.status, 204);
-      };
-      close = () => stream.body.cancel();
     }
     await send(Buffer.concat([version, refresh])); await seen(version.length + refresh.length);
     assert.deepEqual(events, []);
