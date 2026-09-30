@@ -207,6 +207,7 @@ export class AIAssistant {
       }
       const interruptedAttempt = profile.delivery?.status === 'unknown' ? profile.delivery : null;
       this.restoreDeliveryReceipts(profile);
+      if (profile.delivery?.status === 'unknown' && profile.replyFlow?.phase === 'failed') profile.replyFlow = { ...profile.replyFlow, phase: 'confirming', detail: '发送结果待核实，不会重复发送', updatedAt: this.now() };
       if (interruptedAttempt?.body && interruptedAttempt.operationId) {
         const attempt = interruptedAttempt; profile.sentMessages ||= [];
         const receipt = profile.sentMessages.find(row => row.operationId === attempt.operationId && row.confirmed !== false && row.deliveryConfidence !== 'unknown' && validKey(row.id));
@@ -998,7 +999,7 @@ export class AIAssistant {
       const flow = profile.replyFlow;
       if (active.has(profile.id) || !flow) continue;
       const running = this.activeRuns.has(profile.id) && ['summarizing', 'requesting', 'sending'].includes(flow.phase);
-      if (running) live.push({ id: profile.id, ...this.nameFields(profile), kind: profile.kind, replyFlow: true, phase: flow.phase, reason: flow.detail || '' });
+      if (running || flow.phase === 'confirming' && profile.delivery?.status === 'unknown') live.push({ id: profile.id, ...this.nameFields(profile), kind: profile.kind, replyFlow: true, phase: flow.phase, reason: flow.detail || '' });
     }
     for (const row of live) {
       const profile = this.data.profiles[row.id];
@@ -2406,6 +2407,8 @@ export class AIAssistant {
       const partial = profile.delivery.segmentsSent < (profile.delivery.segmentsTotal || 1);
       profile.delivery.interrupted = partial;
       if (profile.replyFlow) profile.replyFlow = { ...profile.replyFlow, phase: partial ? 'partial' : 'sent', updatedAt: this.now(), detail: partial ? '已核实部分送达，剩余未发送' : '已核实送达' };
+      const label = this.nameFields(profile).label;
+      if ([`${label}：发送结果待核实；本条不会重复发送`, `${label}：发送结果无法确认；为避免重复发送，本条不会自动重发`].includes(this.notice)) this.notice = `${label}：已确认送达`;
     }
     // Preserve exception history, but distinguish an authenticated late receipt
     // from a still unresolved attempt. Old records have no operation ID.
@@ -3086,10 +3089,10 @@ export class AIAssistant {
       if (delivery.status !== 'sent' || !delivery.messageId) {
         profile.delivery.status = delivery.status === 'stale' ? sent ? 'sent' : 'cancelled' : 'unknown';
         profile.delivery.interrupted = sent > 0;
-        if (mode === 'reply') this.replyStage(profile, delivery.status === 'stale' ? 'cancelled' : 'failed', delivery.status === 'stale' ? '聊天有新消息，重新判断' : '发送结果未确认，不会自动重发');
+        if (mode === 'reply') this.replyStage(profile, delivery.status === 'stale' ? 'cancelled' : 'confirming', delivery.status === 'stale' ? '聊天有新消息，重新判断' : '发送结果待核实，不会重复发送');
         if (item) item.status = delivery.status === 'stale' ? sent ? 'done' : 'pending' : 'skipped';
         if (delivery.status !== 'stale') {
-          profile.sentMessages = [...(profile.sentMessages || []), { id: operationId, operationId, at: this.now(), body: this.vault.seal({ text }), source: mode === 'reply' ? 'reply' : 'proactive', confirmed: false, deliveryConfidence: 'unknown', baseline: fresh.messages.at(-1)?.id, ...(mediaFile ? { media: { type: mediaFile.mediaType, name: mediaFile.name } } : {}) }];
+          profile.sentMessages = [...(profile.sentMessages || []), { id: operationId, operationId, at: this.now(), body: this.vault.seal({ text }), source: mode === 'reply' ? 'reply' : 'proactive', confirmed: false, deliveryConfidence: 'unknown', baseline: fresh.messages.at(-1)?.id, ...(mediaFile ? { media: { type: mediaFile.mediaType, name: mediaFile.name } } : {}), ...(source !== mode ? { trigger: source } : {}), ...(item?.taskId ? { taskId: item.taskId } : {}), ...(groupBatch ? { replyTo: groupBatch.ids, recipient: groupBatch.sender } : {}) }];
           // Unknown receipts remain audit-only; do not create pending chat rows
           // or a manual recovery gate.
         if (mode === 'reply') {
@@ -3098,9 +3101,10 @@ export class AIAssistant {
           if (groupReply) delete profile.groupWait;
         }
         this.settleQueue();
-          this.notice = `${this.nameFields(profile).label}：发送结果无法确认；为避免重复发送，本条不会自动重发`;
+          this.notice = `${this.nameFields(profile).label}：发送结果待核实；本条不会重复发送`;
           this.event('uncertain', profile.id, source, this.notice);
-          this.event('error', profile.id, mode, this.notice, { operationId });
+          // Unknown is an audit state, not evidence of failure. The durable
+          // intent remains visible and later reads authenticate its receipt.
         }
         await this.save(); return delivery.status === 'stale' && sent ? 'partial' : 'pending';
       }
