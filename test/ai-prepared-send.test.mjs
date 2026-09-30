@@ -62,6 +62,24 @@ test('prepared native pipe sends no text until the final database check permits 
   assert.equal(memory.closed, 1);
 });
 
+test('a user file selection or export blocks preparation without touching native controls',async()=>{
+ for(const fileChooser of [{pending:{}},{exports:{pending:{}}}]){
+  const {bridge,context,memory,input}=fixture();bridge.runtime.fileChooser=fileChooser;
+  bridge.handover=()=>assert.fail('File selection must block before native navigation');
+  const result=await preparedSend(bridge,{},'test',context,()=>assert.fail('No send verification'));
+  assert.equal(result.status,'not-sent');assert.equal(result.diagnostic.reason,'popup-blocking-navigation');
+  assert.equal(context.delivery.started,false);assert.equal(input.length,0);assert.equal(memory.closed,0);
+ }
+});
+test('generated MP3 reserves only the private file portal and releases the reservation after helper exit',async()=>{
+ const {bridge,context,input}=fixture(), lease={done:Promise.resolve({ready:true}),closed:0,async close(){this.closed++;}};
+ context.mediaFile={name:'AI合成-00000000-0000-4000-8000-000000000000.mp3',type:'audio/mpeg',data:'AA=='};
+ bridge.runtime.setClipboard=()=>assert.fail('MP3 must not change the clipboard');
+ bridge.runtime.fileChooser={armGeneratedMedia(file,{signal}){assert.equal(file,context.mediaFile);assert.equal(signal,context.signal);return lease;}};
+ assert.equal((await preparedSend(bridge,{},'audio',context,async()=>true)).status,'submitted');
+ assert.equal(lease.closed,1);assert.deepEqual(input[1].media,{name:context.mediaFile.name,type:context.mediaFile.type});
+});
+
 test('a complete native no-submit report stays retryable after commit, while an attempted send stays uncertain', async () => {
   for (const status of ['not-sent', 'uncertain']) {
     const value = controlledFixture({ onCommit: ({ child }) => queueMicrotask(() => {

@@ -579,6 +579,21 @@ class Boundaries(unittest.TestCase):
         with self.assertRaises(native.ControlsUnavailable):
             native.locate_nodes(nodes, 1)
 
+    def test_empty_unmapped_portal_dialog_is_ignored_but_live_dialogs_still_block(self):
+        inspector = foreground_inspector()
+        inspector.refresh = lambda obj: None
+        inspector.children = lambda obj: [2,20] if obj == 1 else []
+        inspector.states = lambda obj: VISIBLE
+        inspector.bounds = lambda obj: (0,0,100,30)
+        inspector.string = lambda method,obj: ('frame' if obj == 2 else 'dialog') if method == 'get_role_name' else ('微信' if obj == 2 else '选择文件')
+        inspector._mapped_frames = lambda: {'微信'}
+        self.assertEqual(inspector._visible_roots(1,2), [])
+        inspector._mapped_frames = lambda: {'微信','选择文件'}
+        self.assertEqual(inspector._visible_roots(1,2), [20])
+        inspector._mapped_frames = lambda: {'微信'}
+        inspector.children = lambda obj: [2,20] if obj == 1 else [21] if obj == 20 else []
+        self.assertEqual(inspector._visible_roots(1,2), [20])
+
     def test_locator_deduplicates_nested_header_and_accepts_disabled_send(self):
         result = native.locate_nodes(chat_nodes(), 1)
         self.assertEqual(result['header'], 8)

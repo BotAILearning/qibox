@@ -3,11 +3,12 @@ import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { createWriteStream } from 'node:fs';
 import { mkdir, rm, rename, lstat, realpath } from 'node:fs/promises';
-import { Transform } from 'node:stream';
+import { Transform, Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { pathToFileURL } from 'node:url';
 import { AppError, ensureSpace, within } from './files.mjs';
 import { FileExports } from './file-export.mjs';
+import { validateClipboardFiles } from './clipboard.mjs';
 
 export const MAX_CHAT_FILE = 1024 ** 3;
 export const MAX_CHAT_BATCH = 2 * 1024 ** 3;
@@ -31,6 +32,47 @@ export class FileChooser {
     if (!info.isDirectory() || info.isSymbolicLink() || resolved !== path.join(await realpath(this.dataRoot), 'file-transfers')) throw new Error('Invalid transfer directory');
     this.root = resolved;
   }
+  armGeneratedMedia(file, { signal } = {}) {
+    validateClipboardFiles([file]);
+    if (file.type !== 'audio/mpeg' || !/^AI合成-[a-f0-9-]{36}\.mp3$/.test(file.name)) throw new AppError('生成的音频文件无效');
+    if (this.closed || this.pending || this.exports.pending || this.generatedMedia) throw new AppError('微信正在选择文件，请完成后重试', 409);
+    signal?.throwIfAborted();
+    const lease = { file, client: randomUUID(), signal, pending: null, task: null, closed: false };
+    let resolve, reject;
+    lease.done = new Promise((yes, no) => { resolve = yes; reject = no; });
+    lease.done.catch(() => {});
+    lease.resolve = resolve; lease.reject = reject;
+    lease.close = async () => {
+      if (lease.closed) return;
+      lease.closed = true;
+      signal?.removeEventListener('abort', abort);
+      if (this.generatedMedia === lease) this.generatedMedia = null;
+      if (lease.pending && this.pending === lease.pending) await this.cancelCurrent(true, lease.pending);
+      await lease.task?.catch(() => {});
+      reject(new AppError('音频文件选择已结束', 409));
+    };
+    const abort = () => { void lease.close().catch(reject); };
+    signal?.addEventListener('abort', abort, { once: true });
+    this.generatedMedia = lease;
+    return lease;
+  }
+  async completeGeneratedMedia(lease) {
+    const { file, client, pending, signal } = lease;
+    try {
+      signal?.throwIfAborted();
+      if (lease.closed) throw new AppError('音频文件选择已结束', 409);
+      const bytes = Buffer.from(file.data, 'base64');
+      const plan = await this.plan(pending.id, client, [{ name: file.name, size: bytes.length }]);
+      signal?.throwIfAborted();
+      await this.upload(pending.id, client, plan.files[0].id, Readable.from(bytes), bytes.length);
+      signal?.throwIfAborted();
+      await this.complete(pending.id, client);
+      lease.resolve({ ready: true });
+    } catch (error) {
+      if (this.pending === pending) await this.cancelCurrent(true, pending);
+      lease.reject(error);
+    }
+  }
   receive(event) {
     if (event.operation || event.type === 'saved' || event.type === 'cancelled' && this.exports.pending?.id === event.id) {
       if (event.operation && (this.closed || this.pending)) { if (event.operation === 'save') this.send({ id: event.id, response: 1 }); return; }
@@ -40,6 +82,13 @@ export class FileChooser {
     if (event.type !== 'request' || !validId(event.id) || typeof event.multiple !== 'boolean') return;
     if (this.closed || this.pending || this.exports.pending) { this.send({ id: event.id, response: 1 }); return; }
     this.pending = { id: event.id, multiple: event.multiple, createdAt: this.now(), client: null, files: null, controller: new AbortController() };
+    if (this.generatedMedia) {
+      const lease = this.generatedMedia;
+      this.generatedMedia = null;
+      lease.pending = this.pending;
+      this.pending.client = lease.client;
+      lease.task = this.completeGeneratedMedia(lease);
+    }
   }
   state(client) {
     const request = this.pending;
@@ -150,7 +199,7 @@ export class FileChooser {
     await Promise.allSettled([...this.operations]);
     if (request.folder) await rm(within(this.root, request.folder), { recursive: true, force: true });
   }
-  async close() { this.closed = true; await this.cancelCurrent(true); await this.exports.close(); }
+  async close() { this.closed = true; await this.generatedMedia?.close(); await this.cancelCurrent(true); await this.exports.close(); }
 }
 
 export async function startFileChooser({ appRoot, runtimeRoot, dataRoot, env }) {

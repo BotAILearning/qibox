@@ -785,6 +785,16 @@ class NativeControls(base.Inspector):
             self.refresh(obj)
             if self.string('get_role_name', obj) == 'tool tip':
                 continue
+            # Qt keeps an empty portal file-dialog object after the actual
+            # browser selection has ended. It has no native X11 window or
+            # controls, so it cannot cover the send pane. The parent separately
+            # blocks a live file-chooser request before preparing any send.
+            if (self.string('get_role_name', obj) == 'dialog'
+                    and self.string('get_name', obj) == '选择文件' and not self.children(obj)):
+                if mapped_frames is None:
+                    mapped_frames = self._mapped_frames()
+                if '选择文件' not in mapped_frames:
+                    continue
             node = {'obj': obj, 'states': self.states(obj), 'bounds': self.bounds(obj)}
             if self.string('get_role_name', obj) == 'frame':
                 if mapped_frames is None:

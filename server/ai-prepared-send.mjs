@@ -2,16 +2,19 @@ import path from 'node:path';
 const safeDiagnostic = value => ({
   phase: ['native-start','native-session','native-navigation','native-prepare'].includes(value?.phase) ? value.phase : 'native-prepare',
   code: ['timeout','cancelled','controls-unavailable'].includes(value?.code) ? value.code : 'unavailable',
-  ...(['group-not-listed','conversation-outside-viewport','conversation-candidate-changed','popup-blocking-navigation','control-unavailable','inspection-interrupted','conversation-changed','target-changed'].includes(value?.reason) ? { reason: value.reason } : {}),
+  ...(['group-not-listed','conversation-outside-viewport','conversation-candidate-changed','popup-blocking-navigation','control-unavailable','inspection-interrupted','conversation-changed','target-changed','media-paste-unavailable','media-preview-unavailable'].includes(value?.reason) ? { reason: value.reason } : {}),
   ...(['entry','results','candidate-open','identity','cleanup'].includes(value?.navigationStep) ? { navigationStep: value.navigationStep } : {})
 });
 
 // Hold one validated native chat session across the final DB revision check.
 // Only the explicit commit contains text. No dispatch occurs during preparation.
 export async function preparedSend(bridge, route, text, context, verify) {
+  if (bridge.runtime.fileChooser?.pending || bridge.runtime.fileChooser?.exports?.pending) {
+    return { status:'not-sent', diagnostic:{phase:'native-prepare',code:'controls-unavailable',reason:'popup-blocking-navigation'} };
+  }
   context.draft = { text, label: route.label };
   await bridge.handover(context);
-  let memory;
+  let memory, mediaLease;
   try {
     memory = await bridge.openMemory(`/proc/${context.pid}/mem`, 'r');
     bridge.check(context);
@@ -53,7 +56,14 @@ export async function preparedSend(bridge, route, text, context, verify) {
               if (killed || exited) return;
               clearTimeout(timer); timer = setTimeout(abort, 32000);
               if (authorized) {
-                if (context.mediaFile) { await bridge.runtime.setClipboard({ files: [context.mediaFile] }); bridge.check(context); if (killed || exited) return; }
+                if (context.mediaFile) {
+                  if (context.mediaFile.type === 'audio/mpeg') {
+                    mediaLease = bridge.runtime.fileChooser?.armGeneratedMedia(context.mediaFile, { signal: context.signal });
+                    if (!mediaLease) throw new Error('Audio file chooser unavailable');
+                    mediaLease.done.catch(error => { failure = error; abort(); });
+                  } else await bridge.runtime.setClipboard({ files: [context.mediaFile] });
+                  bridge.check(context); if (killed || exited) return;
+                }
                 context.delivery.started = true;
                 child.stdin.end(JSON.stringify({ action: 'commit', revision: value.revision, text, ...(context.mediaFile ? { media: { name: context.mediaFile.name, type: context.mediaFile.type } } : {}) }) + '\n');
               } else child.stdin.end(JSON.stringify({ action: 'cancel' }) + '\n');
@@ -93,6 +103,7 @@ export async function preparedSend(bridge, route, text, context, verify) {
     else child.stdin.write(JSON.stringify({ action: 'prepare-send', ...route }) + '\n');
     });
   } finally {
+    await mediaLease?.close().catch(() => {});
     // Keep the descriptor until helper exit/owned-draft cleanup. Startup errors,
     // process changes and cancellation must release the parent copy as well.
     try { await memory?.close(); } catch {}

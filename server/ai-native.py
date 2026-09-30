@@ -62,6 +62,8 @@ NATIVE_FAILURE_REASONS = {
     'inspection interrupted': 'inspection-interrupted',
     'conversation changed': 'conversation-changed',
     'target changed': 'target-changed',
+    'media paste unavailable': 'media-paste-unavailable',
+    'media preview unavailable': 'media-preview-unavailable',
 }
 
 
@@ -438,28 +440,63 @@ class ChatAdapter:
                 or media.get('type') not in ('image/png', 'image/jpeg', 'audio/mpeg')):
             raise ValueError('invalid media')
         ins = self.controls
+        self.phase = 'native-prepare'
         self.verify_session(); ins.require_foreground('微信')
         if ins._visible_roots(layout['app'], layout['frame']) or self.editor_text(layout['editor']):
             return {'status': 'stale'}
         before_roots = set(ins._visible_roots(layout['app']))
         self.owned_media = {'app': layout['app'], 'frame': layout['frame'], 'label': layout['label'], 'media': media}
-        ins.press(layout['editor'])
-        ins.check(); self.verify_session(); ins.require_foreground('微信')
-        xlib = c.CDLL('libX11.so.6')
-        xlib.XKeysymToKeycode.argtypes = [c.c_void_p, c.c_ulong]; xlib.XKeysymToKeycode.restype = c.c_uint
-        control = xlib.XKeysymToKeycode(ins.display, 0xffe3); paste = xlib.XKeysymToKeycode(ins.display, ord('v'))
-        if not control or not paste: raise ValueError('media paste unavailable')
-        self.possibly_written = True
-        try:
-            ins.xtest.XTestFakeKeyEvent(ins.display, control, 1, 0)
-            ins.xtest.XTestFakeKeyEvent(ins.display, paste, 1, 0)
-            ins.xtest.XTestFakeKeyEvent(ins.display, paste, 0, 0)
-        finally:
-            ins.xtest.XTestFakeKeyEvent(ins.display, control, 0, 0); ins.xlib.XFlush(ins.display)
+        if media['type'] == 'audio/mpeg':
+            # File clipboard paste is ignored by some Linux WeChat releases.
+            # The parent owns the next private portal request and stages only
+            # this generated MP3 before WeChat opens its confirmation preview.
+            attach = ins.find(layout['frame'], '发送文件', 'push button', True)
+            if not attach or not ins.visible(attach): raise ValueError('media preview unavailable')
+            ins.check(); self.verify_session(); ins.require_foreground('微信')
+            self.possibly_written = True
+            ins.press(attach)
+        else:
+            ins.press(layout['editor'])
+            ins.check(); self.verify_session(); ins.require_foreground('微信')
+            xlib = c.CDLL('libX11.so.6')
+            xlib.XKeysymToKeycode.argtypes = [c.c_void_p, c.c_ulong]; xlib.XKeysymToKeycode.restype = c.c_uint
+            control = xlib.XKeysymToKeycode(ins.display, 0xffe3); paste = xlib.XKeysymToKeycode(ins.display, ord('v'))
+            if not control or not paste: raise ValueError('media paste unavailable')
+            self.possibly_written = True
+            try:
+                ins.xtest.XTestFakeKeyEvent(ins.display, control, 1, 0)
+                ins.xtest.XTestFakeKeyEvent(ins.display, paste, 1, 0)
+                ins.xtest.XTestFakeKeyEvent(ins.display, paste, 0, 0)
+            finally:
+                ins.xtest.XTestFakeKeyEvent(ins.display, control, 0, 0); ins.xlib.XFlush(ins.display)
+        inline_checks = 0
         for _ in range(20):
             time.sleep(.1); ins.check(); self.verify_session()
             roots = [root for root in ins._visible_roots(layout['app']) if root not in before_roots]
-            if not roots: continue
+            if not roots:
+                # Linux WeChat 4.1 also pastes a picture as exactly one embedded
+                # object in the previously empty editor, without a dialog.
+                if media['type'] == 'audio/mpeg' or self.editor_text(layout['editor']) != '\ufffc':
+                    continue
+                self.owned_media['inline'] = {key: layout[key] for key in ('app', 'frame', 'header', 'editor', 'label')}
+                inline_checks += 1
+                if inline_checks < 2: continue
+                fresh = ins.locate(); self.verify_session(); ins.require_foreground('微信')
+                if any(fresh[key] != self.owned_media['inline'][key] for key in self.owned_media['inline']):
+                    return {'status': 'uncertain'}
+                if ins._visible_roots(fresh['app'], fresh['frame']) or not self.send_pane_clear(fresh) or self.editor_text(fresh['editor']) != '\ufffc':
+                    return {'status': 'uncertain'}
+                self.send_pressed = True
+                ins.press(fresh['send'])
+                for _ in range(20):
+                    time.sleep(.15); ins.check(); self.verify_session()
+                    after = ins.locate()
+                    if any(after[key] != self.owned_media['inline'][key] for key in self.owned_media['inline']) or ins._visible_roots(after['app'], after['frame']):
+                        return {'status': 'uncertain'}
+                    if not self.editor_text(after['editor']):
+                        self.send_confirmed = True
+                        return {'status': 'submitted'}
+                return {'status': 'uncertain'}
             if len(roots) != 1: raise ValueError('media preview unavailable')
             root = roots[0]
             self.owned_media['root'] = root
@@ -487,6 +524,19 @@ class ChatAdapter:
         def cleanup():
             nonlocal status
             self.verify_session()
+            inline = owned.get('inline')
+            if inline:
+                ins.require_foreground('微信'); layout = ins.locate()
+                if any(layout[key] != inline[key] for key in inline) or ins._visible_roots(layout['app'], layout['frame']): return
+                current = self.editor_text(layout['editor'])
+                if not current:
+                    status = 'not-needed'; return
+                if self.send_pressed or current != '\ufffc': return
+                ins.refresh(layout['header'])
+                if ins.string('get_name', layout['header']) != inline['label'] or self.editor_text(layout['editor']) != '\ufffc': return
+                self.verify_session(); self.write_text(layout['editor'], '')
+                if not self.editor_text(layout['editor']): status = 'cleared'
+                return
             roots = ins._visible_roots(owned['app'])
             root = owned.get('root')
             if root and root not in roots:
@@ -496,7 +546,7 @@ class ChatAdapter:
             ins.require_foreground(); self.verify_session()
             ins.press(owned['cancel'])
             if root not in ins._visible_roots(owned['app']): status = 'cleared'
-        ins._cleanup_budget(cleanup, seconds=2)
+        ins._cleanup_budget(cleanup, seconds=1.5)
         return status
 
     def cleanup_draft(self):
@@ -631,7 +681,10 @@ def main():
                         result.setdefault('diagnostic', {'phase': 'native-prepare',
                                                          'code': 'controls-unavailable'})
             except Exception:
+                diagnostic = result.get('diagnostic')
                 result = {'status': 'uncertain'} if adapter.possibly_written else {'available': False, 'error': 'unsupported'}
+                if diagnostic:
+                    result['diagnostic'] = diagnostic
                 if request.get('action') in ('send', 'send-guard', 'prepare-send'):
                     result['draftCleanup'] = 'blocked' if adapter.possibly_written else 'not-needed'
                     result['sendPressed'] = adapter.send_pressed
