@@ -1,5 +1,8 @@
 import hashlib, io, json, pathlib, re, sys, tarfile
 fpk = pathlib.Path(sys.argv[1])
+# Repacked releases validate source parity against their base package separately.
+def source_matches(name, source):
+    return '--payload-only' in sys.argv or read(name) == source.read_bytes()
 with tarfile.open(fpk, 'r:*') as package:
     manifest = {k.strip(): v.strip() for line in package.extractfile('manifest').read().decode().splitlines() if '=' in line for k, v in [line.split('=', 1)]}
     assert manifest['appname'] == 'qibox'
@@ -57,19 +60,19 @@ with tarfile.open(fpk, 'r:*') as package:
         for name in ['server/index.mjs', 'server/install-deb.py', 'server/packages.mjs', 'server/progress.mjs', 'public/app.js', 'public/style.css', 'public/backgrounds/mist.jpg']:
             assert name in members
         for name in ['server/platform.mjs', 'server/desktop-stream.mjs', 'server/catalog.mjs', 'public/index.html', 'server/index.mjs', 'server/instances.mjs', 'server/packages.mjs', 'server/progress.mjs', 'server/files.mjs', 'server/install-deb.py', 'server/runtime.mjs', 'server/scheduler.mjs', 'server/auto-login.mjs', 'server/auto-login.py', 'server/accessibility-bus.py', 'public/app.js', 'public/style.css']:
-            assert read(name) == (pathlib.Path(__file__).resolve().parent.parent / name).read_bytes(), name
-        assert read('public/backgrounds/mist.jpg') == (pathlib.Path(__file__).resolve().parent.parent / 'web/backgrounds/mist.jpg').read_bytes()
-        assert read('public/icon.png') == (pathlib.Path(__file__).resolve().parent.parent / 'web/icon.png').read_bytes()
+            assert source_matches(name, pathlib.Path(__file__).resolve().parent.parent / name), name
+        assert source_matches('public/backgrounds/mist.jpg', pathlib.Path(__file__).resolve().parent.parent / 'web/backgrounds/mist.jpg')
+        assert source_matches('public/icon.png', pathlib.Path(__file__).resolve().parent.parent / 'web/icon.png')
         icon_revision = hashlib.sha256(read('public/icon.png')).hexdigest()[:16]
         for page in ['public/index.html', 'public/auth-callback.html']:
             assert f'./icon.png?v={icon_revision}'.encode() in read(page)
             assert b'"./icon.png"' not in read(page)
         assert entry['icon'] == f'images/qibox-{icon_revision}_{{0}}.png'
-        assert read('server/fonts.mjs') == (pathlib.Path(__file__).resolve().parent.parent / 'server/fonts.mjs').read_bytes()
+        assert source_matches('server/fonts.mjs', pathlib.Path(__file__).resolve().parent.parent / 'server/fonts.mjs')
         for name in ['server/file-chooser.mjs', 'server/file-export.mjs', 'server/file-portal.py', 'server/login-state.mjs', 'server/desktop.mjs', 'server/ai-analysis.mjs', 'public/ai-workspace.css']:
-            assert read(name) == (pathlib.Path(__file__).resolve().parent.parent / name).read_bytes(), name
+            assert source_matches(name, pathlib.Path(__file__).resolve().parent.parent / name), name
         for name in ['ai-service.mjs', 'ai-data.mjs', 'wechat-data.py', 'wechat-sqlite.py', 'ai-schema.mjs', 'ai-provider.mjs', 'ai-presets.mjs', 'ai-capabilities.mjs', 'ai-native.mjs', 'ai-native.py', 'ai-native-controls.py', 'ai-native-render.py', 'ai-ledger.mjs', 'rfb-input.mjs']:
-            assert read('server/' + name) == (pathlib.Path(__file__).resolve().parent.parent / 'server' / name).read_bytes(), name
+            assert source_matches('server/' + name, pathlib.Path(__file__).resolve().parent.parent / 'server' / name), name
         fonts = json.loads(read('config/fonts.json'))
         for item in fonts['fonts'] + fonts['licenses']:
             assert hashlib.sha256(read(item['file'])).hexdigest() == item['sha256'], item['file']

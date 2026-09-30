@@ -2,6 +2,21 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { activateWechatWindow, wechatWindowVisible, restoreWechatWindow, DesktopWindowState } from '../server/desktop.mjs';
 import { Runtime } from '../server/runtime.mjs';
+test('Qt utility window sharing NORMAL and main PID does not block reconnection', async () => {
+  let active = '222'; const activated = [];
+  const options = { root: '/runtime', env: {}, pid: 100, command: async (bin, args) => {
+    if (bin.endsWith('xdotool')) {
+      if (args[0] === 'getactivewindow') return active;
+      activated.push(args); active = String(Number(args[2])); return '';
+    }
+    if (args[0] === '--root') return '_NET_CLIENT_LIST(WINDOW) = 0x123, 222\n';
+    return `WM_CLASS(STRING) = "wechat", "wechat"\nWM_STATE(WM_STATE) = 1, 0\n_NET_WM_WINDOW_TYPE(ATOM) = ${args[1] === '222' ? '_NET_WM_WINDOW_TYPE_UTILITY, ' : ''}_KDE_NET_WM_WINDOW_TYPE_OVERRIDE, _NET_WM_WINDOW_TYPE_NORMAL\n_NET_WM_PID(CARDINAL) = 100\n`;
+  } };
+  assert.equal(await wechatWindowVisible(options), true);
+  assert.equal(await activateWechatWindow(options), true);
+  assert.deepEqual(activated, [['windowactivate', '--sync', '0x123']]);
+  assert.equal(await activateWechatWindow(options), false);
+});
 test('only the requested WeChat main window determines visibility and restoration', async () => {
   let state = 1; const mapped = [];
   const options = { root: '/runtime', env: {}, pid: 100, command: async (bin, args) => {

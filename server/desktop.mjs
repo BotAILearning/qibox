@@ -10,7 +10,9 @@ async function wechatWindows({ root, env, command, pid }) {
   for (const id of ids) {
     const info = await properties('--id', id, 'WM_CLASS', 'WM_STATE', '_NET_WM_WINDOW_TYPE', '_NET_WM_PID');
     if (!/^WM_CLASS\(STRING\) = "wechat", "wechat"$/m.test(info)) continue;
-    if (info.includes('_NET_WM_WINDOW_TYPE_DIALOG')) continue;
+    // Qt utility windows can also advertise NORMAL and share the main PID.
+    // They are not the main window and must not make activation ambiguous.
+    if (/_NET_WM_WINDOW_TYPE_(?:DIALOG|UTILITY|MENU|DROPDOWN_MENU|POPUP_MENU|TOOLTIP|NOTIFICATION)\b/.test(info)) continue;
     if (pid && Number(info.match(/^_NET_WM_PID\(CARDINAL\) = (\d+)$/m)?.[1]) !== pid) continue;
     const state = Number(info.match(/^WM_STATE\(WM_STATE\) = (\d+),/m)?.[1]);
     if ([1, 3].includes(state)) windows.push({ id, visible: state === 1 });
