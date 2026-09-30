@@ -72,13 +72,14 @@ function privateSessionHint(value, pid) {
 // Contacts/history use the private data API exclusively. Native desktop access
 // is retained only for the existing text-send/owned-draft delivery safeguards.
 export class DataChatBridge extends NativeChatBridge {
-  constructor(runtime, { invokeData, invokePrepared, openMemory = open, resolveAccountRoot, ...options } = {}) {
+  constructor(runtime, { invokeData, invokePrepared, openMemory = open, resolveAccountRoot, receiptDelay = delay, ...options } = {}) {
     super(runtime, options);
     this.stableMessageIds = true;
     this.dataTail = Promise.resolve(); this.dataQueue = []; this.dataBusy = false;
     this.voiceTexts = new Map();
     this.openMemory = openMemory;
     this.resolveAccountRoot = resolveAccountRoot;
+    this.receiptDelay = receiptDelay;
     this.invokeData = invokeData || ((action, args, context) => this.invokeDataProcess(action, args, context));
     this.supportsMediaOutput = !options.invoke || !!invokePrepared;
     this.invokePrepared = invokePrepared || (options.invoke ? null : ((route, text, context, verify) => preparedSend(this, route, text, context, verify)));
@@ -445,8 +446,11 @@ export class DataChatBridge extends NativeChatBridge {
     // dispatch. Receipt reads have a cancellation deadline; an earlier queued
     // data operation may still need to finish its cleanup before this returns.
     const receiptContext = { ...context, signal: AbortSignal.any([
-      ...(context.signal ? [context.signal] : []), AbortSignal.timeout(6000)]) };
-    for (let attempt = 0; attempt < 5; attempt++) {
+      ...(context.signal ? [context.signal] : []), AbortSignal.timeout(8000)]) };
+    // WeChat can clear its editor before publishing the outgoing DB row. Five
+    // warm reads used to exhaust the loop in about one second and report a
+    // successful Send as unknown. Poll within the bounded read-only deadline.
+    for (let attempt = 0; attempt < 32; attempt++) {
       try {
         this.check(receiptContext);
         if (this.bindings.get(binding.id) !== binding) return { status: 'uncertain' };
@@ -473,8 +477,8 @@ export class DataChatBridge extends NativeChatBridge {
         try { this.check(receiptContext); } catch { return { status: 'uncertain' }; }
         if (this.bindings.get(binding.id) !== binding) return { status: 'uncertain' };
       }
-      if (attempt < 4) {
-        try { await delay(250, undefined, { signal: receiptContext.signal }); }
+      if (attempt < 31) {
+        try { await this.receiptDelay(250, undefined, { signal: receiptContext.signal }); }
         catch { return { status: 'uncertain' }; }
       }
     }

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { AIAssistant } from '../server/ai-service.mjs';
-import { activityEntries, activityRows } from '../web/ai-activity-view.mjs';
+import { activityEntries, activityRows, recentErrorsBox } from '../web/ai-activity-view.mjs';
 import { objectPage } from '../web/ai-object-view.mjs';
 import { styleChoice } from '../web/ai-style-view.mjs';
 import { migrateLearnedStyle } from '../server/ai-style.mjs';
@@ -18,6 +18,85 @@ async function fixture(t) {
   t.after(async () => { await a.close(); await cleanup(root); });
   return { a, bridge, provider, options, advance: ms => now += ms };
 }
+test('a delayed authenticated receipt repairs status and exception display exactly once', async t => {
+  const { a, bridge, advance } = await fixture(t);
+  await a.saveReplyProfile({ contact: bridge.contacts[0].id, style: defaultStyle, strategy: {}, replyEnabled: true });
+  const p=a.profiles()[0], operationId='receipt-operation', at=a.now(), baseline=key('receipt-baseline'), receipt=key('late-receipt');
+  p.rounds=7;p.generatedIds=[];
+  p.delivery={operationId,baseline,status:'unknown',at,body:a.vault.seal({text:'已发送'}),segmentsSent:0,segmentsTotal:1};
+  p.replyFlow={phase:'failed',startedAt:at};
+  p.sentMessages=[{id:operationId,source:'reply',at,baseline,body:a.vault.seal({text:'已发送'}),confirmed:false,deliveryConfidence:'unknown'}];
+  a.event('error',p.id,'reply','发送结果无法确认',{operationId});advance(1000);
+  const snapshot={messages:[{id:baseline,direction:'other',text:'问题'},{id:receipt,direction:'self',text:'已发送'}]};
+  a.reconcileUnknownReplies(p,snapshot);a.reconcileUnknownReplies(p,snapshot);
+  assert.equal(p.rounds,8);assert.equal(p.delivery.status,'sent');assert.equal(p.delivery.segmentsSent,1);
+  assert.equal(p.replyFlow.phase,'sent');assert.equal(p.sentMessages[0].operationId,operationId);
+  const errors=a.errorRecords();assert.equal(errors.page.total,1);assert.equal(errors.records[0].resolution,'sent');
+  const html=recentErrorsBox({recentErrors:errors.records,errorsPage:errors.page});
+  assert.match(html,/已确认送达/);assert.match(html,/发送结果无法确认/);
+});
+
+test('restart merges a duplicate legacy intent only with one already verified receipt and preserves its counter', async t => {
+  const { a, bridge, options, advance } = await fixture(t);
+  await a.saveReplyProfile({ contact: bridge.contacts[0].id, style: defaultStyle, strategy: {}, replyEnabled: true });
+  const p=a.profiles()[0], operationId='restart-operation', at=a.now(), baseline=key('restart-baseline'), id=key('verified-receipt');
+  p.rounds=9;p.generatedIds=[id];
+  p.delivery={operationId,baseline,status:'unknown',at,body:a.vault.seal({text:'已发送'}),segmentsSent:0,segmentsTotal:1};
+  p.replyFlow={phase:'failed',startedAt:at};advance(20000);
+  p.sentMessages=[{id,source:'reply',at:a.now(),baseline,body:a.vault.seal({text:'已发送'}),confirmed:true,deliveryConfidence:'confirmed'},
+   {id:operationId,source:'reply',at,baseline,body:a.vault.seal({text:'已发送'}),confirmed:false,deliveryConfidence:'unknown'}];
+  a.event('error',p.id,'reply','发送结果无法确认');await a.save();
+  const b=new AIAssistant(options);await b.init();
+  try{const restored=b.profiles()[0];assert.equal(restored.rounds,9);assert.equal(restored.delivery.status,'sent');
+   assert.equal(restored.sentMessages.length,1);assert.equal(restored.sentMessages[0].operationId,operationId);
+   assert.equal(b.errorRecords().records[0].resolution,'sent');}
+  finally{await b.close();}
+});
+
+test('restart does not resolve ambiguous identical receipts or a different body', async t => {
+  const { a, bridge, options } = await fixture(t);
+  await a.saveReplyProfile({ contact: bridge.contacts[0].id, style: defaultStyle, strategy: {}, replyEnabled: true });
+  const p=a.profiles()[0], at=a.now(), baseline=key('ambiguous-baseline');p.rounds=4;
+  p.delivery={operationId:'unresolved-operation',baseline,status:'unknown',at,body:a.vault.seal({text:'相同文字'})};
+  p.sentMessages=[1,2].map(i=>({id:key('ambiguous-'+i),source:'reply',at,baseline,body:a.vault.seal({text:'相同文字'}),confirmed:true}));
+  p.generatedIds=p.sentMessages.map(row=>row.id);a.restoreDeliveryReceipts(p);
+  assert.equal(p.delivery.status,'unknown');assert.equal(p.rounds,4);assert.equal(p.sentMessages.length,2);
+  a.event('error', p.id, 'reply', '发送结果无法确认'); await a.save();
+  const b = new AIAssistant(options); await b.init();
+  try { assert.equal(b.profiles()[0].delivery.status, 'unknown'); assert.ok(b.errorRecords().records.every(error => !error.resolution)); }
+  finally { await b.close(); }
+  p.sentMessages=p.sentMessages.slice(0,1);p.sentMessages[0].body=a.vault.seal({text:'别的文字'});a.restoreDeliveryReceipts(p);
+  assert.equal(p.delivery.status,'unknown');assert.equal(p.rounds,4);
+});
+
+test('restart repairs an older verified alias after a newer delivery succeeded without changing counters', async t => {
+  const { a, bridge, options } = await fixture(t);
+  await a.saveReplyProfile({ contact: bridge.contacts[0].id, style: defaultStyle, strategy: {}, replyEnabled: true });
+  const p = a.profiles()[0], at = a.now(), baseline = key('older-baseline'), id = key('older-receipt');
+  p.rounds = 12; p.generatedIds = [id]; p.delivery = { operationId: 'newer-operation', status: 'sent', segmentsSent: 1 };
+  p.sentMessages = [{ id: 'older-operation', source: 'reply', at, baseline, body: a.vault.seal({ text: '先前回复' }), confirmed: false, deliveryConfidence: 'unknown' },
+    { id, source: 'reply', at: at + 200, baseline, body: a.vault.seal({ text: '先前回复' }), confirmed: true, deliveryConfidence: 'confirmed' }];
+  a.event('error', p.id, 'reply', '发送结果无法确认'); await a.save();
+  const b = new AIAssistant(options); await b.init();
+  try {
+    const restored = b.profiles()[0]; assert.equal(restored.rounds, 12); assert.equal(restored.delivery.operationId, 'newer-operation');
+    assert.equal(restored.delivery.segmentsSent, 1); assert.equal(restored.sentMessages.length, 1);
+    assert.equal(restored.sentMessages[0].operationId, 'older-operation');
+  } finally { await b.close(); }
+});
+
+test('a verified partial prefix cannot claim unsent segments or resolve unrelated historical exceptions', async t => {
+  const { a, bridge, advance } = await fixture(t);
+  await a.saveReplyProfile({ contact: bridge.contacts[0].id, style: defaultStyle, strategy: {}, replyEnabled: true });
+  const p=a.profiles()[0], at=a.now(), operationId='partial-operation';
+  p.delivery={operationId,status:'unknown',segmentsSent:0,segmentsTotal:3};p.replyFlow={phase:'failed'};
+  a.event('error',p.id,'reply','发送结果无法确认',{operationId:'different-operation'});
+  advance(5000);a.event('error',p.id,'reply','发送结果无法确认');
+  a.confirmDeliveryReceipt(p,{id:key('verified-prefix'),operationId,at});
+  assert.equal(p.delivery.segmentsSent,1);assert.equal(p.replyFlow.phase,'partial');
+  assert.equal(p.delivery.interrupted,true);assert.ok(a.errorRecords().records.every(e=>!e.resolution));
+});
+
 test('AI-01 default profile retains custom style after memory/reply-goal saves and reload', async t => {
   const { a, bridge, options, provider } = await fixture(t);
   await a.settings({ enabled: true });

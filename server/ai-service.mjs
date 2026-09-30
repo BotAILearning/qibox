@@ -205,9 +205,13 @@ export class AIAssistant {
         profile[key].status = 'unknown';
         if (key === 'delivery' && profile.kind === 'group' && profile.groupInbox && profile.delivery.replyTo?.length) settleGroupBatch(this.vault, profile, { ids: profile.delivery.replyTo });
       }
-      if (profile.delivery?.status === 'unknown' && profile.delivery.body && profile.delivery.operationId) {
-        const attempt = profile.delivery; profile.sentMessages ||= [];
-        if (!profile.sentMessages.some(row => row.id === attempt.operationId)) profile.sentMessages.push({ id: attempt.operationId, at: attempt.at, source: 'reply', body: attempt.body, baseline: attempt.baseline, confirmed: false, deliveryConfidence: 'unknown' });
+      const interruptedAttempt = profile.delivery?.status === 'unknown' ? profile.delivery : null;
+      this.restoreDeliveryReceipts(profile);
+      if (interruptedAttempt?.body && interruptedAttempt.operationId) {
+        const attempt = interruptedAttempt; profile.sentMessages ||= [];
+        const receipt = profile.sentMessages.find(row => row.operationId === attempt.operationId && row.confirmed !== false && row.deliveryConfidence !== 'unknown' && validKey(row.id));
+        if (receipt) this.confirmDeliveryReceipt(profile, receipt);
+        else if (!profile.sentMessages.some(row => row.id === attempt.operationId || row.operationId === attempt.operationId)) profile.sentMessages.push({ id: attempt.operationId, operationId: attempt.operationId, at: attempt.at, source: 'reply', body: attempt.body, baseline: attempt.baseline, confirmed: false, deliveryConfidence: 'unknown' });
         if (profile.kind !== 'group') { profile.handledIncomingId = attempt.baseline || profile.handledIncomingId; if (profile.replyCursor) profile.replyCursor.pending = false; }
       }
       if (profile.pauseReason === 'uncertain') {
@@ -219,6 +223,9 @@ export class AIAssistant {
         if (message.deliveryConfidence === 'unknown' || message.source === 'proactive' && message.assumedPresent === true) return [{ ...message, confirmed: false, deliveryConfidence: 'unknown' }];
         return [];
       });
+      if (this.data.errorLog.some(error => error.target === profile.id && !error.resolution && String(error.message).includes('发送结果无法确认'))) {
+        for (const row of profile.sentMessages || []) if (row.operationId && row.confirmed === true && row.deliveryConfidence === 'confirmed') this.confirmDeliveryReceipt(profile, row);
+      }
     }
     if (this.data.learnedDefaultStyle) {
       try { this.data.learnedDefaultStyle.style = styleValue(this.data.learnedDefaultStyle.style); }
@@ -454,7 +461,7 @@ export class AIAssistant {
     // 异常同时进一份独立台账，不受 2000 条事件上限挤压，只有手动清空才移除；
     // 台账本身有 10000 条硬上限，超出丢最早一条（异常风暴时保护数据文件）。
     if (code === 'error' || code === 'truncated') {
-      this.data.errorLog.unshift({ id: entry.id, at: entry.at, account: entry.account, target: entry.target || null, code, message: errorMessage(detail) });
+      this.data.errorLog.unshift({ id: entry.id, at: entry.at, account: entry.account, target: entry.target || null, code, message: errorMessage(detail), ...(typeof metadata?.operationId === 'string' ? { operationId: metadata.operationId } : {}) });
       if (this.data.errorLog.length > errorLogLimit) this.data.errorLog.length = errorLogLimit;
     }
   }
@@ -813,7 +820,7 @@ export class AIAssistant {
     const offset = before ? rows.findIndex(e => e.id === before) + 1 : 0;
     if (before && !offset) throw new AppError('异常分页游标已失效，请刷新');
     const selected = rows.slice(offset, offset + limit), hasMore = offset + selected.length < rows.length;
-    return { records: selected.map(e => ({ id: e.id, at: e.at, message: e.message || errorFallbackMessage })), page: { limit, hasMore, nextBefore: hasMore ? selected.at(-1).id : null, total: rows.length } };
+    return { records: selected.map(e => ({ id: e.id, at: e.at, message: e.message || errorFallbackMessage, ...(e.resolution === 'sent' && Number.isFinite(e.resolvedAt) ? { resolution: 'sent', resolvedAt: e.resolvedAt } : {}) })), page: { limit, hasMore, nextBefore: hasMore ? selected.at(-1).id : null, total: rows.length } };
   }
   analysisHistory() {
     if (!this.data.account || !Array.isArray(this.data.analysisReports)) return [];
@@ -2362,6 +2369,54 @@ export class AIAssistant {
       return this.publicState();
     });
   }
+  restoreDeliveryReceipts(profile) {
+    const attempts = new Map((profile.sentMessages || []).filter(row => row.deliveryConfidence === 'unknown' && row.body).map(row => [row.operationId || row.id, row]));
+    if (profile.delivery?.status === 'unknown') attempts.set(profile.delivery.operationId, profile.delivery);
+    if (!attempts.size) return;
+    const generatedIds = new Set(profile.generatedIds || []), byOperation = new Map(), byBaseline = new Map(), bodies = new Map(), aliases = new Map();
+    for (const row of profile.sentMessages || []) {
+      if (row.source !== 'reply' || row.confirmed === false || row.deliveryConfidence === 'unknown' || !validKey(row.id) || !generatedIds.has(row.id)) continue;
+      const index = row.operationId ? byOperation : byBaseline, key = row.operationId || row.baseline;
+      if (!index.has(key)) index.set(key, []);
+      index.get(key).push(row);
+    }
+    const bodyText = row => {
+      if (!bodies.has(row)) { try { bodies.set(row, this.vault.open(row.body).text); } catch { bodies.set(row, null); } }
+      return bodies.get(row);
+    };
+    for (const [operationId, attempt] of attempts) {
+      if (!operationId || !attempt.body || !validKey(attempt.baseline)) continue;
+      const receipts = byOperation.get(operationId) || (byBaseline.get(attempt.baseline) || []).filter(row =>
+        !row.operationId && row.at >= attempt.at && row.at <= attempt.at + 180000 && bodyText(attempt) !== null && bodyText(row) === bodyText(attempt));
+      if (receipts.length !== 1) continue;
+      const receipt = receipts[0]; receipt.operationId ||= operationId;
+      aliases.set(operationId, receipt.id);
+      this.confirmDeliveryReceipt(profile, receipt);
+    }
+    if (aliases.size) {
+      profile.sentMessages = profile.sentMessages.filter(row => !aliases.has(row.id) || aliases.get(row.id) === row.id);
+      this.data.deletedActivityRecords = (this.data.deletedActivityRecords || []).map(record => record.account === profile.account && record.source === 'reply' && aliases.has(record.id) ? { ...record, id: aliases.get(record.id) } : record);
+    }
+  }
+  confirmDeliveryReceipt(profile, row) {
+    const operationId = row.operationId;
+    if (operationId && profile.delivery?.operationId === operationId && profile.delivery.status !== 'sent') {
+      profile.delivery.status = 'sent';
+      profile.delivery.segmentsSent = Math.min(profile.delivery.segmentsTotal || 1, (profile.delivery.segmentsSent || 0) + 1);
+      const partial = profile.delivery.segmentsSent < (profile.delivery.segmentsTotal || 1);
+      profile.delivery.interrupted = partial;
+      if (profile.replyFlow) profile.replyFlow = { ...profile.replyFlow, phase: partial ? 'partial' : 'sent', updatedAt: this.now(), detail: partial ? '已核实部分送达，剩余未发送' : '已核实送达' };
+    }
+    // Preserve exception history, but distinguish an authenticated late receipt
+    // from a still unresolved attempt. Old records have no operation ID.
+    if (!operationId) return;
+    for (const error of this.data.errorLog || []) {
+      if (error.resolution || error.target !== profile.id || error.code !== 'error' || !String(error.message).includes('发送结果无法确认')) continue;
+      const sameOperation = !!operationId && error.operationId === operationId;
+      if (!sameOperation && (error.operationId || error.at < row.at || error.at > row.at + 2000)) continue;
+      error.resolution = 'sent'; error.resolvedAt ||= this.now();
+    }
+  }
   reconcileUnknownReplies(profile, snapshot) {
     for (const row of profile.sentMessages || []) {
       if (row.source !== 'reply' || row.deliveryConfidence !== 'unknown' || row.media) continue;
@@ -2370,8 +2425,9 @@ export class AIAssistant {
       const text = this.vault.open(row.body).text;
       const candidates = snapshot.messages.slice(boundary + 1).filter(message => message.direction === 'self' && message.text === text && !(profile.generatedIds || []).includes(message.id));
       if (candidates.length !== 1) continue;
-      const oldId = row.id; row.id = candidates[0].id; row.confirmed = true; row.deliveryConfidence = 'confirmed';
+      const oldId = row.id; row.operationId ||= oldId; row.id = candidates[0].id; row.confirmed = true; row.deliveryConfidence = 'confirmed';
       profile.generatedIds = [...new Set([...(profile.generatedIds || []), row.id])]; profile.rounds = (profile.rounds || 0) + 1;
+      this.confirmDeliveryReceipt(profile, row);
       this.data.deletedActivityRecords = (this.data.deletedActivityRecords || []).map(record => record.account === profile.account && record.source === 'reply' && record.id === oldId ? { ...record, id: row.id } : record);
     }
   }
@@ -3024,7 +3080,7 @@ export class AIAssistant {
         if (mode === 'reply') this.replyStage(profile, delivery.status === 'stale' ? 'cancelled' : 'failed', delivery.status === 'stale' ? '聊天有新消息，重新判断' : '发送结果未确认，不会自动重发');
         if (item) item.status = delivery.status === 'stale' ? sent ? 'done' : 'pending' : 'skipped';
         if (delivery.status !== 'stale') {
-          profile.sentMessages = [...(profile.sentMessages || []), { id: operationId, at: this.now(), body: this.vault.seal({ text }), source: mode === 'reply' ? 'reply' : 'proactive', confirmed: false, deliveryConfidence: 'unknown', baseline: fresh.messages.at(-1)?.id, ...(mediaFile ? { media: { type: mediaFile.mediaType, name: mediaFile.name } } : {}) }];
+          profile.sentMessages = [...(profile.sentMessages || []), { id: operationId, operationId, at: this.now(), body: this.vault.seal({ text }), source: mode === 'reply' ? 'reply' : 'proactive', confirmed: false, deliveryConfidence: 'unknown', baseline: fresh.messages.at(-1)?.id, ...(mediaFile ? { media: { type: mediaFile.mediaType, name: mediaFile.name } } : {}) }];
           // Unknown receipts remain audit-only; do not create pending chat rows
           // or a manual recovery gate.
         if (mode === 'reply') {
@@ -3035,7 +3091,7 @@ export class AIAssistant {
         this.settleQueue();
           this.notice = `${this.nameFields(profile).label}：发送结果无法确认；为避免重复发送，本条不会自动重发`;
           this.event('uncertain', profile.id, source, this.notice);
-          this.event('error', profile.id, mode, this.notice);
+          this.event('error', profile.id, mode, this.notice, { operationId });
         }
         await this.save(); return delivery.status === 'stale' && sent ? 'partial' : 'pending';
       }
@@ -3044,7 +3100,7 @@ export class AIAssistant {
       if (groupReply && (source === 'atMe' || source === 'atAll')) profile.mentionRounds = (profile.mentionRounds || 0) + 1;
       if (mode === 'reply' && sent === 1) delete profile.manualWait;
       profile.generatedIds = [...(profile.generatedIds || []), delivery.messageId];
-      profile.sentMessages = [...(profile.sentMessages || []), { id: delivery.messageId, at: this.now(), body: this.vault.seal({ text }), source: mode === 'reply' ? 'reply' : 'proactive', ...(mediaFile ? { media: { type: mediaFile.mediaType, name: mediaFile.name } } : {}), ...(source !== mode ? { trigger: source } : {}), ...(item?.taskId ? { taskId: item.taskId } : {}), ...(groupBatch ? { replyTo: groupBatch.ids, recipient: groupBatch.sender } : {}) }];
+      profile.sentMessages = [...(profile.sentMessages || []), { id: delivery.messageId, operationId, at: this.now(), body: this.vault.seal({ text }), source: mode === 'reply' ? 'reply' : 'proactive', ...(mediaFile ? { media: { type: mediaFile.mediaType, name: mediaFile.name } } : {}), ...(source !== mode ? { trigger: source } : {}), ...(item?.taskId ? { taskId: item.taskId } : {}), ...(groupBatch ? { replyTo: groupBatch.ids, recipient: groupBatch.sender } : {}) }];
       profile.delivery.status = 'sent'; profile.delivery.segmentsSent = sent;
       // A confirmed prefix must never become a pending whole opening again.
       if (item) { item.status = 'done'; item.segmentsSent = sent; }

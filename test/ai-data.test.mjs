@@ -38,6 +38,7 @@ function fixture(handler) {
 
 async function receiptFixture({ status = 'uncertain', response, unsafe = false, throws = false, committed = true } = {}) {
   const { bridge, runtime } = fixture();
+  bridge.receiptDelay = async () => {};
   const text = '已发送的测试内容。', outgoing = { id: key('receipt'), direction: 'self', text, timestamp: 102 };
   const counters = { dispatches: 0, reads: 0 }; let dispatched = false;
   const read = bridge.invokeData;
@@ -405,6 +406,13 @@ test('transient receipt read failures retry only reads and can confirm the commi
   assert.deepEqual(counters, { dispatches: 1, reads: 3 });
 });
 
+test('a delayed WeChat database receipt beyond five warm reads is confirmed without redispatch', async () => {
+  const { bridge, counters, text, outgoing } = await receiptFixture({ response: ({ attempt, outgoing }) => attempt <= 8
+    ? dataSnapshot : { ...dataSnapshot, revision: key('receipt-db'), messages: [...snapshot.messages, outgoing] } });
+  assert.equal((await bridge.send({ account, contact, revision, text })).messageId, outgoing.id);
+  assert.deepEqual(counters, { dispatches: 1, reads: 9 });
+});
+
 test('uncommitted uncertainty does not search for or claim an unrelated receipt', async () => {
   const { bridge, counters, text } = await receiptFixture({ committed: false });
   assert.deepEqual(await bridge.send({ account, contact, revision, text }), { status: 'uncertain' });
@@ -422,7 +430,7 @@ test('old IDs, missing history anchors, wrong bodies and multiple matching new s
     const { bridge, counters, text } = await receiptFixture({ response: value =>
       ({ ...dataSnapshot, revision: key('changed-' + kind), messages: messages(value) }) });
     assert.deepEqual(await bridge.send({ account, contact, revision, text }), { status: 'uncertain' });
-    assert.equal(counters.dispatches, 1); assert.ok(counters.reads <= 5);
+    assert.equal(counters.dispatches, 1); assert.ok(counters.reads <= 32);
   }
 });
 
@@ -447,7 +455,7 @@ test('foreign contacts/accounts, process changes and cancellation cannot supply 
 test('exhausted transient receipt reads never redispatch and preserve unsafe draft blocking', async () => {
   const failed = await receiptFixture({ response: () => ({ error: 'data-unavailable' }) });
   assert.equal((await failed.bridge.send({ account, contact, revision, text: failed.text })).status, 'uncertain');
-  assert.deepEqual(failed.counters, { dispatches: 1, reads: 5 });
+  assert.deepEqual(failed.counters, { dispatches: 1, reads: 32 });
   const confirmed = await receiptFixture({ unsafe: true });
   assert.equal((await confirmed.bridge.send({ account, contact, revision, text: confirmed.text })).status, 'sent');
   assert.equal(confirmed.bridge.manualInputBlocked, true);
