@@ -961,11 +961,14 @@ export class AIAssistant {
     const waiting = this.liveStates().find(row => row.id === id && row.phase === 'waiting' &&
       ['手动回复后的接续等待', '群聊合并等待', '等待合并回复'].includes(row.reason));
     if (!waiting || !cursor?.pending || profile.paused || !this.data.settings.enabled || !this.data.settings.reply || !this.replySelected(profile) || !this.modelReady() || !this.ready() || !this.available) throw new AppError('当前没有可跳过的自动回复等待，请刷新状态', 409);
+    const previousManualWait = profile.manualWait;
+    const currentTick = this.ticking ? this.tickFinished?.promise : null;
     delete profile.manualWait;
     this.skipReplyWaits.add(id);
-    await this.save();
-    void this.tick({ background: true });
-    return this.publicState();
+    try { await this.save(); }
+    catch (error) { if (previousManualWait) profile.manualWait = previousManualWait; this.skipReplyWaits.delete(id); throw error; }
+    void Promise.resolve(currentTick).then(() => this.tick({ background: true, urgentReplyId: id }));
+    return { accepted: true, id };
   }
   proactiveTaskAction(value) { return this.proactiveV2.action(value); }
   proactiveRecords(value) { return this.proactiveV2.records(value); }
@@ -2354,7 +2357,7 @@ export class AIAssistant {
     });
     this.activeRuns.set(id, task); task.catch(() => {}); return task;
   }
-  async tick({ background = false } = {}) {
+  async tick({ background = false, urgentReplyId = null } = {}) {
     if (this.ticking || this.closed || !this.data.settings.enabled || this.operation || this.scanOperation || this.now() < (this.retryAt || 0)) return;
     if (this.sendBlockedUntil && this.now() >= this.sendBlockedUntil) this.sendBlockedUntil = 0;
     if (this.manualHolds.size || this.now() < (this.userBusyUntil || 0)) return;
@@ -2362,20 +2365,20 @@ export class AIAssistant {
     this.ticking = true; this.tickFinished = Promise.withResolvers(); const revision = this.revision, signal = this.controller.signal;
     try {
       const rescan = this.now() >= (this.scanRetryAt || 0) && (!this.available || this.bridge.stableMessageIds && this.data.settings.replyScope === 'all' && this.now() - (this.lastScanAt || 0) >= 15 * 60000);
-      if (rescan && !this.activeRuns.size) { await this.scan(); return; }
+      if (!urgentReplyId && rescan && !this.activeRuns.size) { await this.scan(); return; }
       if (!this.available) return;
       if (!this.modelReady()) { this.notice = '请先配置模型'; return; }
       this.ensureDefaultProfiles();
-      if (this.data.proactiveVersion === 2) await this.proactiveV2.tick({ background });
-      await this.scheduledTick(revision);
-      if (background) {
+      if (!urgentReplyId && this.data.proactiveVersion === 2) await this.proactiveV2.tick({ background });
+      if (!urgentReplyId) await this.scheduledTick(revision);
+      if (!urgentReplyId && background) {
         const q = this.data.queue, item = q.items.find(item => item.status === 'pending');
         if (!this.proactiveTask && item && q.status === 'running' && this.data.settings.proactive && this.now() >= q.nextAt) {
           const task = this.startRun(item.id, () => this.proactiveTick(revision, signal), revision);
           if (task) { this.proactiveTask = task; task.finally(() => { if (this.proactiveTask === task) this.proactiveTask = null; }).catch(() => {}); }
         }
-      } else await this.proactiveTick(revision, signal);
-      const watched = await this.watchBatch(signal);
+      } else if (!urgentReplyId) await this.proactiveTick(revision, signal);
+      const watched = urgentReplyId ? [urgentReplyId] : await this.watchBatch(signal);
       const pending = [];
       for (const id of watched) {
         if (revision !== this.revision) return;
@@ -2391,7 +2394,7 @@ export class AIAssistant {
         try {
           snapshot = await this.read(profile, signal);
           delete profile.readError; delete profile.readRetryAt;
-          this.markSessionSeen(id);
+          if (!urgentReplyId) this.markSessionSeen(id);
         } catch (error) {
           if (signal.aborted || revision !== this.revision || error.code === 'ai_account_changed') throw error;
           profile.readError = error instanceof AppError ? error.message : '聊天读取失败，请稍后重试';
@@ -2402,6 +2405,7 @@ export class AIAssistant {
         if (revision !== this.revision) return;
         const cursor = await this.observe(profile, snapshot);
         if (revision !== this.revision) return;
+        if (!cursor.pending) this.skipReplyWaits.delete(id);
         if (!(this.data.settings.reply && this.replySelected(profile)) && !this.continuing(profile)) continue;
         const groupOptions = profile.kind === 'group' ? profile.groupOptions || groupDefaults() : null;
         const mentionLimit = groupOptions ? this.strategy(profile, 'reply').maxRounds : null;

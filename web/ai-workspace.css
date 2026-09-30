@@ -977,6 +977,7 @@
 #ai-panel .ai-reply-flow li.done span{border-color:#cae9db;background:#effaf4;color:#26764d}
 #ai-panel .ai-reply-flow li.current span{border-color:#bfc6ff;background:#eef0ff;color:#4555c5;font-weight:700}
 #ai-panel .ai-reply-flow-detail{display:flex;align-items:center;flex-wrap:wrap;gap:6px 12px;font-size:12px;color:#687186}
+#ai-panel .ai-skip-wait-hint{color:#687186;font-size:11px}
 #ai-panel .ai-reply-countdown{font-variant-numeric:tabular-nums;color:#9b5d18;font-weight:700}
 #ai-panel .ai-reply-flow-result.failed,#ai-panel .ai-reply-flow-result.partial{color:#b34242}
 #ai-panel .ai-reply-flow-result.skipped,#ai-panel .ai-reply-flow-result.cancelled{color:#8a633a}

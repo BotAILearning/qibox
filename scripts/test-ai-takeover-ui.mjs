@@ -59,8 +59,20 @@ try {
   assert.equal(await page.locator('#ai-object-form [name=replyGoal]').inputValue(), '草稿保留检查');
   let finishModel;
   provider.next = () => new Promise(resolve => { finishModel = resolve; });
-  await page.locator('[data-ai-skip-reply-wait]').click();
-  await page.waitForFunction(() => document.querySelector('[data-ai-object-execution]')?.textContent.includes('请求 AI'));
+  const originalSave = ai.save.bind(ai);
+  let finishSkipSave, skipSaveEntered;
+  const skipSaveStarted = new Promise(resolve => { skipSaveEntered = resolve; });
+  ai.save = () => { skipSaveEntered(); return new Promise(resolve => { finishSkipSave = () => resolve(originalSave()); }); };
+  const skipButton = await page.locator('[data-ai-skip-reply-wait]').elementHandle();
+  try {
+    await page.locator('[data-ai-skip-reply-wait]').click();
+    await Promise.race([skipSaveStarted, new Promise((_, reject) => setTimeout(() => reject(new Error('跳过请求未进入保存阶段')), 5000))]);
+    const immediate = await skipButton.evaluate(button => ({ disabled: button.disabled, text: button.textContent }));
+    assert.equal(immediate.disabled, true);
+    assert.match(immediate.text, /正在跳过/);
+    assert.equal(await page.locator('#ai-feedback.error').count(), 0);
+  } finally { finishSkipSave?.(); ai.save = originalSave; }
+  await page.waitForFunction(() => document.querySelector('[data-ai-object-execution]')?.textContent.includes('AI 请求中'));
   assert.equal(await page.locator('#ai-object-form [name=replyGoal]').inputValue(), '草稿保留检查');
   finishModel({ action: 'send', text: '已回复' });
   await page.waitForFunction(() => document.querySelector('[data-ai-object-execution]')?.textContent.includes('空闲'));

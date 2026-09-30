@@ -43,6 +43,37 @@ test('normal reply merge wait can be skipped for one contact', async t => {
  await Promise.all([...f.a.activeRuns.values()]);
  assert.equal(f.bridge.sent.length, 1);
 });
+
+test('skip acknowledges briefly and prioritizes the waiting contact without a session scan', async t => {
+ const f = await fixture(t);
+ await f.push('other', '请尽快回复');
+ let sessionReads = 0;
+ f.bridge.sessions = async () => { sessionReads++; throw new Error('session scan should not run for an accepted skip'); };
+ const result = await f.a.skipReplyWait(f.p.id);
+ assert.deepEqual(result, { accepted: true, id: f.p.id });
+ await f.a.tickFinished?.promise;
+ await Promise.all([...f.a.activeRuns.values()]);
+ assert.equal(f.bridge.sent.length, 1);
+ assert.equal(sessionReads, 0);
+});
+
+test('a manual reply before the skipped wait runs does not carry the skip into a later round', async t => {
+ const f = await fixture(t);
+ await f.push('other', '先前消息');
+ const originalSave = f.a.save.bind(f.a);
+ let releaseSave, enteredSave;
+ const saving = new Promise(resolve => { enteredSave = resolve; });
+ f.a.save = () => { enteredSave(); return new Promise(resolve => { releaseSave = () => resolve(originalSave()); }); };
+ const action = f.a.skipReplyWait(f.p.id);
+ await saving;
+ const manual = f.bridge.push(f.p.contact, 'self', '这轮我处理');
+ manual.timestamp = Math.floor(1700000000000 / 1000);
+ releaseSave(); f.a.save = originalSave;
+ await action;
+ await f.a.tickFinished?.promise;
+ assert.equal(f.bridge.sent.length, 0);
+ assert.equal(f.a.skipReplyWaits.has(f.p.id), false);
+});
 test('group message merge wait can be skipped', async t => {
  const f = await fixture(t, 'group');
  await f.push('other', '请在群里回复');

@@ -65,6 +65,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   let objectKind = 'person', selectedObject = '', objectSection = 'reply', objectMemoryCategory = 'name', objectSearch = '', logFilters = { source: 'reply' };
   const acknowledgedReplyLimitOverflow = new WeakMap();
   let replyLimitOverflowDialogOpen = false;
+  const pendingSkipWaits = new Set();
   const objectView = () => ({ kind: objectKind, selected: selectedObject, section: objectSection, memoryCategory: objectMemoryCategory, search: objectSearch, draft: objectDrafts.get(selectedObject) });
   function objects() { return objectPage(state, objectView()); }
   let logRecords = [], logLoading = false, logEpoch = 0, logSignature = '';
@@ -340,7 +341,30 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     const skipWait = event.target.closest('[data-ai-skip-reply-wait]');
     if (skipWait) {
       event.preventDefault();
-      void execute('skip-reply-wait', { id: skipWait.dataset.aiSkipReplyWait }, '已跳过等待，正在交给 AI 处理').catch(error => message(error.message, true));
+      const profileId = skipWait.dataset.aiSkipReplyWait;
+      if (!profileId || pendingSkipWaits.has(profileId)) return;
+      pendingSkipWaits.add(profileId);
+      skipWait.disabled = true;
+      skipWait.textContent = '正在跳过…';
+      const current = generation, target = id;
+      void api(`/instances/${target}/ai`, { action: 'skip-reply-wait', id: profileId }, 20000).then(result => {
+        if (result?.accepted !== true) throw new Error('跳过等待未确认，请重试');
+        if (current !== generation || target !== id) return;
+        skipWait.textContent = '已跳过，正在处理';
+        lastPollAt = 0;
+      }).catch(error => {
+        if (current !== generation || target !== id) return;
+        skipWait.disabled = false;
+        skipWait.textContent = '重试跳过等待';
+        const detail = skipWait.closest('.ai-reply-flow-detail');
+        if (detail) {
+          const hint = detail.querySelector('.ai-skip-wait-hint') || document.createElement('span');
+          hint.className = 'ai-skip-wait-hint'; hint.setAttribute('role', 'status');
+          hint.textContent = error.message || '暂时未能跳过，请重试';
+          detail.append(hint);
+        }
+        lastPollAt = 0;
+      }).finally(() => pendingSkipWaits.delete(profileId));
       return;
     }
     const resume = event.target.closest('[data-ai-resume-profile]');
@@ -478,6 +502,9 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       const errBox = $('#ai-recent-errors'); if (errBox) errBox.innerHTML = recentErrorsBox(activityState(), logFilters.errorsOpen, errorLoading);
       const proactiveRecords = $('#ai-proactive-records'); if (proactiveRecords) proactiveRecords.innerHTML = proactiveRecordRows(activityState(), logFilters, proactiveRecordLoading);
       drawSkips(); void loadSkipContent();
+    }
+    for (const button of panel.querySelectorAll('[data-ai-skip-reply-wait]')) if (pendingSkipWaits.has(button.dataset.aiSkipReplyWait)) {
+      button.disabled = true; button.textContent = '正在跳过…';
     }
     if (state.notice) { const note = $('#ai-state-notice'); if (note) note.textContent = state.notice; }
   }
@@ -1741,7 +1768,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       analysisDraft = { request: '', from: '', to: '', contacts: [], includeVoice: false, includeVisual: false }; analysisRangeMode = 'all'; analysisRangeBeforeCustom = null; analysisContactsExpanded = false; analysisSearch = ''; analysisHistoryReport = null; analysisHistoryEpoch++; resetAnalysisExport(); learnRange = {from:'',to:''}; learnRangeMode = 'all'; learnScope='range'; learnTarget='both'; defaultStylePerspective = 'self'; analysisResult = null; proactiveUI.reset();
       reviewAlert.hidden = true;
       concealKey(true); modelDraft = null; learningDraft = null; renderedView = ''; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); summaryResults.clear(); selectedObject = ''; objectSearch = ''; objectKind = 'person'; learnContactKind = 'person'; editingReplyContact = null; contactSearch = ''; providerRevision++;
-      generation++; skipEpoch++; skipLoading = false; skipContent.clear(); markReplyStatus.clear(); clearInterval(timer); lastPollAt = 0; id = instanceId; setContactAvatarInstance(instanceId); state = null; busy = false; polling = false; attaching = true; tab = 'overview'; replyDraft = null; editingProfile = null; contactsLoaded = false; contactsLoading = false; resultProfileIds = null;
+      generation++; pendingSkipWaits.clear(); skipEpoch++; skipLoading = false; skipContent.clear(); markReplyStatus.clear(); clearInterval(timer); lastPollAt = 0; id = instanceId; setContactAvatarInstance(instanceId); state = null; busy = false; polling = false; attaching = true; tab = 'overview'; replyDraft = null; editingProfile = null; contactsLoaded = false; contactsLoading = false; resultProfileIds = null;
       const attachedGeneration = generation;
       selectedContacts.clear(); replyProfiles.clear(); panel.hidden = true; rail.hidden = false; panel.setAttribute('aria-busy', 'false');
       proactiveHistory = []; proactiveHistoryPage = null; proactiveRecordLoading = false; proactiveRecordEpoch++; errorHistory = []; errorPage = null; errorLoading = false; errorEpoch++;
