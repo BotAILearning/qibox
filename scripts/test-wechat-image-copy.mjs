@@ -21,7 +21,7 @@ window.bridge = localFiles({ screen: document.querySelector('#screen'), input: d
 </script>`;
 const server = createServer(async (req, res) => {
   if (req.url === '/') { res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.end(html); return; }
-  if (/^\/web\/(local-files|file-export)\.mjs$/.test(req.url)) {
+  if (/^\/web\/(local-files|file-export|clipboard-write)\.mjs$/.test(req.url)) {
     res.setHeader('Content-Type', 'text/javascript; charset=utf-8');
     res.end(await readFile(path.join(root, req.url.slice(1)))); return;
   }
@@ -36,7 +36,7 @@ try {
   await page.goto(`http://127.0.0.1:${server.address().port}/`);
   let browserDownloads = 0; page.on('download', () => browserDownloads++);
   await page.locator('#screen').click();
-  await page.evaluate(() => { window.remote = { id: '11111111-1111-4111-8111-111111111111', operation: 'copy', name: '微信图片.png', count: 1, ready: true }; });
+  await page.evaluate(() => { window.remote = { id: '11111111-1111-4111-8111-111111111111', operation: 'copy', clipboardType: 'image', name: '微信图片.png', count: 1, ready: true }; });
   try { await page.waitForFunction(() => window.notices.includes('图片已复制到当前设备剪贴板'), null, { timeout: 7000 }); }
   catch (error) { console.error(await page.evaluate(() => ({ notices, calls, remote, secure: isSecureContext, clipboard: !!navigator.clipboard, panelHidden: document.querySelector('#panel').hidden }))); throw error; }
   assert.equal(await page.locator('#panel').isHidden(), true);
