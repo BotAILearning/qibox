@@ -22,17 +22,17 @@ start)
     nohup node "$ENTRY" >> "${TRIM_PKGVAR}/logs/service.log" 2>&1 </dev/null &
     started_pid=$!
     printf '%s\n' "$started_pid" > "$PID_FILE"
-    # A cold upgrade prepares the shared environment and restores saved sessions
-    # before opening the socket. Do not report failure while that owned process
-    # is still preparing; a crashed process fails promptly.
-    for attempt in {1..120}; do
+    # fnOS expects the launch command to finish promptly. Saved WeChat sessions
+    # may take longer to recover; acknowledge the exact owned service process,
+    # while API availability continues to depend on its actual listening socket.
+    for attempt in {1..20}; do
         if running && [ -S "${TRIM_APPDEST}/app.sock" ]; then exit 0; fi
         # nohup may not have exec'd Node at the first check. Liveness is safe
         # here; require the exact entry identity before declaring readiness.
         if ! kill -0 "$started_pid" 2>/dev/null; then exit 1; fi
-        sleep 1
+        sleep .1
     done
-    exit 1
+    if running; then exit 0; else exit 1; fi
     ;;
 stop)
     if ! running; then exit 0; fi
