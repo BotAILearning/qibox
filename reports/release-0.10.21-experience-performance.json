@@ -1,0 +1,115 @@
+{
+  "version": "0.10.21",
+  "buildId": "0.10.21-stable.005",
+  "channel": "stable",
+  "at": "2026-10-01T19:54:38.086Z",
+  "sourceCommit": "7cf329332b8c3f4b4da1f34cd717e58e65a9a733",
+  "artifacts": [
+    {
+      "file": "dist/releases/0.10.21/0.10.21-stable.005/qibox-0.10.21-stable.005-all.fpk",
+      "bytes": 566674109,
+      "sha256": "98ac47feec95a30b8ca21ada2ecc18109be6f48cecabd11203896044534454e4",
+      "platform": "all",
+      "architectures": [
+        "x64",
+        "arm64"
+      ]
+    },
+    {
+      "file": "dist/releases/0.10.21/0.10.21-stable.005/qibox-0.10.21-stable.005-x86.fpk",
+      "bytes": 368959335,
+      "sha256": "067ea0108e0d1e2cfca509b49b5e13fd2da8a4b5b5f3a41bce9d75de3e46e828",
+      "platform": "x86",
+      "architectures": [
+        "x64"
+      ]
+    }
+  ],
+  "platforms": {
+    "fnos": {
+      "package": "FPK",
+      "architectures": [
+        "x64",
+        "arm64"
+      ]
+    }
+  },
+  "checks": {
+    "verifiedBuildHash": true
+  },
+  "acceptance": {
+    "nodeTests": {
+      "passed": 990,
+      "failed": 0
+    },
+    "pythonTests": {
+      "passed": 299,
+      "failed": 0
+    },
+    "fnosTask": {
+      "id": "1790884529294994074-qibox",
+      "status": 2,
+      "progress": 100
+    },
+    "installedParity": {
+      "files": 2015,
+      "mismatches": 0
+    },
+    "universalParityFiles": 2394,
+    "realWeChat": {
+      "controlledAccounts": 2,
+      "privateReplyConfirmed": true,
+      "groupAtReplyConfirmed": true,
+      "privateTotalMs": 101583,
+      "groupTotalMs": 35930,
+      "privateRecoveredNavigationFailure": true,
+      "duplicateSendObserved": false
+    },
+    "settingsRestore": {
+      "profilesChecked": 1618,
+      "historyAndCountersPreserved": true,
+      "globalSettingsEqual": true
+    },
+    "runtime": {
+      "controlledAccountsLoggedIn": 2,
+      "previouslyStoppedInstanceUnchanged": true
+    },
+    "realModel": {
+      "identitySwitchOnAndOff": true,
+      "monitorFactExtracted": true,
+      "isolatedNativeEvidenceAndTimeMerge": true,
+      "monitorInputTokens": {
+        "old": 3875,
+        "newIncludingCache": 2417
+      }
+    },
+    "pairedReplyInputTokensIncludingAuditsAndCache": {
+      "old": 20652,
+      "new": 17188
+    },
+    "syntheticWorkerIdleBytes": {
+      "old": 79495168,
+      "new": 21790720,
+      "peakReductionProven": false
+    },
+    "postRestorePssMiBRange": [
+      2021.9,
+      2049.1
+    ],
+    "postRestoreMemAvailableGiBRange": [
+      10.334,
+      10.366
+    ],
+    "sampledMemoryPressureAvgZero": true
+  },
+  "limits": [
+    "Actual key-scan peak reduction not proven",
+    "Whole-process baseline workloads differ; no total-memory reduction claim",
+    "Synthetic benchmarks are not real chat exports",
+    "Actual bookshelf private chat produced no new long-term fact",
+    "No guarantee that AI authorship cannot be identified",
+    "Private navigation initially failed and recovered by retry",
+    "No exhaustive physical phone, Windows clipboard, accessibility, weak-network or ARM64 device certification"
+  ],
+  "documentation": "docs/EXPERIENCE-PERFORMANCE-20261002.md"
+}

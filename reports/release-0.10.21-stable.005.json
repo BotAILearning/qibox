@@ -1,0 +1,41 @@
+{
+  "version": "0.10.21",
+  "buildId": "0.10.21-stable.005",
+  "channel": "stable",
+  "at": "2026-10-01T19:54:38.086Z",
+  "sourceCommit": "7cf329332b8c3f4b4da1f34cd717e58e65a9a733",
+  "artifacts": [
+    {
+      "file": "dist/releases/0.10.21/0.10.21-stable.005/qibox-0.10.21-stable.005-all.fpk",
+      "bytes": 566674109,
+      "sha256": "98ac47feec95a30b8ca21ada2ecc18109be6f48cecabd11203896044534454e4",
+      "platform": "all",
+      "architectures": [
+        "x64",
+        "arm64"
+      ]
+    },
+    {
+      "file": "dist/releases/0.10.21/0.10.21-stable.005/qibox-0.10.21-stable.005-x86.fpk",
+      "bytes": 368959335,
+      "sha256": "067ea0108e0d1e2cfca509b49b5e13fd2da8a4b5b5f3a41bce9d75de3e46e828",
+      "platform": "x86",
+      "architectures": [
+        "x64"
+      ]
+    }
+  ],
+  "platforms": {
+    "fnos": {
+      "package": "FPK",
+      "architectures": [
+        "x64",
+        "arm64"
+      ]
+    }
+  },
+  "checks": {
+    "verifiedBuildHash": true
+  },
+  "acceptance": "See the version-specific acceptance document for local, device, model and installation evidence. Package metadata alone does not prove device acceptance."
+}
