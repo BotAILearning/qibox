@@ -63,7 +63,7 @@ export function skipRecordsView(state) {
   const expanded = new Set(state.skipMessageExpanded || []);
   const merged = new Map();
   for (const event of (state.skipRecords ?? (state.events || []).filter(row => row.code === 'skip'))) merged.set(event.id || `${event.target || ''}:${event.at}`, event);
-  const reasonLabels = { 'group-trigger-missing': '群聊未配置触发方式', 'explicit-question-no-response': '明确提问重试后仍未生成文字回复；新来信仍可处理', 'unsupported-media': '当前内容无法安全处理', 'identity-rule-block': '回复内容未通过身份规则', 'model-no-reply': '模型判断本轮无需回复' };
+  const reasonLabels = { 'group-trigger-missing': '群聊未配置触发方式', 'explicit-question-no-response': '明确提问重试后仍未生成文字回复；新来信仍可处理', 'unsupported-media': '当前内容无法安全处理', 'identity-rule-block': '回复内容未通过身份规则', 'unverified-execution': '回复声称执行了未核实的操作', 'model-no-reply': '模型判断本轮无需回复' };
   const rows = [...merged.values()].sort((a, b) => b.at - a.at).map((event, index) => {
     const profile = profiles.get(event.target), contact = (state.contacts || []).find(c => c.id === profile?.contact);
     const name = contactName(profile, contact) || '联系人';

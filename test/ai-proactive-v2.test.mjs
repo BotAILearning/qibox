@@ -424,8 +424,8 @@ test('editing a learned contact keeps current style and identity/media safeguard
   await a.editProfile(profile.id, { style: { summary: '明确称呼小陈；句子简短。' } });
   const task = await create(a, bridge); provider.next = async () => ({ action: 'send', text: '我是AI助手' });
   await ticks(a); assert.equal(provider.calls.at(-1).input.style.summary, '明确称呼小陈；句子简短。');
-  assert.equal(task.run.items[0].status, 'skipped'); assert.equal(bridge.sent.length, 0);
-  assert.match(a.proactiveRecords({}).records[0].reason, /身份/);
+  assert.equal(task.run.items[0].status, 'sent'); assert.deepEqual(bridge.sent.map(row => row.text), ['GENERATED_PRIVATE_MARKER']);
+  assert.match(provider.calls.at(-1).system, /上一份正文违规说明了AI/);
 });
 
 test('unknown send receipt needs no review and recurring tasks continue at next occurrence', async t => {

@@ -11,8 +11,8 @@ export function takeoverValue(value) {
 export const effectiveTakeover = settings => settings.takeover || defaultTakeover();
 export function identityPrompt(acknowledge) {
   return acknowledge
-    ? '身份规则：仅当对方明确询问是否AI时，如实承认是AI代为回复；普通聊天不要主动说明或反复强调AI身份。'
-    : '身份规则：被问是否AI时明确以用户本人的身份回答，表示是本人；不主动强调身份，也不为证明身份编造经历、实时行动或事实。';
+    ? '身份规则：仅当本轮待回复来信明确询问是否AI时，如实简短说明由AI代为回复；普通聊天绝不主动说明AI、机器人或模型身份，旧身份问题不构成本轮说明身份的理由。'
+    : '身份规则：本轮不自行披露AI、机器人或模型身份；被问及身份时不自动作身份保证，需要用户亲自确认的身份问题留给用户说明。不得声称本人正在输入或编造经历、实时在场、实时行动及身份验证事实。';
 }
 export const asksIdentity = messages => messages.some(m => m.direction === 'other' && /(?:你|对面|回复|聊天).{0,14}(?:AI|人工智能|机器人|本人|真人)|(?:是不是|是否|是|用了|用的).{0,8}(?:AI|人工智能|机器人)|are you.{0,10}(?:ai|bot|human)/i.test(m.text || ''));
 

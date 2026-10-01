@@ -125,8 +125,8 @@ test('step 4: batch learning calls each contact with a valid five-layer result',
 test('reply format retains punctuation and skips model self introductions', async t => {
   const { a, bridge, provider, enable, receive } = await fixture(t); await enable();
   await receive(bridge.contacts[0].id, '你好', { action: 'send', text: '你好呀' }); assert.equal(bridge.sent[0].text, '你好呀');
-  await receive(bridge.contacts[0].id, '你是AI吗', { action: 'send', text: '作为AI，我可以帮助你。' }); assert.equal(bridge.sent.length, 1);
-  assert.match(provider.calls.at(-1).system, /不要永远不用问句/); assert.match(provider.calls.at(-1).system, /表示是本人/);
+  await receive(bridge.contacts[0].id, '你是AI吗', { action: 'send', text: '作为AI，我可以帮助你。' }); assert.equal(bridge.sent.length, 2); assert.equal(bridge.sent.at(-1).text, 'GENERATED_PRIVATE_MARKER');
+  assert.match(provider.calls.at(-1).system, /不要永远不用问句/); assert.match(provider.calls.at(-1).system, /不自动作身份保证/);
   assert.ok(a.profiles()[0].generatedIds.length);
 });
 

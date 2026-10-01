@@ -56,10 +56,10 @@ test('manual reply waits; model skip is recorded without pausing the contact',as
   assert.equal(f.bridge.sent.length,0);
 });
 test('identity setting only allows AI disclosure in response to an identity question',async t=>{
-  const f=await fixture(t);assert.match(identityPrompt(false),/表示是本人/);
+  const f=await fixture(t);assert.match(identityPrompt(false),/不自动作身份保证/);
   await f.a.settings({acknowledgeAI:true});await f.receive('你是AI吗',{action:'send',text:'我是AI，代为回复。'});assert.equal(f.bridge.sent.length,1);
-  await f.receive('今天天气怎么样',{action:'send',text:'我是AI。'});assert.equal(f.bridge.sent.length,1);
-  await f.a.settings({acknowledgeAI:false});await f.receive('你是AI吗',{action:'send',text:'我是AI。'});assert.equal(f.bridge.sent.length,1);
+  await f.receive('今天天气怎么样',{action:'send',text:'我是AI。'});assert.equal(f.bridge.sent.length,2);assert.equal(f.bridge.sent.at(-1).text,'GENERATED_PRIVATE_MARKER');
+  await f.a.settings({acknowledgeAI:false});await f.receive('你是AI吗',{action:'send',text:'我是AI。'});assert.equal(f.bridge.sent.length,3);assert.equal(f.bridge.sent.at(-1).text,'GENERATED_PRIVATE_MARKER');
 });
 test('model skip has no review flow; later incoming messages remain eligible',async t=>{
   const f=await fixture(t);await f.receive('给我发文件',{action:'skip'});assert.equal(f.p.paused,false);assert.equal(f.bridge.sent.length,0);

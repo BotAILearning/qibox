@@ -205,7 +205,7 @@ test('@me unsafe identity text is skipped for the current group turn without han
   await a.init(); await a.configure(modelConfig); await a.testProvider(); await a.scan();
   const target = bridge.contacts[0]; target.kind = 'group'; await a.scan();
   await a.setGroupOptions({ contact: target.id, atMe: true }); await a.settings({ enabled: true }); await a.tick();
-  provider.next = async () => ({ action: 'send', text: '我是AI，這個問題我來處理' });
+  provider.complete = async () => ({ action: 'send', text: '我是AI，這個問題我來處理' });
   Object.assign(bridge.push(target.id, 'other', '@我 帮忙'), { timestamp: Math.floor(now / 1000), sender: 'a'.repeat(64), mentions: { verified: true, self: true, all: false, others: false } });
   await a.tick(); now += 3000; await a.tick();
   assert.equal(bridge.sent.length, 0); assert.ok(a.profiles()[0].handledIncomingId);
