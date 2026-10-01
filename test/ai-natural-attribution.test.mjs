@@ -55,7 +55,7 @@ test('natural compliments keep separate speaker and quote roles in waiting excer
  assert.equal(audit.pendingIncomingMessages[0].quote.text,message.quote.text);
  assert.equal(audit.pendingIncomingMessages[0].quote.speaker.role,'self');
  assert.equal(audit.pendingIncomingMessages[0].quote.messageId,audit.speakerHistory.find(g=>g.speaker.role==='self').messages[0].id);
- assert.match(audit.naturalTurnBrief,/被引用的经历仍属于本人/);
+ assert.match(audit.naturalTurnBrief,/原话里描述本人的事情才属于本人/);
  assert.deepEqual(audit.speakerHistory.find(g=>g.speaker.role==='group_member').messages[0].quote,audit.pendingIncomingMessages[0].quote);
  a.event('skip',profile.id,'model-skip','natural',{messageId:incoming.id,incomingMessages:[incoming]});
  await a.markReplyNeeded({profileId:profile.id,eventId:a.data.skipLog[0].id,messageId:incoming.id});
@@ -83,6 +83,13 @@ test('quote speaker is rebound from trusted direction and generated original IDs
  assert.equal(audit.pendingIncomingMessages[1].quote.speaker.id,members[0].speaker.id);
  assert.equal(audit.pendingIncomingMessages[0].quote.speaker.role,'self');
  assert.deepEqual(original,[own,mixed,another]);
+ const question={...own,text:'那你今天爬山走了不少吧。'};
+ const response=withSpeaker({...incoming,text:'我还顺便买了水果回来',pending:true,
+   quote:{...quote,text:question.text}},profile);
+ const brief=naturalTurnBrief([response]);
+ assert.match(brief,/本人原话提到他人的事情仍归对应的人/);
+ assert.doesNotMatch(brief,/被引用的经历仍属于本人/);
+ assert.equal(response.speaker.role,'group_member');assert.equal(response.quote.speaker.role,'self');
 });
 
 test('grounded approval covers every reply clause and voice without omitting facts or changing negation',()=>{
