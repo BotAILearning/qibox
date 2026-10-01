@@ -269,6 +269,127 @@
 #ai-panel .ai-object-reference .ai-object-action-row { flex-wrap: wrap; gap: 10px; }
 #ai-panel .ai-contact-footer { flex-wrap: wrap; gap: 8px; }
 
+/* Reply settings share one module surface and one rhythm for headings and rows. */
+#ai-panel .ai-object-reference .ai-reference-reply-panel {
+  --reply-module-padding: 18px;
+  --reply-module-gap: 16px;
+  display: grid; gap: var(--reply-module-gap); padding: 0;
+  border: 0; border-radius: 0; background: transparent; box-shadow: none; overflow: visible;
+}
+#ai-panel .ai-reference-reply-panel[hidden],
+#ai-panel .ai-reference-reply-panel [hidden] { display: none; }
+#ai-panel .ai-reference-reply-panel :is(.ai-reference-reply-main,.ai-reference-reply-settings,.ai-reference-group-dependency) {
+  display: grid; gap: var(--reply-module-gap); min-width: 0; margin: 0; padding: 0;
+  border: 0; border-radius: 0; background: transparent; overflow: visible;
+}
+#ai-panel .ai-reference-reply-panel :is(.ai-reference-reply-settings,.ai-reference-children)[hidden] { display: none; }
+#ai-panel .ai-reference-reply-panel .ai-reply-module {
+  min-width: 0; margin: 0; padding: 0;
+  border: 1px solid var(--qbx-line); border-radius: 12px;
+  background: var(--qbx-surface); box-shadow: none; overflow: hidden;
+}
+#ai-panel .ai-reference-reply-panel .ai-reply-module-heading {
+  display: flex; align-items: center; gap: 12px; min-height: 60px;
+  margin: 0; padding: 16px var(--reply-module-padding); border: 0;
+  background: var(--qbx-surface); color: var(--qbx-ink);
+  font-size: 16px; font-weight: 650; line-height: 1.5;
+}
+#ai-panel .ai-reference-reply-panel .ai-reply-module-heading h4 {
+  margin: 0; color: inherit; font-size: inherit; font-weight: inherit; line-height: inherit;
+}
+#ai-panel .ai-reference-reply-panel .ai-reply-module-heading>span { min-width: 0; }
+#ai-panel .ai-reference-reply-panel .ai-reference-toggle-copy { min-width: 0; }
+#ai-panel .ai-reference-reply-panel .ai-reply-module-heading small {
+  margin-top: 4px; color: var(--qbx-muted); font-size: 12px; font-weight: 400; line-height: 1.6;
+}
+#ai-panel .ai-reference-reply-panel .ai-reply-module-body,
+#ai-panel .ai-reference-reply-panel .ai-reference-children {
+  min-width: 0; margin: 0; padding: 0 var(--reply-module-padding) 16px;
+  border: 0; background: var(--qbx-surface);
+}
+#ai-panel .ai-reference-reply-panel :is(.ai-reference-group-options,.ai-reference-child-grid) {
+  grid-template-columns: repeat(2,minmax(0,1fr)); gap: 0;
+  border: 0; border-radius: 0; background: transparent; overflow: visible;
+}
+#ai-panel .ai-reference-reply-panel :is(.ai-reference-toggle:not(.main),.ai-reference-limit) {
+  min-width: 0; min-height: 76px; margin: 0; padding: 14px 0;
+  border: 0; border-top: 1px solid var(--qbx-line); border-radius: 0;
+  background: transparent; overflow: visible;
+}
+#ai-panel .ai-reference-reply-panel :is(.ai-reference-group-options,.ai-reference-child-grid) .ai-reference-toggle:first-child { padding-right: 16px; }
+#ai-panel .ai-reference-reply-panel :is(.ai-reference-group-options,.ai-reference-child-grid) .ai-reference-toggle+.ai-reference-toggle {
+  padding-left: 16px; border-left: 0;
+}
+#ai-panel .ai-reference-reply-panel :is(.ai-reference-toggle b,.ai-reference-limit-copy label,.ai-reference-mode-options b) {
+  color: var(--qbx-ink); font-size: 14px; font-weight: 600; line-height: 1.5; white-space: normal;
+}
+#ai-panel .ai-reference-reply-panel :is(.ai-reference-toggle small,.ai-reference-mode-options small) {
+  color: var(--qbx-muted); font-size: 12px; font-weight: 400; line-height: 1.6;
+}
+#ai-panel .ai-reference-reply-panel .ai-reference-limit {
+  grid-column: 1/-1; flex-direction: row; align-items: center; gap: 12px; padding-bottom: 0;
+}
+#ai-panel .ai-reference-reply-panel .ai-reference-limit-controls { width: auto; flex: 0 1 auto; flex-wrap: wrap; }
+#ai-panel .ai-reference-reply-panel .ai-reply-limit-control { flex-wrap: wrap; }
+#ai-panel .ai-reference-reply-panel .ai-reply-limit-control select { width: 90px; }
+#ai-panel .ai-reference-reply-panel .ai-reference-limit-controls button { padding-inline: 12px; font-size: 12px; }
+#ai-panel .ai-reference-reply-panel .ai-reference-realtime-modes { padding-top: 0; }
+#ai-panel .ai-reference-reply-panel .ai-reference-mode-options {
+  gap: 12px; padding-top: 14px; border-top: 1px solid var(--qbx-line);
+}
+#ai-panel .ai-reference-reply-panel .ai-reference-mode-options label {
+  gap: 10px; min-height: 76px; padding: 12px 14px;
+  border: 1px solid var(--qbx-line); border-radius: 8px; background: var(--qbx-surface);
+}
+#ai-panel .ai-reference-reply-panel .ai-reference-mode-options label:has(input:checked) {
+  border-color: var(--qbx-accent); background: var(--qi-selected);
+}
+#ai-panel .ai-reference-reply-panel .ai-reference-mode-options label:has(input:focus-visible) {
+  outline: 2px solid var(--qi-focus); outline-offset: 2px;
+}
+#ai-panel .ai-reference-reply-panel .ai-reference-mode-options input { width: 18px; height: 18px; }
+#ai-panel .ai-reference-reply-panel details.ai-reply-module>summary { cursor: pointer; list-style: none; }
+#ai-panel .ai-reference-reply-panel details.ai-reply-module>summary::-webkit-details-marker { display: none; }
+#ai-panel .ai-reference-reply-panel details.ai-reply-module>summary::before { content: none; }
+#ai-panel .ai-reference-reply-panel details.ai-reply-module>summary::after {
+  content: ""; width: 7px; height: 7px; flex: none; margin-left: auto;
+  border-right: 2px solid var(--qbx-muted); border-bottom: 2px solid var(--qbx-muted); transform: rotate(45deg);
+}
+#ai-panel .ai-reference-reply-panel details.ai-reply-module[open]>summary::after { transform: rotate(225deg); }
+#ai-panel .ai-reference-reply-panel details.ai-reply-module>summary:hover { background: var(--qi-hover); }
+#ai-panel .ai-reference-reply-panel details.ai-reply-module>summary:focus-visible {
+  outline: 2px solid var(--qi-focus); outline-offset: -3px;
+}
+#ai-panel .ai-reference-reply-panel .ai-object-live>summary span {
+  margin-left: auto; color: var(--qbx-muted); font-size: 12px; font-weight: 400; text-align: right;
+}
+#ai-panel .ai-reference-reply-panel details.ai-object-live>summary::after { margin-left: 0; }
+#ai-panel .ai-reference-reply-panel .ai-object-execution {
+  margin: 0 var(--reply-module-padding) 16px; padding: 14px 0 0;
+  border-top: 1px solid var(--qbx-line); border-bottom: 0; background: transparent;
+}
+#ai-panel .ai-reference-reply-panel .ai-strategy-inherit {
+  margin: 0 0 16px; padding: 14px 0 0; border-top: 1px solid var(--qbx-line);
+  color: var(--qbx-muted); font-weight: 400;
+}
+#ai-panel .ai-reference-reply-panel .ai-reference-strategy-fields { grid-template-columns: repeat(2,minmax(0,1fr)); }
+#ai-panel .ai-reference-reply-panel .ai-reference-multimodal .ai-help {
+  margin: 0; padding: 12px 0 0; border-top: 1px solid var(--qbx-line);
+  color: var(--qbx-muted); font-size: 12px; line-height: 1.7;
+}
+#ai-panel .ai-reference-reply-panel .ai-reference-multimodal .ai-help+.ai-help { padding-top: 8px; border-top: 0; }
+@container qbx-object (max-width:680px) {
+  #ai-panel .ai-reference-reply-panel .ai-reference-strategy-fields { grid-template-columns: minmax(0,1fr); }
+}
+@container qbx-object (max-width:440px) {
+  #ai-panel .ai-object-reference .ai-reference-reply-panel { --reply-module-padding: 16px; --reply-module-gap: 14px; }
+  #ai-panel .ai-reference-reply-panel :is(.ai-reference-group-options,.ai-reference-child-grid,.ai-reference-mode-options) { grid-template-columns: minmax(0,1fr); }
+  #ai-panel .ai-reference-reply-panel :is(.ai-reference-group-options,.ai-reference-child-grid) .ai-reference-toggle:first-child,
+  #ai-panel .ai-reference-reply-panel :is(.ai-reference-group-options,.ai-reference-child-grid) .ai-reference-toggle+.ai-reference-toggle { padding-inline: 0; }
+  #ai-panel .ai-reference-reply-panel .ai-reference-limit { flex-direction: column; align-items: flex-start; }
+  #ai-panel .ai-reference-reply-panel .ai-reference-limit-controls { justify-content: flex-start; }
+}
+
 /* Models: names and addresses get a row before the secondary icon actions. */
 #ai-panel .ai-model-workspace { display: grid; grid-template-columns: minmax(0,1fr) 320px; gap: 20px; }
 #ai-panel .ai-model-sidebar { padding: 18px; }

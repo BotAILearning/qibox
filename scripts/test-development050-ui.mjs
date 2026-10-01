@@ -91,6 +91,7 @@ try {
   await page.locator('#ai-object-form [name=enabled]').check();
   assert.equal(await page.locator('.ai-reference-children').isVisible(), true, '自动回复开启后显示三个子项');
   assert.equal(await page.locator('.ai-reference-strategy').isVisible(), true, '自动回复开启后显示回复策略');
+  await page.locator('.ai-reference-strategy > summary').click();
   const strategyBoxes = await page.locator('.ai-reference-strategy-fields textarea').evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect()));
   assert.equal(strategyBoxes.length, 2); assert.ok(strategyBoxes[1].left > strategyBoxes[0].left, '回复要求与边界左右并排');
   const childLayout = await page.locator('.ai-reference-child-grid').evaluate(node => ({ grid: node.getBoundingClientRect(), items: [...node.children].map(child => child.getBoundingClientRect()) }));
@@ -149,7 +150,7 @@ try {
   await page.locator(`[data-ai-object="${groupContact.id}"]`).click();
   assert.equal(await page.locator('.ai-reference-group-options .ai-reference-limit').count(), 1, '群聊上限是两种提及回复旁的第三项');
   assert.equal(await page.locator('.ai-reference-group-title').textContent(), '提及回复');
-  assert.equal(await page.locator('.ai-reference-group-dependency > h4').textContent().then(text => text !== '回复方式'), true, '群聊回复设置不显示回复方式标题');
+  assert.equal(await page.locator('.ai-reference-mention-block > h4').textContent(), '提及回复', '群聊回复设置使用独立提及回复模块');
   assert.equal(await page.locator('.ai-reference-group-options .ai-reference-limit').isVisible(), true, '提及回复关闭时仍显示上限');
   assert.equal(await page.locator('.ai-reference-realtime-modes').count(), 0, '实时回复关闭时隐藏参与方式');
   assert.equal(await page.locator('.ai-reference-group-options .ai-reference-limit').textContent().then(text => text.includes('仅统计 @我与 @所有人回复')), false);
