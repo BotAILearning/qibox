@@ -11,6 +11,7 @@ import ctypes as c
 import bisect
 from collections import OrderedDict
 import hashlib
+import gc
 import hmac
 import importlib.util
 import json
@@ -841,6 +842,34 @@ def messages(db, shard, account, contact, self_name, target, selected=None, meta
     return result
 
 
+SNAPSHOT_CACHE_MAX_BYTES = 8 * 1024 * 1024
+
+
+def object_bytes(value, seen=None):
+    """Account for Python objects without making another large JSON string."""
+    seen = set() if seen is None else seen
+    if id(value) in seen: return 0
+    seen.add(id(value))
+    size = sys.getsizeof(value)
+    if isinstance(value, dict):
+        size += sum(object_bytes(key, seen) + object_bytes(item, seen) for key, item in value.items())
+    elif isinstance(value, (list, tuple)):
+        size += sum(object_bytes(item, seen) for item in value)
+    return size
+
+
+def trim_worker_memory():
+    if sys.platform != 'linux': return
+    gc.collect()
+    try:
+        trim = c.CDLL(None).malloc_trim
+        trim.argtypes = [c.c_size_t]
+        trim.restype = c.c_int
+        trim(0)
+    except (AttributeError, OSError):
+        pass
+
+
 class SessionCache:
     """Process-scoped cache for keys, read snapshots and the session reader.
 
@@ -855,6 +884,8 @@ class SessionCache:
         self.sealed = {}
         self.missing = {}
         self.snapshots = OrderedDict()
+        self.snapshot_sizes = {}
+        self.snapshot_bytes = 0
         self.session_reader = None
         self.cache_path = None
         self.cache_secret = None
@@ -912,14 +943,14 @@ class SessionCache:
         # encrypted cache stays available across restarts. Everything is
         # re-authenticated against the live page before it is used again.
         self.keys = dict(self.sealed)
-        self.snapshots.clear()
+        self.clear_snapshots()
         self.session_reader = None
 
     def invalidate(self, error):
         if isinstance(error, sql.SnapshotChanged):
             # Drop all results so the next attempt must reauthenticate current
             # pages. Keys and the independently revalidated session stay in RAM.
-            self.snapshots.clear()
+            self.clear_snapshots()
         else:
             self.clear()
 
@@ -1042,10 +1073,24 @@ class SessionCache:
             return None
 
     def remember(self, identity, versions, result):
+        if identity in self.snapshots:
+            self.snapshots.pop(identity)
+            self.snapshot_bytes -= self.snapshot_sizes.pop(identity)
+        size = object_bytes((versions, result))
+        if size > SNAPSHOT_CACHE_MAX_BYTES:
+            return
         self.snapshots[identity] = (versions, result)
+        self.snapshot_sizes[identity] = size
+        self.snapshot_bytes += size
         self.snapshots.move_to_end(identity)
-        while len(self.snapshots) > 16:
-            self.snapshots.popitem(last=False)
+        while len(self.snapshots) > 16 or self.snapshot_bytes > SNAPSHOT_CACHE_MAX_BYTES:
+            identity, _ = self.snapshots.popitem(last=False)
+            self.snapshot_bytes -= self.snapshot_sizes.pop(identity)
+
+    def clear_snapshots(self):
+        self.snapshots.clear()
+        self.snapshot_sizes.clear()
+        self.snapshot_bytes = 0
 
 
 def contact_activity(database, files, people):
@@ -1467,6 +1512,7 @@ def publish(result):
                 signal.pthread_sigmask(signal.SIG_UNBLOCK, signals)
             except (AttributeError, ValueError, OSError):
                 pass
+    return len(payload)
 
 
 def main():
@@ -1561,7 +1607,12 @@ def main():
                         'timeout' if isinstance(error, TimeoutError) else 'message-format' if isinstance(error, ET.ParseError) else None)
                     result = {'error': 'data-unavailable', **({'stage': stage} if stage else {})}
             if cancelled: break
-            publish(result)
+            published_chars = publish(result)
+            # A range response is intentionally not cached. Do not keep the
+            # loop's last large result alive throughout a 15-minute idle wait.
+            result = None
+            if cache is not None and published_chars > 4 * 1024 * 1024:
+                trim_worker_memory()
             if cache is None or len(raw) > 4096: break
     except Exception:
         pass  # No account, key, SQL, chat body or raw exception in logs/stdout.

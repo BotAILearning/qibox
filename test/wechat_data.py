@@ -10,6 +10,7 @@ import sqlite3
 import struct
 import tempfile
 import time
+import weakref
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
@@ -94,6 +95,41 @@ def wal_bytes(pages, commit=True):
 
 
 class DataTest(unittest.TestCase):
+    def test_snapshot_cache_has_a_byte_budget_and_keeps_recent_small_reads(self):
+        cache = data.SessionCache()
+        with patch.object(data, 'SNAPSHOT_CACHE_MAX_BYTES', 10000):
+            for index in range(16):
+                cache.remember(str(index), [], {'messages': [{'text': str(index) + '长' * 1800}]})
+                self.assertLessEqual(cache.snapshot_bytes, 10000)
+            self.assertIn('15', cache.snapshots)
+            self.assertNotIn('0', cache.snapshots)
+            cache.remember('huge', [], {'messages': ['大' * 30000]})
+            self.assertNotIn('huge', cache.snapshots)
+            cache.clear()
+            self.assertEqual(cache.snapshot_bytes, 0)
+            self.assertEqual(cache.snapshot_sizes, {})
+
+    def test_worker_releases_uncached_result_before_waiting_for_another_request(self):
+        refs = []
+        class Result(dict): pass
+        class Input:
+            calls = 0
+            def readline(inner, _):
+                inner.calls += 1
+                if inner.calls == 1: return '{"action":"read-range"}\n'
+                self.assertIsNone(refs[0](), 'the previous range must not remain alive while idle')
+                return ''
+        def execute(request, *_):
+            if request['action'] == 'keys': return {}
+            value = Result(messages=['large response' * 10000])
+            refs.append(weakref.ref(value))
+            return value
+        with patch.object(data, 'execute', side_effect=execute), patch.object(data, 'SessionCache', return_value=Mock()), \
+             patch.object(data.signal, 'signal'), patch.dict(data.os.environ, {'HOME':'/controlled'}), \
+             patch.object(data.sys, 'argv', ['wechat-data.py','42','--worker']), \
+             patch.object(data.sys, 'stdin', Input()), patch.object(data.sys, 'stdout', io.StringIO()):
+            data.main()
+        self.assertEqual(len(refs), 1)
     def test_account_identity_reads_only_own_contact_row_and_returns_no_address_book(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory, 'wxid_self_abcd/db_storage')

@@ -45,7 +45,13 @@ if (!process.argv.includes('--ui-only')) {
   await writeFile(path.join(app, 'config/product.json'), JSON.stringify(product, null, 2) + '\n');
   for (const name of ['README.md', 'NOTICE.md']) await cp(path.join(root, name), path.join(app, name));
   for (const name of ['ws', 'pdfkit', 'fflate', 'fontkit', 'linebreak', 'png-js', '@noble', '@swc', 'brotli', 'base64-js', 'clone', 'dfa', 'fast-deep-equal', 'restructure', 'tiny-inflate', 'unicode-properties', 'unicode-trie', 'tslib']) {
-    await cp(path.join(root, 'node_modules', name), path.join(app, 'node_modules', name), { recursive: true });
+    // Node-only consumer packages: retain both Node import/require entries,
+    // runtime data and licenses; browser bundles and JS debugging maps are not
+    // used by the server or the separately built web application.
+    await cp(path.join(root, 'node_modules', name), path.join(app, 'node_modules', name), { recursive: true,
+      filter: file => !/\.(?:js|cjs|mjs)\.map$/.test(file) &&
+        !(name === 'pdfkit' && /^pdfkit\.(?:browser|old|standalone)/.test(path.basename(file))) &&
+        !(name === 'fontkit' && /^browser(?:-module)?\.(?:cjs|mjs)$/.test(path.basename(file))) });
   }
   await writeFile(path.join(app, 'package.json'), JSON.stringify({ name: product.appname, version: product.version, type: 'module', private: true }));
   let components = 0;

@@ -6,12 +6,17 @@ used. Raw usernames remain in this private helper's memory; callers should use
 matches/verify and expose only their existing account/contact hashes.
 """
 import hashlib
+import importlib.util
 import json
 import os
 import pathlib
 import re
 import struct
 import time
+
+memory_spec = importlib.util.spec_from_file_location('qibox_memory', pathlib.Path(__file__).with_name('wechat-memory.py'))
+memory = importlib.util.module_from_spec(memory_spec)
+memory_spec.loader.exec_module(memory)
 
 
 PROFILES = {
@@ -174,8 +179,8 @@ class SessionIdentity:
         if hint is not None:
             self._apply_hint(hint)
 
-    def _hint_scope(self):
-        return {'version': 1, 'pid': self.pid, 'processStart': self.bound[0],
+    def _hint_scope(self, version=1):
+        return {'version': version, 'pid': self.pid, 'processStart': self.bound[0],
                 'buildId': self.build_id, 'rootKey': digest(self.bound[3]),
                 'executableKey': digest(json.dumps(self.bound[1:3], separators=(',', ':')))}
 
@@ -185,14 +190,20 @@ class SessionIdentity:
         A hint avoids rediscovering an already unique manager; it never bypasses
         the subsequent live object/vector/account checks in current().
         """
-        # An unknown build has no layout yet: the only way to get one is
-        # discovery, which also yields the manager. Reusing a hinted address
-        # here would leave _selection without offsets and fail every send.
-        if self.profile is None:
+        # Legacy hints cannot supply a discovered layout for an unknown build.
+        if self.profile is None and isinstance(hint, dict) and hint.get('version') == 1:
             return
-        if not isinstance(hint, dict) or set(hint) != set(self._hint_scope()) | {'manager', 'issuedAt'}:
+        if not isinstance(hint, dict):
             raise ValueError('session hint unavailable')
-        if any(type(hint.get(key)) is not type(value) or hint[key] != value for key, value in self._hint_scope().items()):
+        if 'version' not in hint:
+            raise ValueError('session hint unavailable')
+        version = hint.get('version')
+        if type(version) is not int or version not in (1, 2):
+            raise ValueError('session hint scope changed')
+        scope = self._hint_scope(version)
+        if set(hint) != set(scope) | {'manager', 'issuedAt'} | ({'profile'} if version == 2 else set()):
+            raise ValueError('session hint unavailable')
+        if any(type(hint.get(key)) is not type(value) or hint[key] != value for key, value in scope.items()):
             raise ValueError('session hint scope changed')
         now, issued = int(time.monotonic() * 1000), hint.get('issuedAt')
         if type(issued) is not int or issued > now:
@@ -208,12 +219,29 @@ class SessionIdentity:
         manager = int(address, 16)
         if manager < 0x10000 or manager >= MAX_ADDRESS or manager % 8:
             raise ValueError('session hint unavailable')
+        if version == 2:
+            profile = hint['profile']
+            if not isinstance(profile, dict) or set(profile) != set(BASE_LAYOUT) | {'manager_key', 'manager_vtable'} or \
+                    any(type(profile.get(key)) is not int or profile[key] != value for key, value in BASE_LAYOUT.items()) or \
+                    type(profile.get('manager_key')) is not int or profile['manager_key'] not in KEY_CANDIDATES or \
+                    type(profile.get('manager_vtable')) is not int or not 0 < profile['manager_vtable'] < 1024 * 1024 * 1024:
+                raise ValueError('session hint layout unavailable')
+            self._context()
+            if not self._in_executable_image(self.base + profile['manager_vtable']):
+                raise ValueError('session hint layout unavailable')
+            if self.profile is None:
+                self.profile = dict(profile)
+            elif any(self.profile.get(key) != value for key, value in profile.items()):
+                raise ValueError('session hint layout changed')
         self.manager = manager
 
     def hint(self):
         self.current()
-        return {**self._hint_scope(), 'manager': hex(self.manager),
-                'issuedAt': int(time.monotonic() * 1000)}
+        discovered = 'sha256' not in self.profile
+        version = 2 if discovered else 1
+        return {**self._hint_scope(version), 'manager': hex(self.manager),
+                'issuedAt': int(time.monotonic() * 1000),
+                **({'profile': dict(self.profile)} if discovered else {})}
 
     def _validate_descriptor(self):
         import fcntl
@@ -312,25 +340,48 @@ class SessionIdentity:
         # cannot reuse that address, so it is located via its 'normal_key'.
         return self._scan_vtable() if self.profile else self._discover()
 
+    def _scan_chunks(self, overlap):
+        """Keep chunk boundaries but discard overlap across absent page gaps."""
+        try:
+            page_fd = os.open(self.proc / str(self.pid) / 'pagemap', os.O_RDONLY)
+        except OSError:
+            page_fd = None
+        scanned = 0
+        self.scan_read_bytes = 0
+        try:
+            for start, end, permissions, offset, name in self.maps:
+                if permissions != 'rw-p' or name not in ('', '[heap]'):
+                    continue
+                scanned += end - start
+                if scanned > MAX_SCAN:
+                    raise ValueError('session memory scan limit')
+                cursor, tail, previous_end = start, b'', None
+                while cursor < end:
+                    self.check()
+                    length = min(1024 * 1024, end - cursor)
+                    for address, size in memory.allocated_segments(page_fd, cursor, length):
+                        self.check()
+                        if address != previous_end:
+                            tail = b''
+                        block = self._read(address, size)
+                        self.scan_read_bytes += len(block)
+                        chunk = tail + block
+                        yield address - len(tail), chunk
+                        tail = chunk[-overlap:] if overlap else b''
+                        previous_end = address + size
+                    cursor += length
+        finally:
+            if page_fd is not None:
+                os.close(page_fd)
+
     def _scan_vtable(self):
         """Known build: search for the exact vtable pointer we have on file."""
         needle = struct.pack('<Q', self.base + self.profile['manager_vtable'])
-        result, scanned = set(), 0
-        for start, end, permissions, offset, name in self.maps:
-            # Managers are heap/private writable allocations, never image data.
-            if permissions != 'rw-p' or name not in ('', '[heap]'):
-                continue
-            scanned += end - start
-            if scanned > MAX_SCAN:
-                raise ValueError('session memory scan limit')
-            cursor, tail = start, b''
-            while cursor < end:
-                self.check()
-                length = min(1024 * 1024, end - cursor)
-                chunk = tail + self._read(cursor, length)
+        result = set()
+        for address, chunk in self._scan_chunks(len(needle) - 1):
                 position = 0
                 while (position := chunk.find(needle, position)) >= 0:
-                    candidate = cursor - len(tail) + position
+                    candidate = address + position
                     position += 1
                     if candidate % 8:
                         continue
@@ -339,8 +390,6 @@ class SessionIdentity:
                             result.add(candidate)
                     except (ValueError, OSError, UnicodeError):
                         continue
-                tail = chunk[-(len(needle) - 1):]
-                cursor += length
         if len(result) != 1:
             raise ValueError('session manager ambiguous or unavailable')
         return result.pop()
@@ -366,21 +415,11 @@ class SessionIdentity:
         if not base:
             raise ValueError('session executable mapping unavailable')
         overlap = len(ANCHOR) - 1
-        candidates, scanned = {}, 0
-        for start, end, permissions, offset, name in self.maps:
-            if permissions != 'rw-p' or name not in ('', '[heap]'):
-                continue
-            scanned += end - start
-            if scanned > MAX_SCAN:
-                raise ValueError('session memory scan limit')
-            cursor, tail = start, b''
-            while cursor < end:
-                self.check()
-                length = min(1024 * 1024, end - cursor)
-                chunk = tail + self._read(cursor, length)
+        candidates = {}
+        for address, chunk in self._scan_chunks(overlap):
                 position = 0
                 while (position := chunk.find(ANCHOR, position)) >= 0:
-                    found = cursor - len(tail) + position
+                    found = address + position
                     position += 1
                     for manager_key in KEY_CANDIDATES:
                         manager = found - manager_key - 1
@@ -399,8 +438,6 @@ class SessionIdentity:
                         candidates[manager] = profile
                     if len(candidates) > MAX_CANDIDATES:
                         raise ValueError('session manager ambiguous or unavailable')
-                tail = chunk[-overlap:] if overlap else b''
-                cursor += length
         if len(candidates) != 1:
             raise ValueError('session manager ambiguous or unavailable')
         manager, self.profile = candidates.popitem()

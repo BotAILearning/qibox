@@ -2952,8 +2952,8 @@ export class AIAssistant {
     const referenceStyle = defaultFallback || (mode === 'proactive' || continuation) && strategy.styleSource !== 'manual' && this.styleProfile(strategy)?.id !== profile.id;
     const addressing = { styleScope: referenceStyle ? 'reference' : 'current-chat', currentStyle: defaultFallback ? style : profile.style };
     const currentStyle = referenceStyle
-      ? ` 本轮借鉴的风格如下：${JSON.stringify(style)}。${defaultFallback ? '这是账号默认风格，来自其他联系人或粘贴资料，不是当前对象的专属风格。' : '这不是当前对象的专属风格，仅借鉴一般表达习惯；'}其中的称呼和个人信息不适用于当前对象。${addressingPrompt}`
-      : ` 本轮用户为当前联系人设置的风格如下：${JSON.stringify(style)}。这是本轮必须遵循的口吻要求。若总结后面有明确补充的称呼、表达或注意事项，优先执行这些补充；前面的历史样本描述或“样本不足”不撤销用户后来明确填写的要求。${addressingPrompt}`;
+      ? ` 本轮借鉴的风格见输入 style 字段。${defaultFallback ? '这是账号默认风格，来自其他联系人或粘贴资料，不是当前对象的专属风格。' : '这不是当前对象的专属风格，仅借鉴一般表达习惯；'}其中的称呼和个人信息不适用于当前对象。${addressingPrompt}`
+      : ` 本轮用户为当前联系人设置的风格见输入 style 字段。这是本轮必须遵循的口吻要求。若总结后面有明确补充的称呼、表达或注意事项，优先执行这些补充；前面的历史样本描述或“样本不足”不撤销用户后来明确填写的要求。${addressingPrompt}`;
     const currentTask = mode === 'proactive' ? proactivePrompt(strategy) : this.replyBackgroundPrompt(profile);
     const explicitAsk = mode === 'reply' && !followUp && asksDirectQuestion(pendingText);
     const requiredGroupReply = mode === 'reply' && profile.kind === 'group' && trigger === 'atMe';

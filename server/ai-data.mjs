@@ -78,14 +78,17 @@ function validatedQuote(value, message, kind) {
     ...(value.type ? { type: value.type } : {}), ...(value.excerpt === true ? { excerpt: true } : {}) };
 }
 function privateSessionHint(value, pid) {
-  if (!value || typeof value !== 'object' || Array.isArray(value) || value.version !== 1 || value.pid !== pid ||
+  if (!value || typeof value !== 'object' || Array.isArray(value) || ![1, 2].includes(value.version) || value.pid !== pid ||
       typeof value.processStart !== 'string' || !/^\d{1,24}$/.test(value.processStart) ||
       typeof value.buildId !== 'string' || !/^[a-f0-9]{40}$/.test(value.buildId) ||
       !key(value.rootKey) || !key(value.executableKey) ||
       typeof value.manager !== 'string' || !/^0x[a-f0-9]{1,16}$/.test(value.manager) ||
       !Number.isSafeInteger(value.issuedAt) || value.issuedAt < 0) return null;
-  return { version: 1, pid, processStart: value.processStart, buildId: value.buildId,
-    rootKey: value.rootKey, executableKey: value.executableKey, manager: value.manager, issuedAt: value.issuedAt };
+  const fields = ['machine', 'controller', 'inner', 'current', 'username', 'map', 'map_first', 'map_size', 'node_key', 'vector_begin', 'vector_end', 'manager_key', 'manager_vtable'];
+  if (value.version === 2 && (!value.profile || Object.keys(value.profile).length !== fields.length || fields.some(field => !Number.isSafeInteger(value.profile[field]) || value.profile[field] < 0 || value.profile[field] >= 1024 ** 3))) return null;
+  return { version: value.version, pid, processStart: value.processStart, buildId: value.buildId,
+    rootKey: value.rootKey, executableKey: value.executableKey, manager: value.manager, issuedAt: value.issuedAt,
+    ...(value.version === 2 ? { profile: Object.fromEntries(fields.map(field => [field, value.profile[field]])) } : {}) };
 }
 
 // Contacts/history use the private data API exclusively. Native desktop access
@@ -112,6 +115,9 @@ export class DataChatBridge extends NativeChatBridge {
   }
   async close() { const worker = this.dataWorker; this.clear(); await worker?.closed.promise; }
   read(args = {}) { return this.execute('read', args); }
+  // Address-book/key scans only read private data. Keep them out of the native
+  // mutation queue, so manual desktop input never waits for a cold scan.
+  scan(args = {}) { return this.execute('scan', args); }
   async currentAccount() { return this.execute('account', {}); }
   readImage(args = {}) { return this.execute('read-image', args); }
   readVideoFrames(args = {}) { return this.execute('read-video', args); }
@@ -128,7 +134,9 @@ export class DataChatBridge extends NativeChatBridge {
     try { this.check(context); return await super.invokeProcess(action, args, { ...context, memoryFd: memory.fd }); }
     finally { await memory.close(); }
   }
-  async waitForIdle(event) { await super.waitForIdle(event); await this.dataTail; }
+  // The inherited barrier waits for native navigation/send/draft cleanup.
+  // dataTail contains only read-only DB requests, including final revision
+  // checks inside a send already protected by the native tail.
   check(context) {
     super.check(context);
     // An inconclusive login observation must not stop a data read. The private

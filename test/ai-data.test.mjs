@@ -60,6 +60,30 @@ async function receiptFixture({ status = 'uncertain', response, unsafe = false, 
   return { bridge, runtime, counters, text, outgoing };
 }
 
+test('manual pointer and keyboard input stay responsive during an unfinished private-data scan', { timeout: 1500 }, async () => {
+  let release, started;
+  const reading = new Promise(resolve => { started = resolve; });
+  const pending = new Promise(resolve => { release = resolve; });
+  const { bridge } = fixture(async () => { started(); await pending; });
+  const scan = bridge.scan();
+  await reading;
+  try {
+    await bridge.waitForIdle({ type: 'pointer', buttons: 0 });
+    await bridge.waitForIdle({ type: 'key', down: true, submitKey: false });
+  } finally { release(); await scan; }
+});
+
+test('manual input still waits for native mutations while database reads are independent', async () => {
+  const { bridge } = fixture();
+  let release, finished = false;
+  bridge.tail = new Promise(resolve => { release = resolve; });
+  const wait = bridge.waitForIdle({ type: 'pointer', buttons: 1 }).then(() => { finished = true; });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(finished, false);
+  release(); await wait;
+  assert.equal(finished, true);
+});
+
 test('contacts and history use data only, preserving duplicate labels and true message IDs', async () => {
   const { bridge, calls } = fixture();
   const result = await bridge.scan();
@@ -642,4 +666,18 @@ test('malformed and foreign-process session hints are discarded before native pr
     bridge.invokePrepared = async route => { assert.equal('sessionHint' in route, false); return { status: 'not-sent' }; };
     assert.equal((await bridge.send({ account, contact, revision, text: '测试发送。' })).status, 'not-sent');
   }
+});
+
+test('a discovered layout stays in the private delivery hint and never leaks into snapshots', async () => {
+  const profile = { machine:62,controller:424,inner:248,current:64,username:328,map:24,map_first:16,map_size:24,node_key:16,vector_begin:40,vector_end:48,manager_key:376,manager_vtable:100000 };
+  const hint = { version:2,pid:123,processStart:'23456',buildId:'a'.repeat(40),rootKey:key('root'),executableKey:key('exe'),manager:'0x123400',issuedAt:1,profile };
+  const { bridge } = fixture(action => action === 'read' ? { ...dataSnapshot, sessionHint:hint } : undefined);
+  await bridge.scan();
+  const read = await bridge.read({ account, contact });
+  assert.equal(JSON.stringify(read).includes('manager_vtable'), false);
+  bridge.invokePrepared = async route => { assert.deepEqual(route.sessionHint, hint); return { status:'not-sent' }; };
+  assert.equal((await bridge.send({ account,contact,revision,text:'测试。' })).status,'not-sent');
+  bridge.invokeData = async () => ({ ...dataSnapshot, sessionHint:{...hint,profile:{...profile,username:'bad'}} });
+  await bridge.read({ account,contact });
+  assert.equal(bridge.bindings.get(contact).sessionHint, null);
 });

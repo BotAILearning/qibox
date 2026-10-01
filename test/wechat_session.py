@@ -23,6 +23,25 @@ def short(value):
 
 
 class LiveMemory(unittest.TestCase):
+    def test_allocation_map_keeps_swapped_and_present_but_skips_zero_pages(self):
+        entries = [1 << 63, 0, 1 << 62, 0, 1 << 63]
+        raw = b''.join(struct.pack('<Q', value) for value in entries)
+        with patch.object(session.memory.os, 'pread', return_value=raw):
+            self.assertEqual(session.memory.allocated_segments(4, 17, 5 * 4096 - 30),
+                             [(17, 4096 - 17), (8192, 4096), (16384, 4096 - 13)])
+
+    def test_allocation_map_permission_fallback_keeps_original_range(self):
+        with patch.object(session.memory.os, 'pread', side_effect=PermissionError()):
+            self.assertEqual(session.memory.allocated_segments(4, 17, 8000), [(17, 8000)])
+
+    def test_scan_never_reads_empty_gaps_or_joins_false_anchor_across_gap(self):
+        self.reader._read = Mock(side_effect=[b'normal_', b'key'])
+        with patch.object(session.os, 'open', side_effect=PermissionError()), \
+             patch.object(session.memory, 'allocated_segments', return_value=[(0x10000, 7), (0x18000, 3)]):
+            self.assertEqual(list(self.reader._scan_chunks(9)), [(0x10000, b'normal_'), (0x18000, b'key')])
+        self.assertEqual(self.reader.scan_read_bytes, 10)
+        self.assertEqual(self.reader._read.call_args_list[0].args, (0x10000, 7))
+
     def setUp(self):
         self.memory = bytearray(0x10000)
         self.reader = session.SessionIdentity.__new__(session.SessionIdentity)
@@ -289,6 +308,26 @@ class LiveMemory(unittest.TestCase):
         self.pointer(self.vector, 0x17000)
         with self.assertRaisesRegex(ValueError, 'unique live member'):
             self.reader.current()
+
+    def test_discovered_layout_hint_reuses_only_verified_in_scope_layout(self):
+        r = self.reader
+        original = r.profile
+        r.profile = {**session.BASE_LAYOUT, 'manager_key': original['manager_key'], 'manager_vtable': original['manager_vtable']}
+        r.build_id = 'e' * 40
+        r.maps.append((r.base, r.base + 0x10000000, 'r--p', 0, r.bound[1]))
+        hint = r.hint()
+        self.assertEqual(hint['version'], 2)
+        r.profile = None
+        r.manager = None
+        r._managers = Mock(side_effect=AssertionError('warm hint must not rescan'))
+        r._apply_hint(hint)
+        self.assertTrue(r.matches(*self.identities()))
+        for field, value in [('controller', 16), ('manager_key', 0x8888), ('manager_vtable', 0x20000000)]:
+            with self.assertRaisesRegex(ValueError, 'hint layout'):
+                r._apply_hint({**hint, 'profile': {**hint['profile'], field: value}})
+        self.pointer(self.vector, 0x17000)
+        with self.assertRaisesRegex(ValueError, 'unique live member'):
+            r.current()
 
 
 class ExecutableAndContext(unittest.TestCase):

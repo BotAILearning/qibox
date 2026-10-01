@@ -14,14 +14,18 @@ import tarfile
 import tempfile
 
 root = pathlib.Path(__file__).resolve().parents[1]
-stage = root / 'build/qibox-all'
+architecture = next((arg.split('=', 1)[1] for arg in sys.argv[1:] if arg.startswith('--arch=')), 'all')
+platforms = {'all':'all', 'x64':'x86', 'arm64':'arm'}
+if architecture not in platforms: raise ValueError('Unsupported package architecture')
+platform = platforms[architecture]
+stage = root / f'build/qibox-{architecture}'
 product = json.loads((root / 'config/product.json').read_text(encoding='utf-8'))
 version = product['version']
 manifest = dict(line.split('=', 1) for line in (stage / 'manifest').read_text(encoding='utf-8').splitlines() if '=' in line)
-assert manifest['version'] == version and manifest['platform'] == 'all'
+assert manifest['version'] == version and manifest['platform'] == platform
 assert json.loads((stage / 'app/config/product.json').read_text(encoding='utf-8'))['version'] == version
 build_id = product.get('buildId', version)
-output = root / 'dist' / 'releases' / version / build_id / f'qibox-{build_id}-all.fpk'
+output = root / 'dist' / 'releases' / version / build_id / f'qibox-{build_id}-{platform}.fpk'
 output.parent.mkdir(parents=True, exist_ok=True)
 if output.exists():
     raise FileExistsError(f'Refusing to overwrite existing release: {output}')
@@ -42,15 +46,15 @@ def file_hash(filename, algorithm='sha256'):
 with tempfile.TemporaryDirectory(prefix='qibox-fpk-', dir=output.parent) as temporary:
     temporary = pathlib.Path(temporary)
     payload = temporary / 'app.tgz'
-    print('Archiving staged application and both runtime architectures', flush=True)
-    with tarfile.open(payload, 'w:gz', format=tarfile.PAX_FORMAT, compresslevel=1) as archive:
+    print('Archiving staged application: ' + architecture, flush=True)
+    with tarfile.open(payload, 'w:gz', format=tarfile.PAX_FORMAT, compresslevel=9) as archive:
         for child in sorted((stage / 'app').iterdir()):
             archive.add(child, arcname=child.name, filter=normalize)
     manifest['checksum'] = file_hash(payload, 'md5')
     manifest_bytes = ('\n'.join(f'{key} = {value}' for key, value in manifest.items()) + '\n').encode('utf-8')
     pending = temporary / output.name
     print('Assembling FPK archive', flush=True)
-    with tarfile.open(pending, 'w:gz', format=tarfile.USTAR_FORMAT, compresslevel=1) as archive:
+    with tarfile.open(pending, 'w:gz', format=tarfile.USTAR_FORMAT, compresslevel=9) as archive:
         archive.add(payload, arcname='app.tgz', filter=normalize)
         for name in ['cmd', 'config', 'ICON.PNG', 'ICON_256.PNG', 'wizard']:
             archive.add(stage / name, arcname=name, filter=normalize)

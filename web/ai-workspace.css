@@ -1701,7 +1701,7 @@ dialog.ai-record-delete-dialog p{margin:0 0 20px;line-height:1.65}
 #ai-panel .ai-personal-section-heading>span { color:var(--ai-muted); font-size:12px; }
 #ai-panel .ai-personal-fields { gap:12px; align-items:start; }
 #ai-panel .ai-personal-card { min-width:0; border:1px solid var(--ai-border); border-radius:10px; background:#fff; overflow:hidden; }
-#ai-panel .ai-personal-card>summary { padding:14px 16px; cursor:pointer; list-style:none; }
+#ai-panel .ai-personal-card>summary { padding:10px 14px; cursor:pointer; list-style:none; min-height:44px; }
 #ai-panel .ai-personal-card>summary::-webkit-details-marker,#ai-panel .ai-personal-more>summary::-webkit-details-marker { display:none; }
 #ai-panel .ai-personal-card>summary:focus-visible,#ai-panel .ai-personal-more>summary:focus-visible { outline:2px solid var(--ai-primary); outline-offset:-3px; }
 #ai-panel .ai-personal-card:hover { border-color:#b7c1ed; }
@@ -1717,7 +1717,7 @@ dialog.ai-record-delete-dialog p{margin:0 0 20px;line-height:1.65}
 #ai-panel .ai-personal-edit-label { display:flex; align-items:center; gap:4px; margin-left:auto; color:var(--ai-primary); font-size:12px; white-space:nowrap; }
 #ai-panel .ai-personal-edit-label svg { width:14px; height:14px; }
 #ai-panel .ai-personal-card[open] .ai-personal-edit-label svg { transform:rotate(90deg); }
-#ai-panel .ai-personal-preview { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; white-space:pre-wrap; overflow-wrap:anywhere; color:var(--ai-text); margin:7px 0 0; line-height:1.65; }
+#ai-panel .ai-personal-preview { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; white-space:pre-wrap; overflow-wrap:anywhere; color:var(--ai-text); margin:3px 0 0; line-height:1.65; }
 #ai-panel [data-state=empty] .ai-personal-preview { color:var(--ai-muted); font-size:12px; }
 #ai-panel .ai-personal-scope { display:block; color:var(--ai-muted); margin-top:5px; font-size:11px; }
 #ai-panel .ai-personal-card[open] .ai-personal-preview,#ai-panel .ai-personal-card[open] .ai-personal-scope { display:none; }
@@ -1729,7 +1729,7 @@ dialog.ai-record-delete-dialog p{margin:0 0 20px;line-height:1.65}
 #ai-panel .ai-personal-input-help { display:flex; gap:12px; justify-content:space-between; margin:7px 0 12px; }
 #ai-panel .ai-personal-input-help p { font-size:11.5px; margin:0; color:var(--ai-muted); }
 #ai-panel .ai-personal-input-help>span { color:var(--ai-muted); font-size:11px; white-space:nowrap; }
-#ai-panel .ai-personal-share { display:flex; align-items:center; gap:8px; color:var(--ai-muted); font-size:12px; cursor:pointer; }
+#ai-panel .ai-personal-share { display:flex; align-items:center; gap:8px; color:var(--ai-muted); font-size:12px; cursor:pointer; min-height:44px; }
 #ai-panel .ai-personal-share input { width:16px; height:16px; margin:0; }
 #ai-panel .ai-personal-wide { grid-column:1/-1; }
 #ai-panel .ai-personal-more { margin-top:18px; border:1px solid var(--ai-border); border-radius:10px; }
@@ -1740,7 +1740,7 @@ dialog.ai-record-delete-dialog p{margin:0 0 20px;line-height:1.65}
 #ai-panel .ai-personal-more>summary svg { width:16px; height:16px; }
 #ai-panel .ai-personal-more[open]>summary>svg { transform:rotate(90deg); }
 #ai-panel .ai-personal-more>.ai-personal-fields { padding:0 14px 14px; }
-#ai-panel .ai-personal-save { display:flex; align-items:center; gap:16px; justify-content:space-between; padding-top:20px; margin-top:20px; border-top:1px solid var(--ai-border); }
+#ai-panel .ai-personal-save { display:flex; align-items:center; gap:16px; justify-content:space-between; padding:12px 0; margin-top:12px; border-top:1px solid var(--ai-border); position:sticky; bottom:0; background:#fff; z-index:2; }
 #ai-panel .ai-personal-save>span { color:var(--ai-muted); font-size:12px; }
 #ai-panel .ai-personal-form[data-dirty=true] .ai-personal-save>span { color:#805516; }
 #ai-panel .ai-personal-additions { display:grid; grid-template-columns:1fr 1fr; gap:14px; max-width:1050px; margin-top:16px; }
@@ -1752,6 +1752,19 @@ dialog.ai-record-delete-dialog p{margin:0 0 20px;line-height:1.65}
 @media(max-width:980px) { #ai-panel .ai-personal-intro { gap:12px; } #ai-panel .ai-personal-more>summary>div { display:block; } #ai-panel .ai-personal-more>summary>div>span { display:block; margin-top:3px; } }
 @media(max-width:760px) { #ai-panel .ai-personal-intro { flex-direction:column; } #ai-panel .ai-personal-progress { margin-left:0; } #ai-panel .ai-personal-form { padding:16px; } #ai-panel .ai-personal-additions { grid-template-columns:1fr; } #ai-panel .ai-personal-save { flex-wrap:wrap; } }
 .qbx-dialog-close { position:absolute; right:12px; top:12px; }
+#ai-panel #ai-object-list .ai-object-row { height:77px; min-height:77px; box-sizing:border-box; margin-bottom:3px; }
+#ai-panel #ai-object-list .ai-contact-info small { white-space:nowrap; }
+#ai-panel .ai-object-spacer { flex:none; pointer-events:none; }
+#ai-panel .ai-personal-card[open] { grid-column:1/-1; }
+#ai-panel .ai-personal-form { scroll-padding-bottom:80px; }
+#ai-panel .ai-personal-editor :is(input,textarea) { scroll-margin-bottom:90px; }
+#ai-panel .ai-personal-guide { margin-top:8px; font-size:12px; color:var(--ai-muted); }
+#ai-panel .ai-personal-guide>summary { cursor:pointer; min-height:30px; }
+@media(max-width:760px) {
+  #ai-panel .ai-personal-form .ai-personal-save { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; padding:10px 0; }
+  #ai-panel .ai-personal-form .ai-personal-save>span { min-width:0; font-size:11px; }
+  #ai-panel .ai-personal-form .ai-personal-save>button { padding-inline:12px; min-height:44px; }
+}
 .qbx-product-dialog p { white-space:pre-line; line-height:1.7; }
 .ai-record-kind-tabs { display:flex; gap:4px; margin-left:auto; }
 .ai-record-kind-tabs button { border:1px solid var(--ai-collapse-border); padding:5px 10px; border-radius:8px; background:transparent; }

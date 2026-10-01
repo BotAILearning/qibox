@@ -13,7 +13,7 @@ with tempfile.TemporaryDirectory(prefix='qibox-pack-') as temporary:
         expected = re.search(r'^checksum\s*=\s*(\S+)', manifest, re.M).group(1)
         if expected != original_hash.hexdigest(): raise ValueError('Unexpected fnpack checksum format')
         with tarfile.open(fileobj=outer.extractfile('app.tgz'), mode='r|gz') as contents:
-            with tarfile.open(app, 'w:gz', compresslevel=1) as target:
+            with tarfile.open(app, 'w:gz', compresslevel=9) as target:
                 for entry in contents:
                     if entry.name.startswith('/') or '..' in pathlib.PurePosixPath(entry.name).parts or entry.issym() or entry.islnk(): raise ValueError('Unsafe application member')
                     entry.mode = 0o755 if entry.isdir() else 0o644
@@ -24,7 +24,7 @@ with tempfile.TemporaryDirectory(prefix='qibox-pack-') as temporary:
         digest = hashlib.file_digest(app.open('rb'), 'md5').hexdigest()
         updated_manifest = re.sub(r'^(checksum\s*=\s*)\S+', lambda m: m[1]+digest, manifest, flags=re.M).encode('utf-8')
         pending = filename.with_suffix('.normalized.fpk')
-        with tarfile.open(pending, 'w:gz', format=tarfile.USTAR_FORMAT, compresslevel=1) as target:
+        with tarfile.open(pending, 'w:gz', format=tarfile.USTAR_FORMAT, compresslevel=9) as target:
             for entry in outer:
                 entry.mode = 0o755 if entry.isdir() or entry.name.startswith('cmd/') else 0o644
                 entry.uid = entry.gid = 0

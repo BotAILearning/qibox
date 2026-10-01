@@ -77,6 +77,8 @@ def make_session(module, heap_bytes, segments=None):
     identity.bound = (12345, EXE, None, None)
     identity.base = EXE_BASE
     identity.fd = None
+    identity.pid = 99999999
+    identity.proc = pathlib.Path('/proc')
     identity.profile = None
     identity.manager = None
     # Roomy enough to hold the vtable RVA: it sits ~174 MB into a ~231 MB binary.

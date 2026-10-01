@@ -4,6 +4,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { isIP } from 'node:net';
 import { AppError } from './files.mjs';
+import { compactModelInput } from './ai-model-input.mjs';
 import { textField } from './ai-schema.mjs';
 
 export function providerValue(value, previous = {}, { discovery = false } = {}) {
@@ -311,7 +312,7 @@ export class AIProvider {
     const {images = [], ...textInput} = input;
     const validImages = images.filter(x => x && ['image/png','image/jpeg','image/gif','image/webp'].includes(x.mime) && typeof x.data === 'string' && x.data.length <= 5600000).slice(0,3);
     if (requireImages && (!images.length || validImages.length !== images.length)) throw new AppError('图片或视频帧不符合模型输入要求', 400);
-    const text = JSON.stringify(hasSpeakerTurns(input) ? { ...textInput, messages: input.messages, replySpeakerHistory: speakerHistory(input.messages).map(({ messages, ...group }) => ({ ...group, messageIds: messages.map(message => message.id) })), confirmedSpeakerHistory: confirmedSpeakerHistory(input.messages).filter(group => group.speaker.role === 'self'), replyRelations: replyRelations(input.messages), naturalTurnBrief: naturalTurnBrief(input.messages) } : textInput);
+    const text = JSON.stringify(compactModelInput(hasSpeakerTurns(input) ? { ...textInput, messages: input.messages, replySpeakerHistory: speakerHistory(input.messages).map(({ messages, ...group }) => ({ ...group, messageIds: messages.map(message => message.id) })), confirmedSpeakerHistory: confirmedSpeakerHistory(input.messages).filter(group => group.speaker.role === 'self'), replyRelations: replyRelations(input.messages), naturalTurnBrief: naturalTurnBrief(input.messages) } : textInput));
     const requestContent = validImages.length ? [{type:'text',text}, ...validImages.flatMap(x => [{type:'text',text:'图片对应消息 '+x.messageId}, anthropic ? {type:'image',source:{type:'base64',media_type:x.mime,data:x.data}} : {type:'image_url',image_url:{url:'data:'+x.mime+';base64,'+x.data}}])] : text;
     // Only Anthropic used to receive an output budget; elsewhere the server's
     // own default applied, and several hosts default to something small enough
@@ -363,6 +364,12 @@ export class AIProvider {
         let data;
         try { data = JSON.parse(Buffer.concat(parts).toString()); }
         catch { throw new AppError('模型接口未返回有效数据，请检查服务地址和接口类型', 502, 'ai_model_response'); }
+        const tokenCount = value => Number.isSafeInteger(value) && value >= 0 ? value : null;
+        console.info('[ai-request-cost]', JSON.stringify({ mode: input.mode || format,
+          inputChars: currentSystem.length + text.length,
+          compactedChars: Math.max(0, JSON.stringify(textInput).length - JSON.stringify(compactModelInput(textInput)).length),
+          inputTokens: tokenCount(data.usage?.prompt_tokens ?? data.usage?.input_tokens),
+          outputTokens: tokenCount(data.usage?.completion_tokens ?? data.usage?.output_tokens) }));
         if (data.choices?.[0]?.finish_reason === 'length' || data.stop_reason === 'max_tokens') {
           if (input?.defaultStyle || Array.isArray(input?.profiles)) console.warn('[ai-style-shape]', JSON.stringify({
             stage: input.defaultStyle ? 'person' : 'summary', responseKeys: Object.keys(data),

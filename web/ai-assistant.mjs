@@ -6,7 +6,7 @@ import { settingsPage } from './ai-settings-view.mjs';
 import { icon, iconSprite, logoIcon } from './ai-icons.mjs';
 import { keyIcon } from './ai-key-icon.mjs';
 import { memoryFields, pendingMemoryFields, wikiEntryMarkup, sameWikiEntries, degreeOptions } from './ai-memory-view.mjs';
-import { objectPage, objectList, objectExecutionStatus } from './ai-object-view.mjs';
+import { objectPage, objectList, objectExecutionStatus, objectWindow, OBJECT_ROW_HEIGHT } from './ai-object-view.mjs';
 import { replyLimitControl, syncReplyLimitControl, parseReplyLimit, replyLimitManualMax } from './ai-reply-limit.mjs';
 import { styleChoice, styleSummary as styleSummaryText } from './ai-style-view.mjs';
 import { learnedObjectDraft } from './ai-learning-draft.mjs';
@@ -70,8 +70,36 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   let objectKind = 'person', selectedObject = '', objectSection = 'reply', objectMemoryCategory = 'name', objectSearch = '', logFilters = { source: 'reply' };
   const acknowledgedReplyLimitOverflow = new WeakMap();
   let replyLimitOverflowDialogOpen = false;
-  const objectView = () => ({ kind: objectKind, selected: selectedObject, section: objectSection, memoryCategory: objectMemoryCategory, search: objectSearch, draft: objectDrafts.get(selectedObject) });
+  const objectView = () => ({ kind: objectKind, selected: selectedObject, section: objectSection, memoryCategory: objectMemoryCategory, search: objectSearch, draft: objectDrafts.get(selectedObject), scrollTop: $('#ai-object-list')?.scrollTop || 0, height: $('#ai-object-list')?.clientHeight || 600 });
   function objects() { return objectPage(state, objectView()); }
+  function drawObjectList() {
+    const list = $('#ai-object-list');
+    if (list && state) list.innerHTML = objectList(state, objectView());
+  }
+  let objectScrollFrame = 0;
+  panel.addEventListener('scroll', event => {
+    if (event.target.id !== 'ai-object-list' || objectScrollFrame) return;
+    objectScrollFrame = requestAnimationFrame(() => {
+      objectScrollFrame = 0;
+      const list = $('#ai-object-list');
+      if (!list || !state) return;
+      const contacts = contactPickerMatches(state.contacts, objectKind, objectSearch);
+      const range = objectWindow(contacts.length, list.scrollTop, list.clientHeight);
+      if (list.querySelector('[data-object-window]')?.dataset.objectWindow !== `${range.start}:${range.end}`) drawObjectList();
+    });
+  }, true);
+  panel.addEventListener('keydown', event => {
+    const row = event.target.closest?.('[data-ai-object-index]');
+    if (!row || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key) || !state) return;
+    event.preventDefault();
+    const total = contactPickerMatches(state.contacts, objectKind, objectSearch).length;
+    const index = Math.max(0, Math.min(total - 1, event.key === 'Home' ? 0 : event.key === 'End' ? total - 1 : Number(row.dataset.aiObjectIndex) + (event.key === 'ArrowDown' ? 1 : -1)));
+    const list = $('#ai-object-list');
+    if (index * OBJECT_ROW_HEIGHT < list.scrollTop) list.scrollTop = index * OBJECT_ROW_HEIGHT;
+    else if ((index + 1) * OBJECT_ROW_HEIGHT > list.scrollTop + list.clientHeight) list.scrollTop = (index + 1) * OBJECT_ROW_HEIGHT - list.clientHeight;
+    drawObjectList();
+    list.querySelector(`[data-ai-object-index="${index}"]`)?.focus({ preventScroll: true });
+  });
   let logRecords = [], logLoading = false, logEpoch = 0, logSignature = '';
   let skipLoading = false, skipEpoch = 0, skipHistory = [], skipHistoryPage = null, skipPageLoading = false;
   const skipContent = new Map();
@@ -859,7 +887,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     const activeMemoryCategory = panel.querySelector(`.ai-reference-memory-categories button[data-ai-memory-category="${objectMemoryCategory}"]`)?.dataset.aiMemoryCategory || panel.querySelector('.ai-reference-memory-categories button')?.dataset.aiMemoryCategory;
     for (const node of panel.querySelectorAll('.ai-reference-memory [data-ai-wiki-field]')) node.hidden = node.dataset.aiWikiField !== activeMemoryCategory;
     for (const textarea of $('#ai-content').querySelectorAll('.ai-wiki-bubble textarea[aria-label="信息内容"]')) resizeWikiTextarea(textarea);
-    if ($('#ai-object-list')) { $('#ai-object-list').innerHTML = objectList(state, objectView()); $('#ai-object-list').scrollTop = objectScroll; }
+    if ($('#ai-object-list')) { $('#ai-object-list').scrollTop = objectScroll; drawObjectList(); }
     panel.classList.toggle('object-selected', !!selectedObject && tab === 'overview');
     for (const node of panel.querySelectorAll('#ai-content details')) {
       if (node.hasAttribute('data-ai-record-expand') || node.hasAttribute('data-ai-skip-messages')) continue;
@@ -1158,7 +1186,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       if (status) status.textContent = event.target.value.trim() ? '已填写' : '点击展开';
       resizeAnalysisRequest(event.target);
     }
-    if (event.target.id === 'ai-object-search') { objectSearch = event.target.value; $('#ai-object-list').innerHTML = objectList(state, objectView()); return; }
+    if (event.target.id === 'ai-object-search') { objectSearch = event.target.value; $('#ai-object-list').scrollTop = 0; drawObjectList(); return; }
     if (event.target.id === 'ai-log-search') {
       logFilters.query = event.target.value; logFilters.page = 0; rememberRecords();
       drawRecords();
@@ -1681,7 +1709,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         render(); $('[data-ai-dirty]').hidden = false; return;
       }
       if (button.dataset.aiNav) { await navigate(button.dataset.aiNav); return; }
-      if (button.dataset.aiKind) { rememberDraft(); objectKind = button.dataset.aiKind; selectedObject = ''; objectSection = 'reply'; objectMemoryCategory = objectKind === 'group' ? 'group_info' : 'name'; objectSearch = ''; render(); return; }
+      if (button.dataset.aiKind) { rememberDraft(); objectKind = button.dataset.aiKind; selectedObject = ''; objectSection = 'reply'; objectMemoryCategory = objectKind === 'group' ? 'group_info' : 'name'; objectSearch = ''; const list = $('#ai-object-list'); if (list) list.scrollTop = 0; render(); return; }
       if (button.dataset.aiLearnKind) { learnContactKind = button.dataset.aiLearnKind; render(); return; }
       if (button.dataset.aiObjectSection) { rememberDraft(); objectSection = button.dataset.aiObjectSection; render(); return; }
       if (button.dataset.aiMemoryCategory) { rememberDraft(); objectMemoryCategory = button.dataset.aiMemoryCategory; render(); return; }
