@@ -79,6 +79,21 @@ test('learning and report inputs keep their independent single-user payload cont
   assert.equal(body.messages.length, 2); assert.deepEqual(JSON.parse(body.messages[1].content), input);
 });
 
+for(const protocol of ['anthropic','openai'])test(`${protocol}: monitored knowledge restores native evidence before factual validation`,async()=>{
+  const id=key('memory-source'),contact=key('memory-contact');
+  const input={mode:'memory-monitor',contact,messages:[{id,text:'我家猫叫豆包。',direction:'other',speaker:{id:'contact:'+contact,role:'other'}}],newMessageIds:[id]};
+  const original=structuredClone(input);
+  const provider=new AIProvider({fetcher:async(_url,options)=>{
+    const body=JSON.parse(options.body),wire=JSON.parse(body.messages.at(-1).content);
+    assert.notEqual(wire.messages[0].id,id);assert.equal(wire.newMessageIds[0],wire.messages[0].id);
+    assert.equal(wire.messages[0].text,'我家猫叫豆包。');assert.equal(wire.messages[0].speaker.role,'other');
+    const value={memoryUpdates:[{text:'对方的猫叫豆包。',evidence:[wire.messages[0].id]}]};
+    return Response.json(protocol==='anthropic'?{content:[{type:'text',text:JSON.stringify(value)}]}:{choices:[{message:{content:JSON.stringify(value)}}]});
+  }});
+  const result=await provider.complete({...modelConfig,protocol},'仅整理原文支持的知识',input,undefined,{validate:value=>{assert.equal(value.memoryUpdates[0].evidence[0],id);return value;}});
+  assert.equal(result.memoryUpdates[0].text,'对方的猫叫豆包。');assert.deepEqual(input,original);
+});
+
 for(const protocol of ['openai','anthropic'])test(`${protocol}: image references and returned evidence keep native identity across compact transport`,async()=>{
   const profile={account:key('a'),contact:key('c'),kind:'person'},id=key('evidence');
   const input={mode:'reply',replyPerspective:replyPerspective(profile),messages:[withSpeaker({id,direction:'self',text:'事实哈希 '+id+'，qref 是原话。'},profile)],images:[{messageId:id,mime:'image/png',data:'AAAA'}]};

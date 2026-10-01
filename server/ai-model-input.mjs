@@ -32,12 +32,12 @@ export function compactModelInput(input) {
 // request-local reference instead; restore model-returned evidence IDs before
 // validation. Message bodies, facts, quotes and actor roles are never shortened.
 export function encodeModelRequest(system, input) {
-  if (!['reply', 'proactive'].includes(input?.mode)) return { system, input, decode: value => value, id: value => value };
+  if (!['reply', 'proactive', 'memory-monitor'].includes(input?.mode)) return { system, input, decode: value => value, id: value => value };
   const source = JSON.stringify(input) + system;
   let prefix = 'qref'; while (source.includes(prefix)) prefix += 'x';
   const identities = new Map(), originals = new Map();
   const keys = new Set(['id', 'account', 'contact', 'messageId', 'sender', 'senderId', 'latestIncomingId', 'lastSelfId']);
-  const arrays = new Set(['messageIds', 'pendingIncomingIds', 'incomingSinceLastSelf', 'requiredReplyIds', 'ids', 'evidence']);
+  const arrays = new Set(['messageIds', 'newMessageIds', 'pendingIncomingIds', 'incomingSinceLastSelf', 'requiredReplyIds', 'ids', 'evidence']);
   const opaque = /^(?:(?:account|contact|member|chat|unknown-member|message):)?[a-f0-9]{64}$/;
   const reference = value => {
     if (!opaque.test(value)) return value;
