@@ -1,9 +1,7 @@
 import { beijingTime } from './ai-proactive-view.mjs';
 import { icon } from './ai-icons.mjs';
-import { contactName, contactSearch } from './ai-contact-name.mjs';
-import { contactPickerAvatar } from './ai-contact-picker.mjs';
+import { contactAvatar, contactName, contactSearch } from './ai-contact-name.mjs';
 import { replyRecordCards } from './ai-reply-records-view.mjs';
-import { replyFlowMarkup } from './ai-reply-flow-view.mjs';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const within = (at, filters) => {
   if (!filters.from && !filters.to) return true;
@@ -35,18 +33,18 @@ export function proactiveRecordRows(state, filters = {}, loading = false) {
   return `<div class="ap-table-scroll"><table class="ai-record-table ap-record-table ap-proactive-record-table"><thead><tr><th>任务</th><th>联系人</th><th>最近执行时间</th><th>本次执行内容</th></tr></thead><tbody>${records.map((r, index) => {
     const profileId = r.profileId || state.profiles?.find(p => p.contact === r.contact)?.id, profile = state.profiles?.find(p => p.id === profileId);
     const contact = state.contacts?.find(c => c.id === r.contact || c.id === profile?.contact);
-    const identity = `${contactPickerAvatar(contact, index, 'ai-reply-record-avatar')}<span class="ai-record-contact-name">${contactName(r, contact) || esc(r.contact || '联系人')}</span>`;
-    const person = profileId ? `<button type="button" class="ai-record-contact-link" data-ai-open-conversation="${esc(profileId)}" aria-label="打开${esc(r.label || contact?.label || '联系人')}的微信聊天">${identity}</button>` : `<span class="ai-record-contact-link">${identity}</span>`;
-    return `<tr data-proactive-record="${esc(r.id)}" data-ai-record-menu="${esc(r.id)}" data-ai-record-menu-source="proactive"><td data-label="任务"><strong>${esc(r.taskName || '历史任务')}</strong></td><td data-label="联系人">${person}</td><td data-label="最近执行时间">${esc(beijingTime(r.at))}</td><td data-label="本次执行内容"><span class="ap-record-status ${esc(r.status)}">${esc(labels[r.status] || '状态待更新')}</span>${r.segmentsTotal ? `<small>已确认 ${r.segmentsSent || 0}/${r.segmentsTotal} 段</small>` : ''}${r.text ? `<p class="ap-record-text">${esc(r.text)}</p>` : `<p class="ai-help">${r.bodyUnavailable ? '正文暂时无法读取。' : '无可展示正文'}</p>`}${r.reason ? `<p class="ai-help">${esc(r.reason)}</p>` : ''}</td></tr>`;
+    const name = contactName(r, contact) || esc(r.contact || '联系人');
+    const avatar = contactAvatar(r, contact, 'ai-reply-record-avatar', index);
+    const identity = `${avatar}<span class="ai-record-contact-name">${name}</span>`;
+    return `<tr data-proactive-record="${esc(r.id)}" data-ai-record-menu="${esc(r.id)}" data-ai-record-menu-source="proactive"><td data-label="任务"><strong>${esc(r.taskName || '历史任务')}</strong></td><td data-label="联系人">${profileId ? `<button type="button" class="ai-record-contact-link" data-ai-open-conversation="${esc(profileId)}" aria-label="打开${esc(r.label || contact?.label || '联系人')}的微信聊天">${identity}</button>` : `<span class="ai-record-contact-link">${identity}</span>`}</td><td data-label="最近执行时间">${esc(beijingTime(r.at))}</td><td data-label="本次执行内容"><span class="ap-record-status ${esc(r.status)}">${esc(labels[r.status] || '状态待更新')}</span>${r.segmentsTotal ? `<small>已确认 ${r.segmentsSent || 0}/${r.segmentsTotal} 段</small>` : ''}${r.text ? `<p class="ap-record-text">${esc(r.text)}</p>` : `<p class="ai-help">${r.bodyUnavailable ? '正文暂时无法读取。' : '无可展示正文'}</p>`}${r.reason ? `<p class="ai-help">${esc(r.reason)}</p>` : ''}</td></tr>`;
   }).join('') || `<tr><td colspan="4"><div class="ap-empty">${loading ? '正在读取主动聊天记录…' : '已加载范围内暂无符合条件的主动聊天记录'}</div></td></tr>`}</tbody></table></div><footer class="ap-record-footer"><span>已加载 ${state.proactiveRecords?.length || 0} 条，当前筛选显示 ${records.length} 条</span>${state.proactiveRecordsPage?.hasMore ? `<button class="secondary" type="button" data-proactive-record-more ${loading ? 'disabled' : ''}>${loading ? '正在读取…' : '加载更早记录'}</button>` : '<span>当前加载范围已到末尾</span>'}</footer>`;
 }
 export function liveActivityBox(state) {
   const live = state.live || [];
   if (!live.length) return '';
   return `<section class="ap-record-live"><header><h4>实时状态</h4></header><ul>${live.map(x => {
-    const profile = (state.profiles || []).find(profile => profile.id === x.id);
-    const flow = replyFlowMarkup(profile, x, { allowSkip: !!(profile && state.settings?.enabled && state.settings?.reply && state.waiting !== true && !profile.paused) });
-    return `<li><i class="ai-live-dot ${esc(x.phase)}"></i><div><strong>${contactName(x)}</strong>${flow || `：${esc(x.reason || '等待处理')}`}</div></li>`;
+    const remaining = x.phase === 'generating' || !Number.isFinite(x.dueAt) ? '' : ` · 约 ${Math.max(1, Math.ceil((x.dueAt - Date.now()) / 1000))} 秒后发送`;
+    return `<li><i class="ai-live-dot ${esc(x.phase)}"></i><strong>${contactName(x)}</strong>${x.phase === 'generating' ? `：${esc(x.reason || '请求 AI')}…` : `：${esc(x.reason || '等待发送')}${remaining}`}</li>`;
   }).join('')}</ul></section>`;
 }
 export function recentErrorsBox(state, open = false, loading = false) {
@@ -60,38 +58,18 @@ export function recentErrorsBox(state, open = false, loading = false) {
 }
 export function skipRecordsView(state) {
   const profiles = new Map((state.profiles || []).map(profile => [profile.id, profile]));
-  const expanded = new Set(state.skipMessageExpanded || []);
   const merged = new Map();
   for (const event of [...(state.events || []).filter(event => event.code === 'skip'), ...(state.skipRecords || [])]) merged.set(event.id || `${event.target || ''}:${event.at}`, event);
   const reasonLabels = { 'group-trigger-missing': '群聊未配置触发方式', 'explicit-question-no-response': '明确提问重试后仍未生成文字回复；新来信仍可处理', 'unsupported-media': '当前内容无法安全处理', 'identity-rule-block': '回复内容未通过身份规则', 'model-no-reply': '模型判断本轮无需回复' };
   const rows = [...merged.values()].sort((a, b) => b.at - a.at).slice(0, 50).map((event, index) => {
-    const profile = profiles.get(event.target), contact = (state.contacts || []).find(c => c.id === profile?.contact);
-    const name = contactName(profile, contact) || '联系人';
-    const identity = `${contactPickerAvatar(contact, index, 'ai-reply-record-avatar')}<span class="ai-record-contact-name">${name}</span>`;
+    const profile = profiles.get(event.target), contact = (state.contacts || []).find(c => c.id === profile?.contact), name = contactName(profile, contact) || '联系人';
     const source = `${({ 'model-skip': '模型判断', 'system-skip': '系统拦截' })[event.source] || '旧记录'}${event.trigger ? ` · ${{ reply: '私聊', atMe: '@我', atAll: '@所有人', realtime: '群聊实时', proactive: '主动聊天' }[event.trigger] || event.trigger}` : ''}`;
     const reason = reasonLabels[event.reasonCode] || (event.reasonCode ? '系统跳过本次回复' : '历史记录未保存具体原因');
-    const marking = event.markingForReply === true, marked = event.markedForReply === true;
-    const markText = marked ? '已标记为需回复' : marking ? '正在标记…' : '标记为需回复';
-    const markHint = marked ? '已暂存，将在下一次自动回复前总结；此操作不会立即发送消息。' : event.markReplyError || '';
-    const incoming = Array.isArray(event.incomingMessages) ? event.incomingMessages : [];
-    const senderOf = message => message.senderName || (profile?.kind === 'person' ? profile.label : '') || (message.senderId ? `群成员（${String(message.senderId).slice(0, 8)}）` : '发送者暂不可读取');
-    const bodyOf = message => {
-      const media = { image: '图片', voice: '语音', video: '视频', file: '文件', sticker: '表情', emoji: '表情', link: '链接', system: '系统消息' }[message.type];
-      return message.text || (media ? `[${media}]` : '消息正文暂不可读取');
-    };
-    const messageList = incoming.map(message => {
-      return `<div class="ai-skip-message"><strong class="ai-skip-sender">${esc(senderOf(message))}</strong>${message.timestamp ? `<time>${esc(beijingTime(message.timestamp * 1000))}</time>` : ''}<p class="ap-record-text">${esc(bodyOf(message))}</p>${message.truncated ? '<small>原消息较长，此处展示已保存的部分内容。</small>' : ''}</div>`;
-    }).join('');
-    const messages = `<div class="ai-skip-messages">${messageList}${event.truncated ? '<p class="ai-help">来信较多或内容较长，此处展示已保存的部分消息。</p>' : ''}</div>`;
-    const latest = incoming.at(-1);
-    const disclosureId = event.id || `${event.target || ''}:${event.at || ''}`;
-    const content = incoming.length > 1
-      ? `<details class="ai-skip-message-disclosure" data-ai-skip-messages="${esc(disclosureId)}" ${expanded.has(disclosureId) ? 'open' : ''}><summary><span class="ai-skip-message-count">${incoming.length} 条消息</span><span class="ai-skip-message-preview">${esc(senderOf(latest))}：${esc(bodyOf(latest))}</span><span class="ai-skip-message-toggle"><span class="when-closed">展开</span><span class="when-open">收起</span></span></summary>${messages}</details>`
-      : incoming.length ? messages : `<p class="ai-help" role="status">${state.skipRecordsLoading ? '正在读取发送者与消息内容…' : esc(event.contentUnavailableMessage || '历史记录未保存原文，暂时无法读取消息内容。')}</p>`;
-     return `<tr data-ai-skip-record="${esc(event.id || '')}" ${event.id ? `data-ai-record-menu="${esc(event.id)}" data-ai-record-menu-source="skip"` : ''}><td data-label="联系人">${profile ? `<button type="button" class="ai-record-contact-link" data-ai-open-conversation="${esc(profile.id)}" aria-label="打开${esc(profile.label || '联系人')}的微信聊天">${identity}</button>` : `<span class="ai-record-contact-link">${identity}</span>`}${profile?.kind === 'group' ? '<small>群聊</small>' : ''}</td><td data-label="时间">${esc(beijingTime(event.at))}</td><td data-label="消息内容">${content}</td><td data-label="原因与来源">${esc(source)} · ${esc(reason)}</td><td data-label="操作"><button type="button" class="secondary ap-record-mark" data-ai-mark-reply="${esc(profile?.id || '')}" data-message-id="${esc(event.messageId || '')}" data-event-id="${esc(event.id || '')}" ${event.messageId && profile && !marked && !marking ? '' : 'disabled'}>${markText}</button>${markHint ? `<small class="ai-skip-mark-status${event.markReplyError ? ' error' : ''}" role="status">${esc(markHint)}</small>` : ''}</td></tr>`;
+    const avatar = contactAvatar(profile, contact, 'ai-reply-record-avatar', index);
+    const identity = `${avatar}<span class="ai-record-contact-name">${name}</span>`;
+    return `<tr ${event.id ? `data-ai-record-menu="${esc(event.id)}" data-ai-record-menu-source="skip"` : ''}><td data-label="联系人">${profile ? `<button type="button" class="ai-record-contact-link" data-ai-open-conversation="${esc(profile.id)}" aria-label="打开${esc(profile.label || '联系人')}的微信聊天">${identity}</button>` : `<span class="ai-record-contact-link">${identity}</span>`}</td><td data-label="时间">${esc(beijingTime(event.at))}</td><td data-label="原因与来源">${esc(source)} · ${esc(reason)}</td><td data-label="操作"><button type="button" class="secondary ap-record-mark" data-ai-mark-reply="${esc(profile?.id || '')}" data-message-id="${esc(event.messageId || '')}" data-event-id="${esc(event.id || '')}" ${event.messageId ? '' : 'disabled'}>标记为需回复</button></td></tr>`;
   }).join('');
-   const canRetry = [...merged.values()].sort((a, b) => b.at - a.at).slice(0, 50).some(event => event.messageId && !event.incomingMessages?.length);
-   return `<div id="ai-skip-records"><div class="ap-table-scroll"><table class="ai-record-table ap-record-table ap-skip-record-table"><thead><tr><th>联系人</th><th>时间</th><th>发送者与消息内容</th><th>原因与来源</th><th>操作</th></tr></thead><tbody>${rows || '<tr><td colspan="5"><div class="ap-empty">暂无未回复记录</div></td></tr>'}</tbody></table></div>${canRetry ? `<div class="ai-actions"><button type="button" class="secondary" data-ai-retry-skips ${state.skipRecordsLoading ? 'disabled' : ''}>${state.skipRecordsLoading ? '正在读取消息…' : '重新读取消息'}</button></div>` : ''}</div>`;
+   return `<div id="ai-skip-records"><div class="ap-table-scroll"><table class="ai-record-table ap-record-table ap-skip-record-table"><thead><tr><th>联系人</th><th>时间</th><th>原因与来源</th><th>操作</th></tr></thead><tbody>${rows || '<tr><td colspan="4"><div class="ap-empty">暂无未回复记录</div></td></tr>'}</tbody></table></div></div>`;
 }
 export function activityPage(state, filters = {}, records = [], loading = false, proactiveLoading = false, errorLoading = false, summaryResults) {
   const option = (value, title, selected) => `<option value="${esc(value)}" ${selected ? 'selected' : ''}>${esc(title)}</option>`;
@@ -99,5 +77,5 @@ export function activityPage(state, filters = {}, records = [], loading = false,
   return `<section class="ai-activity-page"><div class="ai-page-heading"><div><h3>执行记录</h3></div></div><div class="ap-record-tabs" role="group" aria-label="记录来源">${[['reply', '自动回复'], ['proactive', '主动聊天']].map(([key, label]) => `<button type="button" data-ai-record-source="${key}" aria-pressed="${(filters.source || 'reply') === key}">${label}</button>`).join('')}</div><label class="ai-field ai-record-search">搜索联系人或内容<input id="ai-log-search" type="search" placeholder="输入联系人名称或记录内容…" value="${esc(filters.query)}"></label><button type="button" class="ai-reference-filter-button secondary" data-ai-toggle-filters aria-label="筛选" aria-controls="ai-log-filter" aria-expanded="${!!filters.open}">筛选</button><form id="ai-log-filter" ${filters.open ? '' : 'hidden'}><label class="ai-field">开始日期<input name="from" type="date" value="${esc(filters.from)}"></label><label class="ai-field">结束日期<input name="to" type="date" value="${esc(filters.to)}"></label><label class="ai-field">类型<select name="kind">${option('', '全部', !filters.kind)}${option('person', '联系人', filters.kind === 'person')}${option('group', '群聊', filters.kind === 'group')}</select></label><label class="ai-field">状态<select name="code">${option('', '全部', !filters.code)}${option('sent', '已代发', filters.code === 'sent')}${option('help', '需要本人处理', filters.code === 'help')}</select></label><div class="ai-filter-actions"><button type="submit" class="primary">筛选并刷新</button></div></form>
   <div id="ai-live-box">${liveActivityBox(state)}</div>
   ${filters.source !== 'reply' ? `<section class="ap-record-block"><header><h4>主动聊天</h4><span>每次执行单独记录 · 删除任务后仍保留历史</span><button type="button" class="icon-button" data-ai-toggle-filters aria-expanded="${!!filters.open}" aria-controls="ai-log-filter" title="筛选" aria-label="筛选">${icon('filter')}</button></header><div id="ai-proactive-records">${proactiveRecordRows(state, filters, proactiveLoading)}</div></section>` : ''}
-  ${filters.source === 'reply' ? `<section class="ap-record-block"><header><h4>自动回复</h4><span>按联系人查看近期执行内容，每页最多 25 位</span><button type="button" class="icon-button" data-ai-toggle-filters aria-expanded="${!!filters.open}" aria-controls="ai-log-filter" title="筛选" aria-label="筛选">${icon('filter')}</button></header><div id="ai-activity-entries">${activityRows(state, filters, records, loading, summaryResults)}</div><div class="ai-actions"><button class="quiet" type="button" data-ai-log-page="${page - 1}" ${page === 0 ? 'disabled' : ''}>上一页</button><span>${page + 1} / ${pages}</span><button class="quiet" type="button" data-ai-log-page="${page + 1}" ${page + 1 >= pages ? 'disabled' : ''}>下一页</button></div></section><section class="ap-record-block"><header><h4>未回复记录</h4><span>查看来信内容与未回复原因，保留最近 50 次记录</span></header>${skipRecordsView(state)}</section>` : ''}<div id="ai-recent-errors">${recentErrorsBox(state, filters.errorsOpen, errorLoading)}</div></section>`;
+  ${filters.source === 'reply' ? `<section class="ap-record-block"><header><h4>自动回复</h4><span>按联系人查看近期执行内容，每页最多 25 位</span><button type="button" class="icon-button" data-ai-toggle-filters aria-expanded="${!!filters.open}" aria-controls="ai-log-filter" title="筛选" aria-label="筛选">${icon('filter')}</button></header><div id="ai-activity-entries">${activityRows(state, filters, records, loading, summaryResults)}</div><div class="ai-actions"><button class="quiet" type="button" data-ai-log-page="${page - 1}" ${page === 0 ? 'disabled' : ''}>上一页</button><span>${page + 1} / ${pages}</span><button class="quiet" type="button" data-ai-log-page="${page + 1}" ${page + 1 >= pages ? 'disabled' : ''}>下一页</button></div></section><section class="ap-record-block"><header><h4>未回复记录</h4><span>保留最近 50 次判断，不进入核验流程</span></header>${skipRecordsView(state)}</section>` : ''}<div id="ai-recent-errors">${recentErrorsBox(state, filters.errorsOpen, errorLoading)}</div></section>`;
 }

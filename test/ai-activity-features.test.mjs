@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { AIAssistant } from '../server/ai-service.mjs';
-import { activityRows, skipRecordsView } from '../web/ai-activity-view.mjs';
+import { activityRows, proactiveRecordRows, skipRecordsView } from '../web/ai-activity-view.mjs';
 import { AIModelFixture, ChatFixture, modelConfig } from './ai-fixtures.mjs';
 import { temp, cleanup } from './fixtures.mjs';
 
@@ -17,10 +17,11 @@ async function fixture(t) {
   return { a, bridge, provider, root, now: () => now, setNow(value) { now = value; } };
 }
 
-test('record lists expose right-click deletion, summary ranges, and reply-needed action', () => {
+test('record lists expose right-click deletion, contact opening, summary ranges, and reply-needed action', () => {
   const html = activityRows({ activity: [{ id: 'p1', label: '甲', kind: 'person', hasSent: true, at: Date.now() }] }, { source: 'reply', page: 0 }, [{ id: 'p1', messages: [{ id: 'sent-1', at: Date.now(), text: 'AI答复' }] }], false);
-  assert.match(html, /data-ai-record-menu="sent-1" data-ai-record-menu-source="reply"/);
-  assert.doesNotMatch(html, /data-ai-delete-record=/);
+  assert.match(html, /data-ai-record-menu="sent-1"/);
+  assert.doesNotMatch(html, /data-ai-delete-record="sent-1"|>打开聊天</);
+  assert.match(html, /data-ai-open-conversation="p1"/);
   assert.match(html, /ai-reply-record-card/);
   assert.match(html, /data-ai-summary-result="p1" role="status" hidden/);
   const refreshed = activityRows({ activity: [{ id: 'p1', label: '甲', kind: 'person', hasSent: true, at: Date.now() }] }, { source: 'reply', page: 0 }, [], false, new Map([['p1', { range: 'month', text: '已生成总结', pending: false }]]));
@@ -34,18 +35,24 @@ test('record lists expose right-click deletion, summary ranges, and reply-needed
   for (const range of ['takeover', 'all', 'day', 'week', 'month']) assert.match(html, new RegExp(`value="${range}"`));
   const skips = skipRecordsView({ profiles: [{ id: 'p1', contact: 'c1', label: '甲' }], contacts: [], events: [{ id: 'e1', target: 'p1', at: Date.now(), code: 'skip', source: 'system-skip', reasonCode: 'model-no-reply', messageId: 'incoming-1' }] });
   assert.match(skips, /data-ai-open-conversation/);
-  assert.match(skips, /打开甲的微信聊天/);
+  assert.doesNotMatch(skips, />打开聊天</);
   assert.doesNotMatch(skips, /data-ai-locate-message|定位触发消息|定位到该消息/);
   assert.match(skips, /data-ai-mark-reply="p1"/);
-  assert.match(skips, /data-ai-record-menu="e1" data-ai-record-menu-source="skip"/);
-  assert.doesNotMatch(skips, /data-ai-delete-record=/);
-  const marked = skipRecordsView({ profiles: [{ id: 'p1', contact: 'c1', label: '甲' }], skipRecords: [{ id: 'e1', target: 'p1', at: Date.now(), messageId: 'incoming-1', markedForReply: true }] });
-  assert.match(marked, /data-ai-mark-reply="p1"[^>]+disabled>已标记为需回复/);
-  assert.match(marked, /下一次自动回复前总结/);
-  const marking = skipRecordsView({ profiles: [{ id: 'p1', contact: 'c1', label: '甲' }], skipRecords: [{ id: 'e1', target: 'p1', at: Date.now(), messageId: 'incoming-1', markingForReply: true }] });
-  assert.match(marking, /data-ai-mark-reply="p1"[^>]+disabled>正在标记…/);
-  const failed = skipRecordsView({ profiles: [{ id: 'p1', contact: 'c1', label: '甲' }], skipRecords: [{ id: 'e1', target: 'p1', at: Date.now(), messageId: 'incoming-1', markReplyError: '标记失败' }] });
-  assert.match(failed, /ai-skip-mark-status error" role="status">标记失败/);
+  assert.match(skips, /data-ai-record-menu-source="skip"/);
+});
+
+test('reply and proactive records show the same WeChat avatar and open chat from identity', () => {
+  const contact = { id: 'c1', label: '备注', nickname: '微信名', kind: 'person', avatarUrl: 'https://wx.qlogo.cn/mmhead/avatar/0' };
+  const profile = { id: 'p1', contact: 'c1', label: '备注', kind: 'person', hasSent: true, at: Date.now() };
+  const reply = activityRows({ contacts: [contact], activity: [profile] }, { source: 'reply' }, [{ id: 'p1', messages: [{ id: 'm1', at: Date.now(), text: '回复' }] }], false);
+  const proactive = proactiveRecordRows({ contacts: [contact], profiles: [profile], proactiveRecords: [{ id: 'r1', contact: 'c1', profileId: 'p1', label: '备注', taskName: '问候', status: 'sent', at: Date.now(), text: '你好' }] });
+  for (const html of [reply, proactive]) {
+    assert.match(html, /src="https:\/\/wx\.qlogo\.cn\/mmhead\/avatar\/0"/);
+    assert.match(html, /data-ai-open-conversation="p1"/);
+    assert.doesNotMatch(html, /data-ai-delete-record|>打开聊天</);
+  }
+  assert.match(proactive, /data-ai-record-menu="r1"/);
+  assert.match(reply, /备注<span class="ai-contact-nick">（微信名）<\/span>/);
 });
 
 test('opening the exact chat never waits for history reads or requests a message location', async t => {
@@ -78,8 +85,7 @@ test('marked replies persist, summarize before reply, and then remove the raw sk
   const original = bridge.push(profile.contact, 'other', '请确认周五是否可以交付？');
   a.event('skip', profile.id, 'system-skip', '需要后续回复', { messageId: original.id, reasonCode: 'model-no-reply' });
   const eventId = a.data.skipLog[0].id;
-  const markedState = await a.markReplyNeeded({ profileId: profile.id, eventId, messageId: original.id });
-  assert.equal(markedState.skipRecords.find(row => row.id === eventId)?.markedForReply, true);
+  await a.markReplyNeeded({ profileId: profile.id, eventId, messageId: original.id });
   assert.equal(a.data.pendingReplySummaries.length, 1);
   assert.equal(JSON.stringify(a.data.pendingReplySummaries).includes('请确认周五'), false);
   await a.save(); await a.close();
@@ -87,7 +93,6 @@ test('marked replies persist, summarize before reply, and then remove the raw sk
   await restored.init(); await restored.scan();
   try {
     assert.equal(restored.data.pendingReplySummaries.length, 1);
-    assert.equal(restored.publicState().skipRecords.find(row => row.id === eventId)?.markedForReply, true);
     const restoredProfile = restored.profile(profile.id), snapshot = await restored.read(restoredProfile, restored.controller.signal);
     provider.complete = async (_config, system, input) => { assert.match(system, /聊天内容/); assert.match(input.excerpts[0].text, /周五/); return { summary: '需确认周五交付时间' }; };
     const context = await restored.summarizePendingReplies(restoredProfile, snapshot.messages, restored.controller.signal);

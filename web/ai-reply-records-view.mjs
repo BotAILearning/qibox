@@ -1,6 +1,5 @@
 import { beijingTime } from './ai-proactive-view.mjs';
-import { contactName, nicknameOf } from './ai-contact-name.mjs';
-import { contactPickerAvatar } from './ai-contact-picker.mjs';
+import { contactAvatar, contactName, nicknameOf } from './ai-contact-name.mjs';
 
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const within = (at, filters) => {
@@ -25,13 +24,14 @@ export function replyRecordCards(state, filters, records, loading, activityEntri
     const label = String(profile.label ?? contact?.label ?? '联系人');
     const nickname = nicknameOf(profile, contact);
     const plainName = label + (nickname ? `（${nickname}）` : '');
+    const avatar = contactAvatar(profile, contact, 'ai-reply-record-avatar', index);
     const history = messages.length ? `<ol class="ai-reply-history-list">${messages.map(message => {
       const confirmed = !!message.id && message.confirmed !== false;
       return `<li ${confirmed ? `data-ai-record-menu="${esc(message.id)}" data-ai-record-menu-source="${esc(filters.source === 'unknown' ? 'unknown' : 'reply')}"` : ''}><time>${esc(beijingTime(message.at))}</time><p class="ai-record-message">${esc(message.text)}</p><span>${filters.source === 'unknown' ? '来源未分类' : message.confirmed === false ? '发送结果未知' : '已回复'}</span></li>`;
     }).join('')}</ol>` : `<p class="ai-help">${loading ? '正在读取代发内容…' : source?.unavailable ? '暂时无法读取正文；点击头像或名称可打开微信聊天。' : '当前可读取范围内暂无正文；点击头像或名称可打开微信聊天。'}</p>`;
     const preview = profile.needsHelp ? esc(profile.reason || '需要本人处理') : messages[0]?.text ? esc(messages[0].text) : source?.pending ? '正在读取历史正文…' : source?.unavailable ? '正文暂不可读取' : '查看近期执行记录';
     return `<article class="ai-reply-record-card" data-ai-reply-card="${esc(profile.id)}">
-      <header class="ai-reply-record-head"><button class="ai-reply-record-person ai-record-contact-link" type="button" data-ai-open-conversation="${esc(profile.id)}" aria-label="打开${esc(plainName)}的微信聊天">${contactPickerAvatar(contact, index, 'ai-reply-record-avatar')}<span><strong>${name}</strong><small>${profile.kind === 'group' ? '群聊' : '联系人'}</small></span></button><div class="ai-reply-record-time"><small>最近执行时间</small><time>${esc(beijingTime(messages[0]?.at || profile.at))}</time></div><p class="ai-reply-record-preview">${preview}</p></header>
+      <header class="ai-reply-record-head"><button class="ai-reply-record-person ai-record-contact-link" type="button" data-ai-open-conversation="${esc(profile.id)}" aria-label="打开${esc(plainName)}的微信聊天">${avatar}<span><strong>${name}</strong><small>${profile.kind === 'group' ? '群聊' : '联系人'}</small></span></button><div class="ai-reply-record-time"><small>最近执行时间</small><time>${esc(beijingTime(messages[0]?.at || profile.at))}</time></div><p class="ai-reply-record-preview">${preview}</p></header>
       <details data-ai-record-expand="${esc(profile.id)}" ${filters.expanded?.includes(profile.id) || summary && !filters.collapsed?.includes(profile.id) ? 'open' : ''}><summary>执行详情 <span>${messages.length} 条记录</span></summary><div class="ai-reply-record-detail">${profile.needsHelp ? `<div class="ai-reply-record-help"><span>${esc(profile.reason || '需要本人处理')}</span>${profile.queueFailed ? '<button class="quiet" type="button" data-ai-nav="proactive">查看主动聊天任务</button>' : `<button class="quiet" type="button" data-ai-resume-profile="${esc(profile.id)}">开启自动回复</button>`}</div>` : ''}<div class="ai-reply-summary-toolbar"><span>按时间范围生成聊天总结</span><div class="ai-summary-controls"><select data-ai-summary-range="${esc(profile.id)}" aria-label="${esc(plainName)}的总结时间范围">${[['takeover','本次接管'],['all','全部'],['day','近一天'],['week','近一周'],['month','近一月']].map(([value, label]) => `<option value="${value}" ${summary?.range === value ? 'selected' : ''}>${label}</option>`).join('')}</select><button type="button" class="primary" data-ai-summary-profile="${esc(profile.id)}" ${summary?.pending ? 'disabled' : ''}>总结</button></div><button type="button" class="secondary ai-record-collapse-desktop" data-ai-collapse-record="${esc(profile.id)}">收起详情 ↑</button></div><p class="ai-summary-result" data-ai-summary-result="${esc(profile.id)}" role="status" ${summary ? '' : 'hidden'}>${summary ? esc(summary.text) : ''}</p><section class="ai-reply-history"><header><h4>执行记录</h4><span>${messages.length} 条</span></header>${history}</section></div></details>
     </article>`;
   }).join('');
