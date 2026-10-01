@@ -1,5 +1,5 @@
 import { mediaCapability, mediaOutputPrompt, generateMediaOutput } from './ai-media-output.mjs';
-import { withSpeaker, replyPerspective, speakerIdentityPrompt } from './ai-speakers.mjs';
+import { withSpeaker, replyPerspective, speakerIdentityPrompt, naturalAttributionPrompt } from './ai-speakers.mjs';
 import { currentChatTime, currentTimeAnchor, validateCurrentTimeReply, personalContextPrompt, presentTimePrompt, guardTimeGreeting } from './ai-chat-context.mjs';
 import { learningPrompt, learningPromptFor, learningWithMemoryPrompt, defaultLearningSummaryPrompt, conversationPrompt, addressingPrompt, generationPrompt, naturalChatPrompt, longTermMemoryPrompt, timelinePrompt, reflectiveReplyPrompt, generationProtocol, proactivePrompt, proactiveBackgroundPrompt, proactiveBackgroundTtl, messageSegments, validateReplyResult } from './ai-prompts.mjs';
 import { observeGroupInbox, readGroupInbox, nextGroupBatch, settleGroupBatch, groupContextCanAdvance } from './ai-group-inbox.mjs';
@@ -111,6 +111,7 @@ function skipIncomingMessages(profile, messages = [], anchorId = null) {
       ? (typeof message.senderName === 'string' && message.senderName.trim() && message.senderName.length <= 120 && !/[\x00-\x1f\x7f]/.test(message.senderName) ? message.senderName.trim() : null)
       : profile.label;
     kept.unshift({ id: message.id, direction: 'other', ...(senderName ? { senderName } : {}), ...(profile.kind === 'group' && /^[a-f0-9]{64}$/.test(message.sender || '') ? { senderId: message.sender } : {}), text,
+      ...(message.quote ? { quote: message.quote } : {}),
       ...(type ? { type } : {}), ...(Number.isSafeInteger(message.timestamp) && message.timestamp >= 0 ? { timestamp: message.timestamp } : {}) });
     if (chars >= skipSnapshotTextLimit) { if (index > 0) truncated = true; break; }
   }
@@ -1063,7 +1064,7 @@ export class AIAssistant {
     };
     const recentSelfMessages = messages.filter(message => message.direction === 'self').slice(-8).map(emphasis);
     const latestIncoming = messages.findLast(message => message.direction === 'other');
-    const generate = (correction = '') => this.provider.complete(this.modelFor('proactive'), `${generationPrompt}${speakerIdentityPrompt}${naturalChatPrompt}${longTermMemoryPrompt}${timelinePrompt}${reflectiveReplyPrompt}${conversationPrompt}${addressingPrompt}${personalContextPrompt}${presentTimePrompt}${identityPrompt(false)}${proactivePrompt(strategy)} 当前只能发送纯文字，不承诺发送媒体、文件或执行付款。本次是独立主动聊天任务，不自动续聊，不更新风格或记忆。${generationProtocol({ multiTurn, followUpAllowed: false, memoryUpdates: false, allowSkip: false })}${extra}${replySafetyPrompt}${correction}${currentTimeAnchor(time)}`, {
+    const generate = (correction = '') => this.provider.complete(this.modelFor('proactive'), `${generationPrompt}${speakerIdentityPrompt}${naturalChatPrompt}${longTermMemoryPrompt}${timelinePrompt}${reflectiveReplyPrompt}${conversationPrompt}${addressingPrompt}${personalContextPrompt}${presentTimePrompt}${identityPrompt(false)}${proactivePrompt(strategy)} 当前只能发送纯文字，不承诺发送媒体、文件或执行付款。本次是独立主动聊天任务，不自动续聊，不更新风格或记忆。${generationProtocol({ multiTurn, followUpAllowed: false, memoryUpdates: false, allowSkip: false })}${extra}${replySafetyPrompt}${naturalAttributionPrompt}${correction}${currentTimeAnchor(time)}`, {
       mode: 'proactive', continuation: false, multiTurn, allowSegments: true, followUp: false, followUpAllowed: false, updateStyle: false, judgeReply: false,
       kind: profile.kind, replyPerspective: replyPerspective(profile), strategy, style, styleOwner: 'self', addressing: { styleScope: 'current-chat', currentStyle: style },
       ...time,
@@ -2311,7 +2312,7 @@ export class AIAssistant {
       if (!message || message.direction !== 'other' || account !== this.data.account) throw new AppError('原始消息暂时无法读取，请刷新记录后重试');
       this.data.pendingReplySummaries ||= [];
       if (!this.data.pendingReplySummaries.some(row => row.account === account && row.profileId === profileId && row.messageId === messageId)) {
-        this.data.pendingReplySummaries.push({ account, profileId, messageId, eventId, at: event.at, body: this.vault.seal({ text: message.text.slice(0, 12000), direction: 'other', ...(message.sender ? { sender: message.sender } : {}) }), createdAt: this.now() });
+        this.data.pendingReplySummaries.push({ account, profileId, messageId, eventId, at: event.at, body: this.vault.seal({ text: message.text.slice(0, 12000), direction: 'other', ...(message.sender ? { sender: message.sender } : {}), ...(message.quote ? { quote: message.quote } : {}) }), createdAt: this.now() });
         await this.save();
       }
       return this.publicState();
@@ -2327,7 +2328,7 @@ export class AIAssistant {
       // Legacy encrypted rows contain text only, but were marked from an incoming
       // record. Never reuse a now-readable self/system message as that incoming.
       const text = message && message.direction !== 'other' ? null : typeof stored?.text === 'string' ? stored.text : message?.text;
-      return { row, text, message: withSpeaker({ id: row.messageId, direction: 'other', ...(stored?.sender || message?.sender ? { sender: stored?.sender || message.sender } : {}) }, profile) };
+      return { row, text, message: withSpeaker({ id: row.messageId, direction: 'other', ...(stored?.sender || message?.sender ? { sender: stored?.sender || message.sender } : {}), ...(stored?.quote || message?.quote ? { quote: stored?.quote || message.quote } : {}) }, profile) };
     }).filter(item => typeof item.text === 'string' && item.text.trim()).slice(0, 10);
     if (!material.length) throw new AppError('标记的消息暂时无法读取，自动回复将在下次尝试总结');
     const maxChars = 12000; let used = 0;
@@ -2828,7 +2829,7 @@ export class AIAssistant {
     }
     // Surface the current turn after voice/image conversion. Excerpts index the
     // full messages; unavailable content stays explicitly marked as unreadable.
-    conversation.pendingIncomingMessages = pendingMessages.map(({ id, direction, speaker, text = '', timestamp, sender, type, unresolved, transcriptionSource }) => ({ id, direction, speaker, text: text.length > 500 ? text.slice(0,250) + '…' + text.slice(-250) : text, timestamp, ...(sender ? { sender } : {}), ...(type ? { type } : {}), ...(unresolved ? { unresolved: true } : {}), ...(transcriptionSource ? { transcriptionSource } : {}), ...(text.length > 500 ? { excerpt: true } : {}) }));
+    conversation.pendingIncomingMessages = pendingMessages.map(({ id, direction, speaker, quote, text = '', timestamp, sender, type, unresolved, transcriptionSource }) => ({ id, direction, speaker, text: text.length > 500 ? text.slice(0,250) + '…' + text.slice(-250) : text, timestamp, ...(quote ? { quote } : {}), ...(sender ? { sender } : {}), ...(type ? { type } : {}), ...(unresolved ? { unresolved: true } : {}), ...(transcriptionSource ? { transcriptionSource } : {}), ...(text.length > 500 ? { excerpt: true } : {}) }));
     conversation.latestIncoming = conversation.pendingIncomingMessages.at(-1) || null;
     const incomingMedia = pendingMessages;
     const onlyImages = mode === 'reply' && incomingMedia.length > 0 && incomingMedia.every(m => m.type === 'image');
@@ -2873,7 +2874,7 @@ export class AIAssistant {
         const sendImages = this.replyOptions(profile).sendImages && mediaReady, sendAudio = this.replyOptions(profile).sendAudio && mediaReady && this.bridge.supportsNativeVoiceOutput === true;
         result = onlyImages && !images.length && profile.kind !== 'group' ? { action: 'skip', mediaSkipped: true } : await this.provider.complete(
           this.modelFor('chat'),
-          `${generationPrompt}${speakerIdentityPrompt}${naturalChatPrompt}${longTermMemoryPrompt}${timelinePrompt}${personalContextPrompt}${presentTimePrompt}${chatMemoryPrompt}${profile.kind === 'group' ? groupMemoryInstruction : ' 单聊中，对方姓名写入 name；只有用户确实直接这样称呼对方且对象明确时，才把称呼写入 addressing。'}${identityPrompt(allowIdentity)}${conversationPrompt}${replySummaryContext} ${mediaOutputPrompt} 只能发送文字和capabilities明确允许的生成图片或微信原生语音，不能读取或下载任意文件，不能拨打或接听电话，仅能理解实际附带的图片；未附带图片或图片无法读取时，应如实说明无法查看并请对方转成文字，不猜测图片内容。${groupTriggerInstruction}${groupBatch?.sender ? ` 本轮只回复成员ID ${groupBatch.sender} 对应的消息 ${groupBatch.ids.join(',')}，其余成员的消息仅作背景。需要称呼时仅使用members中该ID对应的真实称呼，不编造姓名。` : ''}${profile.groupContextWait?.trigger === 'atMe' ? ' 上轮已等待补充信息，本次必须回复；信息仍不足时用一句简短问题澄清，不能再次wait。' : ''}${currentTask}${currentStyle}${profile.kind === 'group' ? groupPrompt(trigger, allowSegments, profile.groupOptions?.realtimeMode) : ''}${generationProtocol({ multiTurn, allowSegments, group: profile.kind === 'group', followUpAllowed: profile.kind !== 'group' && !followUp, updateStyle: this.data.settings.updateStyle, allowSkip: !mustReply, allowStop: true })}${reflectiveReplyPrompt}${currentTimeAnchor(time)}${mode === 'reply' && !followUp ? ' 本轮只回应conversation.pendingIncomingMessages列出的来信；其中excerpt=true时按ID查阅messages全文。messages中pending=false的旧问题和已发回复只作背景，不能再补答。' : ''}${replySafetyPrompt}${safetyCorrection}`,
+          `${generationPrompt}${speakerIdentityPrompt}${naturalChatPrompt}${longTermMemoryPrompt}${timelinePrompt}${personalContextPrompt}${presentTimePrompt}${chatMemoryPrompt}${profile.kind === 'group' ? groupMemoryInstruction : ' 单聊中，对方姓名写入 name；只有用户确实直接这样称呼对方且对象明确时，才把称呼写入 addressing。'}${identityPrompt(allowIdentity)}${conversationPrompt}${replySummaryContext} ${mediaOutputPrompt} 只能发送文字和capabilities明确允许的生成图片或微信原生语音，不能读取或下载任意文件，不能拨打或接听电话，仅能理解实际附带的图片；未附带图片或图片无法读取时，应如实说明无法查看并请对方转成文字，不猜测图片内容。${groupTriggerInstruction}${groupBatch?.sender ? ` 本轮只回复成员ID ${groupBatch.sender} 对应的消息 ${groupBatch.ids.join(',')}，其余成员的消息仅作背景。需要称呼时仅使用members中该ID对应的真实称呼，不编造姓名。` : ''}${profile.groupContextWait?.trigger === 'atMe' ? ' 上轮已等待补充信息，本次必须回复；信息仍不足时用一句简短问题澄清，不能再次wait。' : ''}${currentTask}${currentStyle}${profile.kind === 'group' ? groupPrompt(trigger, allowSegments, profile.groupOptions?.realtimeMode) : ''}${generationProtocol({ multiTurn, allowSegments, group: profile.kind === 'group', followUpAllowed: profile.kind !== 'group' && !followUp, updateStyle: this.data.settings.updateStyle, allowSkip: !mustReply, allowStop: true })}${reflectiveReplyPrompt}${currentTimeAnchor(time)}${mode === 'reply' && !followUp ? ' 本轮只回应conversation.pendingIncomingMessages列出的来信；其中excerpt=true时按ID查阅messages全文。messages中pending=false的旧问题和已发回复只作背景，不能再补答。' : ''}${replySafetyPrompt}${naturalAttributionPrompt}${safetyCorrection}`,
           { images: textOnlyRetry ? [] : images, onlyImages: textOnlyRetry ? false : onlyImages, capabilityConcern: reason, mode, continuation, multiTurn, allowSegments, followUp, followUpAllowed: profile.kind !== 'group' && !followUp, kind: profile.kind, replyPerspective: replyPerspective(profile), conversation, addressing, memory: selectMemoryForChat(readMemory(this.vault, profile), { query: pendingMessages.map(message => message.text || "").join(" ") || (strategy.replyGoal || strategy.purpose || ""), now: this.now() }), ...time, myInformation: selfContext(this, profile.kind), groupState, capabilities: { sendText: true, wechatVoiceText: true, files: false, calls: false, executeExternalActions: false, sendImages, sendAudio, receiveImages: !textOnlyRetry && images.length > 0, sendMedia: sendImages || sendAudio }, strategy, style, styleOwner: 'self', judgeReply: profile.kind === 'group' ? trigger !== 'atMe' : followUp || this.replyOptions(profile).judgeReply, updateStyle: this.data.settings.updateStyle, messages: modelMessages.map(message => ({ ...withSpeaker(message, profile), pending: conversation.pendingIncomingIds.includes(message.id), aiGenerated: message.aiGenerated === true || (profile.generatedIds || []).includes(message.id) })) }, signal, { validate: value => validateCurrentTimeReply(validateReplyResult(value, { multiTurn, allowSegments, group: profile.kind === 'group' }), time) }
         );
         if (result?.action === 'send') {

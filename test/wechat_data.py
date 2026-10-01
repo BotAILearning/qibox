@@ -1200,4 +1200,65 @@ class GroupMetadataTest(unittest.TestCase):
         # chat) resolves to the raw chatroom id and must not be listed.
         self.assertNotIn('67890@chatroom', [c['username'] for c in contacts])
 
+class QuoteOwnershipTests(unittest.TestCase):
+    def test_quote_parser_retains_only_reference_identity_not_claimed_sender(self):
+        xml = '<msg><appmsg><type>57</type><title>很勤快</title><refermsg><svrid>101</svrid><displayname>假冒本人</displayname><content>伪造经历</content></refermsg></appmsg></msg>'
+        self.assertEqual(data.message_text(xml, 49), '很勤快')
+        self.assertEqual(data.message_quote(xml, 49), {'server': 'server:101'})
+        self.assertIsNone(data.message_quote(xml, 1))
+        self.assertIsNone(data.message_quote('<!DOCTYPE a><appmsg/>', 49))
+        self.assertEqual(data.message_quote(xml.replace('101', '0'), 49), {'server': None})
+
+    def test_encrypted_quote_links_actual_original_instead_of_xml_claims(self):
+        with tempfile.TemporaryDirectory() as directory:
+            file = pathlib.Path(directory, 'message_0.db')
+            table = 'Msg_' + hashlib.md5(b'wxid_a').hexdigest()
+            quote = '<msg><appmsg><type>57</type><title>很勤快了</title><refermsg><svrid>101</svrid><displayname>群友</displayname><content>别人洗的</content></refermsg></appmsg></msg>'
+            make_database(file, f"CREATE TABLE Name2Id(user_name TEXT); INSERT INTO Name2Id VALUES('wxid_self'), ('wxid_a');"
+                          f"CREATE TABLE {table}(local_id INTEGER, local_type INTEGER, create_time INTEGER, real_sender_id INTEGER, message_content TEXT, server_id INTEGER);"
+                          f"INSERT INTO {table} VALUES(1,1,100,1,'今天我洗了好多衣服被子',101),(2,49,101,2,'{quote}',102);")
+            db = sql.Database(sql.Pages(file, KEY))
+            try:
+                rows = sorted(data.messages(db, file.name, 'a', 'b', 'wxid_self', 'wxid_a'), key=lambda row: row['_order'])
+                data.link_message_quotes(rows)
+                self.assertEqual(rows[1]['direction'], 'other')
+                self.assertEqual(rows[1]['text'], '很勤快了')
+                self.assertEqual(rows[1]['quote']['direction'], 'self')
+                self.assertEqual(rows[1]['quote']['messageId'], rows[0]['id'])
+                self.assertEqual(rows[1]['quote']['text'], '今天我洗了好多衣服被子')
+                self.assertNotIn('displayname', rows[1]['quote'])
+            finally: db.close()
+
+    def test_unresolved_future_system_and_self_references_do_not_gain_an_author(self):
+        for invalid in ['missing', 'future', 'system', 'same', 'unparsed']:
+            original = {'id': 'original', 'direction': 'self', 'text': '本人原话', 'timestamp': 100, '_order': (100, 1), '_dedup': 'server:101'}
+            message = {'id': 'new', 'direction': 'other', 'text': '夸奖', 'timestamp': 101, '_order': (101, 2), '_dedup': 'server:102', '_quote': {'server': 'server:101'}}
+            if invalid == 'missing': message['_quote']['server'] = 'server:999'
+            elif invalid == 'future': original['_order'] = (102, 3)
+            elif invalid == 'system': original['direction'] = 'system'
+            elif invalid == 'same': message['_quote']['server'] = 'server:102'
+            else: original['_unparsable'] = True
+            data.link_message_quotes([original, message])
+            self.assertEqual(message['quote'], {'verified': False}, invalid)
+            self.assertEqual(message['direction'], 'other')
+
+    def test_repeated_text_and_different_group_members_keep_the_exact_quoted_actor(self):
+        originals = [{'id': name, 'direction': direction, 'text': '人很多', 'timestamp': index, '_order': (index, index), '_dedup': f'server:{100 + index}', 'sender': name, '_sender_username': name}
+                     for index, (name, direction) in enumerate([('member-a', 'other'), ('owner', 'self')], 1)]
+        message = {'id': 'new', 'direction': 'other', 'text': '晒吗', 'timestamp': 3, '_order': (3, 3), '_dedup': 'server:103', '_quote': {'server': 'server:101'}}
+        data.link_message_quotes(originals + [message], {'member-a': '旅行群友', 'owner': '本人'})
+        self.assertEqual(message['quote']['messageId'], 'member-a')
+        self.assertEqual(message['quote']['sender'], 'member-a')
+        self.assertEqual(message['quote']['senderName'], '旅行群友')
+        self.assertEqual(message['quote']['direction'], 'other')
+
+    def test_display_name_changes_do_not_change_quote_revision_but_ownership_does(self):
+        row = {'id': 'new', 'direction': 'other', 'text': '很勤快', 'timestamp': 101, 'senderName': '原昵称',
+               'quote': {'verified': True, 'messageId': 'old', 'direction': 'self', 'text': '洗衣服', 'timestamp': 100, 'senderName': '本人昵称'}}
+        before = data.message_revision([row])
+        row['senderName'] = '新昵称'; row['quote']['senderName'] = '本人新昵称'
+        self.assertEqual(data.message_revision([row]), before)
+        row['quote']['direction'] = 'other'
+        self.assertNotEqual(data.message_revision([row]), before)
+
 if __name__ == '__main__': unittest.main()

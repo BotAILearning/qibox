@@ -519,6 +519,20 @@ test('a later manual self message remains visible and the receipt cursor matches
   assert.equal(assistant.data.events[0].code, 'manual');
 });
 
+test('a receipt prefix with a native quote uses the same canonical hash as Python and ignores mutable display names', async () => {
+  const rows = structuredClone(snapshot.messages);
+  rows[1].senderName = '对方新昵称';
+  rows[1].quote = { verified: true, messageId: rows[0].id, direction: 'self', text: rows[0].text, timestamp: 100, senderName: '本人新昵称' };
+  const manual = { id: key('manual-after-quoted-receipt'), direction: 'self', text: '本人已经接手处理。', timestamp: 103 };
+  const { bridge, text, outgoing } = await receiptFixture({ response: ({ outgoing }) =>
+    ({ ...dataSnapshot, revision: key('full-after-quoted-manual'), messages: [...rows, outgoing, manual] }) });
+  const delivery = await bridge.send({ account, contact, revision, text });
+  assert.equal(delivery.status, 'sent'); assert.equal(delivery.messageId, outgoing.id);
+  // Independent Python reference includes the original quote, excluding both names.
+  assert.equal(delivery.revision, '45256cb117d45ece2e38a0150dd5683febe5ab82078e87a0da377b7a83afe94a');
+  assert.equal((await bridge.read({ account, contact })).messages.at(-1).id, manual.id);
+});
+
 test('a receipt followed by a new question keeps it pending and stops the old reply segments', async t => {
   const root = await temp(), { bridge } = fixture(), provider = new AIModelFixture();
   let now = 1000000, sequence = 0; const messages = structuredClone(snapshot.messages), sent = [];

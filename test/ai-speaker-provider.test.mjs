@@ -4,7 +4,35 @@ import { AIProvider } from '../server/ai-provider.mjs';
 import { withSpeaker, replyPerspective } from '../server/ai-speakers.mjs';
 import { modelConfig, key } from './ai-fixtures.mjs';
 
-for (const protocol of ['openai', 'anthropic']) test(`${protocol}: native provider roles bind owner history and incoming messages, with task and images in the final user turn`, async () => {
+const auditPass = (text, audio) => ({ consistent: true, checks: [text, ...(audio ? [audio] : [])].map(value =>
+  ({ text: value, attribution: '按已核验发言人保留本人和对方的归属。', grounding: '与原始资料一致；普通接话无新增经历或承诺。' })) });
+
+for (const protocol of ['anthropic','openai']) test(`${protocol}: official M3 attribution checks enable reasoning without leaking it or changing generation and other tasks`, async () => {
+  const profile={account:key('account'),contact:key('contact'),kind:'person'};
+  const input={mode:'reply',replyPerspective:replyPerspective(profile),messages:[withSpeaker({id:key('self'),direction:'self',text:'今天洗了一堆衣服。'},profile)]};
+  for(const scenario of [
+    {baseUrl:'https://api.minimaxi.com/anthropic',model:'MiniMax-M3',enabled:true,input},
+    {baseUrl:'https://api.minimax.io/v1',model:'MiniMax-M3',enabled:true,input},
+    {baseUrl:'https://models.example.test/v1',model:'MiniMax-M3',enabled:false,input},
+    {baseUrl:'https://api.minimax.io/v1',model:'another-model',enabled:false,input},
+    {baseUrl:'https://api.minimax.io/v1',model:'MiniMax-M3',enabled:false,input:{mode:'analysis',messages:input.messages}},
+  ]){
+    const requests=[];
+    const provider=new AIProvider({fetcher:async(_url,options)=>{
+      const body=JSON.parse(options.body);requests.push(body);
+      const reasoning=scenario.enabled&&requests.length>1;
+      assert.deepEqual(body.thinking,reasoning?{type:'adaptive'}:undefined);
+      assert.equal(body.reasoning_split,reasoning&&protocol==='openai'?true:undefined);
+      const result=requests.length===1?{action:'send',text:'谢谢夸奖。'}:auditPass('谢谢夸奖。');
+      return Response.json(protocol==='anthropic'?{content:[{type:'thinking',thinking:'PRIVATE_REASONING'},{type:'text',text:JSON.stringify(result)}]}:{choices:[{message:{reasoning_content:'PRIVATE_REASONING',content:JSON.stringify(result)}}]});
+    }});
+    const result=await provider.complete({...modelConfig,baseUrl:scenario.baseUrl,model:scenario.model,protocol},'按协议回复。',scenario.input);
+    assert.equal(result.text,'谢谢夸奖。');assert.doesNotMatch(JSON.stringify(result),/PRIVATE_REASONING/);
+    assert.equal(requests.length,scenario.input.mode==='reply'?2:1);
+  }
+});
+
+for (const protocol of ['openai', 'anthropic']) test(`${protocol}: provider task preserves transcript ownership and images without treating WeChat history as model completions`, async () => {
   const profile = { account: key('account'), contact: key('contact'), kind: 'group' }, bodies = [];
   const messages = [
     { id: 'mine', direction: 'self', text: '我提议周六。', aiGenerated: false },
@@ -18,26 +46,24 @@ for (const protocol of ['openai', 'anthropic']) test(`${protocol}: native provid
   const original = structuredClone(input);
   const provider = new AIProvider({ fetcher: async (_url, init) => {
     bodies.push(JSON.parse(init.body));
-    const content = bodies.length === 1 ? '{"action":"send","text":"收到"}' : '{"consistent":true}';
+    const content = JSON.stringify(bodies.length === 1 ? {action:'send',text:'收到'} : auditPass('收到'));
     return Response.json(protocol === 'anthropic' ? { content: [{ type: 'text', text: content }] } : { choices: [{ message: { content } }] });
   } });
   await provider.complete({ ...modelConfig, protocol }, '只能按已验证归属回复。', input);
   assert.equal(bodies.length, 2);
   const body = bodies[0], turns = protocol === 'anthropic' ? body.messages : body.messages.slice(1);
-  assert.equal(turns[0].role, 'user'); assert.equal(turns.at(-1).role, 'user');
-  assert.deepEqual(turns.slice(1, -1).map(t => t.role), ['assistant', 'user', 'user', 'user', 'user', 'assistant']);
-  assert.deepEqual(turns.slice(1, -1).map(t => JSON.parse(t.content).id), messages.map(m => m.id));
-  assert.equal(JSON.parse(turns[1].content).text, '我提议周六。');
-  assert.equal(JSON.parse(turns[2].content).text, '我提议改周日。');
-  assert.equal(JSON.parse(turns[5].content).speaker.role, 'unknown');
+  assert.equal(turns.length, 1); assert.equal(turns[0].role, 'user');
   const last = turns.at(-1).content;
   assert.equal(last[2].type, protocol === 'anthropic' ? 'image' : 'image_url');
   assert.equal(JSON.parse(last[0].text).strategy.purpose, input.strategy.purpose);
-  assert.ok(JSON.parse(last[0].text).messages.every(m => !Object.hasOwn(m, 'text')));
+  assert.deepEqual(JSON.parse(last[0].text).messages, messages);
+  assert.equal(JSON.parse(last[0].text).messages.at(-1).speaker.role, 'self');
   const groups = JSON.parse(last[0].text).replySpeakerHistory;
   assert.equal(groups[0].referenceInReply, '我（当前回信者本人）');
-  assert.deepEqual(groups[0].messages.map(m => m.text), ['我提议周六。', '好，周日。']);
-  assert.equal(groups[1].messages[0].text, '我提议改周日。');
+  assert.deepEqual(groups[0].messageIds, ['mine', 'last-own']);
+  const confirmed = JSON.parse(last[0].text).confirmedSpeakerHistory;
+  assert.deepEqual(confirmed.find(group => group.speaker.role === 'self').messages.map(m => m.id), ['mine']);
+  assert.deepEqual(groups[1].messageIds, ['theirs']);
   assert.notEqual(groups[1].speaker.id, groups[2].speaker.id);
   assert.deepEqual(input, original);
 });
@@ -59,7 +85,7 @@ test('a swapped draft is corrected before returning to the sender and cannot cha
   const provider = new AIProvider({ fetcher: async (_url, init) => {
     const body = JSON.parse(init.body); calls.push(body);
     const result = calls.length === 1 ? { action: 'send', text: '你提周六，我改周日。', followUp: false }
-      : calls.length === 2 ? { consistent: false, text: '我提周六，你改周日。', action: 'stop', followUp: true } : { consistent: true };
+      : calls.length === 2 ? { consistent: false, text: '我提周六，你改周日。', action: 'stop', followUp: true } : auditPass('我提周六，你改周日。');
     return Response.json({ choices: [{ message: { content: JSON.stringify(result) } }] });
   } });
   const result = await provider.complete({ ...modelConfig, protocol: 'openai' }, '回信', input);
@@ -72,7 +98,7 @@ test('a swapped draft is corrected before returning to the sender and cannot cha
 test('an invalid attribution check blocks the draft, and corrected audio must be verified alongside text', async () => {
   const profile = { account: key('account'), contact: key('contact'), kind: 'person' };
   const input = { mode: 'reply', replyPerspective: replyPerspective(profile), messages: [withSpeaker({ id: 'mine', direction: 'self', text: '我住杭州。' }, profile)] };
-  for (const audit of [{ text: '缺少核对结论' }, { consistent: false, text: '我住杭州。' }]) {
+  for (const audit of [{ text: '缺少核对结论' }, { consistent: true }, auditPass('我住杭州。'), { consistent: false, text: '我住杭州。' }]) {
     let calls = 0;
     const provider = new AIProvider({ fetcher: async () => {
       const value = ++calls === 1 ? { action: 'send', text: '我住苏州。', media: [{ type: 'audio', text: '我住苏州。' }] } : audit;
@@ -90,13 +116,13 @@ test('a correction that still conflicts is never returned, and a verified audio 
     let calls = 0;
     const provider = new AIProvider({ fetcher: async () => {
       const value = ++calls === 1 ? { action: 'send', text: '我住苏州。', media: [{ type: 'audio', text: '我住苏州。' }] }
-        : calls === 2 || !verified ? { consistent: false, text: '我住杭州。', audioText: '我住杭州。' } : { consistent: true };
+        : calls === 2 || !verified ? { consistent: false, text: '我住杭州。', audioText: '我住杭州。' } : auditPass('我住杭州。','我住杭州。');
       return Response.json({ choices: [{ message: { content: JSON.stringify(value) } }] });
     } });
     const operation = provider.complete({ ...modelConfig, protocol: 'openai' }, '回信', input, undefined, { retry: false });
     if (verified) {
       const result = await operation; assert.equal(result.text, '我住杭州。'); assert.equal(result.media[0].text, '我住杭州。');
     } else await assert.rejects(operation, /归属仍有冲突/);
-    assert.equal(calls, 3);
+    assert.equal(calls, verified ? 3 : 4);
   }
 });

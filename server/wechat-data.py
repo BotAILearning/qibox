@@ -666,6 +666,57 @@ def message_text(content, kind):
     return {'6': '[文件]', '19': '[合并转发]', '2000': '[转账]', '2001': '[红包]'}.get(subtype, '[链接]') + (' ' + title if title else '')
 
 
+def message_quote(content, kind):
+    """Keep a quote separate from its new author; resolve it against real rows."""
+    if kind != 49 or len(content) > 200000 or re.search(r'<!\s*(DOCTYPE|ENTITY)', content, re.I):
+        return None
+    try:
+        root = ET.fromstring(content)
+        app = root if root.tag == 'appmsg' else root.find('appmsg')
+        if app is None or app.findtext('type') != '57': return None
+        ref = app.find('refermsg')
+        if ref is None: return {'server': None}
+        remote = ref.findtext('svrid', '').strip()
+        key = f'server:{int(remote)}' if re.fullmatch(r'[0-9]{1,20}', remote) and 0 < int(remote) < 2 ** 64 else None
+        # Names and sender fields inside XML are claims, not identity evidence.
+        # A verified quote gets its author and text from the original DB row.
+        return {'server': key}
+    except (ET.ParseError, ValueError, TypeError):
+        return None
+
+
+def link_message_quotes(ordered, sender_names=None):
+    by_server = {row['_dedup']: row for row in ordered if row.get('_dedup', '').startswith('server:')}
+    names = sender_names or {}
+    for message in ordered:
+        reference = message.get('_quote')
+        if reference is None: continue
+        original = by_server.get(reference.get('server'))
+        if (original is None or original['id'] == message['id'] or original.get('_unparsable') or
+                original.get('direction') not in ('self', 'other') or original['_order'] >= message['_order']):
+            message['quote'] = {'verified': False}
+            continue
+        text = original['text']
+        quote = {'verified': True, 'messageId': original['id'], 'direction': original['direction'],
+                 'text': text[:4000], 'timestamp': original['timestamp']}
+        if len(text) > 4000: quote['excerpt'] = True
+        if original.get('type'): quote['type'] = original['type']
+        if original.get('sender'): quote['sender'] = original['sender']
+        name = names.get(original.get('_sender_username'))
+        if name: quote['senderName'] = name
+        message['quote'] = quote
+
+
+def message_revision(messages):
+    material = []
+    for message in messages:
+        public = {k: v for k, v in message.items() if k != 'senderName'}
+        if public.get('quote'):
+            public['quote'] = {k: v for k, v in public['quote'].items() if k != 'senderName'}
+        material.append(public)
+    return digest(json.dumps(material, ensure_ascii=False, sort_keys=True, separators=(',', ':')))
+
+
 def group_mentions(source, self_name):
     unknown = {'verified': False, 'self': False, 'all': False, 'others': False}
     try:
@@ -760,6 +811,9 @@ def messages(db, shard, account, contact, self_name, target, selected=None, meta
                        '_dedup': f'server:{remote}' if remote else identity})
         if unparsable: result[-1]['_unparsable'] = True
         if text_truncated: result[-1]['_text_truncated'] = True
+        if parsed and kind == 49:
+            quote = message_quote(content, kind)
+            if quote is not None: result[-1]['_quote'] = quote
         if kind == 3 and parsed:
             result[-1]['type'] = 'image'
             result[-1]['_image'] = image_ref
@@ -1265,6 +1319,7 @@ def execute(request, pid, home, check, cache=None):
                     finally: shard.close()
                 ordered = sorted(unique.values(), key=lambda m: m['_order'])
                 sender_names = group_sender_names(db, (message.get('_sender_username') for message in ordered)) if target['kind'] == 'group' else {}
+                link_message_quotes(ordered, sender_names)
                 if not skip_unparsed:
                     # Automatic-reply decisions must never consume incomplete
                     # data, but only the newest incoming message is what a reply
@@ -1345,7 +1400,7 @@ def execute(request, pid, home, check, cache=None):
                           'label': target['label'], 'native': target['native'],
                           # Display names can change without a new message and
                           # must not alter the reply/read revision contract.
-                          'revision': digest(json.dumps([{k: v for k, v in message.items() if k != 'senderName'} for message in recent], ensure_ascii=False, sort_keys=True, separators=(',', ':')))}
+                          'revision': message_revision(recent)}
                 if request['action'] == 'read-image':
                     message = next((m for m in ordered if m['id'] == request.get('messageId') and m.get('type') == 'image' and m['direction'] in ('self', 'other')), None)
                     image = images.read_image(root.parent, target['username'], message.get('_image'), message['timestamp'], check) if message else None

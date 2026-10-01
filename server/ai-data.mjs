@@ -56,8 +56,27 @@ const readFailure = stage => {
 };
 // Matches wechat-data.py json.dumps(sort_keys=True, ensure_ascii=False,
 // separators=(',', ':')) for the validated public message schema.
-const messageRevision = messages => createHash('sha256').update(JSON.stringify(messages.map(
-  ({ direction, id, text, timestamp, sender, mentions, type }) => ({ direction, id, ...(sender ? { mentions: { all: mentions.all, others: mentions.others, self: mentions.self, verified: mentions.verified }, sender } : {}), text, timestamp, ...(['voice','image'].includes(type) ? { type } : {}) })))).digest('hex');
+const sortedFields = value => value && typeof value === 'object' && !Array.isArray(value)
+  ? Object.fromEntries(Object.keys(value).sort().map(name => [name, sortedFields(value[name])])) : value;
+const messageRevision = messages => createHash('sha256').update(JSON.stringify(messages.map(({ senderName, ...message }) => {
+  if (message.quote) { const { senderName, ...quote } = message.quote; message.quote = quote; }
+  return sortedFields(message);
+}))).digest('hex');
+
+function validatedQuote(value, message, kind) {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== 'object' || typeof value.verified !== 'boolean') throw unavailable();
+  if (!value.verified) return { verified: false };
+  if (!key(value.messageId) || value.messageId === message.id || !['self', 'other'].includes(value.direction) ||
+      typeof value.text !== 'string' || Array.from(value.text).length > 4000 ||
+      !Number.isSafeInteger(value.timestamp) || value.timestamp < 0 || value.timestamp > message.timestamp ||
+      kind === 'group' && !key(value.sender) || value.type !== undefined && !['voice', 'image', 'video'].includes(value.type)) throw unavailable();
+  const senderName = typeof value.senderName === 'string' && value.senderName.trim() &&
+    Array.from(value.senderName.trim()).length <= 120 && !/[\x00-\x1f\x7f]/.test(value.senderName) ? value.senderName.trim() : null;
+  return { verified: true, messageId: value.messageId, direction: value.direction, text: value.text, timestamp: value.timestamp,
+    ...(kind === 'group' ? { sender: value.sender } : {}), ...(senderName ? { senderName } : {}),
+    ...(value.type ? { type: value.type } : {}), ...(value.excerpt === true ? { excerpt: true } : {}) };
+}
 function privateSessionHint(value, pid) {
   if (!value || typeof value !== 'object' || Array.isArray(value) || value.version !== 1 || value.pid !== pid ||
       typeof value.processStart !== 'string' || !/^\d{1,24}$/.test(value.processStart) ||
@@ -358,11 +377,13 @@ export class DataChatBridge extends NativeChatBridge {
       if (message.voiceDurationMs !== undefined && (message.type !== 'voice' || !Number.isSafeInteger(message.voiceDurationMs) || message.voiceDurationMs < 1 || message.voiceDurationMs > 60000)) throw unavailable();
       const senderName = typeof message.senderName === 'string' && message.senderName.trim() && Array.from(message.senderName.trim()).length <= 120 && !/[\x00-\x1f\x7f]/.test(message.senderName) ? message.senderName.trim() : null;
       if (binding.kind === 'group' && (!key(message.sender) || !message.mentions || ['verified', 'self', 'all', 'others'].some(k => typeof message.mentions[k] !== 'boolean'))) throw unavailable();
+      const quote = validatedQuote(message.quote, message, binding.kind);
       let text = message.text;
       const textChars = Array.from(text);
       if (textChars.length > 150000) { text = textChars.slice(0, 150000).join(''); clipped = true; truncatedReasons.add('message_length'); }
       return { id: message.id, direction: message.direction, text, timestamp: message.timestamp, ...(['voice','image','video'].includes(message.type) ? { type: message.type } : {}), ...(senderName ? { senderName } : {}),
         ...(message.voiceDurationMs ? { voiceDurationMs: message.voiceDurationMs } : {}),
+        ...(quote ? { quote } : {}),
         ...(binding.kind === 'group' ? { sender: message.sender, mentions: Object.fromEntries(['verified', 'self', 'all', 'others'].map(k => [k, message.mentions[k]])) } : {}) };
     });
     // A range read is the complete bounded material for one contact. Its

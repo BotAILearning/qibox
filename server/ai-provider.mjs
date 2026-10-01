@@ -1,4 +1,4 @@
-import { hasSpeakerTurns, speakerTurns, speakerHistory, speakerAuditPrompt, speakerAuditInput, applySpeakerAudit } from './ai-speakers.mjs';
+import { hasSpeakerTurns, speakerTurns, speakerHistory, speakerAuditPrompt, speakerAuditInput, applySpeakerAudit, naturalSpeakerAuditPrompt, speakerGroundingPrompt, replyRelations, confirmedSpeakerHistory, naturalTurnBrief } from './ai-speakers.mjs';
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -303,19 +303,26 @@ export class AIProvider {
   }
   async complete(config, system, input, signal, { format = 'json', budget: requestedBudget, retry = true, validate, requireImages = false } = {}) {
     const anthropic = config.protocol === 'anthropic', endpoint = providerEndpoints(config).complete;
+    // M3's Anthropic endpoint defaults to thinking off. Natural references need
+    // reasoning, especially when checking several actors and implicit subjects.
+    // Scope the documented option to this model on MiniMax's own endpoints.
+    const reasonAboutSpeakers = input?.mode === 'speaker-audit' &&
+      config.model === 'MiniMax-M3' && ['api.minimax.io', 'api.minimaxi.com'].includes(new URL(config.baseUrl).hostname);
     const {images = [], ...textInput} = input;
     const validImages = images.filter(x => x && ['image/png','image/jpeg','image/gif','image/webp'].includes(x.mime) && typeof x.data === 'string' && x.data.length <= 5600000).slice(0,3);
     if (requireImages && (!images.length || validImages.length !== images.length)) throw new AppError('图片或视频帧不符合模型输入要求', 400);
-    const text = JSON.stringify(hasSpeakerTurns(input) ? { ...textInput, messages: input.messages.map(({ text, ...message }) => message), replySpeakerHistory: speakerHistory(input.messages) } : textInput);
+    const text = JSON.stringify(hasSpeakerTurns(input) ? { ...textInput, messages: input.messages, replySpeakerHistory: speakerHistory(input.messages).map(({ messages, ...group }) => ({ ...group, messageIds: messages.map(message => message.id) })), confirmedSpeakerHistory: confirmedSpeakerHistory(input.messages).filter(group => group.speaker.role === 'self'), replyRelations: replyRelations(input.messages), naturalTurnBrief: naturalTurnBrief(input.messages) } : textInput);
     const requestContent = validImages.length ? [{type:'text',text}, ...validImages.flatMap(x => [{type:'text',text:'图片对应消息 '+x.messageId}, anthropic ? {type:'image',source:{type:'base64',media_type:x.mime,data:x.data}} : {type:'image_url',image_url:{url:'data:'+x.mime+';base64,'+x.data}}])] : text;
     // Only Anthropic used to receive an output budget; elsewhere the server's
     // own default applied, and several hosts default to something small enough
     // to cut a real answer off mid-JSON. Ask for room explicitly instead.
     let budget = requestedBudget ?? outputBudget(textInput);
-    let response, droppedBudget = false, currentSystem = system;
+    let response, droppedBudget = false, currentSystem = system, attributionStarted = false;
     for (let attempt = 0; ; attempt++) {
+      attributionStarted = false;
       try {
         const requestBody = { model: config.model, stream: false, ...(budget ? { max_tokens: budget } : {}),
+          ...(reasonAboutSpeakers ? { thinking: { type: 'adaptive' }, ...(!anthropic ? { reasoning_split: true } : {}) } : {}),
           ...(anthropic ? { system: currentSystem, messages: speakerTurns(input, requestContent) }
             : { messages: [{ role: 'system', content: currentSystem }, ...speakerTurns(input, requestContent)] }) };
         response = await this.fetcher(endpoint, { method: 'POST', redirect: 'error', headers: this.headers(config), signal: AbortSignal.any([AbortSignal.timeout(config.timeout * 1000), ...(signal ? [signal] : [])]), body: JSON.stringify(requestBody) });
@@ -371,13 +378,16 @@ export class AIProvider {
           try {
             const checked = typeof validate === 'function' ? await validate(result) : result;
             if (!hasSpeakerTurns(input) || checked?.action !== 'send') return checked;
+            attributionStarted = true;
             let candidate = checked;
-            for (let pass = 0; pass < 2; pass++) {
-              const audit = await this.complete(config, speakerAuditPrompt, speakerAuditInput(input, candidate), signal, { budget: 2048, retry: false });
-              const verified = applySpeakerAudit(candidate, audit);
+            for (let pass = 0; pass < 3; pass++) {
+              const auditInput = speakerAuditInput(input, candidate);
+              const audit = await this.complete(config, speakerAuditPrompt + naturalSpeakerAuditPrompt + speakerGroundingPrompt, auditInput, signal, { budget: 8192, retry: false });
+              const verified = applySpeakerAudit(candidate, audit, { requireGrounding: true, requiredReplyIds: auditInput.requiredReplyIds, allowSkip: auditInput.allowSkip });
               if (audit.consistent) return candidate;
-              if (pass === 1) throw new AppError('回复的发言归属仍有冲突，当前草稿未发送', 502, 'ai_model_schema');
               candidate = typeof validate === 'function' ? await validate(verified) : verified;
+              if (candidate?.action !== 'send') return candidate;
+              if (pass === 2) throw new AppError('回复的发言归属仍有冲突，当前草稿未发送', 502, 'ai_model_schema');
               console.info('[ai-speaker-corrected]', JSON.stringify({ mode: input.mode, kind: input.kind || 'person' }));
             }
           }
@@ -406,7 +416,7 @@ export class AIProvider {
         if (signal?.aborted) throw new AppError('操作已取消', 409);
         const retryableCode = ['ai_model_retry', 'ai_model_response', 'ai_model_format', 'ai_model_schema', 'ai_model_incomplete', 'ai_model_time'];
         const retryable = error instanceof AppError ? retryableCode.includes(error.code) : true;
-        if (retryable && retry && attempt < MODEL_RETRY_LIMIT) {
+        if (retryable && retry && !attributionStarted && attempt < MODEL_RETRY_LIMIT) {
           await this.backoff(attempt, signal);
           if (error instanceof AppError && error.code !== 'ai_model_retry') currentSystem = `${system}\n上一次返回未通过格式或业务结构校验。${error.code === 'ai_model_time' ? error.message + '。' : ''}请基于同一份输入修正后重新回答，只返回符合原要求的完整 JSON 对象，不要解释。`;
           continue;
