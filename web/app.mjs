@@ -29,7 +29,7 @@ let sound, standaloneAI = false;
 let mobileLoginId = null;
 let mobileLoginCheckTimer = null, mobileLoginChecking = false;
 const mobileAISettings = new Map(), mobileAISettingsLoading = new Set(), mobileAIGeneration = new Map(), mobileAIRequests = new Map();
-let lastMobileAIMarkup = '';
+let lastMobileAIMarkup = '', lastMobileInstancesMarkup = '';
 const busyIds = new Set();
 const inputDrafts = new Map();
 const reconnect = desktopReconnect({ notify, reconnect: async () => {
@@ -340,7 +340,7 @@ function render() {
     return `<article class="instance-card" data-instance="${esc(item.id)}" data-app-id="${esc(item.appId || 'wechat')}"><button class="desktop-icon" data-action="open" aria-label="打开${esc(item.name)}" title="${esc(modes[item.schedule.mode] || '')}${item.schedule.paused ? ' · 已暂停' : ''}" ${busy || !installed ? 'disabled' : ''}><span class="wechat-icon" aria-hidden="true">${appIcon(app?.icon)}</span><h3 title="${esc(item.name)}">${esc(item.name)}</h3><span class="status ${item.runtime.status === 'running' && item.runtime.loginStatus === 'logged-in' ? 'logged-in' : 'logged-out'}">${busy ? '请稍候…' : installed ? (app?.id === 'wechat' ? loginLabel(item.runtime) : item.runtime.status === 'running' ? '运行中' : item.runtime.status === 'error' ? '启动失败' : '已停止') : '待重新安装'}</span></button><details class="app-menu"><summary aria-label="${esc(item.name)}的更多操作">•••</summary><div>${app?.capabilities.includes('startup-settings') ? `<button data-action="settings" ${busy || !installed ? 'disabled' : ''}>启动设置</button>` : ''}${(item.appId || 'wechat') === 'wechat' ? '<button data-action="ai">AI 辅助</button>' : ''}${item.runtime.loginCheckTimedOut ? '<button data-action="recheck">重新检测</button>' : ''}<button data-action="rename">重命名</button>${item.runtime.status === 'running' ? '<button data-action="stop">停止</button>' : ''}<button class="danger-link" data-action="delete">删除</button></div></details></article>`;
   }).join('');
   if (lastInstancesMarkup !== markup) {
-    const opened = [...document.querySelectorAll('.app-menu[open]')].map(menu => menu.closest('[data-instance]').dataset.instance);
+    const opened = [...document.querySelectorAll('#instances .app-menu[open]')].map(menu => menu.closest('[data-instance]').dataset.instance);
     const focused = document.activeElement, focusId = focused?.closest('[data-instance]')?.dataset.instance;
     const focusAction = focused?.dataset.action || (focused?.tagName === 'SUMMARY' ? 'menu' : null);
     $('#instances').innerHTML = markup; lastInstancesMarkup = markup;
@@ -349,12 +349,20 @@ function render() {
   }
   updateIdleChoice();
   const mobileEntries = state.instances.filter(item => (item.appId || 'wechat') === 'wechat');
-  $('#mobile-instance-list').innerHTML = mobileEntries.map(item => {
+  const mobileMarkup = mobileEntries.map(item => {
     const busy = busyIds.has(item.id) || item.busy || ['preparing', 'starting', 'stopping'].includes(item.runtime.status);
     const loggedIn = item.runtime.status === 'running' && item.runtime.loginStatus === 'logged-in';
     const status = item.runtime.status === 'running' ? loginLabel(item.runtime) : item.runtime.status === 'error' ? '启动失败' : '已停止';
-    return `<article class="mobile-instance-card" data-mobile-instance="${esc(item.id)}"><div class="mobile-instance-info"><strong>${esc(item.name)}</strong><span class="status ${loggedIn ? 'logged-in' : ''}">${busy ? '请稍候…' : status}</span></div>${loggedIn ? `<button type="button" class="secondary" data-mobile-stop="${esc(item.id)}" ${busy ? 'disabled' : ''}>停止</button>` : `<button type="button" class="primary" data-mobile-login="${esc(item.id)}" ${busy || !definition(item.appId)?.library.installed ? 'disabled' : ''}>登录</button>`}</article>`;
+    return `<article class="mobile-instance-card" data-mobile-instance="${esc(item.id)}"><div class="mobile-instance-info"><strong>${esc(item.name)}</strong><span class="status ${loggedIn ? 'logged-in' : ''}">${busy ? '请稍候…' : status}</span></div><div class="mobile-instance-actions">${loggedIn ? `<button type="button" class="secondary" data-mobile-stop="${esc(item.id)}" ${busy ? 'disabled' : ''}>停止</button>` : `<button type="button" class="primary" data-mobile-login="${esc(item.id)}" ${busy || !definition(item.appId)?.library.installed ? 'disabled' : ''}>登录</button>`}<details class="app-menu mobile-instance-menu"><summary aria-label="${esc(item.name)}的更多操作">•••</summary><div><button type="button" data-action="rename" ${busy ? 'disabled' : ''}>重命名</button><button type="button" class="danger-link" data-action="delete" ${busy ? 'disabled' : ''}>删除</button></div></details></div></article>`;
   }).join('');
+  if (lastMobileInstancesMarkup !== mobileMarkup) {
+    const opened = [...document.querySelectorAll('#mobile-instance-list .app-menu[open]')].map(menu => menu.closest('[data-mobile-instance]').dataset.mobileInstance);
+    const focused = document.activeElement, focusId = focused?.closest('[data-mobile-instance]')?.dataset.mobileInstance;
+    const focusAction = focused?.dataset.action || (focused?.tagName === 'SUMMARY' ? 'menu' : focused?.dataset.mobileStop ? 'stop' : focused?.dataset.mobileLogin ? 'login' : null);
+    $('#mobile-instance-list').innerHTML = mobileMarkup; lastMobileInstancesMarkup = mobileMarkup;
+    for (const id of opened) document.querySelector(`[data-mobile-instance="${id}"] .app-menu`)?.setAttribute('open', '');
+    if (focusId && focusAction) document.querySelector(`[data-mobile-instance="${focusId}"] ${focusAction === 'menu' ? 'summary' : ['stop', 'login'].includes(focusAction) ? `[data-mobile-${focusAction}]` : `[data-action="${focusAction}"]`}`)?.focus({ preventScroll: true });
+  }
   $('#mobile-instance-empty').hidden = mobileEntries.length > 0;
   renderMobileAI();
 }
@@ -685,8 +693,9 @@ document.addEventListener('click', async event => {
     if (button.dataset.restore) await restoreInstance(state.retained.find(x => x.id === button.dataset.restore), button);
     if (button.dataset.purge) removeInstance(state.retained.find(x => x.id === button.dataset.purge), true);
     if (button.dataset.action) {
-      if (mobile()) return pcHint();
-      const id = button.closest('[data-instance]').dataset.instance, item = state.instances.find(x => x.id === id);
+      const card = button.closest('[data-instance], [data-mobile-instance]');
+      if (mobile() && (!card?.dataset.mobileInstance || !['delete', 'rename'].includes(button.dataset.action))) return pcHint();
+      const id = card?.dataset.instance || card?.dataset.mobileInstance, item = state.instances.find(x => x.id === id);
       if (!item) return;
       if (button.dataset.action === 'open') await openDesktop(id);
       if (button.dataset.action === 'settings') settings(item);
