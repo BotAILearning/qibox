@@ -11,6 +11,7 @@ export class AIModelFixture {
   async models() { return ['fixture-chat', 'fixture-chat-pro']; }
   async complete(config, system, input, signal) {
     this.calls.push({ system, input });
+    if (input.mode === 'memory-monitor') return { memoryUpdates: [] };
     if (this.next) { const task = this.next; this.next = null; return task(input, signal); }
     if (input.conversations) return { profiles: input.conversations.map(({ contact }) => ({ contact, style: learnedStyle() })) };
     if (input.profiles) return { style: learnedStyle('汇总后保持自然简洁') };

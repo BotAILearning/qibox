@@ -24,7 +24,7 @@ export function stageSelfSuggestions(a, suggestions, messages) {
   const generated = new Set(a.profiles().flatMap(profile => profile.generatedIds || []));
   let changed = false;
   for (const item of suggestions.slice(0, 3)) {
-    const source = messages.find(message => message.id === item?.messageId && message.direction === 'self' && !message.aiGenerated && !generated.has(message.id));
+    const source = messages.find(message => message.id === item?.messageId && message.direction === 'self' && !message.aiGenerated && message.authorship !== 'unknown' && !generated.has(message.id));
     if (!source || !personalFields.some(([field]) => field === item.field) || typeof item.text !== 'string' || !item.text.trim() || item.text.length > 2000) continue;
     const text = item.text.trim();
     if (known.has(`${item.field}\0${text}`) || information.entries.some(row => row.field === item.field && row.text === text)) continue;

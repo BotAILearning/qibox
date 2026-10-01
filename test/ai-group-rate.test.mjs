@@ -182,7 +182,8 @@ test('a disabled explicit mention is not reintroduced by realtime', async t => {
   await a.setGroupOptions({ contact: profile.contact, atMe: false, realtime: true, confirmRealtime: true });
   Object.assign(bridge.push(profile.contact, 'other', '@我 只在关闭的开关下'), { timestamp: Math.floor(a.now() / 1000), sender: key('member'), mentions: { verified: true, self: true, all: false, others: false } });
   await a.tick(); advance(60000); await a.tick();
-  assert.equal(provider.calls.length, 0); assert.equal(bridge.sent.length, 0);
+  assert.equal(provider.calls.filter(call => call.input.mode !== 'memory-monitor').length, 0); assert.equal(bridge.sent.length, 0);
+  assert.ok(provider.calls.every(call => call.input.mode === 'memory-monitor'));
 });
 
 test('@all continues to ask the model after more than 20 recent replies', async t => {

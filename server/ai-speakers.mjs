@@ -56,7 +56,7 @@ export function naturalTurnBrief(messages) {
 
 export function confirmedSpeakerHistory(messages) {
   return speakerHistory(messages.filter(message => message.direction === 'other' ||
-    message.direction === 'self' && !message.aiGenerated && !message.unresolved));
+    message.direction === 'self' && !message.aiGenerated && message.authorship !== 'unknown' && !message.unresolved));
 }
 
 function referencedGeneratedStatements(input) {
