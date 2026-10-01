@@ -1,0 +1,288 @@
+{
+  "version": "0.10.18",
+  "buildId": "0.10.18-stable.001",
+  "channel": "stable",
+  "date": "2026-10-01",
+  "scope": [
+    "native quote ownership",
+    "natural conversational attribution",
+    "quoted author versus described person",
+    "complete waiting window",
+    "1-5 messages per reply batch"
+  ],
+  "priorAcceptanceCorrection": "0.10.17 explicit attribution questions did not verify natural quoted conversation; natural cases reproduced failures and required this release.",
+  "source": {
+    "base": "c7f1233c2f0dfad5b868060b547c00c55b57a454",
+    "packageCommit": "d0a108cb158630856fa4790a6a4f5409e9d933a0",
+    "implementationCommits": [
+      "7efec1b7dce78ebaf98e9f795041c0928b3220b7",
+      "0c16b6c74fc49f4dd6c9c876727c20034e395b8f"
+    ]
+  },
+  "checks": {
+    "syntaxVersionAndIdentity": "passed",
+    "node": {
+      "passed": 956,
+      "failed": 0,
+      "skipped": 0
+    },
+    "python": {
+      "passed": 288,
+      "failed": 0
+    },
+    "diffWhitespace": "passed"
+  },
+  "model": {
+    "provider": "MiniMax",
+    "model": "MiniMax-M3",
+    "apiMode": "anthropic",
+    "configuredTimeoutSeconds": 60,
+    "auditThinking": "adaptive",
+    "mainGenerationThinking": "unchanged"
+  },
+  "replay": {
+    "scope": "Real model calls with read-only source chat context and synthetic natural variations; fixture transport prevented WeChat sending.",
+    "sourceVersions": [
+      "7efec1b7dce78ebaf98e9f795041c0928b3220b7",
+      "0c16b6c74fc49f4dd6c9c876727c20034e395b8f"
+    ],
+    "batches": [
+      {
+        "evidence": "replay-final-15.json",
+        "trials": 15,
+        "sent": 9,
+        "legitimateOptionalSkips": 4,
+        "blocked": 2,
+        "httpCalls": 31,
+        "blockedIds": [
+          "actual-laundry-1",
+          "actual-laundry-3"
+        ]
+      },
+      {
+        "evidence": "replay-final-real-repeat.json",
+        "trials": 2,
+        "sent": 1,
+        "legitimateOptionalSkips": 1,
+        "blocked": 0,
+        "httpCalls": 5,
+        "blockedIds": []
+      },
+      {
+        "evidence": "replay-final-quote-roles.json",
+        "trials": 2,
+        "sent": 2,
+        "legitimateOptionalSkips": 0,
+        "blocked": 0,
+        "httpCalls": 4,
+        "blockedIds": []
+      }
+    ],
+    "totals": {
+      "trials": 19,
+      "sent": 12,
+      "legitimateOptionalSkips": 5,
+      "blocked": 2,
+      "httpCalls": 40
+    },
+    "blockedReason": "Two attribution audit requests timed out at the unchanged configured 60 second limit; no output was sent. These are not successful semantic validations.",
+    "manualReview": "Completed outputs and optional decisions were reviewed for actor ownership, quoted ownership and source grounding. Earlier failing iterations were excluded from the final batch counts and retained privately."
+  },
+  "device": {
+    "platform": "fnOS",
+    "architecture": "x86_64",
+    "wechatVersion": "4.1.13.23",
+    "controlledAccounts": 2,
+    "controlledScopes": [
+      "private chat",
+      "test group"
+    ],
+    "thirdPartySends": false,
+    "nativeRuns": [
+      {
+        "id": "native-private-candidate",
+        "installedPackage": false,
+        "runningManifestVersion": "0.10.17",
+        "kind": "person",
+        "beforeRounds": 48,
+        "afterRounds": 49,
+        "segmentsSent": 1,
+        "segmentsTotal": 1,
+        "timing": {
+          "modelMs": 13563,
+          "sendMs": 10409,
+          "completedAt": 1790853727522,
+          "receivedAt": 1790853674000,
+          "totalMs": 53522
+        }
+      },
+      {
+        "id": "native-group-candidate",
+        "installedPackage": false,
+        "runningManifestVersion": "0.10.17",
+        "kind": "group",
+        "beforeRounds": 22,
+        "afterRounds": 23,
+        "segmentsSent": 1,
+        "segmentsTotal": 1,
+        "timing": {
+          "modelMs": 10831,
+          "sendMs": 10339,
+          "completedAt": 1790854093656,
+          "receivedAt": 1790854062000,
+          "totalMs": 31656
+        }
+      },
+      {
+        "id": "native-group-ai-quote-candidate",
+        "installedPackage": false,
+        "runningManifestVersion": "0.10.17",
+        "kind": "group",
+        "beforeRounds": 23,
+        "afterRounds": 24,
+        "segmentsSent": 1,
+        "segmentsTotal": 1,
+        "timing": {
+          "modelMs": 46353,
+          "sendMs": 29863,
+          "completedAt": 1790854984028,
+          "receivedAt": 1790854873000,
+          "totalMs": 111028
+        }
+      },
+      {
+        "id": "native-private-installed",
+        "installedPackage": true,
+        "runningManifestVersion": "0.10.18",
+        "kind": "person",
+        "beforeRounds": 49,
+        "afterRounds": 50,
+        "segmentsSent": 1,
+        "segmentsTotal": 1,
+        "timing": {
+          "modelMs": 15895,
+          "sendMs": 9879,
+          "completedAt": 1790855817409,
+          "receivedAt": 1790855764000,
+          "totalMs": 53409
+        }
+      },
+      {
+        "id": "native-group-installed",
+        "installedPackage": true,
+        "runningManifestVersion": "0.10.18",
+        "kind": "group",
+        "beforeRounds": 24,
+        "afterRounds": 25,
+        "segmentsSent": 1,
+        "segmentsTotal": 1,
+        "timing": {
+          "modelMs": 11027,
+          "sendMs": 14760,
+          "completedAt": 1790856001442,
+          "receivedAt": 1790855964000,
+          "totalMs": 37442
+        }
+      }
+    ],
+    "pairedReceipts": [
+      {
+        "kind": "person",
+        "messagePairs": 8,
+        "quotedPairs": 2,
+        "directionMismatches": 0,
+        "quoteMismatches": 0
+      },
+      {
+        "kind": "group",
+        "messagePairs": 7,
+        "quotedPairs": 3,
+        "directionMismatches": 0,
+        "quoteMismatches": 0
+      }
+    ],
+    "installedCases": [
+      {
+        "kind": "person",
+        "owner": "今天把阳台整理干净了。",
+        "incomingQuoted": "太勤快了，我刚把客厅拖了一遍。",
+        "incomingLater": "现在看着都舒服了。",
+        "incomingIntervalSeconds": 12,
+        "reply": "哈哈你也不慢，都收拾干净了舒服",
+        "ownership": "Owner balcony and other person's living room stayed separate; both waiting messages included."
+      },
+      {
+        "kind": "group",
+        "quotedOwnerAI": "哈哈爬山回来还买了水果",
+        "incomingWithVerifiedAtMe": "买了苹果和橙子。",
+        "reply": "苹果配橙子 行啊 挺会挑的",
+        "ownership": "The fruit buyer remained the new sender; authorship of the quoted AI sentence did not transfer the described trip or purchase to the owner."
+      }
+    ],
+    "installation": {
+      "taskId": "1790855546774964981-qibox",
+      "status": 2,
+      "progress": 100,
+      "version": "0.10.18"
+    },
+    "installedParity": {
+      "installedVersion": "0.10.18",
+      "matchedProgramFiles": 1689,
+      "mismatches": [],
+      "serviceSocket": true,
+      "at": 1790856142601
+    },
+    "restoration": {
+      "version": "0.10.18",
+      "controlledProfilesRestored": 2,
+      "otherPauseFlagsRestored": 1616,
+      "profilesChecked": 1618,
+      "historyAndCountersPreserved": true,
+      "controlledTestMemoryRestored": true,
+      "replyTargetsRestored": true,
+      "replyTargetsOrderRestored": true,
+      "proactiveRestored": true,
+      "at": 1790856125301
+    },
+    "testSuggestions": {
+      "removedControlledTestSuggestions": 0,
+      "userEntriesPreserved": true,
+      "originalSuggestionsPreserved": true
+    },
+    "finalState": {
+      "bothAccountsAvailable": true,
+      "version": "0.10.18",
+      "privateRounds": 50,
+      "groupRounds": 25,
+      "model": "MiniMax-M3",
+      "settingsRestored": true,
+      "testSenderAIEnabled": false,
+      "freshNativeReadAfterRestart": true
+    }
+  },
+  "package": {
+    "version": "0.10.18",
+    "bytes": 570666214,
+    "sha256": "d89f089b8adc33863920f3d5bb2d4f2012187b759fefcebd2ceedfaa23739eb7",
+    "sourceCommit": "d0a108cb158630856fa4790a6a4f5409e9d933a0",
+    "packageProgramFiles": 1689,
+    "sourceAndArchiveParity": true,
+    "buildId": "0.10.18-stable.001",
+    "path": "dist/releases/0.10.18/0.10.18-stable.001/qibox-0.10.18-stable.001-all.fpk",
+    "runtimeArchitectures": [
+      "x86_64",
+      "ARM64"
+    ],
+    "runtimeReferences": 848,
+    "sharedArchives": 803,
+    "bundledWeChat": false
+  },
+  "limitations": [
+    "ARM64 package integrity verified without ARM64 hardware installation.",
+    "UGOS development and packaging remain paused.",
+    "Optional group context may correctly result in no reply.",
+    "Independent checking adds model requests and latency; timeout/invalid audit preserves pending messages rather than sending an unchecked draft.",
+    "No public distribution channel was changed in this task."
+  ],
+  "evidencePolicy": "Private original chats, identity bindings, native screenshots, model payloads and intermediate results remain in ignored local and protected device directories; this report contains only scoped, sanitized summaries."
+}
