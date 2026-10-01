@@ -24,11 +24,13 @@ function surface() {
     if (selector === '#ai-queue-live') return null;
     if (['#ai-proactive-form', '#ai-reply-form', '#ai-provider-form', '#ai-model-form', '#ai-profile-form', '#ai-paste-form', '#ai-manual-reply-form', '#ai-object-form', '#ai-analysis-form'].includes(selector)) return forms.get(selector) || null;
     if (!nodes.has(selector)) {
-      let html = '';
+      let html = '', text = '', children = [];
       nodes.set(selector, {
       hidden: false, dataset: {}, options: [], classList: { toggle() {} },
       writes: 0, get innerHTML() { return html; }, set innerHTML(value) { html = value; this.writes++; },
-      setAttribute() {}, focus() {}, replaceChildren() {}, append() {}, remove() {},
+      get textContent() { return children.length ? children.map(child => child.textContent || '').join('') : text; },
+      set textContent(value) { text = value; children = []; },
+      setAttribute() {}, focus() {}, replaceChildren(...values) { children = values; }, append() {}, remove() {},
       close() { handlers.get(`${selector}:close`)?.(); }, showModal() {},
       querySelector: node, querySelectorAll: () => [],
       addEventListener(type, handler) { handlers.set(`${selector}:${type}`, handler); },
@@ -38,6 +40,7 @@ function surface() {
   };
   return { document: { body: { append() {} }, querySelector: node, querySelectorAll: () => [], createElement: tag => node(`created-${tag}`) },
     node,
+    dismissFeedback: () => handlers.get('created-button:click')(),
     applyDialog: () => handlers.get('created-dialog:click')({ target: { closest: () => ({ hasAttribute: name => name === 'data-apply' }) } }),
     form: (selector, entries) => { const form = { id: selector.slice(1), entries, querySelector: () => null }; forms.set(selector, form); return form; },
     unmount: selector => forms.delete(selector),
@@ -52,6 +55,29 @@ function surface() {
 const availableState = () => ({ settings: { enabled: false, replyDelay: 8 },
   requirements: { proactive: '', reply: '' }, contacts: [{ id: 'contact', label: 'Fixture', kind: 'person' }],
   profiles: [], targets: [], strategy: {}, events: [], queue: { status: 'idle', items: [] }, available: true,
+});
+
+test('closing an invalid execution-record filter error retains the form and performs no mutation', async t => {
+  const originalDocument = globalThis.document, OriginalFormData = globalThis.FormData, dom = surface(), calls = [];
+  globalThis.document = dom.document;
+  globalThis.FormData = class extends OriginalFormData { constructor(form) { super(); for (const [key, value] of form?.entries || []) this.append(key, value); } };
+  const controller = aiAssistant({ api: async (url, payload) => { calls.push({ url, payload }); return availableState(); } });
+  t.after(() => { controller.detach(); globalThis.document = originalDocument; globalThis.FormData = OriginalFormData; });
+  await controller.attach('instance-a');
+  const form = dom.form('#ai-log-filter', [['from', '2026-10-02'], ['to', '2026-10-01']]);
+  calls.length = 0;
+  await dom.submit(form);
+  const feedback = dom.node('#ai-feedback'), renderCount = dom.node('#ai-content').writes;
+  assert.match(feedback.textContent, /开始日期不能晚于结束日期/);
+  assert.equal(feedback.hidden, false);
+  dom.dismissFeedback();
+  assert.equal(feedback.hidden, true);
+  assert.deepEqual(form.entries, [['from', '2026-10-02'], ['to', '2026-10-01']]);
+  assert.equal(dom.node('#ai-content').writes, renderCount);
+  assert.deepEqual(calls, []);
+  await dom.submit(form);
+  assert.equal(feedback.hidden, false);
+  assert.deepEqual(calls, []);
 });
 
 test('reply contact search filters by name without requests and survives editing and refresh', async t => {

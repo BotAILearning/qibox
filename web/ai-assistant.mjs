@@ -17,6 +17,7 @@ import { RecordCache, mergeRecordResults } from './ai-record-cache.mjs';
 import { contactName, contactSearch as searchableContact } from './ai-contact-name.mjs';
 import { contactPickerMatches, contactPickerRow, openContactPickerDialog, setContactAvatarInstance, resetContactAvatarFailures, noteContactAvatarFailure } from './ai-contact-picker.mjs';
 import { refreshReplyCountdowns } from './ai-reply-flow-view.mjs';
+import { dismissibleNotice } from './dismissible-notice.mjs';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const eventLabels = { contacted: '已主动联系', replied: '已自动回复', manual: '已交由你回复', limit: '已达到回复次数上限', skip: '本轮无需回复', stop: '已收到停止联系要求', uncertain: '发送结果未知，本次不重发', error: '任务已暂停', failed: '对象不可读取，本次未发送' };
 const names = { formality: '正式程度', warmth: '亲切程度', length: '回复长度', directness: '表达方式', emoji: '表情使用', humor: '幽默程度' };
@@ -372,7 +373,9 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     const open = event.target.closest('[data-ai-open-conversation]');
     if (open) { event.preventDefault(); if (!open.disabled) void openConversation(open.dataset.aiOpenConversation, open).catch(error => message(error.message, true)); return; }
   });
-  const message = (text, error = false) => { const node = $('#ai-feedback'); node.textContent = text; node.classList.toggle('error', error); node.hidden = !text; };
+  const { show: message } = dismissibleNotice($('#ai-feedback'), {
+    fallbackFocus: () => panel.querySelector('.ai-main-tabs [aria-current="page"]'),
+  });
   function confirmRecordDelete() {
     return new Promise(resolve => {
       const dialog = document.createElement('dialog');

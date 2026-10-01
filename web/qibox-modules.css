@@ -117,11 +117,27 @@
 @container qbx-home (max-width:740px) {
   .qiapp-product .workspace { grid-template-columns: minmax(0,1fr); }
 }
+
+/* Persistent feedback uses one close target without changing its source state. */
+.qiapp-product :is(#ai-feedback,#connection-error).qbx-notice {
+  display: flex; align-items: flex-start; gap: 12px; line-height: 1.6;
+}
+.qiapp-product .qbx-notice-message { flex: 1; min-width: 0; overflow-wrap: anywhere; align-self: center; }
+.qiapp-product :is(#ai-panel #ai-feedback,#connection-error) .qbx-notice-close {
+  display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
+  width: 40px; height: 40px; min-width: 40px; min-height: 40px; padding: 0;
+  margin: -4px -4px -4px 0; border: 0; border-radius: 8px; background: transparent;
+  color: inherit; font-size: 22px; line-height: 1; box-shadow: none;
+}
+.qiapp-product .qbx-notice-close::before { content: "×"; }
+.qiapp-product :is(#ai-panel #ai-feedback,#connection-error) .qbx-notice-close:hover { background: #0000000a; color: inherit; }
+.qiapp-product :is(#ai-panel #ai-feedback,#connection-error) .qbx-notice-close:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 @container qbx-page (max-width:620px) {
   #ai-panel .ai-model-configured .ai-assignment-rows { grid-template-columns: minmax(0,1fr); gap: 0; }
   #ai-panel .ai-model-configured .ai-assignment-row+.ai-assignment-row { border-top: 1px solid var(--qbx-line); }
 }
 @media(max-width:860px) {
+  .qiapp-product :is(#ai-panel #ai-feedback,#connection-error) .qbx-notice-close { width: 44px; height: 44px; min-width: 44px; min-height: 44px; }
   .qiapp-product { --qbx-module-padding: 16px; }
   .qiapp-product .workspace { grid-template-columns: minmax(0,1fr); }
   #ai-panel .qbx-settings-group { border: 1px solid var(--qbx-line); border-radius: var(--qbx-module-radius); }

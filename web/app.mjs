@@ -9,9 +9,11 @@ import { desktopPointer } from './desktop-pointer.mjs';
 import { desktopReconnect } from './desktop-reconnect.mjs';
 import { aiAssistant } from './ai-assistant.mjs';
 import { desktopAudio } from './desktop-audio.mjs';
+import { dismissibleNotice } from './dismissible-notice.mjs';
 import './qiapp-adopt.mjs';
 
 const $ = selector => document.querySelector(selector);
+const connectionNotice = dismissibleNotice($('#connection-error'), { fallbackFocus: () => $('.brand') });
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const prefix = apiPrefix;
 const small = matchMedia('(max-width: 760px)');
@@ -390,10 +392,10 @@ function renderDesktop() {
 async function refresh() {
   if (polling) return; polling = true;
   try {
-    state = await api('/state'); render(); renderDesktop(); $('#connection-error').hidden = true;
+    state = await api('/state'); render(); renderDesktop(); connectionNotice.show('');
     if (mobileLoginId && state.instances.find(item => item.id === mobileLoginId)?.runtime.loginStatus === 'logged-in') mobileLoginComplete(mobileLoginId);
   }
-  catch (e) { $('#connection-error').textContent = e.message; $('#connection-error').hidden = false; }
+  catch (e) { connectionNotice.show(e.message, true, { repeat: false }); }
   finally { polling = false; }
 }
 function centerMobileLoginViewport(client) {
@@ -703,8 +705,7 @@ async function init() {
     if (!session.consent.accepted) consentDialog(); else await picker.refresh();
     setInterval(refresh, 1000);
   } catch (e) {
-    $('#connection-error').textContent = e.name === 'TimeoutError' ? '连接超时，请检查网络' : e.message;
-    $('#connection-error').hidden = false;
+    connectionNotice.show(e.name === 'TimeoutError' ? '连接超时，请检查网络' : e.message, true, { repeat: false });
     // The NAS gateway/SDK can be unavailable briefly while an app is opening.
     // Retry session initialization; polling alone cannot recover without it.
     setTimeout(init, 3000);
