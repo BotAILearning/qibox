@@ -41,7 +41,9 @@
     ],
     "menuTargetPixels": 44,
     "pollingKeepsMenuOpen": true,
-    "escapeClosesMenu": true
+    "escapeClosesMenu": true,
+    "postUpgradeControlledAccountsLoggedIn": 2,
+    "secondAccountRequiredSavedLoginConfirmation": true
   },
   "limits": [
     "NAS application tested through browser phone-sized viewports; not a physical handset test",
