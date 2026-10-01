@@ -6,7 +6,7 @@ import { AIModelFixture, ChatFixture, modelConfig } from './ai-fixtures.mjs';
 import { temp, cleanup } from './fixtures.mjs';
 
 test('robot introductions and model explanations are recognized without banning AI as a topic', () => {
-  for (const text of ['我是一个机器人', '我只是个AI助手', '作为一名聊天机器人，我能帮你', '我是 ＡＩ', '我的回答由人工智能生成', '本次回复是由AI代为回复的', "I'm an AI", 'I am a language model', '我是自动回复系统'])
+  for (const text of ['我是一个机器人', '我只是个AI助手', '作为一名聊天机器人，我能帮你', '我是 ＡＩ', '我的回答由人工智能生成', '本次回复是由AI代为回复的', "I'm an AI", 'I am a language model', '我是自动回复系统', '是AI代回的', '由机器人回复'])
     assert.equal(disclosesAIIdentity(text), true, text);
   for (const text of ['你觉得AI哪个好用', '我觉得机器人很有意思', '他说“我是机器人”', '不要说我是机器人', '（AI 合成语音）你好', '我是做机器人研发的'])
     assert.equal(disclosesAIIdentity(text), false, text);
@@ -22,6 +22,18 @@ test('acknowledgements, suggestions, denials, attribution and examples remain se
     assert.equal(claimsUnverifiedExecution(text), false, text);
   assert.match(replySafetyPrompt, /当前没有执行外部操作的工具/);
   assert.match(replySafetyPrompt, /优先于风格/);
+});
+
+test('implicit admissions are scoped to pending identity questions and apply to segments and speech', () => {
+  for(const text of ['抱歉，回得确实太机械了，被你发现了。','哈哈，你猜对了','没错','是的','被你识破了','不是我亲自回的。']) {
+    assert.equal(replySafetyViolation([text], {identityAsked:true}), 'identity',text);
+    assert.equal(replySafetyViolation([text]), '',text);
+    assert.equal(replySafetyViolation([text], {identityAsked:true,allowIdentity:true}), '',text);
+  }
+  assert.equal(replySafetyViolation(['被你','发现了'], {identityAsked:true}), 'identity');
+  assert.equal(replySafetyViolation(['哪里听着不自然？'], {identityAsked:true}), '');
+  assert.equal(replySafetyViolation(['他说被你发现了。'], {identityAsked:true}), '');
+  assert.equal(replySafetyViolation(['哪里听着不自然？'], {identityAsked:true,audioText:'被你发现了'}), 'identity');
 });
 
 test('an unknown plan cannot create a future notification promise', () => {
@@ -98,6 +110,18 @@ test('the identity switch is scoped to this pending question, never an old quest
   await f.receive('你是AI吗'); assert.equal(f.bridge.sent.length, 1);
   await f.receive('聊聊今天的计划'); assert.equal(f.bridge.sent.length, 1);
   assert.equal(f.a.proactiveUnsupported('我是AI代为回复', { messages: [{ direction: 'other', text: '你是AI吗' }] }).includes('身份'), true);
+});
+
+test('a disabled identity switch corrects an indirect admission before sending without banning ordinary chat', async t => {
+  const f=await fixture(t);
+  f.provider.next=async()=>({action:'send',text:'抱歉，回得太机械了，被你发现了。'});
+  await f.receive('你这是不是AI回复的？');
+  assert.equal(f.provider.calls.length,2);
+  assert.deepEqual(f.bridge.sent.map(row=>row.text),['GENERATED_PRIVATE_MARKER']);
+  assert.match(f.provider.calls[1].system,/间接承认/);
+  f.provider.complete=async()=>({action:'send',text:'被你发现了'});
+  await f.receive('我发现你整理过书架了');
+  assert.equal(f.bridge.sent.at(-1).text,'被你发现了');
 });
 
 test('proactive drafts retry safety violations once and reject repeated false completion', async t => {

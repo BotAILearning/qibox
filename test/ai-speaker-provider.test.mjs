@@ -7,6 +7,25 @@ import { modelConfig, key } from './ai-fixtures.mjs';
 const auditPass = (text, audio) => ({ consistent: true, checks: [text, ...(audio ? [audio] : [])].map(value =>
   ({ text: value, attribution: '按已核验发言人保留本人和对方的归属。', grounding: '与原始资料一致；普通接话无新增经历或承诺。' })) });
 
+for(const protocol of ['openai','anthropic']) test(`${protocol}: attribution checks retain the identity switch instead of forcing identity answers`,async()=>{
+  const profile={account:key('account'),contact:key('contact'),kind:'person'};
+  for(const allowDisclosure of [false,true]){
+    const requests=[],text=allowDisclosure?'是AI代回的。':'哪里听着不自然？';
+    const identityPolicy={asked:true,allowDisclosure};
+    const input={mode:'reply',identityPolicy,replyPerspective:replyPerspective(profile),messages:[withSpeaker({id:'question',direction:'other',text:'你这是不是AI回复的？'},profile)]};
+    const provider=new AIProvider({fetcher:async(_url,init)=>{
+      const body=JSON.parse(init.body);requests.push(body);
+      const value=requests.length===1?{action:'send',text}:auditPass(text);
+      return Response.json(protocol==='anthropic'?{content:[{type:'text',text:JSON.stringify(value)}]}:{choices:[{message:{content:JSON.stringify(value)}}]});
+    }});
+    const result=await provider.complete({...modelConfig,protocol},'按身份设置回复',input);
+    assert.equal(result.text,text);assert.equal(requests.length,2);
+    const audit=requests[1],system=protocol==='anthropic'?audit.system:audit.messages[0].content;
+    assert.deepEqual(JSON.parse(audit.messages.at(-1).content).identityPolicy,identityPolicy);
+    assert.match(system,allowDisclosure?/如实简短说明由AI代为回复/:/简短询问对方疑虑属于完整合法回应/);
+  }
+});
+
 for (const protocol of ['anthropic','openai']) test(`${protocol}: official M3 attribution checks enable reasoning without leaking it or changing generation and other tasks`, async () => {
   const profile={account:key('account'),contact:key('contact'),kind:'person'};
   const input={mode:'reply',replyPerspective:replyPerspective(profile),messages:[withSpeaker({id:key('self'),direction:'self',text:'今天洗了一堆衣服。'},profile)]};

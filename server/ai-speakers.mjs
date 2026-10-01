@@ -145,6 +145,7 @@ export function speakerAuditInput(input, result) {
     requiredReplyIds: pending.filter(message => message.quote?.verified && message.quote.direction === 'self').map(message => message.id),
     taskMode: input.mode, followUp: input.followUp === true,
     strategy: input.strategy, myInformation: input.myInformation, memory: input.memory,
+    ...(input.identityPolicy ? { identityPolicy: input.identityPolicy } : {}),
     currentTime: input.currentTime, timezone: input.timezone,
     draftParts: (Array.isArray(result.segments) ? result.segments : [result.text]).map((text,index)=>({partId:`reply_${index+1}`,text}))
       .concat(result.media?.some(m=>m.type==='audio') ? [{partId:'audio_1',text:result.media.find(m=>m.type==='audio').text}] : []),

@@ -7,6 +7,10 @@ const clauses = text => normalize(text).split(/[。！？!?，,；;\n]|但是|�
 const identity = '(?:AI|人工智能|(?:大(?:型)?)?语言模型|大模型|(?:聊天|自动回复)?机器人|(?:智能|AI|自动回复)助手|自动回复系统|bot|chatbot|language model)';
 const introduction = new RegExp(`(?:作为|我(?:这边)?(?:就?是|其实是|确实是|只是|不过是|属于)|这里(?:是|由)|这边(?:是|由))\\s*(?:一[个位名种]?|个|一款)?\\s*(?:自动|智能|负责回复的)?\\s*${identity}`, 'i');
 const generatedIdentity = new RegExp(`(?:我的(?:回复|回答)|这条(?:回复|消息)|本次(?:回复|回答))[^，。！？!?\\n]{0,8}(?:由|是)[^，。！？!?\\n]{0,12}${identity}|我[^，。！？!?\\n]{0,8}(?:由|通过)[^，。！？!?\\n]{0,10}${identity}[^，。！？!?\\n]{0,8}(?:驱动|生成|回复)|\\b(?:I am|I'm|I’m|as|this is)\\s+(?:an?\\s+)?(?:AI|bot|chatbot|automated assistant|(?:large )?language model)\\b`, 'i');
+const bareIdentity = new RegExp(`^(?:是|由)\\s*${identity}(?:$|\\s*(?:代|回|生成|在回))`, 'i');
+// Acknowledgements acquire an identity meaning only when this pending batch
+// asks about automated replies. The same words in ordinary chat stay valid.
+const implicitIdentity = /^(?:哈哈|嘿嘿|嗯)?(?:被(?:你|您)(?:发现|识破|看穿)了?|让(?:你|您)(?:发现|识破|看穿)了?|(?:你|您)(?:猜|说|判断)对了?|猜(?:中|对)了|没错|是(?:的|啊|呀|哦)|对(?:的|啊|呀|哦)|确实(?:是|如此))(?:[\s~～…😂😅]*|[了呢呀啊哦哎\s~～…😂😅]*)$/;
 
 function quotedOrHypothetical(part) {
   // Attribution and questions about someone else's actions are not new claims.
@@ -17,7 +21,7 @@ function quotedOrHypothetical(part) {
 }
 
 export function disclosesAIIdentity(text) {
-  return clauses(text).some(part => !quotedOrHypothetical(part) && (introduction.test(part) || generatedIdentity.test(part)));
+    return clauses(text).some(part => !quotedOrHypothetical(part) && (introduction.test(part) || generatedIdentity.test(part) || bareIdentity.test(part)));
 }
 
 const externalAction = '(?:执行|运行|办理|处理|完成|搞定|办妥|提交|发送|转发|联系|通知|下单|付款|转账|支付|预约|预订|报名|购买|取消|删除|清空|修改|设置|安装|卸载|重启|部署|发布|上传|下载|保存|创建|打开|关闭|查询|查阅|搜索|检索|查过|查到|验证|核实|核对|检查|同步|备份)';
@@ -38,17 +42,17 @@ export function claimsUnverifiedExecution(text) {
     && (completedBefore.test(part) || completedAfter.test(part) || operating.test(part) || passiveCompletion.test(part) || genericCompletion.test(part) || englishCompletion.test(part) || conditionalNotification.test(part)));
 }
 
-export function replySafetyViolation(segments, { allowIdentity = false, audioText = '' } = {}) {
+export function replySafetyViolation(segments, { allowIdentity = false, identityAsked = false, audioText = '' } = {}) {
   // Check the joined content as well: splitting a claim across segments must
   // not bypass the guard before any segment reaches the native sender.
   const texts = [...segments, segments.join(''), ...(typeof audioText === 'string' && audioText ? [audioText] : [])];
-  if (!allowIdentity && texts.some(disclosesAIIdentity)) return 'identity';
+  if (!allowIdentity && texts.some(text => disclosesAIIdentity(text) || identityAsked && clauses(text).some(part => implicitIdentity.test(part) || /^(?:不是|并非|没有|没)(?:我本人|我自己|由我|本人|我)(?:亲自)?(?:回复|回|输入|打|写|敲)/.test(part)))) return 'identity';
   if (texts.some(claimsUnverifiedExecution)) return 'execution';
   return '';
 }
 
 export function replySafetyCorrection(reason) {
   return reason === 'identity'
-    ? ' 上一份正文违规说明了AI/机器人身份。重新拟写自然的微信接话，不说明身份、后台或生成过程；不能编造真人在场证明。只返回原协议要求的JSON。'
+    ? ' 上一份正文违规说明了AI/机器人身份，也包括间接承认。不能用“被你发现了”“你猜对了”“是的”“没错”承认自动回复。重新拟写自然的微信接话，可简短询问对方疑虑，不说明身份、后台或生成过程；不能编造真人在场证明。只返回原协议要求的JSON。'
     : ' 上一份正文声称或承诺执行没有证据的操作。当前没有执行外部任务的工具，不得说已完成、已执行、已帮对方处理或正在操作；普通回复也没有安排未来通知，不能补“确定了告诉你”等承诺。改为自然说明尚不确定、给出可实际发送的文字建议或询问必要信息。只返回原协议要求的JSON。';
 }

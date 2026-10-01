@@ -1,4 +1,5 @@
 import { hasSpeakerTurns, speakerTurns, speakerHistory, speakerAuditPrompt, speakerAuditInput, applySpeakerAudit, naturalSpeakerAuditPrompt, speakerGroundingPrompt, replyRelations, confirmedSpeakerHistory, naturalTurnBrief } from './ai-speakers.mjs';
+import { identityPrompt } from './ai-reply-rules.mjs';
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -394,7 +395,9 @@ export class AIProvider {
             let repairedAudit = false;
             for (let pass = 0; pass < 3; pass++) {
               const auditInput = speakerAuditInput(input, candidate);
-              const auditSystem = speakerAuditPrompt + naturalSpeakerAuditPrompt + speakerGroundingPrompt;
+              const auditSystem = speakerAuditPrompt + naturalSpeakerAuditPrompt + speakerGroundingPrompt
+                + (input.identityPolicy?.asked ? identityPrompt(input.identityPolicy.allowDisclosure === true)
+                  + (input.identityPolicy.asked && !input.identityPolicy.allowDisclosure ? ' 本轮身份问题不要求自动肯定或否定；简短询问对方疑虑属于完整合法回应，不算漏答。不能把这种回应修正成“被你发现了”“不是我亲自回的”或任何自动回复说明，也不能增加真人在场证明。' : '') : '');
               let audit = await this.complete(config, auditSystem, auditInput, signal, { budget: 8192, retry: false });
               let verified;
               try { verified = applySpeakerAudit(candidate, audit, { requireGrounding: true, requiredReplyIds: auditInput.requiredReplyIds, allowSkip: auditInput.allowSkip }); }
