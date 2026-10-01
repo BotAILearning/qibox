@@ -1,0 +1,229 @@
+{
+  "version": "0.10.17",
+  "createdAt": "2026-10-01",
+  "status": "installed-and-accepted-on-fnos-x86_64",
+  "source": {
+    "baseCommit": "67a5cccccb6e0aed17638241d4ce54847384e4cf",
+    "codeCommit": "1f8c3ee8ea33812c2f5cec9978fe2b22472a3c3a",
+    "browserHarnessCommit": "8a1d549caa458283feb6bdd3541fef4ed617798b",
+    "branch": "codex/chat-speaker-identity",
+    "isolatedWorktree": true,
+    "unrelatedWorkspaceChangesPreserved": true,
+    "harnessCommitChangesApplicationCode": false
+  },
+  "changes": [
+    "Use trusted direction, account/contact/member identity throughout reply contexts and summaries.",
+    "Keep self as assistant and other as user in provider history, preserving quoted and group speakers.",
+    "Audit every reply/proactive send draft; independently recheck corrected drafts and retain pending work on invalid or conflicting results.",
+    "Preserve full waiting batch and total 1–5 message limit."
+  ],
+  "package": {
+    "file": "dist/releases/0.10.17/0.10.17/qibox-0.10.17-all.fpk",
+    "bytes": 570655735,
+    "sha256": "e884dc33577385e655584c94d19ea7fd0715b5ed15007aedb7091e793be9a564",
+    "sourceCommit": "1f8c3ee8ea33812c2f5cec9978fe2b22472a3c3a",
+    "packageProgramFiles": 1689,
+    "sourceAndArchiveParity": true,
+    "architectures": [
+      "x86_64",
+      "arm64"
+    ],
+    "runtimeReferences": 848,
+    "runtimeSharedArchives": 803,
+    "bundledWechat": false
+  },
+  "local": {
+    "node": {
+      "passed": 947,
+      "failed": 0,
+      "skipped": 0
+    },
+    "python": {
+      "passed": 283,
+      "failed": 0
+    },
+    "syntaxAndVersionCheck": "passed",
+    "diffCheck": "passed",
+    "activeBrowserGroups": {
+      "passed": 5,
+      "failed": 0,
+      "execution": "Each active script passed individually",
+      "names": [
+        "assisted-wait",
+        "provider-settings",
+        "analysis-history",
+        "analysis-contact-search",
+        "analysis-queue-and-files"
+      ],
+      "scope": "Local disposable fixtures only; no actual NAS acceptance or WeChat sends"
+    }
+  },
+  "nasModelSimulation": {
+    "model": "MiniMax-M3",
+    "actualProviderRequests": true,
+    "realWechatDelivery": false,
+    "passed": 12,
+    "failed": 0,
+    "cases": [
+      {
+        "id": "cities",
+        "passed": true,
+        "reply": "你住苏州，我住杭州，没记反。"
+      },
+      {
+        "id": "pets",
+        "passed": true,
+        "reply": "豆包是我养的猫，丸子是你养的狗。"
+      },
+      {
+        "id": "who-proposed",
+        "passed": true,
+        "reply": "最早我提的周六，你提的周日。最后定周日。"
+      },
+      {
+        "id": "other-state",
+        "passed": true,
+        "reply": "三场会，确实累。\n在家休息呢。"
+      },
+      {
+        "id": "quoted-owner",
+        "passed": true,
+        "reply": "那句话是我说的，那个\"我\"是我自己。我住杭州，平时坐地铁；你住苏州，平时骑车。"
+      },
+      {
+        "id": "third-party-quote",
+        "passed": true,
+        "reply": "我养猫豆包，你养狗丸子，小林养兔子雪球。"
+      },
+      {
+        "id": "incoming-voice",
+        "passed": true,
+        "reply": "你苏州，我杭州。",
+        "scope": "Synthetic incoming voice with supplied transcription; no new native audio hardware test"
+      },
+      {
+        "id": "group-two-speakers",
+        "passed": true,
+        "reply": "小林住苏州，小周住南京，我住杭州。"
+      },
+      {
+        "id": "old-summary-first-person",
+        "passed": true,
+        "reply": "我杭州，你苏州。"
+      },
+      {
+        "id": "private-summary",
+        "passed": true,
+        "reply": "需回复事项总结：对方表示自己住在苏州，养的狗叫丸子，请微信账号本人记一下。"
+      },
+      {
+        "id": "group-summary",
+        "passed": true,
+        "outputSummary": "The two trusted synthetic member IDs retain separate city/pet facts: Suzhou/dog versus Nanjing/rabbit.",
+        "verbatim": false
+      },
+      {
+        "id": "proactive-pet",
+        "passed": true,
+        "reply": "丸子最近怎么样？",
+        "scope": "One realistic task asking about the other person's dog"
+      }
+    ]
+  },
+  "device": {
+    "platform": "fnOS",
+    "hardware": "x86_64",
+    "wechatVersion": "4.1.13.23",
+    "appCenterTaskId": "1790845947059834580-qibox",
+    "appCenterTaskStatus": 2,
+    "appCenterProgress": 100,
+    "installedVersion": "0.10.17",
+    "matchedProgramFiles": 1689,
+    "mismatches": [],
+    "serviceRunning": true,
+    "nativeWechat": {
+      "controlledAccounts": 2,
+      "confirmedReplyRounds": 4,
+      "pairedMessages": 16,
+      "privatePairs": 8,
+      "groupPairs": 8,
+      "inconsistentDirections": 0,
+      "allReplyAttributionsCorrect": true,
+      "finalGroupMentionVerified": true,
+      "inputsSentThroughNativeWechat": true,
+      "externalContactsMessaged": false,
+      "cases": [
+        {
+          "id": "candidate-private",
+          "installedPackagePhase": "candidate modules before FPK upgrade",
+          "question": "Who asked about parking and vegetarian food, and who gave the quoted answer?",
+          "answerSummary": "The other person asked both questions; the current account supplied the quoted answer.",
+          "confirmedTextMessages": 1,
+          "modelMs": 4637,
+          "sendMs": 26608
+        },
+        {
+          "id": "candidate-group",
+          "installedPackagePhase": "candidate modules before FPK upgrade",
+          "question": "After an actual @ mention, supplemental questions ask who asked about the meeting time and entrance.",
+          "answerSummary": "The mentioning member asked; the current account answered.",
+          "confirmedTextMessages": 1,
+          "modelMs": 15542,
+          "sendMs": 16596
+        },
+        {
+          "id": "installed-private",
+          "installedPackagePhase": "0.10.17 FPK installed",
+          "question": "Verify who asked the two earlier questions and who answered, with thanks as the final incoming message.",
+          "answerSummary": "The other person asked; the current account answered.",
+          "confirmedTextMessages": 1,
+          "modelMs": 9145,
+          "sendMs": 27345,
+          "totalMs": 73376
+        },
+        {
+          "id": "installed-group",
+          "installedPackagePhase": "0.10.17 FPK installed",
+          "question": "A full native @ mention and supplemental question ask who asked and answered, ending with thanks.",
+          "answerSummary": "The mentioning member asked; the current account answered.",
+          "confirmedTextMessages": 1,
+          "modelMs": 6032,
+          "sendMs": 15320,
+          "totalMs": 27343
+        }
+      ],
+      "preparationIncidents": [
+        "The initial private fixture omitted target enrollment; enabling the controlled target processed existing incoming messages without resending them.",
+        "The first candidate group input contained only the actual mention; questions were sent in supplemental messages.",
+        "The final native group preparation opened a logout confirmation. It was canceled without logout; draft clearing and an inspected official member selection preceded final sends."
+      ]
+    },
+    "restoration": {
+      "controlledProfilesRestored": 2,
+      "otherPauseFlagsRestored": 1616,
+      "profilesChecked": 1618,
+      "replyTargetsRestored": true,
+      "proactiveRestored": true,
+      "historyAndCountersPreserved": true,
+      "privateRoundsBefore": 46,
+      "privateRoundsAfter": 48,
+      "groupRoundsBefore": 20,
+      "groupRoundsAfter": 22,
+      "testSenderAiEnabled": false,
+      "bothAccountsAvailableAfterRestart": true
+    }
+  },
+  "operationalImpact": {
+    "usualAdditionalModelCallsPerSend": 1,
+    "correctedDraftRequiresAnotherAudit": true,
+    "failedAuditSendsNothing": true
+  },
+  "limitations": [
+    "Model-based attribution checking lowers the observed risk; it is not a guarantee that every future model output is correct.",
+    "ARM64 package integrity passed; no ARM64 hardware acceptance in this release.",
+    "Voice ownership used supplied transcription in model fixtures; no new native voice send/receive hardware acceptance.",
+    "Proactive task acceptance covered the specified pet greeting, not every complex task.",
+    "UGOS work remains paused.",
+    "No public distribution channel was operated in this release."
+  ]
+}
