@@ -4,7 +4,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { isIP } from 'node:net';
 import { AppError } from './files.mjs';
-import { compactModelInput } from './ai-model-input.mjs';
+import { compactModelInput, encodeModelRequest } from './ai-model-input.mjs';
 import { textField } from './ai-schema.mjs';
 
 export function providerValue(value, previous = {}, { discovery = false } = {}) {
@@ -312,13 +312,15 @@ export class AIProvider {
     const {images = [], ...textInput} = input;
     const validImages = images.filter(x => x && ['image/png','image/jpeg','image/gif','image/webp'].includes(x.mime) && typeof x.data === 'string' && x.data.length <= 5600000).slice(0,3);
     if (requireImages && (!images.length || validImages.length !== images.length)) throw new AppError('图片或视频帧不符合模型输入要求', 400);
-    const text = JSON.stringify(compactModelInput(hasSpeakerTurns(input) ? { ...textInput, messages: input.messages, replySpeakerHistory: speakerHistory(input.messages).map(({ messages, ...group }) => ({ ...group, messageIds: messages.map(message => message.id) })), confirmedSpeakerHistory: confirmedSpeakerHistory(input.messages).filter(group => group.speaker.role === 'self'), replyRelations: replyRelations(input.messages), naturalTurnBrief: naturalTurnBrief(input.messages) } : textInput));
-    const requestContent = validImages.length ? [{type:'text',text}, ...validImages.flatMap(x => [{type:'text',text:'图片对应消息 '+x.messageId}, anthropic ? {type:'image',source:{type:'base64',media_type:x.mime,data:x.data}} : {type:'image_url',image_url:{url:'data:'+x.mime+';base64,'+x.data}}])] : text;
+    const expanded = hasSpeakerTurns(input) ? { ...textInput, messages: input.messages, replySpeakerHistory: speakerHistory(input.messages).map(({ messages, ...group }) => ({ ...group, messageIds: messages.map(message => message.id) })), confirmedSpeakerHistory: confirmedSpeakerHistory(input.messages).filter(group => group.speaker.role === 'self'), replyRelations: replyRelations(input.messages), naturalTurnBrief: naturalTurnBrief(input.messages) } : textInput;
+    const encoded = encodeModelRequest(system, compactModelInput(expanded));
+    const text = JSON.stringify(encoded.input);
+    const requestContent = validImages.length ? [{type:'text',text}, ...validImages.flatMap(x => [{type:'text',text:'图片对应消息 '+encoded.id(x.messageId)}, anthropic ? {type:'image',source:{type:'base64',media_type:x.mime,data:x.data}} : {type:'image_url',image_url:{url:'data:'+x.mime+';base64,'+x.data}}])] : text;
     // Only Anthropic used to receive an output budget; elsewhere the server's
     // own default applied, and several hosts default to something small enough
     // to cut a real answer off mid-JSON. Ask for room explicitly instead.
     let budget = requestedBudget ?? outputBudget(textInput);
-    let response, droppedBudget = false, currentSystem = system, attributionStarted = false;
+    let response, droppedBudget = false, currentSystem = encoded.system, attributionStarted = false;
     for (let attempt = 0; ; attempt++) {
       attributionStarted = false;
       try {
@@ -344,7 +346,7 @@ export class AIProvider {
               code: modelErrorCode, type: modelErrorType, messagePresent: !!modelError }));
           if (validImages.length && [400,415,422].includes(response.status)) {
             if (requireImages) throw new AppError('当前模型不支持图片输入', 400, 'ai_model_vision_unsupported');
-            return textInput.onlyImages ? {action:'skip',mediaSkipped:true} : this.complete(config, currentSystem + ' 本次接口无法接受图片，图片已跳过；仅依据文字，不猜测图片内容。', {...textInput,capabilities:{...textInput.capabilities,receiveImages:false}},signal, { format, budget, retry, validate });
+            return textInput.onlyImages ? {action:'skip',mediaSkipped:true} : this.complete(config, system + ' 本次接口无法接受图片，图片已跳过；仅依据文字，不猜测图片内容。', {...textInput,capabilities:{...textInput.capabilities,receiveImages:false}},signal, { format, budget, retry, validate });
           }
           // A host that rejects the budget parameter (or the value we asked for)
           // must not fail the call: retry once the way it used to be sent.
@@ -367,9 +369,11 @@ export class AIProvider {
         const tokenCount = value => Number.isSafeInteger(value) && value >= 0 ? value : null;
         console.info('[ai-request-cost]', JSON.stringify({ mode: input.mode || format,
           inputChars: currentSystem.length + text.length,
-          compactedChars: Math.max(0, JSON.stringify(textInput).length - JSON.stringify(compactModelInput(textInput)).length),
+          compactedChars: Math.max(0, system.length + JSON.stringify(expanded).length - currentSystem.length - text.length),
           inputTokens: tokenCount(data.usage?.prompt_tokens ?? data.usage?.input_tokens),
-          outputTokens: tokenCount(data.usage?.completion_tokens ?? data.usage?.output_tokens) }));
+          outputTokens: tokenCount(data.usage?.completion_tokens ?? data.usage?.output_tokens),
+          cachedInputTokens: tokenCount(data.usage?.prompt_tokens_details?.cached_tokens ?? data.usage?.cache_read_input_tokens),
+          cacheWriteTokens: tokenCount(data.usage?.cache_creation_input_tokens) }));
         if (data.choices?.[0]?.finish_reason === 'length' || data.stop_reason === 'max_tokens') {
           if (input?.defaultStyle || Array.isArray(input?.profiles)) console.warn('[ai-style-shape]', JSON.stringify({
             stage: input.defaultStyle ? 'person' : 'summary', responseKeys: Object.keys(data),
@@ -380,17 +384,29 @@ export class AIProvider {
         }
         const content = anthropic ? data.content?.filter(x => x.type === 'text').map(x => x.text).join('') : data.choices?.[0]?.message?.content;
         try {
-          const result = modelResult(content, format);
+          const result = encoded.decode(modelResult(content, format));
           if (format === 'report' && !result?.report?.trim()) console.warn('[ai-analysis-report-shape]', JSON.stringify(analysisReportFormatDiagnostic(content, data, size)));
           try {
             const checked = typeof validate === 'function' ? await validate(result) : result;
             if (!hasSpeakerTurns(input) || checked?.action !== 'send') return checked;
             attributionStarted = true;
             let candidate = checked;
+            let repairedAudit = false;
             for (let pass = 0; pass < 3; pass++) {
               const auditInput = speakerAuditInput(input, candidate);
-              const audit = await this.complete(config, speakerAuditPrompt + naturalSpeakerAuditPrompt + speakerGroundingPrompt, auditInput, signal, { budget: 8192, retry: false });
-              const verified = applySpeakerAudit(candidate, audit, { requireGrounding: true, requiredReplyIds: auditInput.requiredReplyIds, allowSkip: auditInput.allowSkip });
+              const auditSystem = speakerAuditPrompt + naturalSpeakerAuditPrompt + speakerGroundingPrompt;
+              let audit = await this.complete(config, auditSystem, auditInput, signal, { budget: 8192, retry: false });
+              let verified;
+              try { verified = applySpeakerAudit(candidate, audit, { requireGrounding: true, requiredReplyIds: auditInput.requiredReplyIds, allowSkip: auditInput.allowSkip }); }
+              catch (error) {
+                if (!retry || repairedAudit || error.code !== 'ai_model_schema') throw error;
+                // One repair of the checker's protocol, never a bypass. Keep the
+                // original draft and evidence; missing comment coverage must
+                // produce a corrected draft rather than invented coverage.
+                repairedAudit = true;
+                audit = await this.complete(config, auditSystem + ' 上次核验JSON缺少有效字段。重新完整核对原draftParts，每个partId都有checks；consistent=true时requiredReplyIds必须逐项有实际正文对应的replyCoverage。没有接住评论就consistent=false并返回完整修正text，不得为通过校验捏造覆盖片段。', auditInput, signal, { budget: 8192, retry: false });
+                verified = applySpeakerAudit(candidate, audit, { requireGrounding: true, requiredReplyIds: auditInput.requiredReplyIds, allowSkip: auditInput.allowSkip });
+              }
               if (audit.consistent) return candidate;
               candidate = typeof validate === 'function' ? await validate(verified) : verified;
               if (candidate?.action !== 'send') return candidate;

@@ -23,7 +23,9 @@ product = json.loads((root / 'config/product.json').read_text(encoding='utf-8'))
 version = product['version']
 manifest = dict(line.split('=', 1) for line in (stage / 'manifest').read_text(encoding='utf-8').splitlines() if '=' in line)
 assert manifest['version'] == version and manifest['platform'] == platform
-assert json.loads((stage / 'app/config/product.json').read_text(encoding='utf-8'))['version'] == version
+staged_product = json.loads((stage / 'app/config/product.json').read_text(encoding='utf-8'))
+assert staged_product['version'] == version and staged_product['platform'] == platform
+assert staged_product.get('buildId') == product.get('buildId')
 build_id = product.get('buildId', version)
 output = root / 'dist' / 'releases' / version / build_id / f'qibox-{build_id}-{platform}.fpk'
 output.parent.mkdir(parents=True, exist_ok=True)

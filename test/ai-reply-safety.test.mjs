@@ -24,6 +24,13 @@ test('acknowledgements, suggestions, denials, attribution and examples remain se
   assert.match(replySafetyPrompt, /优先于风格/);
 });
 
+test('an unknown plan cannot create a future notification promise', () => {
+  for(const text of ['现在还没确定，定了告诉你。','确定了通知你一声。','等我确认了跟你说。','到了再给你发消息。','明天几点到还没定，我先确认下再告诉你。','先问一下再回复你。','我确认下再跟你说。','确认后告诉你。','一确定就告诉你。','定好了我会通知你。'])
+    assert.equal(claimsUnverifiedExecution(text),true,text);
+  for(const text of ['还不确定，具体时间说不准。','你定了告诉我吧。','你确定了通知我一声。','如果确定了，请你告诉我。'])
+    assert.equal(claimsUnverifiedExecution(text),false,text);
+});
+
 test('splitting a claim across segments and quoting it bare cannot bypass the guard', () => {
   assert.equal(replySafetyViolation(['我是一个', '机器人']), 'identity');
   assert.equal(replySafetyViolation(['任务已经', '执行完成']), 'execution');
