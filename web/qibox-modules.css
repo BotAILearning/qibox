@@ -1,0 +1,135 @@
+/* Shared module contract, including the older workspace views. */
+.qiapp-product {
+  --qbx-module-padding: 20px;
+  --qbx-module-radius: 12px;
+  --qbx-module-gap: 16px;
+  --qbx-module-title-size: 16px;
+}
+
+.qiapp-product :is(.market-panel,.desktop-panel).qbx-module,
+.qiapp-product #ai-panel :is(.ai-card,.ai-task-card,.ap-form-card,.ap-table-panel,.ai-object-sidebar,.ai-model-sidebar,.ai-analysis-request,.ai-reference-profile,.ai-reference-panel,.ai-reply-module,.qbx-record-section).qbx-module {
+  min-width: 0; padding: var(--qbx-module-padding);
+  border: 1px solid var(--qbx-line); border-radius: var(--qbx-module-radius);
+  background: var(--qbx-surface); box-shadow: none;
+}
+.qiapp-product .workspace { grid-template-columns: minmax(0,1fr) 264px; gap: var(--qbx-module-gap); }
+.qiapp-product .panel-heading { margin-bottom: 16px; }
+.qiapp-product .panel-heading h2 { margin: 0; color: var(--qbx-ink); font-size: var(--qbx-module-title-size); font-weight: 650; line-height: 1.5; }
+
+.qiapp-product #ai-panel .qbx-module>:is(h3,h4),
+.qiapp-product #ai-panel :is(.ai-card,.ai-task-card,.ap-form-card,.ap-table-panel,.ai-model-sidebar,.ai-reference-panel).qbx-module :is(h3,h4),
+.qiapp-product #ai-panel .qbx-module :is(.ai-card-heading,.ap-card-head,.ap-schedule-heading,.ai-reference-style-head,.ai-reference-memory-head) :is(h3,h4),
+#ai-panel .ai-reference-learning-list>header h4,
+#ai-panel .ai-reference-learning-config>section h4,
+#ai-panel .ai-analysis-intro.qbx-section-heading h4,
+#ai-panel .ai-personal-intro h4,
+#ai-panel .ai-personal-section-heading h4 {
+  color: var(--qbx-ink); font-size: var(--qbx-module-title-size); font-weight: 650; line-height: 1.5; letter-spacing: 0;
+}
+#ai-panel .qbx-module :is(.ai-card-heading,.ap-card-head) { gap: 12px; margin-bottom: 16px; }
+#ai-panel .qbx-module :is(.ai-card-heading,.ap-card-head) p,
+#ai-panel .qbx-module>.ai-help { color: var(--qbx-muted); font-size: 12px; line-height: 1.6; }
+
+/* Modules with a full-width header keep their content inside the same inset. */
+.qiapp-product #ai-panel :is(.qbx-settings-group,.qbx-record-section,.ai-reply-module,.ai-reference-profile,.ai-reference-style,.ai-reference-memory,.ai-reference-learning-list,.ai-reference-learning-config,.ap-table-panel).qbx-module { padding: 0; }
+#ai-panel .ai-object-reference .ai-reference-reply-panel { --reply-module-padding: var(--qbx-module-padding); --reply-module-gap: var(--qbx-module-gap); }
+#ai-panel .ai-activity-page .qbx-record-section { --record-padding: var(--qbx-module-padding); }
+#ai-panel :is(.ai-reference-style-head,.ai-reference-memory-head,.ai-reference-learning-list>header) { padding: 16px var(--qbx-module-padding); border-color: var(--qbx-line); }
+#ai-panel :is(.ai-reference-style-head,.ai-reference-memory-head) { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+#ai-panel .ai-reference-style-head>.ai-actions { margin: 0 0 0 auto; padding: 0; }
+#ai-panel .ai-reference-style-body,
+#ai-panel .ai-reference-memory-content,
+#ai-panel .ai-reference-learning-config>section,
+#ai-panel .ai-reference-learning-config>footer { padding: var(--qbx-module-padding); }
+#ai-panel .ai-reference-learning-tools { padding-inline: var(--qbx-module-padding); }
+#ai-panel .ai-reference-learning-choices.ai-selected-contact-list { padding: 16px var(--qbx-module-padding); }
+#ai-panel .ai-reference-learning-choices.ai-selected-contact-list:has(>.ai-help:only-child) { min-height: 80px; }
+#ai-panel .ap-reference-list>.ap-reference-toolbar { padding: 16px var(--qbx-module-padding); margin: 0; border-bottom: 1px solid var(--qbx-line); }
+
+/* Native accordions share the same target, arrow and focus treatment. */
+#ai-panel .ai-optional-fields { margin-block: 16px; border: 1px solid var(--qbx-line); border-radius: var(--qbx-module-radius); background: var(--qbx-surface); }
+#ai-panel .ai-optional-fields>summary,
+#ai-panel details.ai-card.qbx-module>summary {
+  display: flex; align-items: center; gap: 12px; min-height: 56px;
+  padding: 14px 16px; color: var(--qbx-ink); font-size: 14px; font-weight: 600; line-height: 1.5;
+  list-style: none; cursor: pointer;
+}
+.qiapp-product #ai-panel details.ai-card.qbx-module { padding: 0; overflow: hidden; }
+#ai-panel details.ai-card.qbx-module>summary { padding: 16px var(--qbx-module-padding); font-size: var(--qbx-module-title-size); }
+#ai-panel details.ai-card.qbx-module>:not(summary) { margin-inline: var(--qbx-module-padding); }
+#ai-panel details.ai-card.qbx-module>:last-child { margin-bottom: var(--qbx-module-padding); }
+#ai-panel :is(.ai-optional-fields,details.ai-card.qbx-module)>summary::-webkit-details-marker { display: none; }
+#ai-panel :is(.ai-optional-fields,details.ai-card.qbx-module)>summary::before { content: none; }
+#ai-panel :is(.ai-optional-fields,details.ai-card.qbx-module)>summary::after {
+  content: ""; display: block; flex: none; width: 7px; height: 7px; margin-left: auto;
+  border-right: 2px solid var(--qbx-muted); border-bottom: 2px solid var(--qbx-muted); transform: rotate(45deg);
+}
+#ai-panel :is(.ai-optional-fields,details.ai-card.qbx-module)[open]>summary::after { transform: rotate(225deg); }
+#ai-panel .ai-optional-fields>summary:has(>.ai-optional-status)::after,
+#ai-panel details.ai-card.qbx-module>summary:has(>span)::after { margin-left: 0; }
+#ai-panel :is(.ai-optional-fields,details.ai-card.qbx-module)>summary:hover { background: var(--qi-hover); }
+#ai-panel :is(.ai-optional-fields,details.ai-card.qbx-module)>summary:focus-visible { outline: 2px solid var(--qi-focus); outline-offset: -3px; border-radius: 10px; }
+#ai-panel .ai-optional-status,
+#ai-panel details.ai-card.qbx-module>summary>span { margin-left: auto; color: var(--qbx-muted); font-size: 12px; font-weight: 400; }
+#ai-panel .qbx-optional-body { padding: 0 16px 16px; }
+#ai-panel .qbx-optional-body>.ai-field:last-child { margin-bottom: 0; }
+#ai-panel .ai-analysis-main-fields .ai-optional-fields { margin-bottom: 0; }
+#ai-panel .ai-analysis-media-options .ai-analysis-media { gap: 12px; margin: 0; padding: 0; border: 0; border-radius: 0; }
+#ai-panel .ai-analysis-media-options .ai-analysis-media label { min-height: 44px; padding-block: 8px; }
+
+/* Frequent switches precede account configuration; saves sit at the form end. */
+#ai-panel .qbx-settings-group h4 { padding: 16px var(--qbx-module-padding); font-size: var(--qbx-module-title-size); border-bottom: 1px solid var(--qbx-line); }
+#ai-panel .qbx-settings-group .qbx-setting-row { margin-inline: var(--qbx-module-padding); }
+#ai-panel .qbx-settings-group [data-takeover-minutes] { padding-inline: var(--qbx-module-padding); }
+#ai-panel .qbx-settings-group>.ai-help { margin-inline: var(--qbx-module-padding); }
+#ai-panel .qbx-settings-group footer { padding: 16px var(--qbx-module-padding); }
+#ai-panel .qbx-settings-config .qbx-settings-links { gap: 12px; }
+#ai-panel .qbx-settings-config .ai-settings-entry { min-height: 76px; padding: 14px; border-color: var(--qbx-line); border-radius: 10px; box-shadow: none; }
+#ai-panel .qbx-settings-config .ai-settings-entry strong { font-size: 14px; line-height: 1.5; }
+#ai-panel .qbx-settings-config .ai-settings-entry small { font-size: 12px; line-height: 1.6; }
+#ai-panel .qbx-form-footer,
+#ai-panel :is(.ai-provider-footer,.ai-model-save,.ai-personal-save,.ai-default-current .ai-actions,.ai-analysis-submit-row) {
+  display: flex; flex-direction: row; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 12px;
+  margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--qbx-line);
+}
+#ai-panel .qbx-form-footer>span,
+#ai-panel :is(.ai-provider-footer,.ai-model-save,.ai-personal-save,.ai-analysis-submit-row)>:is(p,span) { flex: 1 1 200px; margin: 0 auto 0 0; color: var(--qbx-muted); font-size: 12px; line-height: 1.6; }
+#ai-panel .qbx-form-footer>button,
+#ai-panel :is(.ai-provider-footer,.ai-model-save,.ai-personal-save,.ai-analysis-submit-row)>button { flex: 0 0 auto; }
+#ai-panel .ai-default-current .ai-actions>button { flex: 0 0 auto; width: auto; min-width: 0; }
+.qiapp-product #ai-panel button.danger-link { color: var(--qi-error); }
+
+/* Once models exist, assigning them is more frequent than maintaining them. */
+#ai-panel .ai-model-workspace.ai-model-configured { grid-template-columns: minmax(0,1fr); gap: var(--qbx-module-gap); }
+#ai-panel .ai-model-workspace>:is(.ai-assignment-card,.ai-model-sidebar) { margin: 0; }
+#ai-panel .ai-model-configured .ai-assignment-rows { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 20px; }
+#ai-panel .ai-model-configured .ai-assignment-row { border-bottom: 0; }
+#ai-panel .ai-assignment-row>.ai-badge { justify-self: start; width: fit-content; }
+#ai-panel .ai-model-configured .ai-model-list { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(280px,100%),1fr)); gap: 12px; }
+#ai-panel .ai-model-sidebar .ai-model-add { width: auto; margin: 0 0 0 auto; }
+#ai-panel .ai-model-item { border-color: var(--qbx-line); border-radius: 10px; box-shadow: none; }
+#ai-panel .ai-model-item-actions button.icon-button.danger { border-color: transparent; background: transparent; color: var(--qi-error); }
+#ai-panel .ai-model-item-actions button.icon-button.danger:hover { background: var(--qi-hover); }
+#ai-panel .ai-default-current textarea { min-height: 180px; }
+#ai-panel .ai-default-material>h3 { margin-bottom: 4px; }
+#ai-panel .ai-default-material>.ai-help { margin-bottom: 16px; }
+
+@container qbx-home (max-width:740px) {
+  .qiapp-product .workspace { grid-template-columns: minmax(0,1fr); }
+}
+@container qbx-page (max-width:620px) {
+  #ai-panel .ai-model-configured .ai-assignment-rows { grid-template-columns: minmax(0,1fr); gap: 0; }
+  #ai-panel .ai-model-configured .ai-assignment-row+.ai-assignment-row { border-top: 1px solid var(--qbx-line); }
+}
+@media(max-width:860px) {
+  .qiapp-product { --qbx-module-padding: 16px; }
+  .qiapp-product .workspace { grid-template-columns: minmax(0,1fr); }
+  #ai-panel .qbx-settings-group { border: 1px solid var(--qbx-line); border-radius: var(--qbx-module-radius); }
+  #ai-panel .qbx-settings-group h4 { padding: 16px var(--qbx-module-padding); }
+  #ai-panel .qbx-settings-group .qbx-setting-row { margin-inline: var(--qbx-module-padding); }
+  #ai-panel .qbx-settings-config .ai-settings-entry { padding: 14px; }
+  #ai-panel .ai-analysis-history-detail .ai-sticky-back { flex-wrap: wrap; }
+  #ai-panel .ai-analysis-history-detail .ai-sticky-back>.ai-actions { width: 100%; margin: 0; }
+  #ai-panel #ai-content .ai-analysis-history-detail .ai-sticky-back .ai-actions button { display: inline-flex !important; min-height: 44px; }
+  .qiapp-product #ai-panel #ai-content button.qi-btn:is(.primary,.secondary,.ai-soft-button):not(.qbx-return-button) { min-height: 44px; }
+}

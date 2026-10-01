@@ -6,8 +6,8 @@ export function degreeOptions(value = '') {
   return `<option value="" ${current ? '' : 'selected'}>未选择学历</option>${choices.map(choice => `<option value="${esc(choice)}" ${current === choice ? 'selected' : ''}>${esc(choice)}</option>`).join('')}`;
 }
 const wikiOptions = [['name','姓名'],['addressing','称呼'],['phone','手机号码'],['birthday','生日'],['date','其他日期'],['school','学校'],['household','户籍地'],['residence','居住地址'],['workplace','工作地点'],['employer','工作单位'],['shipping','收货地址'],['group_info','群概况'],['group_member','成员与分工'],['group_rule','群内约定'],['group_topic','话题与偏好'],['group_plan','共同事项'],['group_event','重要活动'],['other','其他']];
-export const personMemoryTypes = [['name','姓名'],['phone','手机号码'],['date_info','日期'],['school','学校'],['address','地址'],['work','工作信息'],['other','其他记忆']];
-export const groupMemoryTypes = [['group_info','群概况'],['group_member','成员与分工'],['group_rule','群内约定'],['group_topic','话题与偏好'],['group_plan','共同事项'],['group_event','重要活动'],['other','其他记忆']];
+export const personMemoryTypes = [['name','姓名'],['other','其他记忆'],['work','工作信息'],['date_info','日期'],['address','地址'],['phone','手机号码'],['school','学校']];
+export const groupMemoryTypes = [['group_info','群概况'],['group_rule','群内约定'],['group_plan','共同事项'],['group_member','成员与分工'],['group_topic','话题与偏好'],['group_event','重要活动'],['other','其他记忆']];
 const personFields = new Set(['name','addressing','phone','birthday','date','school','household','residence','workplace','employer','shipping']);
 export const memoryCategoryForField = field => ({ addressing:'name',birthday:'date_info',date:'date_info',household:'address',residence:'address',shipping:'address',workplace:'work',employer:'work' })[field] || field;
 export function wikiEntryMarkup(e, canSetWechatRemark = false, kind = 'person') {

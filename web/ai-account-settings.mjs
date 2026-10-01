@@ -31,7 +31,8 @@ function personalCard(state, field, draft) {
 
 export function personalInformationPage(state, draft = {}) {
   const entries = state.personalInformation?.entries || [];
-  const fields = personalFieldDefinitions;
+  const commonOrder = ['addressing', 'status', 'plans', 'schedule', 'boundaries', 'city', 'occupation', 'preferences', 'interests'];
+  const fields = [...personalFieldDefinitions].sort((a, b) => (commonOrder.indexOf(a.key) < 0 ? Infinity : commonOrder.indexOf(a.key)) - (commonOrder.indexOf(b.key) < 0 ? Infinity : commonOrder.indexOf(b.key)));
   const suggestions = state.personalInformation?.suggestions || [], history = state.personalInformation?.history || [];
   const filled = fields.filter(field => entries.some(entry => entry.field === field.key && entry.text.trim())).length;
   const moreFilled = fields.filter(field => field.group === 'more' && entries.some(entry => entry.field === field.key && entry.text.trim())).length;
@@ -79,7 +80,13 @@ export function personalEntriesFromForm(form, state) {
 }
 export function globalReplyStrategyPage(state) {
   const strategy = state.replyStrategy || {};
-  return `${back('全局回复策略')}<form id="ai-global-reply-form" class="ai-card ai-account-form"><p class="ai-help">作为当前账号的默认回复策略。选择“使用全局策略”的联系人与群聊会跟随更新；单独设置的对象继续使用自己的策略。</p>${[['replyGoal','回复要求',1200],['facts','可使用的已知信息',4000],['boundaries','边界与注意事项',1200]].map(([field,label,max]) => `<label class="ai-field"><span>${label}</span><textarea name="${field}" maxlength="${max}" rows="4">${esc(strategy[field])}</textarea></label>`).join('')}<footer class="ai-actions"><button type="submit" class="primary">保存全局策略</button></footer></form>`;
+  const field = (key, label, max = 1200) => `<label class="ai-field"><span>${label}</span><textarea name="${key}" maxlength="${max}" rows="4">${esc(strategy[key])}</textarea></label>`;
+  return `${back('')}<form id="ai-global-reply-form" class="ai-card ai-account-form">
+    <div class="ai-card-heading"><div><h4>默认回复要求</h4><p class="ai-help">选择“使用全局策略”的联系人与群聊会跟随更新；单独设置的对象继续使用自己的策略。</p></div></div>
+    ${field('replyGoal', '回复要求')}${field('boundaries', '边界与注意事项')}
+    <details class="ai-optional-fields" data-ai-optional="global-facts"><summary><span>可使用的已知信息 <small>选填</small></span><span class="ai-optional-status">${strategy.facts ? '已填写' : '按需补充'}</span></summary><div class="qbx-optional-body">${field('facts', '可使用的已知信息', 4000)}</div></details>
+    <footer class="qbx-form-footer"><span>保存后用于当前账号的默认回复</span><button type="submit" class="primary">保存全局策略</button></footer>
+  </form>`;
 }
 export function objectStyleTabs(state, profile = {}) {
   return [...(state.schema?.replyPresets || []).filter(preset => !profile.hiddenStyleIds?.includes(`preset:${preset.id}`)).map(preset => ({

@@ -1,27 +1,27 @@
 <!doctype html>
-<html lang="zh-CN" data-qi-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f5f7f5"><title>栖盒</title><link rel="icon" href="./icon.png"><link rel="stylesheet" href="./style.css"><link rel="stylesheet" href="./ai-workspace.css"><link rel="stylesheet" href="./ui-foundation.css"><link rel="stylesheet" href="./vendor/qiapp-ui/styles.css"><link rel="stylesheet" href="./qiapp-product.css"><link rel="stylesheet" href="./qibox-components.css"><script type="module" src="./app.js"></script></head>
+<html lang="zh-CN" data-qi-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f5f7f5"><title>栖盒</title><link rel="icon" href="./icon.png"><link rel="stylesheet" href="./style.css"><link rel="stylesheet" href="./ai-workspace.css"><link rel="stylesheet" href="./ui-foundation.css"><link rel="stylesheet" href="./vendor/qiapp-ui/styles.css"><link rel="stylesheet" href="./qiapp-product.css"><link rel="stylesheet" href="./qibox-components.css"><link rel="stylesheet" href="./qibox-modules.css"><script type="module" src="./app.js"></script></head>
 <body class="qi-root qiapp-product">
   <header class="topbar"><a class="brand" href="./"><img src="./icon.png" alt="" width="32" height="32"><span>栖盒</span></a></header>
   <main class="content">
     <div id="connection-error" class="connection-error" role="status" hidden></div>
     <h1 class="sr-only">栖盒应用中心</h1>
     <div class="workspace">
+      <section id="mine-panel" class="desktop-panel pc-only" aria-labelledby="desktop-title">
+        <div class="panel-heading"><h2 id="desktop-title">桌面</h2><span id="desktop-count"></span></div>
+        <div id="instances" class="instance-grid"></div>
+        <div id="empty-state" class="empty-state"><svg viewBox="0 0 48 48" aria-hidden="true"><rect x="7" y="8" width="34" height="24" rx="4"/><path d="M17 40h14M24 32v8"/></svg><p>从精选应用添加到桌面</p></div>
+      </section>
+      <section id="mobile-instances" class="desktop-panel mobile-only" aria-label="微信实例">
+        <div class="panel-heading"><h2>桌面</h2></div>
+        <div id="mobile-instance-list" class="mobile-instance-list"></div>
+        <p id="mobile-instance-empty" class="mobile-instance-empty">还没有实例，请从精选应用添加。</p>
+      </section>
+      <section id="mobile-ai" class="mobile-only" aria-label="微信 AI 辅助" hidden><h2>AI 辅助</h2><div id="mobile-ai-list"></div></section>
       <section id="store-panel" class="market-panel" aria-labelledby="market-title">
         <div class="panel-heading"><h2 id="market-title">精选应用</h2></div>
         <div id="catalog-list" class="catalog-list"></div>
       </section>
-      <section id="mine-panel" class="desktop-panel pc-only" aria-labelledby="desktop-title">
-        <div class="panel-heading"><h2 id="desktop-title">桌面</h2><span id="desktop-count"></span></div>
-        <div id="instances" class="instance-grid"></div>
-        <div id="empty-state" class="empty-state"><svg viewBox="0 0 48 48" aria-hidden="true"><rect x="7" y="8" width="34" height="24" rx="4"/><path d="M17 40h14M24 32v8"/></svg><p>从左侧精选应用添加到桌面</p></div>
-      </section>
     </div>
-    <section id="mobile-instances" class="mobile-only" aria-label="微信实例">
-      <div class="panel-heading"><h2>桌面</h2></div>
-      <div id="mobile-instance-list" class="mobile-instance-list"></div>
-      <p id="mobile-instance-empty" class="mobile-instance-empty">还没有实例，请先在上方添加实例。</p>
-    </section>
-    <section id="mobile-ai" class="mobile-only" aria-label="微信 AI 辅助" hidden><h2>AI 辅助</h2><div id="mobile-ai-list"></div></section>
     <footer><span id="version">栖盒</span><a href="./privacy.html" target="_blank" rel="noopener">隐私政策</a><a href="./terms.html" target="_blank" rel="noopener">用户协议</a></footer>
   </main>
   <dialog id="modal"><form id="modal-form"><div class="modal-heading"><h2 id="modal-title"></h2><button type="button" class="icon-button" id="modal-close" aria-label="关闭">×</button></div><div id="modal-body"></div><p id="modal-error" role="alert" hidden></p><div id="modal-actions" class="modal-actions"></div></form></dialog>
