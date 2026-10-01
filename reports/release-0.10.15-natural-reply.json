@@ -1,0 +1,318 @@
+{
+  "version": "0.10.15",
+  "createdAt": "2026-10-01T03:12:00.692058+00:00",
+  "source": {
+    "baseCommit": "6678879cc10b4de7680a8a552ca8f9fedb510b39",
+    "codeCommit": "4879282fc7b45496ba1c6500e9a4d1f0415f8a3e",
+    "branch": "codex/natural-reply-window",
+    "isolatedWorktree": true,
+    "unrelatedWorkspaceChangesPreserved": true
+  },
+  "changes": [
+    "模型结合完整等待批次回答，最新一条仅是索引；末尾致谢不覆盖前面的问题，纠正以新内容为准。",
+    "群聊按验证的发送人区分有效提及和后续补充；仅提及其他人的消息不参与。",
+    "每轮按对象和话题发送1–5条，群聊整轮共用五条上限；关闭单次续聊仍可分段，但不延迟追问。",
+    "五条文字后不追加第六条媒体；超过五条的模型结果在任何发送前拒绝。",
+    "招呼和收尾通常一条，不为凑条数拆短句；按具体来信接话，不堆模板、建议、客套或主动追问。",
+    "不编造本人到达时间、路线、行程变化或后续联系承诺；完整答题和已知事实优先于短句。"
+  ],
+  "package": {
+    "version": "0.10.15",
+    "bytes": 570641903,
+    "sha256": "b9ce5ce3dbcfb90241f9c29d541001ed92aa69f8b7b986c74271b094f27181db",
+    "sourceCommit": "4879282fc7b45496ba1c6500e9a4d1f0415f8a3e",
+    "packageProgramFiles": 1686,
+    "sourceAndArchiveParity": true,
+    "file": "dist/releases/0.10.15/0.10.15/qibox-0.10.15-all.fpk",
+    "architectures": [
+      "x86_64",
+      "arm64"
+    ],
+    "runtimeReferences": 848,
+    "bundledWechat": false
+  },
+  "local": {
+    "node": {
+      "passed": 913,
+      "failed": 0
+    },
+    "python": {
+      "passed": 283,
+      "failed": 0
+    },
+    "syntaxAndVersionCheck": "passed",
+    "testsAdded": "完整私聊批次、多人群聊同批、1/4/5条边界、六条拒绝、关闭续聊仍可分段、五条后不追加媒体、实际提示词接入"
+  },
+  "nasModelSimulation": {
+    "model": "MiniMax-M3",
+    "actualProviderRequests": true,
+    "realWechatDelivery": false,
+    "passed": 8,
+    "failed": 0,
+    "cases": [
+      {
+        "id": "private-two-questions-thanks",
+        "input": [
+          "晚上几点碰面？",
+          "在哪个门进去？",
+          "好的，谢谢"
+        ],
+        "facts": "双方已确认今晚19:00在海棠餐厅南门见面。",
+        "reply": [
+          "19:00，南门"
+        ],
+        "elapsedMs": 4209,
+        "passed": true
+      },
+      {
+        "id": "private-correction",
+        "input": [
+          "我想18点到。",
+          "刚才说早了，改成19点。",
+          "入口还是南门吗？"
+        ],
+        "facts": "双方之前已确认海棠餐厅南门为入口。",
+        "reply": [
+          "行，19点南门见。"
+        ],
+        "elapsedMs": 1683,
+        "passed": true
+      },
+      {
+        "id": "private-emotion",
+        "input": [
+          "今天又临时加会，手上的活都干不完。",
+          "真烦，先让我吐槽两句"
+        ],
+        "facts": "",
+        "reply": [
+          "临时加会确实烦，活又推不完，说吧听着呢"
+        ],
+        "elapsedMs": 2783,
+        "passed": true
+      },
+      {
+        "id": "private-greeting",
+        "input": [
+          "在吗"
+        ],
+        "facts": "",
+        "reply": [
+          "在的，怎么了"
+        ],
+        "elapsedMs": 1918,
+        "passed": true
+      },
+      {
+        "id": "private-closing",
+        "input": [
+          "就这样吧，晚安"
+        ],
+        "facts": "",
+        "reply": [
+          "晚安"
+        ],
+        "elapsedMs": 2632,
+        "passed": true
+      },
+      {
+        "id": "private-five-topics",
+        "input": [
+          "晚上几点？",
+          "哪个门？",
+          "能停车吗？",
+          "有没有素菜？",
+          "要带什么？"
+        ],
+        "facts": "本次聚餐已确认19:00开始，海棠餐厅南门进，有免费停车场，有素菜，不需要带东西。",
+        "reply": [
+          "19:00开始，海棠餐厅南门进，有免费停车场，有素菜，不用带东西。"
+        ],
+        "elapsedMs": 2496,
+        "passed": true
+      },
+      {
+        "id": "group-two-members",
+        "input": [
+          {
+            "text": "@Bot 晚上几点开始？",
+            "sender": "小林",
+            "mention": "self"
+          },
+          {
+            "text": "@所有人 从哪个门进去？",
+            "sender": "小周",
+            "mention": "all"
+          },
+          {
+            "text": "我想确认具体开始时间，别记错了",
+            "sender": "小林"
+          },
+          {
+            "text": "谢谢",
+            "sender": "小周"
+          },
+          {
+            "text": "@小陈 你的快递到了吗？",
+            "sender": "小林",
+            "mention": "others"
+          }
+        ],
+        "facts": "聚餐已确认19:00开始，海棠餐厅南门进入。",
+        "reply": [
+          "晚上7点，海棠餐厅南门进。",
+          "不客气～"
+        ],
+        "elapsedMs": 5211,
+        "passed": true
+      },
+      {
+        "id": "group-seven-members-cap",
+        "input": [
+          {
+            "text": "几点开始？",
+            "sender": "成员1",
+            "mention": "self"
+          },
+          {
+            "text": "在哪个门？",
+            "sender": "成员2",
+            "mention": "self"
+          },
+          {
+            "text": "能停车吗？",
+            "sender": "成员3",
+            "mention": "self"
+          },
+          {
+            "text": "有没有素菜？",
+            "sender": "成员4",
+            "mention": "self"
+          },
+          {
+            "text": "要带东西吗？",
+            "sender": "成员5",
+            "mention": "self"
+          },
+          {
+            "text": "散场时间呢？",
+            "sender": "成员6",
+            "mention": "self"
+          },
+          {
+            "text": "需要买票吗？",
+            "sender": "成员7",
+            "mention": "self"
+          }
+        ],
+        "facts": "活动已确认19:00开始，南门进入，免费停车，有素菜，不需要带东西，21:00结束，不需要买票。",
+        "reply": [
+          "19:00开始，南门进，免费停车，有素菜，不用带东西，21:00结束，不用买票。"
+        ],
+        "elapsedMs": 1397,
+        "passed": true
+      }
+    ]
+  },
+  "nativeWechat": {
+    "accountScope": "两个已授权测试账号及其测试群，当前运行进程和数据库独立核验",
+    "cases": [
+      {
+        "case": "live-private-send.json",
+        "installedVersion": "0.10.14",
+        "incoming": 3,
+        "confirmedReplies": 1,
+        "bothWechatDirectionsMatched": true,
+        "allQuestionsCovered": true,
+        "replies": [
+          "晚上7点海棠餐厅南门集合，21点结束，有免费停车，不用带东西"
+        ],
+        "modelMs": 2848,
+        "elapsedMs": 148879
+      },
+      {
+        "case": "live-group.json",
+        "installedVersion": "0.10.14",
+        "incoming": 3,
+        "confirmedReplies": 5,
+        "bothWechatDirectionsMatched": true,
+        "allQuestionsCovered": true,
+        "replies": [
+          "1. 晚上19:00集合",
+          "2. 海棠餐厅南门进",
+          "3. 停车免费",
+          "4. 有素菜",
+          "5. 不用带啥 直接来就行"
+        ],
+        "modelMs": 1759,
+        "elapsedMs": 256801
+      },
+      {
+        "case": "live-private-final.json",
+        "installedVersion": "0.10.15",
+        "incoming": 3,
+        "confirmedReplies": 1,
+        "bothWechatDirectionsMatched": true,
+        "allQuestionsCovered": true,
+        "replies": [
+          "免费停车，有素菜，都安排好了～"
+        ],
+        "modelMs": 3112,
+        "elapsedMs": 78170
+      },
+      {
+        "case": "live-group-final.json",
+        "installedVersion": "0.10.15",
+        "incoming": 3,
+        "confirmedReplies": 1,
+        "bothWechatDirectionsMatched": true,
+        "allQuestionsCovered": true,
+        "replies": [
+          "19:00集合，海棠餐厅南门进"
+        ],
+        "modelMs": 3455,
+        "elapsedMs": 43854
+      }
+    ],
+    "groupRealSenders": 1,
+    "countersAndRecordsRetained": true
+  },
+  "installation": {
+    "appCenterTask": "1790823879210332839-qibox",
+    "status": 2,
+    "progress": 100,
+    "installedVersion": "0.10.15",
+    "matchedProgramFiles": 1686,
+    "mismatches": [],
+    "serviceSocket": true,
+    "at": 1790823938742,
+    "serviceStatus": "running",
+    "apiVersion": "0.10.15"
+  },
+  "restoration": {
+    "version": "0.10.15",
+    "controlledProfilesRestored": 2,
+    "otherPauseFlagsRestored": 1616,
+    "historyAndCountersPreserved": true,
+    "replyTargetsRestored": true,
+    "proactiveRestored": true,
+    "at": 1790824240966,
+    "settingsVerifiedRestored": true,
+    "profilesChecked": 1618,
+    "bothAccountsAvailable": true,
+    "testCredentialsAndRawConversations": "仅保存在忽略目录"
+  },
+  "coordination": {
+    "userAuthorizationVerified": true,
+    "finalCombinedVersion": "0.10.16",
+    "ownerThread": "梳理栖盒需求与方案冲突",
+    "thisTaskDoesNotReinstallOrPushMain": true
+  },
+  "boundaries": [
+    "本轮0.10.15聊天包为已验收产物；用户授权的个人信息卡片合并版由协调任务以0.10.16统一交付。",
+    "不同群成员同批提及和七个问题由NAS上真实MiniMax请求与本地自动化覆盖；实际微信群聊仅一位已授权发送人。",
+    "x86_64已正式安装；ARM64只完成包完整性验证，未做ARM64硬件安装。",
+    "八组输出为本轮样本质量检查，不证明所有未来对话永久自然或无编造。",
+    "真实收发耗时包含既有汇总、分段间隔、微信提交与回执核验；没有宣称所有回复延迟已解决。"
+  ]
+}
