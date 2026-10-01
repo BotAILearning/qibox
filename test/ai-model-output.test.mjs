@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { messageSegments, generationProtocol, conversationPrompt, learningPrompt, batchLearningPrompt, learningWithMemoryPrompt, batchLearningWithMemoryPrompt } from '../server/ai-prompts.mjs';
+import { messageSegments, validateReplyResult, generationProtocol, conversationPrompt, learningPrompt, batchLearningPrompt, learningWithMemoryPrompt, batchLearningWithMemoryPrompt } from '../server/ai-prompts.mjs';
 import { memoryLearningPrompt, memoryPrompt } from '../server/ai-wiki.mjs';
 
 // 真机实测（2026-09-22，MiniMax-M3）：自动回复里模型把不需要的字段也写进 JSON，
@@ -39,11 +39,22 @@ test('越界返回能挽救时不作废：双载体取一种、错形状先归�
 test('解析仍然严格：动作无效、正文缺失或分段数量越界一律报错', () => {
   assert.throws(() => messageSegments({ action: 'send' }, { multiTurn: false }), /模型未返回待发送正文/);
   assert.throws(() => messageSegments({ action: 'wait' }, { multiTurn: false }), /动作无效/);
-  assert.throws(() => messageSegments({ action: 'send', segments: ['一', '二', '三', '四'] }, { multiTurn: true }), /1–3 段/);
+  assert.throws(() => messageSegments({ action: 'send', segments: ['一', '二', '三', '四', '五', '六'] }, { multiTurn: true }), /1–5 段/);
   assert.throws(() => messageSegments({ action: 'send', segments: ['一'] }, { multiTurn: false }), /单条发送/);
   assert.throws(() => messageSegments({ action: 'skip', text: '还是发了' }, {}), /非发送动作不能携带/);
   assert.throws(() => messageSegments({ action: 'send', text: '你好', followUp: 'true' }, { multiTurn: true }), /续聊字段无效/);
   assert.throws(() => messageSegments({ action: 'skip' }, { allowSkip: false }), /必须发送消息/);
+});
+
+test('same-round segments are accepted at both model validation and send validation with later dialogue disabled', () => {
+  for (const count of [1, 4, 5]) {
+    const segments = Array.from({ length: count }, (_, i) => `事项${i + 1}答复`);
+    const result = validateReplyResult({ action: 'send', segments, followUp: false }, { multiTurn: false, allowSegments: true });
+    assert.deepEqual(messageSegments(result, { multiTurn: false, allowSegments: true }), segments);
+  }
+  assert.throws(() => validateReplyResult({ action: 'send', segments: Array(6).fill('答复') }, { multiTurn: false, allowSegments: true }), /格式不完整/);
+  assert.match(generationProtocol({ multiTurn: false, allowSegments: true }), /segments 为 1–5 段/);
+  assert.match(generationProtocol({ multiTurn: false, allowSegments: true }), /followUp 必须为 false/);
 });
 
 test('群聊可返回信息不足状态，等待时长由软件控制', () => {

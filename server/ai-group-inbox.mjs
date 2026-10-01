@@ -39,11 +39,12 @@ export function observeGroupInbox(vault, profile, snapshot, cursor, now) {
 export function nextGroupBatch(inbox, limit = 60) {
   const trigger = ['atMe', 'atAll', 'realtime'].find(key => inbox.pending.some(message => message.trigger === key));
   if (!trigger) return null;
-  const first = inbox.pending.find(message => message.trigger === trigger);
-  const messages = inbox.pending.filter(message => trigger === 'realtime'
-    ? message.trigger === 'realtime'
-    : message.trigger !== 'realtime' && message.sender === first.sender).slice(0, limit);
-  return { trigger, sender: trigger === 'realtime' ? null : first.sender, ids: messages.map(message => message.id), messages };
+  // Freeze the complete waiting window into one generation. The five-message
+  // output limit applies to the whole group round, including every sender.
+  const messages = inbox.pending.slice(0, limit);
+  const sender = messages[0]?.sender;
+  return { trigger, sender: sender && messages.every(message => message.sender === sender) ? sender : null,
+    ids: messages.map(message => message.id), messages };
 }
 
 export function settleGroupBatch(vault, profile, batch) {

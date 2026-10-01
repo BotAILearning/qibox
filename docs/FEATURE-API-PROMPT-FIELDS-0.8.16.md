@@ -149,7 +149,7 @@
 
 ### 4.3 AI 设置字段
 
-`enabled` 总开关；`reply` 自动回复开关；`proactive` 主动聊天开关；`replyScope`=`all|selected`；`judgeReply` 智能判断是否回复；`updateStyle` 每轮更新风格；`multiTurn` 多轮/分段；`acknowledgeAI` 是否如实承认 AI 身份；`replyDelay` 固定为 20 秒；`segmentDelayMin/Max` 固定为 15–60 秒随机分段间隔；`followUpDelayMin/Max` 固定为 45–120 秒随机追问等待；`takeover={enabled,minutes}` 人工回复后的自动接续等待，分钟 1–10080。上述时序数值由产品固定，用户不再设置。注意：这些字段在后端存在，但截至当前版本，相关前端表单没有接入实际页面；“系统设置”页面不等于“沟通设置”页面。
+`enabled` 总开关；`reply` 自动回复开关；`proactive` 主动聊天开关；`replyScope`=`all|selected`；`judgeReply` 智能判断是否回复；`updateStyle` 每轮更新风格；`multiTurn` 后续延迟续聊；`acknowledgeAI` 是否如实承认 AI 身份；`replyDelay` 固定为 20 秒；`segmentDelayMin/Max` 固定为 15–60 秒随机分段间隔；`followUpDelayMin/Max` 固定为 45–120 秒随机追问等待；`takeover={enabled,minutes}` 人工回复后的自动接续等待，分钟 1–10080。上述时序数值由产品固定，用户不再设置。注意：这些字段在后端存在，但截至当前版本，相关前端表单没有接入实际页面；“系统设置”页面不等于“沟通设置”页面。
 
 ### 4.4 风格字段
 
@@ -221,7 +221,7 @@
 | `addressingPrompt` | 默认不加称呼；只能依据当前对象的明确称呼证据；引用风格只能借鉴语气，不能带入姓名、关系和事实 |
 | `proactivePrompt` | 目标和内容是意图，不是已发生事实；已确认安排按事实处理；不重复已发内容，不自行承诺媒体、电话、付款或会议 |
 | `groupPrompt(trigger)` | 群聊模型动作仅 `send|skip`；模型不控制等待时间；实时消息60秒合并、不同回复轮至少间隔30秒等由系统执行；仅@他人不参与 |
-| `generationProtocol()` | 普通动作仅 `send|skip`；个人联系人明确要求停止时独立返回 `{"stop":true}`；禁止模型wait；发送时 `text` 或 `segments` 二选一，最多3段 |
+| `generationProtocol()` | 普通动作仅 `send|skip`；个人联系人明确要求停止时独立返回 `{"stop":true}`；禁止模型wait；发送时 `text` 或 `segments` 二选一，整轮最多5段 |
 | `identityPrompt()` | `acknowledgeAI=true` 时仅被明确问到才承认 AI；否则以用户本人身份回答，不主动强调身份，不编造经历 |
 
 自动回复 JSON 示例结构：
@@ -230,7 +230,7 @@
 {"action":"send","text":"非空文字","followUp":false}
 ```
 
-多轮时可改为：
+允许同轮分段（`allowSegments=true`）时可改为：
 
 ```json
 {"action":"send","segments":["第一段","第二段"],"followUp":false}
@@ -689,3 +689,5 @@
 | 20 | `followUp` | 仅表示一次延迟追问检查；主动聊天固定为 `false`，不用于普通分段 | `followUp`、`followUpAllowed` | 不提供单独开关 | 当前已有，规则保留 |
 | 21 | 前端沟通设置页面 | 当前不存在“沟通设置”页面；系统设置页不包含消息合并、分段和追问时间配置 | `settings` 时序字段 | 当前前端未接入 | 已确认 |
 | 22 | 时序字段用户配置 | 后端字段保留兼容，但所有实际行为使用固定值 | `replyDelay`、`segmentDelay*`、`followUpDelay*` | 不显示输入框、滑块或保存按钮 | 已实施 |
+
+同轮发送契约（2026-10-01）：`conversation.pendingIncomingIds`是等待期间全部尚未处理的来信ID；群聊另提供`conversation.pendingBySender=[{sender,messageIds}]`，包含有效提及及对应成员的普通补充。`allowSegments`控制本轮是否可分段，普通回复为true；`multiTurn`控制后续延迟续聊。text或1–5条segments二选一，整个群聊轮次合计最多五条，发送校验与模型返回校验一致。

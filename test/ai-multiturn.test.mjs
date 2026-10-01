@@ -70,12 +70,13 @@ test('independent multi-turn replies send only needed segments with random verif
   await incoming({ action: 'send', text: '只需一句。' }); assert.equal(bridge.sent.at(-1).text, '只需一句。'); assert.equal(delays.length, 2);
 });
 
-test('disabled multi-turn rejects invalid segments and never joins or schedules them', async t => {
-  const { a, bridge, provider, delays, enableReply, incoming, advance } = await fixture(t);
+test('disabled multi-turn still allows same-round segments without scheduling a follow-up', async t => {
+  const { a, bridge, provider, delays, enableReply, incoming } = await fixture(t);
   await enableReply({ multiTurn: false }); await incoming({ action: 'send', segments: ['第一句。', '第二句。'], followUp: true });
-  assert.deepEqual(bridge.sent, []); assert.equal(delays.length, 0); assert.equal(a.followUps.size, 0);
+  assert.deepEqual(bridge.sent.map(message => message.text), ['第一句。', '第二句。']);
+  assert.equal(delays.length, 1); assert.equal(a.followUps.size, 0);
   assert.equal(provider.calls.at(-1).input.multiTurn, false);
-  assert.match(a.notice, /单条发送/);
+  assert.equal(provider.calls.at(-1).input.allowSegments, true);
 });
 
 test('a follow-up is generated from current context only when due and cannot rearm itself', async t => {
@@ -243,12 +244,13 @@ test('proactive segments and later replies pursue the same objective while the i
   assert.equal(bridge.sent.length, 5); assert.equal(target.rounds, 3);
 });
 
-test('single-message proactive conversations stay single even when independent multi-turn replies are enabled', async t => {
+test('single-message proactive openings stay single while later replies can split without delayed follow-ups', async t => {
   const { a, bridge, provider, launch, incoming } = await fixture(t);
   await launch('single', { multiTurn: true }); provider.next = async () => ({ action: 'send', text: '开场', followUp: true }); await a.tick();
   assert.equal(provider.calls.at(-1).input.multiTurn, false); assert.equal(a.followUps.size, 0);
   await incoming({ action: 'send', segments: ['继续。', '说明。'], followUp: true });
-  assert.equal(provider.calls.at(-1).input.multiTurn, false); assert.equal(bridge.sent.length, 1); assert.match(a.notice, /单条发送/); assert.equal(a.followUps.size, 0);
+  assert.equal(provider.calls.at(-1).input.multiTurn, false); assert.equal(provider.calls.at(-1).input.allowSegments, true);
+  assert.deepEqual(bridge.sent.map(message => message.text), ['开场', '继续。', '说明。']); assert.equal(a.followUps.size, 0);
 });
 
 test('disabling replies cannot turn a reply-only follow-up into an unrelated proactive conversation', async t => {
