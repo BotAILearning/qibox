@@ -1,0 +1,53 @@
+{
+  "version": "0.10.22",
+  "buildId": "0.10.22-stable.001",
+  "sourceCommit": "a1cb3ff712edc5fddae82facf525ca9c39dd99bf",
+  "artifacts": [
+    {
+      "file": "qibox-0.10.22-stable.001-all.fpk",
+      "bytes": 566681185,
+      "sha256": "d7a5667486c2df9369faca49ecdc5c7ecab01b4b5551780d0ad022b9e2709ac3"
+    },
+    {
+      "file": "qibox-0.10.22-stable.001-x86.fpk",
+      "bytes": 368826369,
+      "sha256": "819fd3bea003ae3a038fe21c3f43413d064cdf878698bfa228ae8123a6b46905"
+    }
+  ],
+  "checks": {
+    "nodePassed": 990,
+    "nodeFailed": 0,
+    "syntaxAndVersion": true,
+    "fnosTask": "1790886077526030895-qibox",
+    "fnosStatus": 2,
+    "fnosProgress": 100,
+    "installedApplicationFiles": 2015,
+    "installedMismatches": 0,
+    "x86ArchiveFiles": 2017,
+    "fnpackGeneratedConfigFiles": 2,
+    "universalArchiveFiles": 2394,
+    "mobileKeepDataDeleteAndRestore": true,
+    "sameInstanceIdAndName": true,
+    "scheduleUnchanged": true,
+    "instanceIdsUnchanged": true,
+    "retainedFixtureBytesVerified": true,
+    "fixtureRemoved": true,
+    "originalStoppedUnloggedStateRestored": true,
+    "runningWeChatUnaffected": true,
+    "widths": [
+      320,
+      390,
+      1440
+    ],
+    "menuTargetPixels": 44,
+    "pollingKeepsMenuOpen": true,
+    "escapeClosesMenu": true
+  },
+  "limits": [
+    "NAS application tested through browser phone-sized viewports; not a physical handset test",
+    "Permanent data deletion was not performed; confirmation form and existing server regressions cover its safeguards",
+    "Retention was verified with an intentionally created file in a stopped unlogged instance; no claim of a real chat-data migration",
+    "ARM64 archive checked; no ARM64 device install",
+    "Server and AI behavior unchanged by this UI fix"
+  ]
+}
