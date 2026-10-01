@@ -2,10 +2,21 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { AIAssistant } from '../server/ai-service.mjs';
-import { authoredMessages, contextualReplyStyle } from '../server/ai-context-learning.mjs';
+import { authoredMessages, contextualReplyStyle, validatedMonitorMemory } from '../server/ai-context-learning.mjs';
 import { readMemory, editMemory } from '../server/ai-wiki.mjs';
 import { ChatFixture, AIModelFixture, modelConfig, strategy, key } from './ai-fixtures.mjs';
 import { temp, cleanup } from './fixtures.mjs';
+
+test('malformed monitored facts cannot silently consume the evidence checkpoint',async t=>{
+  for(const value of [{memoryUpdates:[{text:'事实',newMessageIds:['source']}]},{memoryUpdates:[{text:'事实',evidence:[]}]},{memoryUpdates:[{text:' ',evidence:['source']}]},{memoryUpdates:[null]}])
+    assert.throws(()=>validatedMonitorMemory(value),{code:'ai_model_schema'});
+  const f=await fixture(t);f.advance(1000);f.push('self','收到');await f.a.tick();const fact=f.push('other','我家猫叫豆包');await f.a.tick();f.advance(21000);
+  const learned=f.p.memoryWatch.learned;
+  f.provider.complete=async()=>({memoryUpdates:[{text:'对方的猫叫豆包',newMessageIds:[fact.id]}]});
+  await f.a.tick();assert.equal(f.p.memoryWatch.learned,learned);assert.equal(readMemory(f.a.vault,f.p).entries.length,0);assert.ok(f.p.memoryLearningNotice);
+  f.advance(121000);f.provider.complete=async()=>({memoryUpdates:[{text:'对方的猫叫豆包',evidence:[fact.id]}]});
+  await f.a.tick();assert.equal(readMemory(f.a.vault,f.p).entries[0].text,'对方的猫叫豆包');assert.equal(f.p.memoryWatch.learned,fact.id);
+});
 
 async function fixture(t) {
   const root = await temp(), bridge = new ChatFixture(), provider = new AIModelFixture(); let now = Date.UTC(2026,9,2,2);
