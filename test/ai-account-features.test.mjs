@@ -156,6 +156,78 @@ test('failed record deletion restores visible records and preserves new records 
   assert.deepEqual(new Set(a.skipEvents().map(row => row.messageId)), new Set(['old','new']));
 });
 
+test('clear-ended confirms only visible tasks in this account and retains active work, new endings and execution history', async t => {
+  const { a } = await fixture(t), account = a.data.account;
+  a.data.proactiveTasks = [
+    { id:'ended-before', account, status:'ended' },
+    { id:'already-deleted', account, status:'ended', deletedAt:a.now() },
+    { id:'still-running', account, status:'running' },
+    { id:'paused', account, status:'paused' },
+    { id:'other-account', account:'different-account', status:'ended' },
+  ];
+  a.data.proactiveRecords = [{ id:'history', account, taskId:'ended-before', status:'sent', at:a.now() }];
+  const preview = await a.configuration({type:'clear-ended-tasks'});
+  assert.equal(preview.confirmation.count,1);
+  a.data.proactiveTasks.push({id:'ended-after-preview', account, status:'ended'});
+  const result = await a.configuration({type:'clear-ended-tasks',token:preview.confirmation.token});
+  assert.equal(result.clearedCount,1);
+  assert.deepEqual(new Set(result.proactiveTasks.map(task=>task.id)),new Set(['still-running','paused','ended-after-preview']));
+  assert.equal(a.data.proactiveRecords[0].id,'history');
+  assert.ok(a.data.proactiveTasks.some(task=>task.id==='other-account'));
+  assert.ok(a.data.proactiveTasks.some(task=>task.id==='already-deleted'));
+  const saved = JSON.parse(await readFile(a.file,'utf8'));
+  assert.ok(!saved.proactiveTasks.some(task=>task.id==='ended-before' && !task.deletedAt));
+  assert.equal(saved.proactiveRecords[0].id,'history');
+  await assert.rejects(a.configuration({type:'clear-ended-tasks',token:preview.confirmation.token}),/过期/);
+});
+
+test('failed ended-task cleanup restores the list and reports no success', async t => {
+  const { a } = await fixture(t), account = a.data.account;
+  a.data.proactiveTasks = [{id:'ended-before',account,status:'ended'},{id:'running',account,status:'running'}];
+  const preview = await a.configuration({type:'clear-ended-tasks'}), save = a.save;
+  a.save = async () => { a.data.proactiveTasks.push({id:'new-task',account,status:'running'}); throw Error('disk full'); };
+  await assert.rejects(a.configuration({type:'clear-ended-tasks',token:preview.confirmation.token}),/disk full/);
+  a.save = save;
+  assert.deepEqual(new Set(a.publicState().proactiveTasks.map(task=>task.id)),new Set(['ended-before','running','new-task']));
+  const result = await a.configuration({type:'clear-ended-tasks',token:preview.confirmation.token});
+  assert.equal(result.clearedCount,1);
+});
+
+for (const [scope, cleared] of [['ended',['ended']], ['failed',['failed']], ['ended-failed',['ended','failed']]]) {
+  test(`task cleanup scope ${scope} removes only selected statuses and keeps execution history`, async t => {
+    const { a } = await fixture(t), account = a.data.account;
+    a.data.proactiveTasks = ['ended','failed','running','paused'].map(status=>({id:status,account,status}));
+    a.data.proactiveTasks.push({id:'deleted-failure',account,status:'failed',deleted:true}, {id:'other-failure',account:'another',status:'failed'});
+    a.data.proactiveRecords = [{id:'kept-history',account,taskId:'failed',status:'failed',at:a.now()}];
+    const preview = await a.configuration({type:'clear-ended-tasks',scope});
+    assert.equal(preview.confirmation.count,cleared.length);
+    const result = await a.configuration({type:'clear-ended-tasks',scope,token:preview.confirmation.token});
+    assert.equal(result.clearedCount,cleared.length);
+    assert.deepEqual(new Set(result.proactiveTasks.filter(task=>!task.deleted).map(task=>task.id)),new Set(['ended','failed','running','paused'].filter(id=>!cleared.includes(id))));
+    assert.equal(a.data.proactiveRecords[0].id,'kept-history');
+    assert.ok(a.data.proactiveTasks.some(task=>task.id==='other-failure'));
+    assert.ok(a.data.proactiveTasks.some(task=>task.id==='deleted-failure'));
+  });
+}
+
+test('cleanup confirmation cannot change scope or account and does not clear a failed task that resumed', async t => {
+  const { a } = await fixture(t), account = a.data.account;
+  a.data.proactiveTasks = [{id:'failed',account,status:'failed'},{id:'ended',account,status:'ended'}];
+  await assert.rejects(a.configuration({type:'clear-ended-tasks',scope:'running'}),/范围无效/);
+  const preview = await a.configuration({type:'clear-ended-tasks',scope:'failed'}), token = preview.confirmation.token;
+  assert.equal(preview.confirmation.count,1);
+  await assert.rejects(a.configuration({type:'clear-ended-tasks',scope:'ended-failed',token}),/范围已变化/);
+  assert.equal(a.data.proactiveTasks.length,2);
+  a.data.account = 'another-account';
+  await assert.rejects(a.configuration({type:'clear-ended-tasks',scope:'failed',token}),/确认已过期/);
+  a.data.account = account;
+  a.data.proactiveTasks.find(task=>task.id==='failed').status = 'running';
+  a.data.proactiveTasks.push({id:'new-failure',account,status:'failed'});
+  const result = await a.configuration({type:'clear-ended-tasks',scope:'failed',token});
+  assert.equal(result.clearedCount,0);
+  assert.deepEqual(new Set(result.proactiveTasks.map(task=>task.id)),new Set(['failed','ended','new-failure']));
+});
+
 test('failed account settings and style saves retain the previously effective values and runtime records', async t => {
   const { a, p } = await fixture(t);
   await a.configuration({ type: 'personal-information', entries: [{ field: 'city', text: '深圳' }] });

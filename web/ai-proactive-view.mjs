@@ -139,7 +139,7 @@ function taskEditor(state, draft) {
     </fieldset><div class="ap-editor-confirm"><div><span class="ap-editor-confirm-label">提交前核对</span><strong id="ai-proactive-review">${draft.contacts.length} 位联系人 · ${esc(editorScheduleLabel(s))}</strong><p>任务按安排主动发起；对方后续消息按该联系人的自动回复设置处理。</p></div><footer class="ap-editor-footer"><button type="button" class="secondary" data-proactive-cancel>${readonly ? '返回列表' : '取消'}</button>${readonly ? '' : `<button type="submit" class="primary" data-proactive-submit>${draft.id ? '保存修改' : '新建任务'}</button>`}</footer></div></form>`;
 }
 export function proactivePage(state, view = {}) {
-  return `<div class="ai-proactive-page" data-proactive-root>${view.editing && view.draft ? taskEditor(state, view.draft) : `<header class="ap-heading"><div><h3>主动聊天</h3><p>让每一次主动联系都有目标、有边界，也随时可接管。</p></div><button type="button" class="secondary" data-ai-clear-ended>清空已结束</button><button type="button" class="primary" data-proactive-new>＋ ${view.draft ? '继续编辑任务' : '新建任务'}</button></header><div id="ai-proactive-list">${proactiveTable(state, view)}</div>`}</div>`;
+  return `<div class="ai-proactive-page" data-proactive-root>${view.editing && view.draft ? taskEditor(state, view.draft) : `<header class="ap-heading"><div><h3>主动聊天</h3><p>让每一次主动联系都有目标、有边界，也随时可接管。</p></div><button type="button" class="primary" data-proactive-new>＋ ${view.draft ? '继续编辑任务' : '新建任务'}</button></header><div id="ai-proactive-list">${proactiveTable(state, view)}</div>`}</div>`;
 }
 // View-local state survives polling and rerenders, and resets on instance changes.
 export function createProactiveUI({ panel, getState, context, isBusy, mutate, render, showRecords, refreshContacts, enableReply = async () => {} }) {
@@ -214,6 +214,10 @@ export function createProactiveUI({ panel, getState, context, isBusy, mutate, re
     return true;
   }
   function change(input) {
+    if (input.hasAttribute?.('data-proactive-cleanup-scope')) {
+      view.cleanupScope = input.value; refresh(true);
+      panel.querySelector('[data-proactive-cleanup-scope]')?.focus({ preventScroll: true }); return true;
+    }
     if (!input.closest('#ai-proactive-form')) return false;
     remember();
     if (input.name === 'taskType') {
@@ -245,8 +249,21 @@ export function createProactiveUI({ panel, getState, context, isBusy, mutate, re
   function refresh(force = false) {
 
     const host = panel.querySelector('#ai-proactive-list');
-    // Leave open menus and all editor inputs intact during polling.
-    if (host && (force || !view.menu)) host.innerHTML = proactiveTable(getState(), view);
+    // Leave open menus, the cleanup selector and all editor inputs intact during polling.
+    const scopeInput = host?.querySelector('[data-proactive-cleanup-scope]');
+    if (host && (force || !view.menu)) {
+      const html = proactiveTable(getState(), view);
+      if (!force && scopeInput && scopeInput === globalThis.document?.activeElement) {
+        const template = document.createElement('template'); template.innerHTML = html;
+        const nextScope = template.content.querySelector('[data-proactive-cleanup-scope]');
+        for (const [index, option] of [...scopeInput.options].entries()) option.textContent = nextScope.options[index].textContent;
+        const button = scopeInput.parentElement.querySelector('[data-ai-clear-tasks]'), nextButton = template.content.querySelector('[data-ai-clear-tasks]');
+        button.disabled = nextButton.disabled; button.title = nextButton.title;
+        const list = host.querySelector('.ap-reference-list');
+        for (const child of [...list.children]) if (!child.classList.contains('ap-reference-toolbar')) child.remove();
+        for (const child of [...template.content.querySelector('.ap-reference-list').children]) if (!child.classList.contains('ap-reference-toolbar')) list.append(child);
+      } else host.innerHTML = html;
+    }
     const task = view.draft?.id && getState().proactiveTasks?.find(t => t.id === view.draft.id);
     if (form() && view.draft?.id && (!task || task.status === 'ended')) {
       form().querySelector('fieldset').disabled = true;

@@ -1610,13 +1610,21 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         if (updated) { const selectedStyle = command === 'rename' ? styleId : updated.styleId, selected = objectStyleTabs(state, updated).find(row => row.id === selectedStyle); objectDrafts.set(selectedObject, { ...objectDrafts.get(selectedObject), styleId: selectedStyle, summary: styleSummaryText(selected?.style || (selectedStyle ? updated.style : state.learnedDefaultStyle?.style)) }); render(); }
         return;
       }
-      if ('aiClearRecords' in button.dataset || 'aiClearEnded' in button.dataset) {
-        const value = { type: button.hasAttribute('data-ai-clear-ended') ? 'clear-ended-tasks' : 'clear-records', source: button.dataset.aiClearRecords };
+      if ('aiClearRecords' in button.dataset || 'aiClearTasks' in button.dataset) {
+        const taskCleanup = 'aiClearTasks' in button.dataset, scope = button.dataset.aiClearTasks;
+        const scopeLabel = {ended:'已结束',failed:'执行失败','ended-failed':'已结束和执行失败'}[scope];
+        if (taskCleanup && !scopeLabel) { message('请先选择清理任务范围'); return; }
+        const current = generation, target = id, account = state.account;
+        const unchanged = () => current === generation && target === id && account === state?.account;
+        const value = taskCleanup ? {type:'clear-ended-tasks',scope} : {type:'clear-records',source:button.dataset.aiClearRecords};
         const preview = await execute('configuration', { value }, ''); const confirmation = preview?.confirmation;
-        if (!confirmation) return;
-        if (!confirmation.count) { message('当前没有可清空的记录'); return; }
-        if (!await productDialog({ title: value.type === 'clear-ended-tasks' ? '清空已结束的任务？' : '删除全部记录？', message: `将删除当前账号的 ${confirmation.count} 条${value.type === 'clear-ended-tasks' ? '已结束任务，执行历史仍保留' : '该类记录，包含尚未加载的记录。微信中的聊天消息不受影响'}。`, confirm: '确认删除', danger: true })) return;
-        await execute('configuration', { value: { ...value, token: confirmation.token } }, `已删除 ${confirmation.count} 条${value.type === 'clear-ended-tasks' ? '已结束任务' : '记录'}`);
+        if (!confirmation || !unchanged()) return;
+        if (!confirmation.count) { message(taskCleanup ? '所选范围内没有可清理的任务' : '当前没有可清空的记录'); return; }
+        if (!await productDialog({ title: taskCleanup ? `清理${scopeLabel}任务？` : '删除全部记录？', message: taskCleanup ? `将清理当前账号 ${confirmation.count} 个${scopeLabel}任务。执行中、已暂停的任务和执行记录保留。` : `将删除当前账号的 ${confirmation.count} 条该类记录，包含尚未加载的记录。微信中的聊天消息不受影响。`, confirm: taskCleanup ? '确认清理' : '确认删除', danger: true }) || !unchanged()) return;
+        const result = await execute('configuration', { value: { ...value, token: confirmation.token } }, '');
+        if (!result || !unchanged()) return;
+        message(taskCleanup ? `已清理 ${result.clearedCount || 0} 个任务，执行记录已保留` : `已删除 ${result.clearedCount || 0} 条记录`);
+        if (taskCleanup) return;
         logRecords = []; logRequestScope = ''; proactiveHistory = []; proactiveHistoryPage = null; skipHistory = []; skipHistoryPage = null; skipContent.clear(); markReplyStatus.clear(); recordCache.delete(id);
         if (tab === 'activity') await loadActivity();
         render(); return;

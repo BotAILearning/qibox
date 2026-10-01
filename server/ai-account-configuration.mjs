@@ -150,23 +150,29 @@ export async function accountConfiguration(a, value) {
       }
       for (const [key, controller] of a.replyControllers) if (key === profile.id || key.startsWith(profile.id + ':')) controller.abort();
     } else if (type === 'clear-records' || type === 'clear-ended-tasks') {
+      const taskCleanup = type === 'clear-ended-tasks', scope = value.scope || 'ended';
+      if (taskCleanup && !['ended','failed','ended-failed'].includes(scope)) throw new AppError('任务清理范围无效');
+      const canClearTask = task => task.account === a.data.account && !task.deletedAt && !task.deleted &&
+        (scope === 'ended-failed' ? ['ended','failed'].includes(task.status) : task.status === scope);
       a.configurationConfirmations ||= new Map();
       for (const [key, confirmation] of a.configurationConfirmations) if (confirmation.expiresAt < a.now()) a.configurationConfirmations.delete(key);
       if (!value.token) {
         if (type === 'clear-records' && !['reply','skip','proactive'].includes(value.source)) throw new AppError('记录类别无效');
-        const rows = type === 'clear-ended-tasks' ? (a.data.proactiveTasks || []).filter(task => task.account === a.data.account && task.status === 'ended').map(task => task.id)
+        const rows = taskCleanup ? (a.data.proactiveTasks || []).filter(canClearTask).map(task => task.id)
           : value.source === 'skip' ? a.skipEvents().map(row => row.id)
           : value.source === 'proactive' ? (a.data.proactiveRecords || []).filter(row => row.account === a.data.account && !isDeletedActivityRecord(a, 'proactive', row.id)).map(row => row.id)
           : a.profiles().flatMap(profile => (profile.sentMessages || []).filter(row => recordSource(row) === 'reply' && !isDeletedActivityRecord(a, 'reply', row.id)).map(row => row.id));
         const token = randomUUID(), ids = [...new Set(rows)];
-        a.configurationConfirmations.set(token, { account: a.data.account, type, source: value.source, ids, expiresAt: a.now() + 10 * 60000 });
+        a.configurationConfirmations.set(token, { account: a.data.account, type, source: value.source, ...(taskCleanup ? {scope} : {}), ids, expiresAt: a.now() + 10 * 60000 });
         return { ...a.publicState(), confirmation: { token, count: ids.length, source: value.source } };
       }
       const confirmation = a.configurationConfirmations.get(value.token);
       if (!confirmation || confirmation.account !== a.data.account || confirmation.type !== type || confirmation.expiresAt < a.now()) throw new AppError('确认已过期，请重新操作');
+      if (taskCleanup && confirmation.scope !== scope) throw new AppError('任务清理范围已变化，请重新确认');
       const ids = new Set(confirmation.ids);
+      const clearedTasks = taskCleanup ? a.data.proactiveTasks.filter(task => ids.has(task.id) && canClearTask(task)) : [];
       const backups = new Map(['proactiveTasks','skipLog','events','proactiveRecords','deletedActivityRecords'].map(key => [key, a.data[key]]));
-      if (type === 'clear-ended-tasks') a.data.proactiveTasks = a.data.proactiveTasks.filter(task => !ids.has(task.id) || task.account !== a.data.account || task.status !== 'ended');
+      if (taskCleanup) a.data.proactiveTasks = a.data.proactiveTasks.filter(task => !ids.has(task.id) || !canClearTask(task));
       else if (confirmation.source === 'skip') {
         a.data.skipLog = a.data.skipLog.filter(row => !ids.has(row.id)); a.data.events = a.data.events.filter(row => !ids.has(row.id));
       } else if (confirmation.source === 'proactive') a.data.proactiveRecords = a.data.proactiveRecords.filter(row => !ids.has(row.id));
@@ -183,7 +189,7 @@ export async function accountConfiguration(a, value) {
         throw error;
       }
       a.configurationConfirmations.delete(value.token);
-      return { ...a.publicState(), clearedCount: confirmation.ids.length };
+      return { ...a.publicState(), clearedCount: taskCleanup ? clearedTasks.length : confirmation.ids.length };
     } else throw new AppError('设置操作无效');
     await a.save(); return a.publicState();
     } catch (error) { for (const restore of undo.reverse()) restore(); throw error; }
