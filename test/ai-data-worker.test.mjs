@@ -119,6 +119,39 @@ test('malformed or extra output kills a worker before any response can be reused
   }
 });
 
+test('large fragmented UTF-8 responses preserve text and release receive buffers', async () => {
+  const { runtime, options } = fixture(), spawn = options.spawnProcess;
+  const value = { account, text: '中文🙂'.repeat(200_000) };
+  const encoded = Buffer.from(JSON.stringify(value) + '\n');
+  options.spawnProcess = (...args) => {
+    const child = spawn(...args); child.stdin.removeAllListeners('data');
+    child.stdin.on('data', () => queueMicrotask(() => {
+      // Deliberately split inside both CJK and emoji bytes, then stream a large line.
+      for (let offset = 0; offset < encoded.length;) {
+        const size = offset < 100 ? 1 : 32 * 1024;
+        child.stdout.write(encoded.subarray(offset, offset + size)); offset += size;
+      }
+    })); return child;
+  };
+  const worker = new DataWorker(runtime, { pid: 123 }, options);
+  assert.deepEqual(await worker.request({ action: 'contacts' }), value);
+  assert.equal(worker.outputBytes, 0); assert.equal(worker.outputParts.length, 0);
+  await worker.stop();
+});
+
+test('oversized responses fail closed and release receive buffers', async () => {
+  const { runtime, options, descriptors } = fixture(), spawn = options.spawnProcess;
+  options.spawnProcess = (...args) => {
+    const child = spawn(...args); child.stdin.removeAllListeners('data');
+    child.stdin.on('data', () => queueMicrotask(() => child.stdout.write(Buffer.alloc(50 * 1024 * 1024 + 1, 32))));
+    return child;
+  };
+  const worker = new DataWorker(runtime, { pid: 123 }, options);
+  await assert.rejects(worker.request({ action: 'contacts' }), { code: 'ai_data_unavailable' });
+  assert.equal(descriptors[0].closed, true);
+  assert.equal(worker.outputBytes, 0); assert.equal(worker.outputParts.length, 0);
+});
+
 test('cancelling a request keeps the worker and its caches for the read that replaces it', async () => {
   const { runtime, options, children, requests, reply, tick } = gated(), bridge = new DataChatBridge(runtime, options);
   const scanned = bridge.scan(); await tick();

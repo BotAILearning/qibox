@@ -49,7 +49,7 @@ export class DataWorker {
   constructor(runtime, context, { spawnProcess, openMemory, resolveAccountRoot = processAccountRoot }) {
     this.runtime = runtime; this.context = context; this.spawnProcess = spawnProcess; this.openMemory = openMemory;
     this.resolveAccountRoot = resolveAccountRoot;
-    this.closed = Promise.withResolvers(); this.output = ''; this.stopping = false;
+    this.closed = Promise.withResolvers(); this.outputParts = []; this.outputBytes = 0; this.stopping = false;
     this.drained = Promise.resolve();
     this.started = this.start();
   }
@@ -68,7 +68,6 @@ export class DataWorker {
           windowsHide: true, stdio: ['pipe', 'pipe', 'ignore', this.memory.fd],
         });
       this.child.stdin.on('error', () => this.stop());
-      this.child.stdout.setEncoding('utf8');
       this.child.stdout.on('data', chunk => this.receive(chunk));
       this.child.once('error', () => { this.stopping = true; void this.finish(); });
       this.child.once('close', () => { this.stopping = true; void this.finish(); });
@@ -80,7 +79,7 @@ export class DataWorker {
     clearTimeout(this.idleTimer); clearTimeout(this.killTimer); clearTimeout(this.drainTimer);
     this.draining = false;
     try { await this.memory?.close(); } catch {}
-    this.memory = null; this.output = '';
+    this.memory = null; this.clearOutput();
     if (this.pending) this.settle(this.pending.signal?.aborted ? this.pending.signal.reason : unavailable());
     this.drainSettled?.resolve(); this.drainSettled = null;
     this.closed.resolve();
@@ -122,7 +121,7 @@ export class DataWorker {
   finishDrain() {
     if (!this.draining) return;
     this.draining = false; clearTimeout(this.drainTimer); this.drainTimer = null;
-    this.output = '';
+    this.clearOutput();
     this.drainSettled?.resolve(); this.drainSettled = null;
     if (this.stopping) { this.stop(); return; }
     clearTimeout(this.idleTimer);
@@ -130,13 +129,18 @@ export class DataWorker {
   }
   receive(chunk) {
     if (this.stopping) return;
-    this.output += chunk;
+    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, 'utf8');
+    this.outputParts.push(bytes); this.outputBytes += bytes.length;
     // While draining, the only thing python can produce is the discarded answer
     // to the request we just cancelled. Anything else stays a hard failure.
     const acceptable = this.pending || this.draining;
-    if (!acceptable || Buffer.byteLength(this.output) > 50 * 1024 * 1024) { this.output = ''; this.stop(); return; }
-    const end = this.output.indexOf('\n'); if (end < 0) return;
-    const line = this.output.slice(0, end), extra = this.output.slice(end + 1); this.output = '';
+    if (!acceptable || this.outputBytes > 50 * 1024 * 1024 || this.outputParts.length > 8192) { this.clearOutput(); this.stop(); return; }
+    // Inspect only newly arrived bytes. Recounting and flattening the growing
+    // UTF-8 string on every chunk made a large range response quadratic.
+    if (bytes.indexOf(10) < 0) return;
+    const text = Buffer.concat(this.outputParts, this.outputBytes).toString('utf8'); this.clearOutput();
+    const end = text.indexOf('\n');
+    const line = text.slice(0, end), extra = text.slice(end + 1);
     if (extra.trim()) { this.stop(); return; }
     try {
       const result = JSON.parse(line);
@@ -145,6 +149,7 @@ export class DataWorker {
       else this.finishDrain();
     } catch { this.stop(); }
   }
+  clearOutput() { this.outputParts = []; this.outputBytes = 0; }
   async request(value, signal) {
     const abortStartup = () => this.stop();
     signal?.addEventListener('abort', abortStartup, { once: true });
