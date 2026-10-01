@@ -408,6 +408,19 @@ test('an unexpected send failure allows editing and automatically resolves a ver
   assert.equal(bridge.manualInputBlocked, false);
 });
 
+test('an article pointer check permits navigation while keeping an unresolved AI draft protected', async () => {
+  const { bridge } = bridgeFixture(action => { if (action === 'send') throw new Error('interrupted draft'); });
+  await bridge.scan(); await bridge.read({ account, contact });
+  await bridge.send({ account, contact, revision, text: 'fixture AI draft' });
+  assert.equal(bridge.manualInputBlocked, true);
+  const pendingDraft = bridge.pendingDraft;
+  bridge.invoke = async (action, { event }) => ({ safe: event?.type === 'pointer', resolved: false });
+  await bridge.waitForIdle({ type: 'pointer', buttons: 1, x: 1154, y: 20 });
+  assert.equal(bridge.manualInputBlocked, true);
+  assert.equal(bridge.pendingDraft, pendingDraft);
+  await assert.rejects(bridge.waitForIdle({ type: 'key', down: true, submitKey: true }), { code: 'ai_input_pending' });
+});
+
 test('SIGTERM cleanup receipts are still read before the aborted process request rejects', async () => {
   for (const draftCleanup of ['cleared', 'blocked', undefined]) {
     const controller = new AbortController(), entered = Promise.withResolvers(), process = { pid: 123 };
