@@ -1,3 +1,4 @@
+import { hasSpeakerTurns, speakerTurns, speakerHistory, speakerAuditPrompt, speakerAuditInput, applySpeakerAudit } from './ai-speakers.mjs';
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -305,7 +306,7 @@ export class AIProvider {
     const {images = [], ...textInput} = input;
     const validImages = images.filter(x => x && ['image/png','image/jpeg','image/gif','image/webp'].includes(x.mime) && typeof x.data === 'string' && x.data.length <= 5600000).slice(0,3);
     if (requireImages && (!images.length || validImages.length !== images.length)) throw new AppError('图片或视频帧不符合模型输入要求', 400);
-    const text = JSON.stringify(textInput);
+    const text = JSON.stringify(hasSpeakerTurns(input) ? { ...textInput, messages: input.messages.map(({ text, ...message }) => message), replySpeakerHistory: speakerHistory(input.messages) } : textInput);
     const requestContent = validImages.length ? [{type:'text',text}, ...validImages.flatMap(x => [{type:'text',text:'图片对应消息 '+x.messageId}, anthropic ? {type:'image',source:{type:'base64',media_type:x.mime,data:x.data}} : {type:'image_url',image_url:{url:'data:'+x.mime+';base64,'+x.data}}])] : text;
     // Only Anthropic used to receive an output budget; elsewhere the server's
     // own default applied, and several hosts default to something small enough
@@ -315,8 +316,8 @@ export class AIProvider {
     for (let attempt = 0; ; attempt++) {
       try {
         const requestBody = { model: config.model, stream: false, ...(budget ? { max_tokens: budget } : {}),
-          ...(anthropic ? { system: currentSystem, messages: [{ role: 'user', content: requestContent }] }
-            : { messages: [{ role: 'system', content: currentSystem }, { role: 'user', content: requestContent }] }) };
+          ...(anthropic ? { system: currentSystem, messages: speakerTurns(input, requestContent) }
+            : { messages: [{ role: 'system', content: currentSystem }, ...speakerTurns(input, requestContent)] }) };
         response = await this.fetcher(endpoint, { method: 'POST', redirect: 'error', headers: this.headers(config), signal: AbortSignal.any([AbortSignal.timeout(config.timeout * 1000), ...(signal ? [signal] : [])]), body: JSON.stringify(requestBody) });
         if (!response.ok) {
           let modelError = '', modelErrorCode = '', modelErrorType = '';
@@ -367,8 +368,19 @@ export class AIProvider {
         try {
           const result = modelResult(content, format);
           if (format === 'report' && !result?.report?.trim()) console.warn('[ai-analysis-report-shape]', JSON.stringify(analysisReportFormatDiagnostic(content, data, size)));
-          if (typeof validate !== 'function') return result;
-          try { return validate(result); }
+          try {
+            const checked = typeof validate === 'function' ? await validate(result) : result;
+            if (!hasSpeakerTurns(input) || checked?.action !== 'send') return checked;
+            let candidate = checked;
+            for (let pass = 0; pass < 2; pass++) {
+              const audit = await this.complete(config, speakerAuditPrompt, speakerAuditInput(input, candidate), signal, { budget: 2048, retry: false });
+              const verified = applySpeakerAudit(candidate, audit);
+              if (audit.consistent) return candidate;
+              if (pass === 1) throw new AppError('回复的发言归属仍有冲突，当前草稿未发送', 502, 'ai_model_schema');
+              candidate = typeof validate === 'function' ? await validate(verified) : verified;
+              console.info('[ai-speaker-corrected]', JSON.stringify({ mode: input.mode, kind: input.kind || 'person' }));
+            }
+          }
           catch (error) {
             if ((input?.defaultStyle || Array.isArray(input?.profiles)) && error?.code === 'ai_model_schema') {
               const style = result?.style && typeof result.style === 'object' && !Array.isArray(result.style) ? result.style : null;

@@ -36,7 +36,7 @@ test('replies retain both speakers and confirmed AI answers across turns, with e
   assert.equal(input.messages.find(m => m.id === answer.id).aiGenerated, true);
   assert.equal(input.messages.find(m => m.id === location.id).direction, 'other');
   assert.deepEqual(input.conversation, { latestIncomingId: second.id, lastSelfId: answer.id, incomingSinceLastSelf: [first.id, second.id], pendingIncomingIds: [first.id, second.id],
-    pendingIncomingMessages: [first, second].map(({ id, text }) => ({ id, text, timestamp: undefined })), latestIncoming: { id: second.id, text: second.text, timestamp: undefined } });
+    pendingIncomingMessages: [first, second].map(({ id, text }) => ({ id, direction: 'other', speaker: { role: 'other', id: 'contact:' + contact, label: '当前私聊对方（回复中的你）' }, text, timestamp: undefined })), latestIncoming: { id: second.id, direction: 'other', speaker: { role: 'other', id: 'contact:' + contact, label: '当前私聊对方（回复中的你）' }, text: second.text, timestamp: undefined } });
   assert.equal(JSON.stringify(input).includes('另一位联系人的私有内容'), false);
   assert.match(system, /先结合前文识别话题/);
   assert.match(system, /不重复询问已经说明的信息/);
