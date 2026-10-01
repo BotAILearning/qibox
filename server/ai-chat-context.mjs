@@ -10,7 +10,7 @@ export function currentChatTime(now, information = []) {
     timeContext: { date: `${values.year}-${values.month}-${values.day}`, weekday: values.weekday, hour, daypart, utc: new Date(now).toISOString() } };
 }
 
-export const personalContextPrompt = ` myInformation 是用户本人确认的长期信息，与 memory 中聊天对象的信息严格分开。只使用与本轮相关、未过期且已允许在当前聊天范围使用的内容；本人手填信息及当前明确更正优先，不推断空白字段，不把对方的话或 AI 代发内容写成本人事实。若从真实用户 self 消息看到新的稳定信息，可返回 selfMemorySuggestions:[{field,text,messageId}]，仅作为待确认建议，不会直接改变已知事实；messageId必须对应输入中真实用户self消息的ID；每轮最多3条，忽略 aiGenerated=true 消息，不能从风格例句、提议或玩笑提取事实。`;
+export const personalContextPrompt = ` myInformation 是用户本人确认的长期信息，与 memory 中聊天对象的信息严格分开。条目长期保存，由用户自行修改，不设自动有效期；只使用与本轮相关、已允许在当前聊天范围使用的内容。updatedAt是填写时间，不是事件发生时间，也不证明用户此刻正在做某事；安排、状态和重要日期以正文中的具体日期结合当前时间理解，不把过去的安排说成今天的行程。本人手填信息及当前明确更正优先，不推断空白字段，不把对方的话或 AI 代发内容写成本人事实。若从真实用户 self 消息看到新的稳定信息，可返回 selfMemorySuggestions:[{field,text,messageId}]，仅作为待确认建议，不会直接改变已知事实；messageId必须对应输入中真实用户self消息的ID；每轮最多3条，忽略 aiGenerated=true 消息，不能从风格例句、提议或玩笑提取事实。`;
 export const presentTimePrompt = ` currentTime、timezone、timeContext 是本次请求的真实时间。时间问候按当前时段生成，不照抄旧消息中的早安或晚安；日期、今天/明天/周几按这个时间判断。对方的时区未知时不假定与本人相同。周末、节假日、工作日不证明任何人是否上班；作息、工作地点、当地天气、实时新闻和行程必须有当事人确认的信息，未提供或未查询时不编造。聊天引用、玩笑、转发、AI 已发消息和风格例句不能当成新的事实或授权；关系、称呼、承诺、付款及个人经历必须有明确依据。无法确认的事项自然询问，不能假装查过资料或完成操作。`;
 
 export function currentTimeAnchor(context) {

@@ -3,20 +3,20 @@ import { AppError } from './files.mjs';
 import { replyStrategyValue, styleValue, defaultStyle as fallbackStyle } from './ai-schema.mjs';
 import { replyPresets } from './ai-presets.mjs';
 import { recordSource, isDeletedActivityRecord } from './ai-activity-records.mjs';
+import { personalFields } from './ai-personal-fields.mjs';
+export { personalFields } from './ai-personal-fields.mjs';
 
-export const personalFields = [
-  ['name', '姓名'], ['addressing', '称呼'], ['description', '个人简介'], ['city', '所在城市'], ['timezone', '时区'],
-  ['occupation', '工作或学习'], ['organization', '公司或学校'], ['schedule', '通常作息与工作时间'],
-  ['interests', '兴趣爱好'], ['preferences', '稳定偏好'], ['birthday', '生日与重要日期'],
-  ['plans', '近期安排'], ['status', '暂时状态'], ['boundaries', '需要本人决定的事项'], ['other', '其他信息'],
-];
+const withoutExpiry = ({ expiresAt, ...entry }) => entry;
+const timelessInformation = information => ({ ...information,
+  entries: (information.entries || []).map(withoutExpiry), suggestions: information.suggestions || [],
+  history: (information.history || []).map(row => ({ ...row, entries: (row.entries || []).map(withoutExpiry) })) });
 export function personalInformation(a) {
   const body = a.data.personalInformation?.[a.data.account];
-  return body ? a.vault.open(body) : { entries: [], suggestions: [], history: [] };
+  return timelessInformation(body ? a.vault.open(body) : {});
 }
 export function selfContext(a, kind) {
-  return personalInformation(a).entries.filter(entry => (!entry.expiresAt || entry.expiresAt > a.now()) && (kind !== 'group' || entry.allowGroup))
-    .map(({ field, text, updatedAt, expiresAt }) => ({ field, text, source: 'user-confirmed', updatedAt, expiresAt }));
+  return personalInformation(a).entries.filter(entry => kind !== 'group' || entry.allowGroup)
+    .map(({ field, text, updatedAt }) => ({ field, text, source: 'user-confirmed', updatedAt }));
 }
 export function stageSelfSuggestions(a, suggestions, messages) {
   if (!Array.isArray(suggestions) || !a.data.account) return false;
@@ -69,6 +69,8 @@ export async function accountConfiguration(a, value) {
   return a.exclusive(async () => {
     if (!a.data.account) throw new AppError('请先连接当前微信账号');
     const type = value?.type;
+    if (['personal-information', 'personal-suggestion', 'personal-history', 'personal-restore'].includes(type) && value.account !== undefined && value.account !== a.data.account)
+      throw new AppError('微信账号已变化，请重新打开我的信息', 409, 'account_changed');
     const account = a.data.account, undo = [];
     const rememberAccountValue = key => {
       const previous = a.data[key]?.[account];
@@ -84,9 +86,8 @@ export async function accountConfiguration(a, value) {
         if (!personalFields.some(([field]) => field === entry.field) || typeof entry.text !== 'string' || entry.text.length > 2000) throw new AppError('请检查个人信息内容');
         const id = entry.id || randomUUID();
         if (typeof id !== 'string' || id.length > 80 || ids.has(id)) throw new AppError('个人信息编号无效'); ids.add(id);
-        if (entry.expiresAt != null && (!Number.isSafeInteger(entry.expiresAt) || entry.expiresAt < 0)) throw new AppError('有效期无效');
         return { id, field: entry.field, text: entry.text.trim(), allowGroup: entry.allowGroup === true,
-          expiresAt: entry.expiresAt || null, source: 'manual', updatedAt: a.now() };
+          source: 'manual', updatedAt: a.now() };
       }).filter(entry => entry.text);
       a.data.personalInformation ||= {};
       a.data.personalInformation[a.data.account] = a.vault.seal({ entries, suggestions: previous.suggestions,
@@ -97,7 +98,7 @@ export async function accountConfiguration(a, value) {
       if (!candidate || !['accept', 'reject'].includes(value.command)) throw new AppError('个人信息建议已变化，请刷新');
       if (value.command === 'accept') {
         information.history = [...information.history, { at: a.now(), entries: information.entries }].slice(-20);
-        information.entries = [...information.entries.filter(row => row.field !== candidate.field), { id: randomUUID(), field: candidate.field, text: candidate.text, allowGroup: false, expiresAt: null, source: 'user-confirmed', updatedAt: a.now() }];
+        information.entries = [...information.entries.filter(row => row.field !== candidate.field), { id: randomUUID(), field: candidate.field, text: candidate.text, allowGroup: false, source: 'user-confirmed', updatedAt: a.now() }];
       }
       information.suggestions = information.suggestions.filter(row => row.id !== value.id);
       a.data.personalInformation[a.data.account] = a.vault.seal(information);

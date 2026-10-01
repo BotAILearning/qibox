@@ -1691,9 +1691,66 @@ dialog.ai-record-delete-dialog p{margin:0 0 20px;line-height:1.65}
 .ai-reference-strategy .ai-strategy-inherit { display:flex; align-items:center; gap:8px; padding:12px 18px; }
 .ai-account-form { max-width:1050px; padding:24px; }
 .ai-personal-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; }
-.ai-personal-field-options { display:flex; flex-wrap:wrap; gap:12px; color:var(--text-muted,#6d6477); font-size:12px; }
-.ai-personal-field-options label { display:flex; gap:6px; align-items:center; }
-.ai-personal-field-options input[type=date] { width:135px; }
+#ai-panel .ai-personal-form { padding:24px; }
+#ai-panel .ai-personal-intro { display:flex; align-items:flex-start; gap:24px; padding-bottom:20px; border-bottom:1px solid var(--ai-border); }
+#ai-panel .ai-personal-intro h4 { font-size:17px; margin-bottom:8px; }
+#ai-panel .ai-personal-intro p { color:var(--ai-muted); font-size:12px; margin:4px 0; }
+#ai-panel .ai-personal-progress { flex-shrink:0; margin-left:auto; padding:6px 11px; border-radius:8px; background:var(--ai-soft); color:var(--ai-primary); font-size:12px; white-space:nowrap; }
+#ai-panel .ai-personal-section-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:20px 0 12px; }
+#ai-panel .ai-personal-section-heading h4 { margin:0; }
+#ai-panel .ai-personal-section-heading>span { color:var(--ai-muted); font-size:12px; }
+#ai-panel .ai-personal-fields { gap:12px; align-items:start; }
+#ai-panel .ai-personal-card { min-width:0; border:1px solid var(--ai-border); border-radius:10px; background:#fff; overflow:hidden; }
+#ai-panel .ai-personal-card>summary { padding:14px 16px; cursor:pointer; list-style:none; }
+#ai-panel .ai-personal-card>summary::-webkit-details-marker,#ai-panel .ai-personal-more>summary::-webkit-details-marker { display:none; }
+#ai-panel .ai-personal-card>summary:focus-visible,#ai-panel .ai-personal-more>summary:focus-visible { outline:2px solid var(--ai-primary); outline-offset:-3px; }
+#ai-panel .ai-personal-card:hover { border-color:#b7c1ed; }
+#ai-panel .ai-personal-card[data-state=empty] { background:#fafbfe; }
+#ai-panel .ai-personal-card[data-state=editing] { border-color:var(--ai-primary); box-shadow:0 0 0 2px var(--ai-soft); }
+#ai-panel .ai-personal-card[data-state=pending] { border-color:#d8b275; }
+#ai-panel .ai-personal-card-head { display:flex; align-items:center; gap:10px; min-height:24px; }
+#ai-panel .ai-personal-card-head>strong { font-size:13px; }
+#ai-panel .ai-personal-status { padding:2px 7px; border-radius:5px; font-size:11px; color:var(--ai-muted); background:#eef0f5; white-space:nowrap; }
+#ai-panel [data-state=filled] .ai-personal-status { color:#226951; background:#eaf5ef; }
+#ai-panel [data-state=editing] .ai-personal-status { color:var(--ai-primary); background:var(--ai-soft); }
+#ai-panel [data-state=pending] .ai-personal-status { color:#805516; background:#fff2db; }
+#ai-panel .ai-personal-edit-label { display:flex; align-items:center; gap:4px; margin-left:auto; color:var(--ai-primary); font-size:12px; white-space:nowrap; }
+#ai-panel .ai-personal-edit-label svg { width:14px; height:14px; }
+#ai-panel .ai-personal-card[open] .ai-personal-edit-label svg { transform:rotate(90deg); }
+#ai-panel .ai-personal-preview { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; white-space:pre-wrap; overflow-wrap:anywhere; color:var(--ai-text); margin:7px 0 0; line-height:1.65; }
+#ai-panel [data-state=empty] .ai-personal-preview { color:var(--ai-muted); font-size:12px; }
+#ai-panel .ai-personal-scope { display:block; color:var(--ai-muted); margin-top:5px; font-size:11px; }
+#ai-panel .ai-personal-card[open] .ai-personal-preview,#ai-panel .ai-personal-card[open] .ai-personal-scope { display:none; }
+#ai-panel .ai-personal-editor { padding:0 16px 16px; }
+#ai-panel .ai-personal-editor .ai-field { display:block; margin:0; }
+#ai-panel .ai-personal-editor input[type=text],#ai-panel .ai-personal-editor textarea { display:block; width:100%; min-height:0; border:1px solid var(--ai-border); border-radius:7px; padding:10px 12px; font:inherit; }
+#ai-panel .ai-personal-editor input[type=text] { height:42px; }
+#ai-panel .ai-personal-editor textarea { resize:vertical; line-height:1.7; }
+#ai-panel .ai-personal-input-help { display:flex; gap:12px; justify-content:space-between; margin:7px 0 12px; }
+#ai-panel .ai-personal-input-help p { font-size:11.5px; margin:0; color:var(--ai-muted); }
+#ai-panel .ai-personal-input-help>span { color:var(--ai-muted); font-size:11px; white-space:nowrap; }
+#ai-panel .ai-personal-share { display:flex; align-items:center; gap:8px; color:var(--ai-muted); font-size:12px; cursor:pointer; }
+#ai-panel .ai-personal-share input { width:16px; height:16px; margin:0; }
+#ai-panel .ai-personal-wide { grid-column:1/-1; }
+#ai-panel .ai-personal-more { margin-top:18px; border:1px solid var(--ai-border); border-radius:10px; }
+#ai-panel .ai-personal-more>summary { display:flex; align-items:center; gap:16px; padding:14px 16px; cursor:pointer; list-style:none; }
+#ai-panel .ai-personal-more>summary>div { display:flex; align-items:center; gap:12px; }
+#ai-panel .ai-personal-more>summary span { color:var(--ai-muted); font-size:12px; }
+#ai-panel .ai-personal-more>summary>span { margin-left:auto; white-space:nowrap; }
+#ai-panel .ai-personal-more>summary svg { width:16px; height:16px; }
+#ai-panel .ai-personal-more[open]>summary>svg { transform:rotate(90deg); }
+#ai-panel .ai-personal-more>.ai-personal-fields { padding:0 14px 14px; }
+#ai-panel .ai-personal-save { display:flex; align-items:center; gap:16px; justify-content:space-between; padding-top:20px; margin-top:20px; border-top:1px solid var(--ai-border); }
+#ai-panel .ai-personal-save>span { color:var(--ai-muted); font-size:12px; }
+#ai-panel .ai-personal-form[data-dirty=true] .ai-personal-save>span { color:#805516; }
+#ai-panel .ai-personal-additions { display:grid; grid-template-columns:1fr 1fr; gap:14px; max-width:1050px; margin-top:16px; }
+#ai-panel .ai-personal-additions>.ai-card { padding:16px; margin:0; min-width:0; }
+#ai-panel .ai-personal-additions>.ai-card>summary { cursor:pointer; font-weight:500; font-size:13px; }
+#ai-panel .ai-personal-additions>.ai-card>summary span { margin-left:10px; color:var(--ai-muted); font-size:11px; font-weight:400; }
+#ai-panel .ai-personal-additions>.ai-card[open]>summary { margin-bottom:12px; }
+#ai-panel .ai-personal-suggestion { padding:12px 0; border-top:1px solid var(--ai-border); }
+@media(max-width:980px) { #ai-panel .ai-personal-intro { gap:12px; } #ai-panel .ai-personal-more>summary>div { display:block; } #ai-panel .ai-personal-more>summary>div>span { display:block; margin-top:3px; } }
+@media(max-width:760px) { #ai-panel .ai-personal-intro { flex-direction:column; } #ai-panel .ai-personal-progress { margin-left:0; } #ai-panel .ai-personal-form { padding:16px; } #ai-panel .ai-personal-additions { grid-template-columns:1fr; } #ai-panel .ai-personal-save { flex-wrap:wrap; } }
 .qbx-dialog-close { position:absolute; right:12px; top:12px; }
 .qbx-product-dialog p { white-space:pre-line; line-height:1.7; }
 .ai-record-kind-tabs { display:flex; gap:4px; margin-left:auto; }

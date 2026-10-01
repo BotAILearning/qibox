@@ -19,7 +19,7 @@ async function fixture(t) {
   return { a, bridge, provider, contact, options, p: a.profiles()[0], advance: ms => now += ms };
 }
 
-test('self information is encrypted, account isolated, expires and requires explicit group sharing', async t => {
+test('self information is encrypted, account isolated, stays until edited and requires explicit group sharing', async t => {
   const { a, advance } = await fixture(t);
   await a.configuration({ type: 'personal-information', entries: [
     { field: 'city', text: 'SELF_PRIVATE_CITY' }, { field: 'occupation', text: 'SELF_SHARED_WORK', allowGroup: true },
@@ -27,10 +27,54 @@ test('self information is encrypted, account isolated, expires and requires expl
   ] });
   assert.equal(selfContext(a, 'person').length, 3);
   assert.deepEqual(selfContext(a, 'group').map(row => row.text), ['SELF_SHARED_WORK']);
-  advance(1001); assert.equal(selfContext(a, 'person').length, 2);
+  advance(1001); assert.equal(selfContext(a, 'person').length, 3);
+  assert.ok(personalInformation(a).entries.every(row => !('expiresAt' in row)));
   assert.doesNotMatch(await readFile(a.file, 'utf8'), /SELF_PRIVATE_CITY|SELF_SHARED_WORK|SELF_TEMP_STATUS/);
   const account = a.data.account; a.data.account = 'another-account';
   assert.equal(selfContext(a, 'person').length, 0); a.data.account = account;
+});
+
+test('legacy expired self information and history retain facts and group permissions without expiry', async t => {
+  const { a } = await fixture(t);
+  const old = [{ id: 'old-private', field: 'status', text: '已确认的本人状态', allowGroup: false, updatedAt: 123, expiresAt: 1 },
+    { id: 'old-shared', field: 'city', text: '深圳', allowGroup: true, updatedAt: 124, expiresAt: 1 }];
+  a.data.personalInformation = { [a.data.account]: a.vault.seal({ entries: old, suggestions: [], history: [{ at: 100, entries: old }] }) };
+  assert.equal(selfContext(a, 'person').length, 2);
+  assert.deepEqual(selfContext(a, 'group').map(row => row.text), ['深圳']);
+  assert.equal(personalInformation(a).entries[0].id, 'old-private');
+  assert.equal(personalInformation(a).entries[0].updatedAt, 123);
+  assert.ok(personalInformation(a).history[0].entries.every(row => !('expiresAt' in row)));
+  await a.configuration({ type: 'personal-restore', at: 100 });
+  assert.ok(personalInformation(a).entries.every(row => !('expiresAt' in row)));
+  await a.configuration({ type: 'personal-information', entries: [{ field: 'status', text: '用户已自行修改', expiresAt: 'obsolete-field' }] });
+  assert.deepEqual(selfContext(a, 'person').map(row => row.text), ['用户已自行修改']);
+  const stored = a.vault.open(a.data.personalInformation[a.data.account]);
+  assert.ok(stored.history.flatMap(row => row.entries).every(row => !('expiresAt' in row)));
+});
+
+test('new conversation-scene fields persist while unconfirmed model suggestions stay separate', async t => {
+  const { a } = await fixture(t);
+  await a.configuration({ type: 'personal-information', entries: [
+    { field: 'hometown', text: '潮州' }, { field: 'relationships', text: '和家人同住', allowGroup: true },
+  ] });
+  assert.deepEqual(selfContext(a, 'group').map(row => row.field), ['relationships']);
+  assert.ok(a.publicState().personalFields.some(([key]) => key === 'hometown'));
+  await assert.rejects(a.configuration({ type: 'personal-information', entries: [{ field: 'password', text: 'invalid' }] }), /请检查个人信息/);
+});
+
+test('stale personal drafts and history actions cannot read or write a newly connected account', async t => {
+  const { a } = await fixture(t), account = a.data.account;
+  await a.configuration({ type: 'personal-information', account, entries: [{ field: 'city', text: '深圳' }] });
+  const original = a.data.personalInformation[account];
+  a.data.account = 'new-account';
+  for (const value of [
+    { type: 'personal-information', entries: [{ field: 'city', text: '旧草稿' }] },
+    { type: 'personal-history', at: 1 }, { type: 'personal-restore', at: 1 },
+    { type: 'personal-suggestion', id: 'old-id', command: 'accept' },
+  ]) await assert.rejects(a.configuration({ ...value, account }), error => error.code === 'account_changed');
+  assert.equal(personalInformation(a).entries.length, 0);
+  assert.equal(a.data.personalInformation[account], original);
+  a.data.account = account;
 });
 
 test('chat self-information proposals never overwrite manual facts or learn AI-generated facts', async t => {

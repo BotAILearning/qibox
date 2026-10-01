@@ -1,5 +1,5 @@
 import { confirmDialog, productDialog } from './dialogs.mjs';
-import { personalInformationPage, personalEntriesFromForm, globalReplyStrategyPage, objectStyleTabs } from './ai-account-settings.mjs';
+import { personalInformationPage, personalEntriesFromForm, personalDraftFromForm, updatePersonalInformationForm, globalReplyStrategyPage, objectStyleTabs } from './ai-account-settings.mjs';
 import { dateRangeField, chooseDateRange } from './ai-date-range.mjs';
 import { providerPage } from './ai-provider-view.mjs';
 import { icon, iconSprite, logoIcon } from './ai-icons.mjs';
@@ -42,6 +42,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     return !!id;
   }
   let id, state, tab = 'overview', timer, lastPollAt = 0, generation = 0, requestEpoch = 0, workToken = 0, analysisQueueToken = 0, analysisQueueAccount = null, polling = false, busy = false, attaching = false;
+  let personalDraft = null, personalDraftAccount = null;
   const loadingContent = '<div class="ai-entry-loading" role="status" aria-live="polite"><div class="ai-entry-loading-art" aria-hidden="true"><span class="ai-entry-loading-ring"></span><span class="ai-entry-loading-mark">AI</span></div><strong>正在打开 AI 辅助</strong><p>正在读取当前微信的设置…</p></div>';
   // Profiles carry a snapshot label; the WeChat nickname still lives in the
   // address book, so rows derived from a profile borrow it from there.
@@ -455,6 +456,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     catch (error) { if (current !== generation || target !== id || epoch !== requestEpoch) return null; throw error; }
     if (current !== generation || target !== id || epoch !== requestEpoch) return null;
     if (state && state.account !== result.account) {
+      personalDraft = null; personalDraftAccount = null;
       analysisHistoryEpoch++; analysisHistoryReport = null; analysisResult = null; resetAnalysisExport();
       summaryResults.clear();
       skipContent.clear(); markReplyStatus.clear(); skipEpoch++; skipLoading = false; skipHistory = []; skipHistoryPage = null; skipPageLoading = false;
@@ -773,6 +775,10 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     return `<form id="ai-manual-reply-form" data-contact="${esc(contact.id)}"><div class="ai-page-heading"><button type="button" class="quiet" data-ai-action="back-reply-contacts">${icon('arrow-l')}返回联系人列表</button><h3>${contactName(contact)}的回复风格</h3></div><label class="ai-field">选择风格<select id="ai-reply-preset" name="replyPreset">${presets.map(p => option(p.id, p.label, v.replyPreset === p.id)).join('')}${option('custom', '自定义', v.replyPreset === 'custom')}${learnedProfiles().length ? '<optgroup label="已学习的风格">' + learnedProfiles().map(p => option('learned:' + p.id, p.label, v.replyPreset === 'learned:' + p.id)).join('') + '</optgroup>' : ''}</select></label>${field('summary', '风格说明（可修改）', v.summary || summaryText(v), 6000)}<details class="ai-paste"><summary>注意事项与策略（可选）</summary>${field('customAvoid', '注意事项', v.customAvoid, 1200)}${field('replyGoal', '回复目的与立场', v.replyGoal)}${field('boundaries', '不能擅自决定的事项', v.boundaries)}<label class="ai-field">回复次数上限${replyLimitControl(v.maxRounds, "ai-manual-round-limit")}</label></details><button type="submit" class="primary ai-wide">保存回复风格</button></form>`;
   }
   function rememberDraft() {
+    const personal = $('#ai-personal-information-form');
+    if (personal && personal.dataset.personalAccount === (state?.account || '')) {
+      personalDraft = personalDraftFromForm(personal); personalDraftAccount = state.account;
+    }
     const analysis = $('#ai-analysis-form');
     if (analysis) { const data = new FormData(analysis); analysisDraft = { request: data.get('request'), from: data.get('from'), to: data.get('to'), contacts: data.getAll('contacts'), includeVoice: data.has('includeVoice'), includeVisual: data.has('includeVisual') }; }
     const object = $('#ai-object-form');
@@ -833,10 +839,11 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     const objectScroll = $('#ai-object-list')?.scrollTop || 0;
     const disclosureStates = view === renderedView ? [...panel.querySelectorAll('#ai-content details')].filter(node => !node.hasAttribute('data-ai-record-expand') && !node.hasAttribute('data-ai-skip-messages')).map(node => ({ label: node.dataset.aiOptional || node.querySelector('summary')?.textContent, open: node.open })) : [];
     renderedView = view; panel.dataset.page = tab;
-    const pageTitle = ({ overview: '自动回复', proactive: '主动聊天', activity: '执行记录', provider: '模型设置', settings: '系统设置', analysis: '分析报告', learning: '批量学习风格与记忆', 'default-style': '学习默认风格', results: '学习结果', profile: '编辑学习结果', 'manual-reply': '手动回复' })[tab] || 'AI 辅助';
+    if (personalDraftAccount !== state.account) { personalDraft = null; personalDraftAccount = state.account; }
+    const pageTitle = ({ overview: '自动回复', proactive: '主动聊天', activity: '执行记录', provider: '模型设置', settings: '系统设置', 'personal-info': '我的信息', 'global-reply': '全局回复策略', analysis: '分析报告', learning: '批量学习风格与记忆', 'default-style': '学习默认风格', results: '学习结果', profile: '编辑学习结果', 'manual-reply': '手动回复' })[tab] || 'AI 辅助';
     $('#ai-title').textContent = pageTitle;
     $('#ai-mobile-title').textContent = pageTitle;
-    const content = tab === 'profile' && editingProfile ? profileEditor(state.profiles.find(p => p.id === editingProfile)) : ({ overview: objects, analysis: () => analysisPage(state, analysisDraft, analysisResult, analysisSearch, analysisHistoryReport, analysisRangeMode, analysisContactsExpanded, { selecting: analysisExportSelecting, selected: analysisExportSelected, dialog: analysisExportDialog }), activity, provider, settings: advancedSettings, 'personal-info': () => personalInformationPage(state), 'global-reply': () => globalReplyStrategyPage(state), learning, 'default-style': defaultStyleLearning, results, proactive, 'manual-reply': manualReplyEditor }[tab] || objects)();
+    const content = tab === 'profile' && editingProfile ? profileEditor(state.profiles.find(p => p.id === editingProfile)) : ({ overview: objects, analysis: () => analysisPage(state, analysisDraft, analysisResult, analysisSearch, analysisHistoryReport, analysisRangeMode, analysisContactsExpanded, { selecting: analysisExportSelecting, selected: analysisExportSelected, dialog: analysisExportDialog }), activity, provider, settings: advancedSettings, 'personal-info': () => personalInformationPage(state, personalDraft || {}), 'global-reply': () => globalReplyStrategyPage(state), learning, 'default-style': defaultStyleLearning, results, proactive, 'manual-reply': manualReplyEditor }[tab] || objects)();
     const nav = `<nav class="ai-main-tabs qbx-bottom-nav" aria-label="AI 页面"><div class="ai-nav-brand"><span>${logoIcon}</span><div>AI 辅助<small>栖盒 · QIBOX</small></div></div><p class="ai-nav-caption">工作台</p>${[['overview', '自动回复', 'chat'], ['proactive', '主动聊天', 'send'], ['analysis', '分析报告', 'file'], ['activity', '执行记录', 'clock'], ['settings', '系统设置', 'sliders']].map(([key, name, symbol]) => `<button type="button" data-ai-nav="${key}" title="${name}" aria-label="${name}" aria-current="${tab === key || key === 'overview' && ['learning','results','profile','manual-reply'].includes(tab) || key === 'settings' && ['default-style','provider','personal-info','global-reply'].includes(tab) ? 'page' : 'false'}">${icon(symbol)}<span>${name}</span></button>`).join('')}</nav>`;
     panel.querySelector(':scope > .ai-main-tabs')?.remove();
     $('#ai-content').innerHTML = iconSprite + nav + (tab === 'overview' ? content : `<div class="ai-page-body">${content}</div>`);
@@ -857,6 +864,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       if (previous) node.open = previous.open;
     }
     const paste = $('#ai-paste-form'); if (paste && learningDraft) for (const [key, value] of Object.entries(learningDraft)) if (paste.elements[key]) paste.elements[key].value = value;
+    updatePersonalInformationForm($('#ai-personal-information-form'), state);
     controls();
     resizeStyleSummary();
     mobileLayout();
@@ -980,6 +988,10 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   panel.addEventListener('change', async event => {
     try {
       const input = event.target;
+      if (input.closest('#ai-personal-information-form')) {
+        if (input.matches('[data-personal-share]')) input.closest('[data-personal-field]').dataset.personalShareChanged = 'true';
+        updatePersonalInformationForm($('#ai-personal-information-form'), state); rememberDraft(); return;
+      }
       if (input.name === 'report-export-format') { if (analysisExportDialog) analysisExportDialog.format = input.value; return; }
       if ('aiHistoryExportCheck' in input.dataset) {
         if (input.checked) analysisExportSelected.add(input.dataset.aiHistoryExportCheck);
@@ -1107,6 +1119,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     } catch (e) { controls(); message(e.message, true); }
   });
   panel.addEventListener('input', event => {
+    if (event.target.closest('#ai-personal-information-form')) { updatePersonalInformationForm($('#ai-personal-information-form'), state); rememberDraft(); return; }
     if (syncReplyLimitControl(event.target)) {
       handleReplyLimitOverflow(event.target);
       rememberDraft(); if (event.target.closest('#ai-object-form') && $('[data-ai-dirty]')) $('[data-ai-dirty]').hidden = false; return;
@@ -1163,6 +1176,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     if (event.target.closest('#ai-object-form') && $('[data-ai-dirty]')) $('[data-ai-dirty]').hidden = false;
   });
   panel.addEventListener('toggle', event => {
+    if (event.target.closest('#ai-personal-information-form') && event.target.isConnected) { updatePersonalInformationForm($('#ai-personal-information-form'), state); rememberDraft(); return; }
     const skipId = event.target.dataset?.aiSkipMessages;
     if (skipId && event.target.isConnected) {
       const expanded = new Set(logFilters.skipMessageExpanded || []);
@@ -1290,7 +1304,15 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         objectDrafts.delete(contact); render(); return;
       }
       if (form.id === 'ai-personal-information-form') {
-        await execute('configuration', { value: { type: 'personal-information', entries: personalEntriesFromForm(form, state) } }, '我的信息已保存'); return;
+        if (form.dataset.personalAccount !== state.account) throw new Error('微信账号已变化，请重新打开我的信息');
+        const entries = personalEntriesFromForm(form, state);
+        await workflow(async step => {
+          await step('configuration', { value: { type: 'personal-information', account: form.dataset.personalAccount, entries } });
+          if (form.dataset.personalAccount !== state.account) return;
+          updatePersonalInformationForm(form, state);
+          for (const section of form.querySelectorAll('[data-personal-field]')) if (section.dataset.dirty !== 'true') section.open = false;
+          personalDraft = personalDraftFromForm(form); personalDraftAccount = state.account;
+        }, '我的信息已保存'); return;
       }
       if (form.id === 'ai-global-reply-form') {
         await execute('configuration', { value: { type: 'global-reply-strategy', strategy: { ...state.replyStrategy, replyGoal: data.get('replyGoal') || '', facts: data.get('facts') || '', boundaries: data.get('boundaries') || '' } } }, '全局回复策略已保存'); return;
@@ -1598,15 +1620,26 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         render(); return;
       }
       if ('aiPersonalSuggestion' in button.dataset) {
+        const current = generation, target = id, account = state.account;
         const candidate = state.personalInformation?.suggestions?.find(row => row.id === button.dataset.aiPersonalSuggestion);
         if (!candidate) return;
-        if (button.dataset.command === 'accept' && !await productDialog({ title: '确认采用这项个人信息？', message: candidate.text + (state.personalInformation.entries.some(row => row.field === candidate.field) ? '\n确认后将替换该项已有信息，可从历史版本恢复。' : ''), confirm: '确认采用' })) return;
-        await execute('configuration', { value: { type: 'personal-suggestion', id: candidate.id, command: button.dataset.command } }, '个人信息建议已处理'); render(); return;
+        if (button.dataset.command === 'accept' && !await productDialog({ title: '确认采用这项个人信息？', message: candidate.text + (state.personalInformation.entries.some(row => row.field === candidate.field) ? '\n确认后将替换该项已有信息，可从历史版本恢复。' : '') + ($('#ai-personal-information-form')?.querySelector('[data-personal-field="' + candidate.field + '"]')?.dataset.dirty === 'true' ? '\n这项尚未保存的编辑也将被替换；其他字段的草稿保留。' : ''), confirm: '确认采用' })) return;
+        if (current !== generation || target !== id || account !== state?.account) return;
+        await workflow(async step => {
+          await step('configuration', { value: { type: 'personal-suggestion', account, id: candidate.id, command: button.dataset.command } });
+          if (button.dataset.command === 'accept' && personalDraft) delete personalDraft[candidate.field];
+        }, '个人信息建议已处理'); return;
       }
       if ('aiPersonalHistory' in button.dataset) {
-        const at = Number(button.dataset.aiPersonalHistory), result = await api(`/instances/${id}/ai`, { action: 'configuration', value: { type: 'personal-history', at } });
-        if (!await productDialog({ title: '恢复这个历史版本？', message: result.history.entries.map(row => (state.personalFields.find(([key]) => key === row.field)?.[1] || row.field) + '：' + row.text).join('\n') || '这个版本没有个人信息。', confirm: '确认恢复' })) return;
-        await execute('configuration', { value: { type: 'personal-restore', at } }, '个人信息已恢复'); render(); return;
+        const current = generation, target = id, account = state.account;
+        const at = Number(button.dataset.aiPersonalHistory), result = await api(`/instances/${target}/ai`, { action: 'configuration', value: { type: 'personal-history', account, at } });
+        if (current !== generation || target !== id || account !== state?.account) return;
+        if (!await productDialog({ title: '恢复这个历史版本？', message: (result.history.entries.map(row => (state.personalFields.find(([key]) => key === row.field)?.[1] || row.field) + '：' + row.text).join('\n') || '这个版本没有个人信息。') + ($('#ai-personal-information-form')?.dataset.dirty === 'true' ? '\n当前尚未保存的编辑也将被替换。' : ''), confirm: '确认恢复' })) return;
+        if (current !== generation || target !== id || account !== state?.account) return;
+        await workflow(async step => {
+          await step('configuration', { value: { type: 'personal-restore', account, at } });
+          personalDraft = null; personalDraftAccount = state.account;
+        }, '个人信息已恢复'); return;
       }
       if ('aiSkipMore' in button.dataset) { await loadSkipPage(); return; }
       if ('aiRecordKind' in button.dataset) { logFilters.kind = button.dataset.aiRecordKind === 'all' ? '' : button.dataset.aiRecordKind; logFilters.page = 0; logRequestScope = ''; render(); await loadActivity(); return; }
@@ -1797,7 +1830,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       rememberRecords();
       analysisDraft = { request: '', from: '', to: '', contacts: [], includeVoice: false, includeVisual: false }; analysisRangeMode = 'all'; analysisRangeBeforeCustom = null; analysisContactsExpanded = false; analysisSearch = ''; analysisHistoryReport = null; analysisHistoryEpoch++; resetAnalysisExport(); learnRange = {from:'',to:''}; learnRangeMode = 'all'; learnScope='range'; learnTarget='both'; defaultStylePerspective = 'self'; analysisResult = null; proactiveUI.reset();
       reviewAlert.hidden = true;
-      concealKey(true); modelDraft = null; learningDraft = null; renderedView = ''; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); summaryResults.clear(); selectedObject = ''; objectSearch = ''; objectKind = 'person'; learnContactKind = 'person'; editingReplyContact = null; contactSearch = ''; providerRevision++;
+      concealKey(true); modelDraft = null; learningDraft = null; renderedView = ''; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); personalDraft = null; personalDraftAccount = null; summaryResults.clear(); selectedObject = ''; objectSearch = ''; objectKind = 'person'; learnContactKind = 'person'; editingReplyContact = null; contactSearch = ''; providerRevision++;
       generation++; skipEpoch++; skipLoading = false; skipHistory = []; skipHistoryPage = null; skipPageLoading = false; skipContent.clear(); markReplyStatus.clear(); clearInterval(timer); lastPollAt = 0; id = instanceId; setContactAvatarInstance(instanceId); state = null; busy = false; polling = false; attaching = true; tab = 'overview'; replyDraft = null; editingProfile = null; contactsLoaded = false; contactsLoading = false; resultProfileIds = null;
       const attachedGeneration = generation;
       selectedContacts.clear(); replyProfiles.clear(); panel.hidden = true; rail.hidden = false; panel.setAttribute('aria-busy', 'false');
@@ -1821,6 +1854,6 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         finally { if (current === generation) polling = false; }
       }, 1000);
     },
-    detach() { contactDialog?.close(); analysisQueueToken++; analysisQueueAccount = null; rememberRecords(); proactiveRecordEpoch++; proactiveRecordLoading = false; proactiveHistory = []; proactiveHistoryPage = null; errorEpoch++; errorLoading = false; errorHistory = []; errorPage = null; logEpoch++; analysisDraft = { request: '', from: '', to: '', contacts: [] }; analysisSearch = ''; analysisHistoryReport = null; analysisHistoryEpoch++; resetAnalysisExport(); analysisResult = null; reviewAlert.hidden = true; concealKey(true); modelDraft = null; learningDraft = null; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); selectedObject = ''; objectSearch = ''; objectKind = 'person'; editingReplyContact = null; providerRevision++; generation++; skipEpoch++; skipLoading = false; skipHistory = []; skipHistoryPage = null; skipPageLoading = false; skipContent.clear(); markReplyStatus.clear(); clearInterval(timer); id = null; setContactAvatarInstance(null); state = null; attaching = false; rail.hidden = true; panel.hidden = true; panel.querySelector(':scope > .ai-main-tabs')?.remove(); $('#ai-content').replaceChildren(); selectedContacts.clear(); replyProfiles.clear(); proactiveUI.reset(); replyDraft = null; },
+    detach() { contactDialog?.close(); analysisQueueToken++; analysisQueueAccount = null; rememberRecords(); proactiveRecordEpoch++; proactiveRecordLoading = false; proactiveHistory = []; proactiveHistoryPage = null; errorEpoch++; errorLoading = false; errorHistory = []; errorPage = null; logEpoch++; analysisDraft = { request: '', from: '', to: '', contacts: [] }; analysisSearch = ''; analysisHistoryReport = null; analysisHistoryEpoch++; resetAnalysisExport(); analysisResult = null; reviewAlert.hidden = true; concealKey(true); modelDraft = null; learningDraft = null; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); personalDraft = null; personalDraftAccount = null; selectedObject = ''; objectSearch = ''; objectKind = 'person'; editingReplyContact = null; providerRevision++; generation++; skipEpoch++; skipLoading = false; skipHistory = []; skipHistoryPage = null; skipPageLoading = false; skipContent.clear(); markReplyStatus.clear(); clearInterval(timer); id = null; setContactAvatarInstance(null); state = null; attaching = false; rail.hidden = true; panel.hidden = true; panel.querySelector(':scope > .ai-main-tabs')?.remove(); $('#ai-content').replaceChildren(); selectedContacts.clear(); replyProfiles.clear(); proactiveUI.reset(); replyDraft = null; },
   };
 }

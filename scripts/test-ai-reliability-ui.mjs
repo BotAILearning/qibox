@@ -67,6 +67,7 @@ try {
   report.checks.push('Bulk person cap asks confirmation, cancellation does nothing, success feedback appears and group cap is retained');
 
   await nav('settings'); await nav('personal-info');
+  await page.locator('[data-personal-field=city] > summary').click();
   await page.locator('[name=city]').fill('深圳');
   const personalSave = page.waitForResponse(response => response.url().includes('/ai') && response.request().method() === 'POST');
   await page.locator('#ai-personal-information-form button[type=submit]').click(); await personalSave; await settled();
