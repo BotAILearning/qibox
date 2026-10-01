@@ -10,7 +10,7 @@ import { replyLimitControl, syncReplyLimitControl, parseReplyLimit, replyLimitMa
 import { styleChoice, styleSummary as styleSummaryText } from './ai-style-view.mjs';
 import { learnedObjectDraft } from './ai-learning-draft.mjs';
 import { analysisPage, analysisContactList, copyReport, presetRequest, analysisRequestState, presetChips } from './ai-analysis-view.mjs';
-import { activityPage, activityEntries, activityRows, proactiveRecordRows, liveActivityBox, recentErrorsBox, skipRecordsView } from './ai-activity-view.mjs';
+import { activityPage, activityEntries, activityRows, activityPagination, proactiveRecordRows, liveActivityBox, recentErrorsBox, skipRecordsView } from './ai-activity-view.mjs';
 import { beijingTime, createProactiveUI } from './ai-proactive-view.mjs';
 import { RecordCache, mergeRecordResults } from './ai-record-cache.mjs';
 import { contactName, contactSearch as searchableContact } from './ai-contact-name.mjs';
@@ -133,6 +133,8 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   }
   function drawRecords() {
     if (state && tab === 'activity' && $('#ai-activity-entries')) $('#ai-activity-entries').innerHTML = activityRows(state, logFilters, logRecords, logLoading, summaryResults);
+    const pagination = panel.querySelector('[data-ai-log-pagination]');
+    if (state && tab === 'activity' && pagination) pagination.innerHTML = activityPagination(state, logFilters, logRecords);
   }
   function drawErrors() {
     if (state && tab === 'activity') { const box = $('#ai-recent-errors'); if (box) box.innerHTML = recentErrorsBox(activityState(), logFilters.errorsOpen, errorLoading); }
@@ -1144,7 +1146,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     if (event.target.id === 'ai-object-search') { objectSearch = event.target.value; $('#ai-object-list').innerHTML = objectList(state, objectView()); return; }
     if (event.target.id === 'ai-log-search') {
       logFilters.query = event.target.value; logFilters.page = 0; rememberRecords();
-      const activityRowsNode = $('#ai-activity-entries'); if (activityRowsNode) activityRowsNode.innerHTML = activityRows(activityState(), logFilters, logRecords, logLoading, summaryResults);
+      drawRecords();
       const proactiveRowsNode = $('#ai-proactive-records'); if (proactiveRowsNode) proactiveRowsNode.innerHTML = proactiveRecordRows(activityState(), logFilters, proactiveRecordLoading);
       return;
     }

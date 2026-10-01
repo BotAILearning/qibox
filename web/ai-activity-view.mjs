@@ -1,5 +1,4 @@
 import { beijingTime } from './ai-proactive-view.mjs';
-import { icon } from './ai-icons.mjs';
 import { contactName, contactSearch } from './ai-contact-name.mjs';
 import { contactPickerAvatar } from './ai-contact-picker.mjs';
 import { replyRecordCards } from './ai-reply-records-view.mjs';
@@ -25,6 +24,11 @@ export function activityEntries(state, filters = {}, records = []) {
 export function activityRows(state, filters, records, loading, summaryResults) {
   return replyRecordCards(state, filters, records, loading, activityEntries, summaryResults);
 }
+export function activityPagination(state, filters = {}, records = []) {
+  const entries = activityEntries(state, filters, records), pages = Math.max(1, Math.ceil(entries.length / 25));
+  const page = Math.min(Number(filters.page) || 0, pages - 1);
+  return `<span>第 ${page + 1} / ${pages} 页 · 共 ${entries.length} 位</span><div class="ai-actions"><button class="secondary" type="button" data-ai-log-page="${page - 1}" ${page === 0 ? 'disabled' : ''}>上一页</button><button class="secondary" type="button" data-ai-log-page="${page + 1}" ${page + 1 >= pages ? 'disabled' : ''}>下一页</button></div>`;
+}
 export function proactiveRecordEntries(state, filters = {}) {
   return (state.proactiveRecords || []).filter(r => (!filters.taskId || r.taskId === filters.taskId) && within(r.at, filters) &&
     (!filters.query || `${contactSearch(r)} ${r.text || ''}`.normalize('NFKC').toLocaleLowerCase().includes(filters.query.normalize('NFKC').toLocaleLowerCase())) &&
@@ -43,11 +47,11 @@ export function proactiveRecordRows(state, filters = {}, loading = false) {
 export function liveActivityBox(state) {
   const live = state.live || [];
   if (!live.length) return '';
-  return `<details class="ap-record-live" data-ai-optional="activity-live"><summary><h4>实时状态</h4></summary><ul>${live.map(x => {
+  return `<details class="ap-record-live qbx-record-section" data-ai-optional="activity-live"><summary><h4>实时状态</h4></summary><div class="qbx-record-section-body"><ul>${live.map(x => {
     const profile = (state.profiles || []).find(profile => profile.id === x.id);
     const flow = replyFlowMarkup(profile, x, { allowSkip: !!(profile && state.settings?.enabled && state.settings?.reply && state.waiting !== true && !profile.paused) });
     return `<li><i class="ai-live-dot ${esc(x.phase)}"></i><div><strong>${contactName(x)}</strong>${flow || `：${esc(x.reason || '等待处理')}`}</div></li>`;
-  }).join('')}</ul></details>`;
+  }).join('')}</ul></div></details>`;
 }
 export function recentErrorsBox(state, open = false, loading = false) {
   // 异常全部保留、按页加载：标题是总数，列表是当前已加载的部分，翻页按钮拉更早的。
@@ -56,7 +60,7 @@ export function recentErrorsBox(state, open = false, loading = false) {
   const total = Math.max(Number(page.total) || 0, errors.length);
   const hasMore = !!page.hasMore || errors.length < total;
   if (!total) return '';
-  return `<details class="ap-record-errors"${open ? ' open' : ''}><summary><h4>最近异常（${total}）</h4><button type="button" class="quiet danger-link" data-ai-clear-errors>清空</button></summary><ul>${errors.map(e => `<li><time>${esc(beijingTime(e.at))}</time><span>${e.resolution === 'sent' ? '<strong>已确认送达</strong> · ' : ''}${esc(e.message || 'AI 操作未完成')}</span></li>`).join('')}</ul><footer class="ap-record-footer"><span>已加载 ${errors.length} / ${total} 条</span>${hasMore ? `<button class="secondary" type="button" data-ai-error-more ${loading ? 'disabled' : ''}>${loading ? '正在读取…' : '加载更早异常'}</button>` : '<span>已全部加载</span>'}</footer></details>`;
+  return `<details class="ap-record-errors qbx-record-section"${open ? ' open' : ''}><summary><h4>最近异常（${total}）</h4></summary><div class="qbx-record-section-body"><div class="qbx-record-section-tools"><span>查看操作异常与处理结果</span><button type="button" class="secondary danger-link" data-ai-clear-errors>清空异常</button></div><ul>${errors.map(e => `<li><time>${esc(beijingTime(e.at))}</time><span>${e.resolution === 'sent' ? '<strong>已确认送达</strong> · ' : ''}${esc(e.message || 'AI 操作未完成')}</span></li>`).join('')}</ul><footer class="ap-record-footer"><span>已加载 ${errors.length} / ${total} 条</span>${hasMore ? `<button class="secondary" type="button" data-ai-error-more ${loading ? 'disabled' : ''}>${loading ? '正在读取…' : '加载更早异常'}</button>` : '<span>已全部加载</span>'}</footer></div></details>`;
 }
 export function skipRecordsView(state) {
   const profiles = new Map((state.profiles || []).map(profile => [profile.id, profile]));
@@ -95,9 +99,8 @@ export function skipRecordsView(state) {
 }
 export function activityPage(state, filters = {}, records = [], loading = false, proactiveLoading = false, errorLoading = false, summaryResults) {
   const option = (value, title, selected) => `<option value="${esc(value)}" ${selected ? 'selected' : ''}>${esc(title)}</option>`;
-  const entries = activityEntries(state, filters, records), pages = Math.max(1, Math.ceil(entries.length / 25)), page = Math.min(Number(filters.page) || 0, pages - 1);
   return `<section class="ai-activity-page"><div class="ai-page-heading"><div><h3>执行记录</h3></div></div><div class="ap-record-tabs" role="group" aria-label="记录来源">${[['reply', '自动回复'], ['proactive', '主动聊天']].map(([key, label]) => `<button type="button" data-ai-record-source="${key}" aria-pressed="${(filters.source || 'reply') === key}">${label}</button>`).join('')}</div><label class="ai-field ai-record-search">搜索联系人或内容<input id="ai-log-search" type="search" placeholder="输入联系人名称或记录内容…" value="${esc(filters.query)}"></label><button type="button" class="ai-reference-filter-button secondary" data-ai-toggle-filters aria-label="筛选" aria-controls="ai-log-filter" aria-expanded="${!!filters.open}">筛选</button><form id="ai-log-filter" ${filters.open ? '' : 'hidden'}><label class="ai-field">开始日期<input name="from" type="date" value="${esc(filters.from)}"></label><label class="ai-field">结束日期<input name="to" type="date" value="${esc(filters.to)}"></label><label class="ai-field">类型<select name="kind">${option('', '全部', !filters.kind)}${option('person', '联系人', filters.kind === 'person')}${option('group', '群聊', filters.kind === 'group')}</select></label><label class="ai-field">状态<select name="code">${option('', '全部', !filters.code)}${option('sent', '已代发', filters.code === 'sent')}${option('help', '需要本人处理', filters.code === 'help')}</select></label><div class="ai-filter-actions"><button type="submit" class="primary">筛选并刷新</button></div></form>
   <div id="ai-live-box">${liveActivityBox(state)}</div>
-  ${filters.source !== 'reply' ? `<details class="ap-record-block" open><summary><h4>主动聊天</h4><button type="button" class="quiet danger-link" data-ai-clear-records="proactive">删除全部</button><span>每次执行单独记录 · 删除任务后仍保留历史</span><button type="button" class="icon-button" data-ai-toggle-filters aria-expanded="${!!filters.open}" aria-controls="ai-log-filter" title="筛选" aria-label="筛选">${icon('filter')}</button></summary><div id="ai-proactive-records">${proactiveRecordRows(state, filters, proactiveLoading)}</div></details>` : ''}
-  ${filters.source === 'reply' ? `<details class="ap-record-block" open data-ai-optional="activity-reply"><summary><h4>自动回复</h4><div class="ai-record-kind-tabs" role="group" aria-label="回复记录对象">${[['person','联系人'],['group','群聊'],['all','全部']].map(([kind,label]) => `<button type="button" data-ai-record-kind="${kind}" aria-pressed="${(filters.kind || 'all') === kind}">${label}</button>`).join('')}</div><button type="button" class="quiet danger-link" data-ai-clear-records="reply">删除全部</button><span>按联系人查看近期执行内容，每页最多 25 位</span><button type="button" class="icon-button" data-ai-toggle-filters aria-expanded="${!!filters.open}" aria-controls="ai-log-filter" title="筛选" aria-label="筛选">${icon('filter')}</button></summary><div id="ai-activity-entries">${activityRows(state, filters, records, loading, summaryResults)}</div><div class="ai-actions"><button class="quiet" type="button" data-ai-log-page="${page - 1}" ${page === 0 ? 'disabled' : ''}>上一页</button><span>${page + 1} / ${pages}</span><button class="quiet" type="button" data-ai-log-page="${page + 1}" ${page + 1 >= pages ? 'disabled' : ''}>下一页</button></div></details><details class="ap-record-block" open data-ai-optional="activity-skip"><summary><h4>未回复记录</h4><button type="button" class="quiet danger-link" data-ai-clear-records="skip">删除全部</button><span>查看来信内容与未回复原因，按页查看完整记录</span></summary>${skipRecordsView(state)}</details>` : ''}<div id="ai-recent-errors">${recentErrorsBox(state, filters.errorsOpen, errorLoading)}</div></section>`;
+  ${filters.source !== 'reply' ? `<details class="ap-record-block qbx-record-section" open data-ai-optional="activity-proactive"><summary><div class="qbx-record-section-copy"><h4>主动聊天</h4><p>每次执行单独记录 · 删除任务后仍保留历史</p></div></summary><div class="qbx-record-section-body"><div class="qbx-record-section-tools"><span>主动聊天执行记录</span><button type="button" class="secondary danger-link" data-ai-clear-records="proactive">删除全部</button></div><div id="ai-proactive-records">${proactiveRecordRows(state, filters, proactiveLoading)}</div></div></details>` : ''}
+  ${filters.source === 'reply' ? `<details class="ap-record-block qbx-record-section" open data-ai-optional="activity-reply"><summary><div class="qbx-record-section-copy"><h4>自动回复</h4><p>按联系人查看近期执行内容，每页最多 25 位</p></div></summary><div class="qbx-record-section-body"><div class="qbx-record-section-tools"><div class="ai-record-kind-tabs" role="group" aria-label="回复记录对象">${[['person','联系人'],['group','群聊'],['all','全部']].map(([kind,label]) => `<button type="button" data-ai-record-kind="${kind}" aria-pressed="${(filters.kind || 'all') === kind}">${label}</button>`).join('')}</div><button type="button" class="secondary danger-link" data-ai-clear-records="reply">删除全部</button></div><div id="ai-activity-entries">${activityRows(state, filters, records, loading, summaryResults)}</div><footer class="ap-record-footer" data-ai-log-pagination>${activityPagination(state, filters, records)}</footer></div></details><details class="ap-record-block qbx-record-section" open data-ai-optional="activity-skip"><summary><div class="qbx-record-section-copy"><h4>未回复记录</h4><p>查看来信内容与未回复原因，按页查看完整记录</p></div></summary><div class="qbx-record-section-body"><div class="qbx-record-section-tools"><span>已保存的未回复来信</span><button type="button" class="secondary danger-link" data-ai-clear-records="skip">删除全部</button></div>${skipRecordsView(state)}</div></details>` : ''}<div id="ai-recent-errors">${recentErrorsBox(state, filters.errorsOpen, errorLoading)}</div></section>`;
 }
