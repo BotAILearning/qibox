@@ -2869,7 +2869,7 @@ export class AIAssistant {
           { images: textOnlyRetry ? [] : images, onlyImages: textOnlyRetry ? false : onlyImages, capabilityConcern: reason, mode, continuation, multiTurn, followUp, followUpAllowed: profile.kind !== 'group' && !followUp, kind: profile.kind, conversation, addressing, memory: selectMemoryForChat(readMemory(this.vault, profile), { query: pendingMessages.map(message => message.text || "").join(" ") || (strategy.replyGoal || strategy.purpose || ""), now: this.now() }), ...time, myInformation: selfContext(this, profile.kind), groupState, capabilities: { sendText: true, wechatVoiceText: true, files: false, calls: false, executeExternalActions: false, sendImages, sendAudio, receiveImages: !textOnlyRetry && images.length > 0, sendMedia: sendImages || sendAudio }, strategy, style, styleOwner: 'self', judgeReply: profile.kind === 'group' ? trigger !== 'atMe' : followUp || this.replyOptions(profile).judgeReply, updateStyle: this.data.settings.updateStyle, messages: modelMessages.map(message => ({ ...message, pending: conversation.pendingIncomingIds.includes(message.id), aiGenerated: message.aiGenerated === true || (profile.generatedIds || []).includes(message.id) })) }, signal, { validate: value => validateCurrentTimeReply(validateReplyResult(value, { multiTurn, group: profile.kind === 'group' }), time) }
         );
         if (result?.action === 'send') {
-          const violation = replySafetyViolation(messageSegments(result, { multiTurn }), { allowIdentity });
+          const violation = replySafetyViolation(messageSegments(result, { multiTurn }), { allowIdentity, audioText: sendAudio && result.media?.[0]?.type === 'audio' ? result.media[0].text : '' });
           if (violation) {
             if (!this.canDeliver(profile, mode, revision, signal)) return;
             if (attempt === 0) { safetyCorrection = replySafetyCorrection(violation); continue; }
@@ -2960,7 +2960,8 @@ export class AIAssistant {
     if (!(groupReply ? ['send', 'skip'].includes(result.action) : ['send', 'skip'].includes(result.action))) throw new AppError('模型返回不完整，本轮未发送');
     let segments = messageSegments(result, { multiTurn, group: groupReply && !requiredGroupReply, allowSkip: true, allowStop: !groupReply });
     if (result.action === 'send') {
-      const violation = replySafetyViolation(segments, { allowIdentity });
+      const nativeAudioAllowed = this.replyOptions(profile).sendAudio && this.bridge.supportsMediaOutput && this.bridge.supportsNativeVoiceOutput === true && mediaCapability(this.modelFor('chat'));
+      const violation = replySafetyViolation(segments, { allowIdentity, audioText: nativeAudioAllowed && result.media?.[0]?.type === 'audio' ? result.media[0].text : '' });
       if (violation) { result.action = 'skip'; result[violation === 'identity' ? 'identitySkipped' : 'executionSkipped'] = true; }
       const unsupported = segments.map(unsupportedTextAction).find(Boolean) || unsupportedTextAction(segments.join('\n')) || (segments.some(promisesMedia) ? 'media' : null);
       if (unsupported) { result.action = 'skip'; result.mediaSkipped = true; }
@@ -3013,7 +3014,7 @@ export class AIAssistant {
         const item = result.media[0], allowed = item?.type === 'image' ? this.replyOptions(profile).sendImages : item?.type === 'audio' && this.replyOptions(profile).sendAudio && this.bridge.supportsNativeVoiceOutput === true;
         if (allowed && (strategy.maxRounds === 'unlimited' || (profile.rounds || 0) + segments.length < strategy.maxRounds)) {
           try {
-            const media = await generateMediaOutput(this.modelFor('chat'), item, signal);
+            const media = await generateMediaOutput(this.modelFor('chat'), item, signal, undefined, { allowIdentity });
             if (!this.canDeliver(profile, mode, revision, signal)) return;
             if (media.mediaType === 'audio') segments[0] = `（AI 合成语音）${segments[0]}`.slice(0, 3000);
             segments.push(media);

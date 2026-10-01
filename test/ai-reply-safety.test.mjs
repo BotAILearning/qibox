@@ -13,7 +13,7 @@ test('robot introductions and model explanations are recognized without banning 
 });
 
 test('external completion, fake live operations and delayed promises fail before sending', () => {
-  for (const text of ['已执行任务', '任务执行完成', '好的，已经帮你完成任务', '任务已经处理好了', '我帮你处理好了', '搞定了', '任务执行成功', '我已经替你下单了', '我帮你设置好了', '我把文件删除了', '申请已提交', '我正在查询', '我稍后给你转账', '不能运行脚本，但我已运行代码', '我没有查询权限，已经查到结果', 'I have already executed the task', 'The task is completed'])
+  for (const text of ['已执行任务', '任务执行完成', '我已经完成任务', '好的，已经帮你完成任务', '任务已经处理好了', '我帮你处理好了', '我已经办妥', '搞定了', '完成✅', 'Done!', '任务执行成功', '我已经替你下单了', '我帮你设置好了', '我把文件删除了', '申请已提交', '我正在查询', '我稍后给你转账', '不能运行脚本，但我已运行代码', '我没有查询权限，已经查到结果', 'I have already executed the task', 'The task is completed'])
     assert.equal(claimsUnverifiedExecution(text), true, text);
 });
 
@@ -30,6 +30,9 @@ test('splitting a claim across segments and quoting it bare cannot bypass the gu
   assert.equal(replySafetyViolation(['“已执行任务”']), 'execution');
   assert.equal(replySafetyViolation(['我是AI'], { allowIdentity: true }), '');
   assert.equal(replySafetyViolation(['我是AI，任务已执行'], { allowIdentity: true }), 'execution');
+  assert.equal(replySafetyViolation(['收到'], { audioText: '我是一个机器人' }), 'identity');
+  assert.equal(replySafetyViolation(['收到'], { audioText: '已经帮你处理好了' }), 'execution');
+  assert.equal(replySafetyViolation(['收到'], { audioText: '语音确认收到' }), '');
 });
 
 async function fixture(t, group = false) {
@@ -99,3 +102,17 @@ test('proactive drafts retry safety violations once and reject repeated false co
   await assert.rejects(f.a.generateProactiveMessage(task, f.p, snapshot, new AbortController().signal), /身份规则/);
   assert.equal(f.bridge.sent.length, 0);
 });
+
+for (const [audioText, reason] of [['我是一个机器人', 'identity-rule-block'], ['任务已经执行完成', 'unverified-execution']]) {
+  test(`safe text cannot hide unsafe native voice: ${reason}`, async t => {
+    const f = await fixture(t);
+    await f.a.configure({ ...modelConfig, baseUrl: 'https://api.minimaxi.com/v1' });
+    f.bridge.supportsMediaOutput = true; f.bridge.supportsNativeVoiceOutput = true;
+    await f.a.setReplyOptions({ contact: f.p.contact, sendAudio: true });
+    const fetchMock = t.mock.method(globalThis, 'fetch', async () => { throw new Error('Unsafe speech must never reach media generation'); });
+    f.provider.complete = async () => ({ action: 'send', text: '收到', media: [{ type: 'audio', text: audioText }] });
+    await f.receive('请发语音');
+    assert.equal(fetchMock.mock.callCount(), 0); assert.equal(f.bridge.sent.length, 0);
+    assert.equal(f.a.publicState().skipRecords[0].reasonCode, reason);
+  });
+}

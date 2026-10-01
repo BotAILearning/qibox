@@ -27,3 +27,13 @@ test('media never follows model URLs, supports video or ignores provider errors'
   await assert.rejects(generateMediaOutput(config, { type: 'image', prompt: 'test' }, signal, async () => Response.json({ base_resp: { status_code: 1008 }, data: { image_urls: ['https://untrusted.test/a.png'] } })), /媒体生成未成功/);
   await assert.rejects(generateMediaOutput(config, { type: 'image', prompt: 'test' }, signal, async () => Response.json({ data: { image_base64: [Buffer.from('not an image').toString('base64')] } })), /校验失败/);
 });
+
+test('unsafe speech is rejected before contacting TTS even when called outside the reply path', async () => {
+  let calls = 0;
+  const fetcher = async () => { calls++; return Response.json({ data: { audio: Buffer.from('ID3 fixture audio').toString('hex') } }); };
+  await assert.rejects(generateMediaOutput(config, { type: 'audio', text: '我是一个机器人' }, signal, fetcher), /身份规则/);
+  await assert.rejects(generateMediaOutput(config, { type: 'audio', text: '任务已执行完成' }, signal, fetcher), /未核实/);
+  assert.equal(calls, 0);
+  await generateMediaOutput(config, { type: 'audio', text: '我是AI代为回复' }, signal, fetcher, { allowIdentity: true });
+  assert.equal(calls, 1);
+});
