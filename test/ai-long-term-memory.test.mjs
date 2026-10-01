@@ -89,7 +89,7 @@ test('reply generation receives selected memory and stores verified source time 
   assert.ok(!call.input.memory.entries.some(entry => entry.text.includes('感冒')));
   assert.match(call.system, /historical 只表示过去/);
   assert.match(call.system, /比较 messages 的时间戳与 currentTime/);
-  assert.match(call.system, /带人会不会挺累的/);
+  assert.match(call.system, /先回应其明说的处境或感受/);
   const saved = readMemory(assistant.vault, profile).entries.find(entry => entry.text === '对方现在在准备毕业论文');
   assert.deepEqual(saved?.evidence, [incoming.id]);
   assert.equal(saved?.observedAt, incoming.timestamp * 1000);

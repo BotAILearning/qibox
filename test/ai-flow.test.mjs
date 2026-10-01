@@ -79,7 +79,7 @@ test('segments are separate verified sends and persist only progress metadata', 
 });
 
 test('invalid segment counts, empty content and unsupported promises are rejected before the first send', async t => {
-  for (const segments of [[], [''], [...opening, 'four'], [opening[0], '我马上给你打电话']]) await t.test(JSON.stringify(segments), async t => {
+  for (const segments of [[], [''], [...opening, 'four', 'five', 'six'], [opening[0], '我马上给你打电话']]) await t.test(JSON.stringify(segments), async t => {
     const { a, bridge, provider } = await fixture(t, { segments: true });
     provider.next = async () => ({ action: 'send', segments }); await launch(a); await a.tick();
     assert.equal(bridge.sent.length, 0);

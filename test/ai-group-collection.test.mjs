@@ -3,13 +3,13 @@ import assert from 'node:assert/strict';
 import { AIAssistant } from '../server/ai-service.mjs';
 import { AIModelFixture, ChatFixture, modelConfig, key } from './ai-fixtures.mjs';
 import { temp, cleanup } from './fixtures.mjs';
-import { readGroupInbox, groupContextCanAdvance } from '../server/ai-group-inbox.mjs';
+import { readGroupInbox, nextGroupBatch, groupContextCanAdvance } from '../server/ai-group-inbox.mjs';
 
 async function fixture(t) {
   const root = await temp(), bridge = new ChatFixture(), provider = new AIModelFixture();
   bridge.stableMessageIds = true; bridge.contacts[0].kind = 'group';
   let now = 1000000;
-  const a = new AIAssistant({ dataRoot: root, bridge, provider, now: () => now });
+  const a = new AIAssistant({ dataRoot: root, bridge, provider, now: () => now, delay: async () => {} });
   await a.init();
   t.after(async () => { await a.close(); await cleanup(root); });
   await a.configure(modelConfig); await a.testProvider(); await a.scan();
@@ -33,17 +33,19 @@ test('new group traffic during model generation cannot overwrite an @me obligati
   assert.ok(readGroupInbox(a.vault, profile).pending.every(row => row.id !== mention.id));
 });
 
-test('multiple members mentioning me receive separate replies, not one latest-message reply', async t => {
+test('multiple group members share one frozen generation with separate reply segments', async t => {
   const { a, bridge, provider, profile, push, advance } = await fixture(t);
   const one = push('甲'), two = push('乙'); await a.tick(); advance(3000);
   const targets = [];
   provider.complete = async (_config, _system, input) => {
     targets.push(input.conversation.pendingIncomingIds);
-    return { action: 'send', text: input.conversation.pendingIncomingIds.includes(one.id) ? '答甲' : '答乙' };
+    assert.deepEqual(input.conversation.pendingIncomingIds, [one.id, two.id]);
+    assert.deepEqual(input.conversation.pendingBySender, [{ sender: key('甲'), messageIds: [one.id] }, { sender: key('乙'), messageIds: [two.id] }]);
+    return { action: 'send', segments: ['答甲', '答乙'] };
   };
   await a.tick();
   assert.deepEqual(bridge.sent.map(row => row.text), ['答甲', '答乙']);
-  assert.deepEqual(targets, [[one.id], [two.id]]);
+  assert.deepEqual(targets, [[one.id, two.id]]);
   assert.equal(readGroupInbox(a.vault, profile).pending.length, 0);
   await a.tick(); assert.equal(bridge.sent.length, 2);
 });
@@ -63,6 +65,29 @@ test('incoming-only changes may advance but a manual outgoing message invalidate
   const before = { messages: [{ id: 'self-1', direction: 'self' }] };
   assert.equal(groupContextCanAdvance(before, { messages: [...before.messages, { id: 'incoming', direction: 'other' }] }), true);
   assert.equal(groupContextCanAdvance(before, { messages: [...before.messages, { id: 'manual', direction: 'self' }] }), false);
+});
+
+test('a mixed known and unknown sender batch never narrows its recipients to the known member', () => {
+  const batch = nextGroupBatch({ pending: [{ id: 'known', sender: key('甲'), trigger: 'atMe' }, { id: 'unknown', trigger: 'atMe' }] });
+  assert.equal(batch.sender, null);
+  assert.deepEqual(batch.ids, ['known', 'unknown']);
+});
+
+test('seven group members share the five-segment cap and are settled together after one generation', async t => {
+  const { a, bridge, provider, profile, push, advance } = await fixture(t);
+  const incoming = Array.from({ length: 7 }, (_, i) => push(`成员${i + 1}`));
+  await a.tick(); advance(3000);
+  provider.next = async input => {
+    assert.deepEqual(input.conversation.pendingIncomingIds, incoming.map(row => row.id));
+    assert.equal(input.conversation.pendingBySender.length, 7);
+    return { action: 'send', segments: Array.from({ length: 5 }, (_, i) => `合并答复${i + 1}`) };
+  };
+  await a.tick();
+  assert.equal(provider.calls.length, 1);
+  assert.equal(bridge.sent.length, 5);
+  assert.equal(profile.rounds, 5);
+  assert.equal(readGroupInbox(a.vault, profile).pending.length, 0);
+  await a.tick(); assert.equal(bridge.sent.length, 5);
 });
 
 test('a missed snapshot is backfilled without losing an earlier mention outside the current window', async t => {

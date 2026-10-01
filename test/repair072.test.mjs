@@ -30,7 +30,7 @@ async function fixture(t, delay = async () => {}) {
 
 test('generation protocol rejects ambiguous, empty, excessive or disallowed segments without sending', () => {
   // 双载体（text+segments）不再作废，按发送方式挽救一种；其余歧义/越界仍拒绝。
-  for (const result of [{ action: 'send', segments: [] }, { action: 'send', segments: [' '] }, { action: 'send', segments: ['1','2','3','4'] }, { action: 'skip', text: '不要发' }, { action: 'wait', waitSeconds: 1 }]) assert.throws(() => messageSegments(result, { multiTurn: true }));
+  for (const result of [{ action: 'send', segments: [] }, { action: 'send', segments: [' '] }, { action: 'send', segments: ['1','2','3','4','5','6'] }, { action: 'skip', text: '不要发' }, { action: 'wait', waitSeconds: 1 }]) assert.throws(() => messageSegments(result, { multiTurn: true }));
   assert.deepEqual(messageSegments({ action: 'send', text: '甲', segments: ['乙'] }, { multiTurn: true }), ['乙']);
   assert.throws(() => messageSegments({ action: 'send', segments: ['一段'] }));
   assert.deepEqual(messageSegments({ action: 'send', segments: ['第一段', '第二段？'] }, { multiTurn: true }), ['第一段', '第二段？']);

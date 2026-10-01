@@ -25,7 +25,7 @@ import { categories, styleOptions, avoidOptions, defaultStyle, styleSchema, styl
 import { providerPresets, goalPresets, replyPresets } from './ai-presets.mjs';
 import { unsupportedTextAction, promisesMedia } from './ai-capabilities.mjs';
 import { parseSchedule, advanceSchedule } from './ai-schedule.mjs';
-import { groupDefaults, groupOptions, groupReplyEnabled, groupBurst, groupPrompt, groupTimingState, groupRealtimeIntervalMs, groupRealtimeDelayMs } from './ai-group.mjs';
+import { groupPendingMessages, groupPendingBySender, groupDefaults, groupOptions, groupReplyEnabled, groupBurst, groupPrompt, groupTimingState, groupRealtimeIntervalMs, groupRealtimeDelayMs } from './ai-group.mjs';
 import { ProactiveTasks } from './ai-proactive.mjs';
 import { historySummary, validReportId } from './ai-report-history.mjs';
 
@@ -1061,8 +1061,8 @@ export class AIAssistant {
     };
     const recentSelfMessages = snapshot.messages.filter(message => message.direction === 'self').slice(-8).map(emphasis);
     const latestIncoming = snapshot.messages.findLast(message => message.direction === 'other');
-    const generate = (correction = '') => this.provider.complete(this.modelFor('proactive'), `${generationPrompt}${naturalChatPrompt}${longTermMemoryPrompt}${timelinePrompt}${conversationPrompt}${addressingPrompt}${personalContextPrompt}${presentTimePrompt}${identityPrompt(false)}${proactivePrompt(strategy)} 当前只能发送纯文字，不承诺发送媒体、文件或执行付款。本次是独立主动聊天任务，不自动续聊，不更新风格或记忆。${generationProtocol({ multiTurn, followUpAllowed: false, memoryUpdates: false, allowSkip: false })}${extra}${replySafetyPrompt}${correction}${currentTimeAnchor(time)}`, {
-      mode: 'proactive', continuation: false, multiTurn, followUp: false, followUpAllowed: false, updateStyle: false, judgeReply: false,
+    const generate = (correction = '') => this.provider.complete(this.modelFor('proactive'), `${generationPrompt}${naturalChatPrompt}${longTermMemoryPrompt}${timelinePrompt}${reflectiveReplyPrompt}${conversationPrompt}${addressingPrompt}${personalContextPrompt}${presentTimePrompt}${identityPrompt(false)}${proactivePrompt(strategy)} 当前只能发送纯文字，不承诺发送媒体、文件或执行付款。本次是独立主动聊天任务，不自动续聊，不更新风格或记忆。${generationProtocol({ multiTurn, followUpAllowed: false, memoryUpdates: false, allowSkip: false })}${extra}${replySafetyPrompt}${correction}${currentTimeAnchor(time)}`, {
+      mode: 'proactive', continuation: false, multiTurn, allowSegments: true, followUp: false, followUpAllowed: false, updateStyle: false, judgeReply: false,
       kind: profile.kind, strategy, style, styleOwner: 'self', addressing: { styleScope: 'current-chat', currentStyle: style },
       ...time,
       myInformation: selfContext(this, profile.kind), memory: selectMemoryForChat(readMemory(this.vault, profile), { query: `${task.goal}\n${latestIncoming?.text || ''}`, now: this.now() }), capabilities: { sendText: true, sendMedia: false, files: false, calls: false, executeExternalActions: false },
@@ -2711,21 +2711,14 @@ export class AIAssistant {
   async generate(profile, snapshot, mode, revision, signal, item, { followUp = false, groupBatch = null } = {}) {
     if (profile.kind === 'group' && mode === 'reply' && !followUp && !groupBatch) {
       await this.observe(profile, snapshot);
-      // Each sender's mentions are an independent obligation. New arrivals are
-      // queued by observe() and cannot replace this frozen batch.
-      for (let turn = 0; turn < 12 && this.canDeliver(profile, mode, revision, signal); turn++) {
-        const batch = nextGroupBatch(readGroupInbox(this.vault, profile));
-        if (!batch) break;
-        const known = new Set(snapshot.messages.map(message => message.id));
-        const messages = [...snapshot.messages, ...batch.messages.filter(message => !known.has(message.id))];
-        if (messages.every(message => Number.isFinite(message.timestamp))) messages.sort((a,b) => a.timestamp - b.timestamp);
-        const context = { ...snapshot, messages };
-        await this.generate(profile, context, mode, revision, signal, item, { groupBatch: batch });
-        const remaining = readGroupInbox(this.vault, profile).pending;
-        if (remaining.some(message => batch.ids.includes(message.id))) break;
-        snapshot = await this.read(profile, signal);
-        await this.observe(profile, snapshot);
-      }
+      // One frozen waiting window covers all pending members. New arrivals
+      // stay queued for a later round and cannot replace this generation.
+      const batch = nextGroupBatch(readGroupInbox(this.vault, profile));
+      if (!batch || !this.canDeliver(profile, mode, revision, signal)) return;
+      const known = new Set(snapshot.messages.map(message => message.id));
+      const messages = [...snapshot.messages, ...batch.messages.filter(message => !known.has(message.id))];
+      if (messages.every(message => Number.isFinite(message.timestamp))) messages.sort((a,b) => a.timestamp - b.timestamp);
+      await this.generate(profile, { ...snapshot, messages }, mode, revision, signal, item, { groupBatch: batch });
       return;
     }
     let trigger = null, burst;
@@ -2765,6 +2758,7 @@ export class AIAssistant {
     const strategy = this.strategy(profile, mode), continuation = mode === 'reply' && this.continuing(profile);
     const groupState = profile.kind === 'group' ? { trigger, triggerMessages: burst?.messages, now: this.now(), recentActions: this.data.events.filter(e => e.target === profile.id && this.now() - e.at <= 600000).map(({ code, at }) => ({ code, at })), lastManualAt: profile.groupPauseReason === 'manual' ? profile.groupPausedUntil - 600000 : null } : undefined;
     const multiTurn = this.multiTurn(profile, mode, strategy);
+    const allowSegments = mode === 'reply' || multiTurn;
     if (followUp && !multiTurn) return;
     const cappedRounds = profile.rounds || 0;
     if (mode === 'reply' && strategy.maxRounds !== 'unlimited' && cappedRounds >= strategy.maxRounds) {
@@ -2785,12 +2779,16 @@ export class AIAssistant {
     // Old voice bubbles are placeholders until this exact reply cycle has
     // converted them. Keep them explicitly unreadable in model context.
     for (const message of modelMessages) if (message.type === 'voice') message.unresolved = true;
-    const handledIndex = Math.max(lastOwn, modelMessages.findIndex(m => m.id === profile.handledIncomingId));
+    const handledIndex = Math.max(lastOwn, modelMessages.findIndex(m => m.id === profile.handledIncomingId),
+      modelMessages.findIndex(m => m.id === this.cursors.get(profile.id)?.pendingAfter));
     const triggerIds = new Set(burst?.messages.map(m => m.id) || []);
+    const firstTrigger = modelMessages.findIndex(message => triggerIds.has(message.id));
+    const incomingWindow = modelMessages.slice(handledIndex + 1).filter(m => m.direction === 'other');
     const pendingMessages = profile.kind === 'group' && mode === 'reply'
-      ? modelMessages.filter(m => triggerIds.has(m.id))
-      : modelMessages.slice(handledIndex + 1).filter(m => m.direction === 'other');
+      ? groupPendingMessages(modelMessages.slice(Math.max(0, firstTrigger)), burst?.messages)
+      : incomingWindow;
     conversation.pendingIncomingIds = pendingMessages.map(m => m.id);
+    if (profile.kind === 'group' && mode === 'reply') conversation.pendingBySender = groupPendingBySender(pendingMessages);
     const voices = mode === 'proactive' ? [] : pendingMessages.filter(m => m.type === 'voice');
     // 无法解析的内容只做标记交给模型：不转交本人、不暂停自动回复。
     let voiceUnavailable = voices.length > 8;
@@ -2865,11 +2863,11 @@ export class AIAssistant {
         const sendImages = this.replyOptions(profile).sendImages && mediaReady, sendAudio = this.replyOptions(profile).sendAudio && mediaReady && this.bridge.supportsNativeVoiceOutput === true;
         result = onlyImages && !images.length && profile.kind !== 'group' ? { action: 'skip', mediaSkipped: true } : await this.provider.complete(
           this.modelFor('chat'),
-          `${generationPrompt}${naturalChatPrompt}${longTermMemoryPrompt}${timelinePrompt}${personalContextPrompt}${presentTimePrompt}${chatMemoryPrompt}${profile.kind === 'group' ? groupMemoryInstruction : ' 单聊中，对方姓名写入 name；只有用户确实直接这样称呼对方且对象明确时，才把称呼写入 addressing。'}${identityPrompt(allowIdentity)}${conversationPrompt}${replySummaryContext} ${mediaOutputPrompt} 只能发送文字和capabilities明确允许的生成图片或微信原生语音，不能读取或下载任意文件，不能拨打或接听电话，仅能理解实际附带的图片；未附带图片或图片无法读取时，应如实说明无法查看并请对方转成文字，不猜测图片内容。${groupTriggerInstruction}${groupBatch?.sender ? ` 本轮只回复成员ID ${groupBatch.sender} 对应的消息 ${groupBatch.ids.join(',')}，其余成员的消息仅作背景。需要称呼时仅使用members中该ID对应的真实称呼，不编造姓名。` : ''}${profile.groupContextWait?.trigger === 'atMe' ? ' 上轮已等待补充信息，本次必须回复；信息仍不足时用一句简短问题澄清，不能再次wait。' : ''}${currentTask}${currentStyle}${profile.kind === 'group' ? groupPrompt(trigger, multiTurn, profile.groupOptions?.realtimeMode) : ''}${generationProtocol({ multiTurn, group: profile.kind === 'group', followUpAllowed: profile.kind !== 'group' && !followUp, updateStyle: this.data.settings.updateStyle, allowSkip: !mustReply, allowStop: true })}${reflectiveReplyPrompt}${currentTimeAnchor(time)}${mode === 'reply' && !followUp ? ' 本轮只回应conversation.pendingIncomingMessages列出的来信；其中excerpt=true时按ID查阅messages全文。messages中pending=false的旧问题和已发回复只作背景，不能再补答。' : ''}${replySafetyPrompt}${safetyCorrection}`,
-          { images: textOnlyRetry ? [] : images, onlyImages: textOnlyRetry ? false : onlyImages, capabilityConcern: reason, mode, continuation, multiTurn, followUp, followUpAllowed: profile.kind !== 'group' && !followUp, kind: profile.kind, conversation, addressing, memory: selectMemoryForChat(readMemory(this.vault, profile), { query: pendingMessages.map(message => message.text || "").join(" ") || (strategy.replyGoal || strategy.purpose || ""), now: this.now() }), ...time, myInformation: selfContext(this, profile.kind), groupState, capabilities: { sendText: true, wechatVoiceText: true, files: false, calls: false, executeExternalActions: false, sendImages, sendAudio, receiveImages: !textOnlyRetry && images.length > 0, sendMedia: sendImages || sendAudio }, strategy, style, styleOwner: 'self', judgeReply: profile.kind === 'group' ? trigger !== 'atMe' : followUp || this.replyOptions(profile).judgeReply, updateStyle: this.data.settings.updateStyle, messages: modelMessages.map(message => ({ ...message, pending: conversation.pendingIncomingIds.includes(message.id), aiGenerated: message.aiGenerated === true || (profile.generatedIds || []).includes(message.id) })) }, signal, { validate: value => validateCurrentTimeReply(validateReplyResult(value, { multiTurn, group: profile.kind === 'group' }), time) }
+          `${generationPrompt}${naturalChatPrompt}${longTermMemoryPrompt}${timelinePrompt}${personalContextPrompt}${presentTimePrompt}${chatMemoryPrompt}${profile.kind === 'group' ? groupMemoryInstruction : ' 单聊中，对方姓名写入 name；只有用户确实直接这样称呼对方且对象明确时，才把称呼写入 addressing。'}${identityPrompt(allowIdentity)}${conversationPrompt}${replySummaryContext} ${mediaOutputPrompt} 只能发送文字和capabilities明确允许的生成图片或微信原生语音，不能读取或下载任意文件，不能拨打或接听电话，仅能理解实际附带的图片；未附带图片或图片无法读取时，应如实说明无法查看并请对方转成文字，不猜测图片内容。${groupTriggerInstruction}${groupBatch?.sender ? ` 本轮只回复成员ID ${groupBatch.sender} 对应的消息 ${groupBatch.ids.join(',')}，其余成员的消息仅作背景。需要称呼时仅使用members中该ID对应的真实称呼，不编造姓名。` : ''}${profile.groupContextWait?.trigger === 'atMe' ? ' 上轮已等待补充信息，本次必须回复；信息仍不足时用一句简短问题澄清，不能再次wait。' : ''}${currentTask}${currentStyle}${profile.kind === 'group' ? groupPrompt(trigger, allowSegments, profile.groupOptions?.realtimeMode) : ''}${generationProtocol({ multiTurn, allowSegments, group: profile.kind === 'group', followUpAllowed: profile.kind !== 'group' && !followUp, updateStyle: this.data.settings.updateStyle, allowSkip: !mustReply, allowStop: true })}${reflectiveReplyPrompt}${currentTimeAnchor(time)}${mode === 'reply' && !followUp ? ' 本轮只回应conversation.pendingIncomingMessages列出的来信；其中excerpt=true时按ID查阅messages全文。messages中pending=false的旧问题和已发回复只作背景，不能再补答。' : ''}${replySafetyPrompt}${safetyCorrection}`,
+          { images: textOnlyRetry ? [] : images, onlyImages: textOnlyRetry ? false : onlyImages, capabilityConcern: reason, mode, continuation, multiTurn, allowSegments, followUp, followUpAllowed: profile.kind !== 'group' && !followUp, kind: profile.kind, conversation, addressing, memory: selectMemoryForChat(readMemory(this.vault, profile), { query: pendingMessages.map(message => message.text || "").join(" ") || (strategy.replyGoal || strategy.purpose || ""), now: this.now() }), ...time, myInformation: selfContext(this, profile.kind), groupState, capabilities: { sendText: true, wechatVoiceText: true, files: false, calls: false, executeExternalActions: false, sendImages, sendAudio, receiveImages: !textOnlyRetry && images.length > 0, sendMedia: sendImages || sendAudio }, strategy, style, styleOwner: 'self', judgeReply: profile.kind === 'group' ? trigger !== 'atMe' : followUp || this.replyOptions(profile).judgeReply, updateStyle: this.data.settings.updateStyle, messages: modelMessages.map(message => ({ ...message, pending: conversation.pendingIncomingIds.includes(message.id), aiGenerated: message.aiGenerated === true || (profile.generatedIds || []).includes(message.id) })) }, signal, { validate: value => validateCurrentTimeReply(validateReplyResult(value, { multiTurn, allowSegments, group: profile.kind === 'group' }), time) }
         );
         if (result?.action === 'send') {
-          const violation = replySafetyViolation(messageSegments(result, { multiTurn }), { allowIdentity, audioText: sendAudio && result.media?.[0]?.type === 'audio' ? result.media[0].text : '' });
+          const violation = replySafetyViolation(messageSegments(result, { multiTurn, allowSegments }), { allowIdentity, audioText: sendAudio && result.media?.[0]?.type === 'audio' ? result.media[0].text : '' });
           if (violation) {
             if (!this.canDeliver(profile, mode, revision, signal)) return;
             if (attempt === 0) { safetyCorrection = replySafetyCorrection(violation); continue; }
@@ -2958,7 +2956,7 @@ export class AIAssistant {
     if (!this.canDeliver(profile, mode, revision, signal)) return;
     const groupReply = profile.kind === 'group' && mode === 'reply';
     if (!(groupReply ? ['send', 'skip'].includes(result.action) : ['send', 'skip'].includes(result.action))) throw new AppError('模型返回不完整，本轮未发送');
-    let segments = messageSegments(result, { multiTurn, group: groupReply && !requiredGroupReply, allowSkip: true, allowStop: !groupReply });
+    let segments = messageSegments(result, { multiTurn, allowSegments, group: groupReply && !requiredGroupReply, allowSkip: true, allowStop: !groupReply });
     if (result.action === 'send') {
       const nativeAudioAllowed = this.replyOptions(profile).sendAudio && this.bridge.supportsMediaOutput && this.bridge.supportsNativeVoiceOutput === true && mediaCapability(this.modelFor('chat'));
       const violation = replySafetyViolation(segments, { allowIdentity, audioText: nativeAudioAllowed && result.media?.[0]?.type === 'audio' ? result.media[0].text : '' });
@@ -3012,7 +3010,7 @@ export class AIAssistant {
     } else {
       if (result.action === 'send' && Array.isArray(result.media) && this.bridge.supportsMediaOutput && mediaCapability(this.modelFor('chat'))) {
         const item = result.media[0], allowed = item?.type === 'image' ? this.replyOptions(profile).sendImages : item?.type === 'audio' && this.replyOptions(profile).sendAudio && this.bridge.supportsNativeVoiceOutput === true;
-        if (allowed && (strategy.maxRounds === 'unlimited' || (profile.rounds || 0) + segments.length < strategy.maxRounds)) {
+        if (allowed && segments.length < 5 && (strategy.maxRounds === 'unlimited' || (profile.rounds || 0) + segments.length < strategy.maxRounds)) {
           try {
             const media = await generateMediaOutput(this.modelFor('chat'), item, signal, undefined, { allowIdentity });
             if (!this.canDeliver(profile, mode, revision, signal)) return;
