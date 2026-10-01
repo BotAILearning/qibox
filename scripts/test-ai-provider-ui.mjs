@@ -164,11 +164,11 @@ try {
   assert.match(await firstItem.innerText(), /未分配功能/);
   report.checks.push('Second model is not auto-assigned; per-feature dropdown saves and applies; “应用于所有功能” reassigns every feature; unassigned models show 未分配功能');
   // 删除第二个模型 → 引用它的功能回退到剩余第一个
-  page.once('dialog', dialog => dialog.dismiss());
   await page.locator(`[data-ai-model-delete=${secondId}]`).click();
+  await page.locator('dialog.ai-confirm-dialog[open] [data-cancel]').click();
   assert.equal(await page.locator(`[data-ai-model-delete=${secondId}]`).count(), 1, 'cancel retains model');
-  page.once('dialog', dialog => dialog.accept());
   await page.locator(`[data-ai-model-delete=${secondId}]`).click();
+  await page.locator('dialog.ai-confirm-dialog[open] button[type=submit]').click();
   await page.locator('.ai-model-item').filter({ hasText: 'fixture-chat-pro' }).waitFor({ state: 'detached' });
   for (const feature of ['chat', 'learningAnalysis']) assert.equal(await page.locator(`[data-ai-assignment=${feature}]`).inputValue(), firstId);
   await page.getByRole('button', { name: '保存', exact: true }).click();
@@ -177,7 +177,7 @@ try {
   assert.equal(ai.publicState().assignments.learningAnalysis, firstId);
   report.checks.push('Deleting a model falls back to the remaining first model for features that referenced it');
   // 重新打开面板：密钥仍掩码；保存请求不携带掩码值
-  await page.getByRole('button', { name: '收起 AI 辅助', exact: true }).click();
+  await page.getByRole('button', { name: '返回微信', exact: true }).click();
   await page.locator('#ai-open').click();
   await page.getByRole('button', { name: '系统设置', exact: true }).click();
   await page.locator('.ai-settings-entry[data-ai-nav=provider]').click();

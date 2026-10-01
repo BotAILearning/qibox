@@ -56,6 +56,7 @@ try{
   await page.locator('.ai-main-tabs [data-ai-nav=analysis]').click();await settled();
   await createLayout(1440);
   await page.screenshot({path:path.join(output,'desktop-create-analysis-empty.png')});
+  await page.locator('.ai-analysis-request-fields > summary').click();
   await page.locator('#ai-analysis-request-text').fill('分别总结约定');
   await page.locator('[data-ai-analysis-range=week]').click();
   const originalDraft=await draft();

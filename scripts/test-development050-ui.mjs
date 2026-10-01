@@ -78,7 +78,7 @@ try {
   assert.equal(await page.locator('.ai-reference-memory-content > h4, .ai-reference-memory-content > .ai-memory-history').count(), 0);
   assert.equal(await page.locator('.ai-reference-memory-head .ai-memory-history').count(), 0, '没有修改记录时不展示历史入口');
   const categoryLabels = await page.locator('.ai-reference-memory-categories button span').allTextContents();
-  assert.deepEqual(categoryLabels, ['姓名','手机号码','日期','学校','地址','工作信息','其他记忆']);
+  assert.deepEqual(categoryLabels, ['姓名','其他记忆','工作信息','日期','地址','手机号码','学校']);
   await page.screenshot({ path: path.join(output, 'chat-memory.png') });
   await page.locator('[data-ai-object-section=reply]').click();
   if (await page.locator('#ai-object-form [name=enabled]').isChecked()) await page.locator('#ai-object-form [name=enabled]').uncheck();
@@ -186,6 +186,7 @@ try {
   await page.screenshot({ path: path.join(output, 'group-realtime-modes.png') });
   await page.locator('[data-ai-kind=person]').click();
   await page.locator('[data-ai-nav=analysis]').click();
+  await page.locator('.ai-analysis-request-fields > summary').click();
   await page.locator('#ai-analysis-form [name=request]').fill('分别总结约定');
   await page.locator('[data-ai-analysis-pick]').click();
   for (const c of bridge.contacts.slice(0, 2)) await page.locator(`.ai-contact-picker-dialog [data-picker-id="${c.id}"]`).check();
