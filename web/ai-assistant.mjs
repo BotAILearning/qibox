@@ -167,7 +167,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     if (button) button.disabled = !!value.pending;
   }
   let proactiveHistory = [], proactiveHistoryPage = null, proactiveRecordLoading = false, proactiveRecordEpoch = 0;
-  let errorHistory = [], errorPage = null, errorLoading = false, errorEpoch = 0;
+  let errorHistory = [], errorPage = null, errorLoading = false, errorEpoch = 0, errorLocatorEpoch = 0;
   const recordCache = new RecordCache();
   let logRequestScope = '';
   const rememberRecords = () => recordCache.save(id, state?.account, { logRecords, proactiveHistory, proactiveHistoryPage, errorHistory, errorPage, logFilters });
@@ -1587,12 +1587,16 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         await navigate('overview'); return;
       }
       if ('aiErrorRecordTarget' in button.dataset) {
-        const current = generation, target = id, account = state.account;
+        const current = generation, target = id, account = state.account, epoch = ++errorLocatorEpoch;
+        const errorHost = $('#ai-recent-errors');
+        const unchanged = () => current === generation && target === id && account === state?.account && epoch === errorLocatorEpoch &&
+          tab === 'activity' && !panel.hidden && errorHost?.isConnected && errorHost === $('#ai-recent-errors');
         button.disabled = true;
         let result;
         try { result = await api(`/instances/${target}/ai`, { action: 'error-related-record', id: button.dataset.aiErrorRecordTarget }, 30000); }
+        catch (error) { if (!unchanged()) return; throw error; }
         finally { if (button.isConnected) button.disabled = false; }
-        if (current !== generation || target !== id || account !== state?.account || tab !== 'activity') return;
+        if (!unchanged()) return;
         const record = result.record;
         if (!record?.id || record.account !== account || !['proactive', 'skip'].includes(result.source)) throw new Error('关联记录已变化，请重新查看异常');
         logFilters = { ...logFilters, source: result.source === 'proactive' ? 'proactive' : 'reply', query: '', from: '', to: '', kind: '', code: '', page: 0, taskId: result.source === 'proactive' ? record.taskId : '' };
