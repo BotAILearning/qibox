@@ -398,6 +398,11 @@ export class ProactiveTasks {
             partial(this.interruption(fresh, profile) === 'other' ? '对方已回复，剩余段落已取消并交由自动回复处理' : '聊天已变化，剩余段落已取消'); return;
           }
         }
+        const unsafe = a.proactiveUnsupported(texts.join(''), context);
+        if (unsafe) {
+          if (sent) partial(unsafe); else this.record(task, item, 'skipped', unsafe);
+          return;
+        }
         item.operationId = randomUUID();
         const segment = { index: sent, operationId: item.operationId, status: 'sending' }; item.segments.push(segment);
         const record = this.record(task, item, 'sending', '', texts.slice(0, sent + 1).join('\n'));

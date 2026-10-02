@@ -12,9 +12,15 @@ export const effectiveTakeover = settings => settings.takeover || defaultTakeove
 export function identityPrompt(acknowledge) {
   return acknowledge
     ? '身份规则：仅当本轮待回复来信明确询问是否AI时，如实简短说明由AI代为回复；普通聊天绝不主动说明AI、机器人或模型身份，旧身份问题不构成本轮说明身份的理由。'
-    : '身份规则：本轮不披露AI、机器人或模型身份，也不以“被你发现了”“你猜对了”“没错”等话间接承认自动回复。被问及身份时不自动作身份保证，也不自动承认或否认，可简短询问对方的疑虑；身份核验留给本人说明，其他实际问题照常回答。不解释生成过程，不保证本人正在输入，不编造经历、实时在场、实时行动及身份验证事实。';
+    : '身份规则：本轮不披露AI、机器人或模型身份，也不以“被你发现了”“你猜对了”“没错”等话间接承认自动回复。对方称呼你为机器人、AI或bot，不代表可以认领这个身份；不要顺着称呼接“机器人不用健身”“保持出厂设置”“靠充电”等机器身份玩笑，也不重复历史回复中的这类说法。被问及身份时不自动作身份保证，也不自动承认或否认，可简短询问对方的疑虑；身份核验留给本人说明，其他实际问题照常回答。不解释生成过程，不保证本人正在输入，不编造经历、实时在场、实时行动及身份验证事实。';
 }
-export const asksIdentity = messages => messages.some(m => m.direction === 'other' && /(?:你|对面|回复|聊天).{0,14}(?:AI|人工智能|机器人|自动回复|本人|真人)|(?:是不是|是否|是|用了|用的).{0,8}(?:AI|人工智能|机器人|自动回复)|are you.{0,10}(?:ai|bot|human)/i.test(m.text || ''));
+export const asksIdentity = messages => messages.some(m => {
+  if (m.direction !== 'other') return false;
+  const text = String(m.text || '').normalize('NFKC').replace(/[\u200b-\u200d\u2060\ufeff]/g, '');
+  return /(?:你|您|对面|回复|聊天).{0,14}(?:AI|人工智能|机器人|自动回复|本人|真人)|(?:是不是|是否|是|用了|用的).{0,8}(?:AI|人工智能|机器人|自动回复)|are you.{0,10}(?:ai|bot|human)/i.test(text)
+    // A direct robot address is also an identity cue, even without "are you".
+    || /(?:机器人|人工智能|AI|chatbot|bot)[\s\p{P}\p{S}]{0,12}(?:你|您)(?:\s|[^的])/iu.test(text);
+});
 
 const proactiveVocatives = ['亲爱的', '小宝贝', '宝贝', '宝宝', '老公', '老婆', '亲亲', '乖乖', '宝', '亲'];
 const vocativePunctuation = '，,、。.!！?？~～…';

@@ -3154,7 +3154,7 @@ export class AIAssistant {
         }
       }
       const sendStartedAt = this.now();
-      const outcome = await this.deliver(profile, fresh, mode, revision, signal, item, segments, strategy, trigger || mode, skipRate, groupBatch);
+      const outcome = await this.deliver(profile, fresh, mode, revision, signal, item, segments, strategy, trigger || mode, skipRate, groupBatch, identityAsked);
       if (profile.delivery?.status === 'sent') {
         const receivedAt = mode === 'reply' ? snapshot.messages.findLast(message => message.direction === 'other')?.timestamp * 1000 : null;
         profile.delivery.timing = { modelMs, sendMs: this.now() - sendStartedAt, completedAt: this.now(),
@@ -3181,7 +3181,18 @@ export class AIAssistant {
     const active = mode === 'reply' ? this.data.settings.reply && this.replySelected(profile) || this.continuing(profile) : this.data.settings.proactive;
     return revision === this.revision && !signal.aborted && this.data.settings.enabled && this.modelReady() && strategyReady(this.strategy(profile, mode), mode) && active && this.selected(profile, mode) && !profile.paused && (!Number.isFinite(profile.stopUntil) || this.now() >= profile.stopUntil) && this.available && this.ready() && !this.manualHolds.size && this.now() >= (this.userBusyUntil || 0) && this.now() >= Math.max(this.sendBlockedUntil || 0, profile.sendRetryAt || 0);
   }
-  async deliver(profile, fresh, mode, revision, signal, item, segments, strategy, source = mode, skipRate = false, groupBatch = null) {
+  async deliver(profile, fresh, mode, revision, signal, item, segments, strategy, source = mode, skipRate = false, groupBatch = null, identityAsked = false) {
+    const assertSafe = texts => {
+      const violation = replySafetyViolation(texts.filter(text => typeof text === 'string'), {
+        allowIdentity: mode === 'reply' && identityAsked && this.data.settings.acknowledgeAI,
+        identityAsked,
+        audioText: texts.filter(text => text?.mediaType === 'audio').map(text => text.description || '').join(''),
+      });
+      if (violation) throw new AppError(violation === 'identity' ? '回复内容未通过身份规则，本次未发送' : '回复声称执行了未核实的操作，本次未发送', 409, violation === 'identity' ? 'ai_identity_blocked' : 'ai_execution_blocked');
+    };
+    // Validate the entire opening before its first native submission, including
+    // split admissions and speech. Recheck the current setting for each segment.
+    assertSafe(segments);
     if (mode === 'reply' && strategy.maxRounds !== 'unlimited') {
       const cappedRounds = profile.rounds || 0;
       segments = segments.slice(0, Math.max(0, strategy.maxRounds - cappedRounds));
@@ -3220,6 +3231,8 @@ export class AIAssistant {
         await this.observe(profile, fresh);
         if (!this.canDeliver(profile, mode, revision, signal) || fresh.revision !== expectedRevision && !(groupBatch && groupContextCanAdvance(originalSnapshot, fresh, profile.generatedIds || []))) return interrupted();
       }
+      assertSafe(segments);
+      assertSafe([mediaFile || text]);
       const operationId = randomUUID();
       // Keep generated text in memory; persist each segment's send intent first.
       if (item) { item.status = 'sending'; item.segmentsSent = sent; item.segmentsTotal = segments.length; }
