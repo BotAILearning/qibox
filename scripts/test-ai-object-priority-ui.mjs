@@ -1,0 +1,48 @@
+import { createRequire } from 'node:module';
+import { mkdir } from 'node:fs/promises';
+import assert from 'node:assert/strict';
+import { proactiveFixture } from './proactive-ui-fixture.mjs';
+import { playwrightPath } from './tooling.mjs';
+
+const { chromium } = createRequire(import.meta.url)(playwrightPath);
+const fixture = await proactiveFixture(), browser = await chromium.launch({ channel: 'msedge', headless: true });
+const output = process.argv[2] || 'reports/object-priority-ui';
+try {
+  await mkdir(output, { recursive: true });
+  const people = fixture.bridge.contacts.filter(c => c.kind === 'person');
+  const group = { id: 'priority-off-group', kind: 'group', label: '未开启群' };
+  const groups = ['所有人群', '提及我群', '实时群'].map((label, i) => ({ ...group, id: `priority-group-${i}`, label }));
+  fixture.bridge.contacts = [...people, group, ...groups];
+  fixture.ai.contacts = new Map(fixture.bridge.contacts.map(c => [c.id, c]));
+  fixture.ai.data.profiles = {};
+  const add = (c, value) => { const id = `priority-${c.id}`; fixture.ai.data.profiles[id] = { id, contact: c.id, account: fixture.ai.data.account, label: c.label, kind: c.kind, ...value }; };
+  add(people[1], { replyOptions: { enabled: true } });
+  add(groups[0], { groupOptions: { atAll: true } });
+  add(groups[1], { groupOptions: { atMe: true } });
+  add(groups[2], { groupOptions: { realtime: true, atMe: true, atAll: true }, rounds: 200, replyStrategy: { maxRounds: 200 } });
+  await fixture.ai.save();
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  const errors = []; page.on('pageerror', e => errors.push(e.message));
+  await page.goto(fixture.url);
+  await page.locator(`[data-instance="${fixture.instance.id}"] summary`).click();
+  await page.locator('[data-action="ai"]').click();
+  await page.locator('#ai-open').click();
+  await page.locator('.ai-main-tabs [data-ai-nav="overview"]').click();
+  const list = page.locator('#ai-object-list');
+  assert.equal(await list.locator('[data-ai-object]').first().getAttribute('data-ai-object'), people[1].id);
+  assert.match(await list.innerText(), /自动回复已开启/);
+  assert.match(await list.innerText(), /自动回复未开启/);
+  await page.screenshot({ path: `${output}/contacts.png`, fullPage: true });
+  await page.locator('[data-ai-kind="group"]').click();
+  assert.deepEqual(await list.locator('[data-ai-object]').evaluateAll(rows => rows.map(row => row.dataset.aiObject)), [groups[2].id, groups[1].id, groups[0].id, group.id]);
+  assert.match(await list.innerText(), /实时回复 · @我 · @所有人/);
+  assert.match(await list.innerText(), /200\/200/);
+  const clipped = await list.locator('[data-ai-object]').evaluateAll(rows => rows.some(row => row.scrollHeight > row.clientHeight + 1));
+  assert.equal(clipped, false);
+  await page.screenshot({ path: `${output}/groups.png`, fullPage: true });
+  await page.locator('#ai-object-search').fill('所有人群');
+  assert.equal(await list.locator('[data-ai-object]').count(), 1);
+  assert.equal(await list.locator('[data-ai-object]').getAttribute('data-ai-object'), groups[0].id);
+  assert.deepEqual(errors, []);
+  console.log('Contact/group priority, visible reply modes, limit badge, fixed row height and search passed in the application.');
+} finally { await browser.close(); await fixture.close(); }

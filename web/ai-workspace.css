@@ -1754,6 +1754,8 @@ dialog.ai-record-delete-dialog p{margin:0 0 20px;line-height:1.65}
 .qbx-dialog-close { position:absolute; right:12px; top:12px; }
 #ai-panel #ai-object-list .ai-object-row { height:77px; min-height:77px; box-sizing:border-box; margin-bottom:3px; }
 #ai-panel #ai-object-list .ai-contact-info small { white-space:nowrap; }
+#ai-panel #ai-object-list .ai-contact-reply.on { color:#3d4db6; font-weight:600; }
+#ai-panel #ai-object-list .ai-contact-reply.off { color:var(--ai-muted); }
 #ai-panel .ai-object-spacer { flex:none; pointer-events:none; }
 #ai-panel .ai-personal-card[open] { grid-column:1/-1; }
 #ai-panel .ai-personal-form { scroll-padding-bottom:80px; }

@@ -1,5 +1,3 @@
-import { styleChoice } from './ai-style-view.mjs';
-import { icon } from './ai-icons.mjs';
 import { personReplyEnabled } from './ai-reply-state.mjs';
 import { contactPickerMatches, contactPickerRow } from './ai-contact-picker.mjs';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -10,20 +8,28 @@ export function objectWindow(total, scrollTop = 0, height = 600) {
   return { start, end: Math.min(total, start + visible + 12) };
 }
 export function objectList(state, view) {
-  const contacts = contactPickerMatches(state.contacts, view.kind, view.search);
-  const { start, end } = objectWindow(contacts.length, view.scrollTop, view.height);
   const profiles = new Map(state.profiles.map(p => [p.contact, p]));
+  const replyModes = contact => {
+    const profile = profiles.get(contact.id);
+    return contact.kind === 'group'
+      ? [['realtime', '实时回复'], ['atMe', '@我'], ['atAll', '@所有人']].filter(([key]) => profile?.groupOptions?.[key] === true)
+      : personReplyEnabled(state, profile) ? [['enabled', '自动回复已开启']] : [];
+  };
+  const priority = contact => {
+    const key = replyModes(contact)[0]?.[0];
+    return key === 'realtime' || key === 'enabled' ? 0 : key === 'atMe' ? 1 : key === 'atAll' ? 2 : 3;
+  };
+  // Sort saved settings before windowing; ties retain the address-book order.
+  const contacts = contactPickerMatches(state.contacts, view.kind, view.search).sort((a, b) => priority(a) - priority(b));
+  const { start, end } = objectWindow(contacts.length, view.scrollTop, view.height);
   const rows = contacts.slice(start, end).map((c, index) => {
     const i = start + index;
-    const profile = profiles.get(c.id), style = styleChoice(profile);
-    const on = c.kind === 'group' ? !!(profile?.groupOptions?.atMe || profile?.groupOptions?.atAll || profile?.groupOptions?.realtime) : personReplyEnabled(state, profile);
-    const draftStyleId = c.id === view.selected ? view.draft?.styleId : undefined;
-    const currentStyleId = draftStyleId !== undefined ? draftStyleId : style.styleId;
-    const styleLabel = currentStyleId === 'custom' ? '自定义' : currentStyleId === 'learned' ? '已学习风格' : currentStyleId?.startsWith('preset:') ? '已设置风格' : currentStyleId ? '已设置风格' : '使用默认风格';
+    const profile = profiles.get(c.id), modes = replyModes(c), on = modes.length > 0;
+    const replyLabel = on ? modes.map(([, label]) => label).join(' · ') : '自动回复未开启';
     const maxRounds = profile?.replyStrategy?.maxRounds ?? state.replyRoundLimits?.[c.kind] ?? profile?.strategy?.maxRounds ?? state.replyStrategy?.maxRounds ?? state.strategy?.maxRounds ?? 50;
     const rounds = profile?.rounds || 0;
     const limited = maxRounds !== 'unlimited' && rounds >= maxRounds;
-    return contactPickerRow(c, { index: i, selected: c.id === view.selected, button: `data-ai-object="${esc(c.id)}" data-ai-object-index="${i}" aria-label="${esc(c.label || c.name || '')}，第 ${i + 1} 项，共 ${contacts.length} 项"`, detail: `${on ? `<small>${styleLabel}</small>` : ''}${limited ? `<small class="ai-contact-limit" role="status">已达回复次数上限 ${rounds}/${maxRounds}</small>` : ''}`, trailing: profile?.paused ? '<span class="ai-contact-status">已暂停</span>' : '' });
+    return contactPickerRow(c, { index: i, selected: c.id === view.selected, button: `data-ai-object="${esc(c.id)}" data-ai-object-index="${i}" aria-label="${esc(c.label || c.name || '')}，${esc(replyLabel)}${profile?.paused ? '，已暂停' : ''}，第 ${i + 1} 项，共 ${contacts.length} 项"`, detail: `<small class="ai-contact-reply ${on ? 'on' : 'off'}">${replyLabel}</small>${limited ? `<small class="ai-contact-limit" role="status">已达回复次数上限 ${rounds}/${maxRounds}</small>` : ''}`, trailing: profile?.paused ? '<span class="ai-contact-status">已暂停</span>' : '' });
   }).join('');
   return rows ? `<div data-object-window="${start}:${end}" class="ai-object-spacer" style="height:${start * OBJECT_ROW_HEIGHT}px" aria-hidden="true"></div>${rows}<div class="ai-object-spacer" style="height:${(contacts.length - end) * OBJECT_ROW_HEIGHT}px" aria-hidden="true"></div>` : '<p class="ai-empty">暂无匹配对象，请刷新列表。</p>';
 }
