@@ -1,6 +1,7 @@
 import { createRequire } from 'node:module';
 import { mkdir } from 'node:fs/promises';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { proactiveFixture } from './proactive-ui-fixture.mjs';
 import { playwrightPath } from './tooling.mjs';
 
@@ -15,7 +16,9 @@ try {
   fixture.bridge.contacts = [...people, group, ...groups];
   fixture.ai.contacts = new Map(fixture.bridge.contacts.map(c => [c.id, c]));
   fixture.ai.data.profiles = {};
-  const add = (c, value) => { const id = `priority-${c.id}`; fixture.ai.data.profiles[id] = { id, contact: c.id, account: fixture.ai.data.account, label: c.label, kind: c.kind, ...value }; };
+  fixture.ai.data.settings.enabled = true;
+  fixture.ai.data.settings.reply = true;
+  const add = (c, value) => { const id = createHash('sha256').update(`${fixture.ai.data.account}\0${c.id}`).digest('hex'); fixture.ai.data.profiles[id] = { id, contact: c.id, account: fixture.ai.data.account, label: c.label, kind: c.kind, ...value }; };
   add(people[1], { replyOptions: { enabled: true } });
   add(groups[0], { groupOptions: { atAll: true } });
   add(groups[1], { groupOptions: { atMe: true } });
@@ -44,5 +47,33 @@ try {
   assert.equal(await list.locator('[data-ai-object]').count(), 1);
   assert.equal(await list.locator('[data-ai-object]').getAttribute('data-ai-object'), groups[0].id);
   assert.deepEqual(errors, []);
+  const liveProfile=fixture.ai.profiles().find(p=>p.contact===groups[2].id);
+  await page.locator('#ai-object-search').fill('实时群');
+  fixture.ai.observeManual(liveProfile,{id:'manual-ui-round-end',timestamp:Math.floor(Date.now()/1000),authorship:'human'});
+  await fixture.ai.save();
+  assert.equal(liveProfile.rounds,0);
+  await list.locator('.ai-contact-limit').waitFor({state:'hidden'});
+  assert.equal(liveProfile.rounds,0);
+  liveProfile.rounds=200;delete liveProfile.manualWait;await fixture.ai.save();
+  await list.locator('.ai-contact-limit').waitFor({state:'visible'});
+  await fixture.ai.setGroupOptions({contact:groups[2].id,realtime:false,atMe:false,atAll:false});
+  await list.locator('.ai-contact-limit').waitFor({state:'hidden'});
+  assert.match(await list.innerText(),/自动回复未开启/);
+  await page.screenshot({path:`${output}/ended-round.png`,fullPage:true});
+  await page.locator('.ai-main-tabs [data-ai-nav="activity"]').click();
+  await page.locator('[data-ai-record-count="reply"]').waitFor();
+  assert.equal(await page.locator('[data-ai-record-count="reply"]').innerText(),'自动回复（0）');
+  assert.equal(await page.locator('[data-ai-record-count="skip"]').innerText(),'未回复（0）');
+  assert.match(await page.locator('#ai-recent-errors').innerText(),/最近异常（0）/);
+  const order=await page.locator('[data-ai-optional="activity-reply"], [data-ai-optional="activity-skip"], #ai-recent-errors').evaluateAll(nodes=>nodes.map(n=>n.dataset.aiOptional||n.id));
+  assert.deepEqual(order,['activity-reply','activity-skip','ai-recent-errors']);
+  fixture.ai.event('skip',liveProfile.id,'model-skip',null,{reasonCode:'model-no-reply'});await fixture.ai.save();
+  await page.getByRole('heading',{name:'未回复（1）',exact:true}).waitFor();
+  fixture.ai.data.events=fixture.ai.data.events.filter(e=>e.code!=='skip');fixture.ai.data.skipLog=[];await fixture.ai.save();
+  await page.getByRole('heading',{name:'未回复（0）',exact:true}).waitFor();
+  await page.screenshot({path:`${output}/activity-desktop.png`,fullPage:true});
+  await page.setViewportSize({width:390,height:844});
+  await page.screenshot({path:`${output}/activity-mobile.png`,fullPage:true});
+  assert.deepEqual(errors,[]);
   console.log('Contact/group priority, visible reply modes, limit badge, fixed row height and search passed in the application.');
 } finally { await browser.close(); await fixture.close(); }

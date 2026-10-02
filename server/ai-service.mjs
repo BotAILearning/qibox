@@ -216,7 +216,7 @@ export class AIAssistant {
         const attempt = interruptedAttempt; profile.sentMessages ||= [];
         const receipt = profile.sentMessages.find(row => row.operationId === attempt.operationId && row.confirmed !== false && row.deliveryConfidence !== 'unknown' && validKey(row.id));
         if (receipt) this.confirmDeliveryReceipt(profile, receipt);
-        else if (!profile.sentMessages.some(row => row.id === attempt.operationId || row.operationId === attempt.operationId)) profile.sentMessages.push({ id: attempt.operationId, operationId: attempt.operationId, at: attempt.at, source: 'reply', body: attempt.body, baseline: attempt.baseline, confirmed: false, deliveryConfidence: 'unknown' });
+        else if (!profile.sentMessages.some(row => row.id === attempt.operationId || row.operationId === attempt.operationId)) profile.sentMessages.push({ id: attempt.operationId, operationId: attempt.operationId, at: attempt.at, source: 'reply', ...(Number.isSafeInteger(attempt.replyRoundVersion) ? { replyRoundVersion: attempt.replyRoundVersion } : {}), body: attempt.body, baseline: attempt.baseline, confirmed: false, deliveryConfidence: 'unknown' });
         if (profile.kind !== 'group') { profile.handledIncomingId = attempt.baseline || profile.handledIncomingId; if (profile.replyCursor) profile.replyCursor.pending = false; }
       }
       if (profile.pauseReason === 'uncertain') {
@@ -231,6 +231,10 @@ export class AIAssistant {
       if (this.data.errorLog.some(error => error.target === profile.id && !error.resolution && String(error.message).includes('发送结果无法确认'))) {
         for (const row of profile.sentMessages || []) if (row.confirmed === true && row.deliveryConfidence === 'confirmed') this.confirmDeliveryReceipt(profile, row);
       }
+      // Repair ended legacy rounds only; an active round survives a restart.
+      const lastReplyAt = (profile.sentMessages || []).reduce((last, row) => row.source === 'reply' && row.confirmed !== false && row.deliveryConfidence !== 'unknown' ? Math.max(last, row.at || 0) : last, 0);
+      const endedManually = profile.manualWait && profile.lastManualId === profile.manualWait.ownId && !(profile.generatedIds || []).includes(profile.lastManualId) && profile.lastManualAt >= lastReplyAt;
+      if ((!this.replySelected(profile) || endedManually) && (profile.rounds || profile.mentionRounds || profile.groupReplyLimitBlocked || profile.pauseReason === 'limit')) this.endReplyRound(profile, endedManually ? 'manual' : 'disabled');
     }
     if (this.data.learnedDefaultStyle) {
       try { this.data.learnedDefaultStyle.style = styleValue(this.data.learnedDefaultStyle.style); }
@@ -475,12 +479,35 @@ export class AIAssistant {
     delete profile.manualPause; delete profile.groupPausedUntil; delete profile.groupPauseReason;
     this.followUps.delete(profile.id);
   }
+  endReplyRound(profile, reason) {
+    profile.replyRoundVersion = (profile.replyRoundVersion || 0) + 1;
+    profile.replyRoundEndedAt = this.now(); profile.replyRoundEndReason = reason;
+    profile.rounds = 0; profile.mentionRounds = 0;
+    delete profile.groupReplyLimitBlocked; delete profile.mentionLimitBlocked;
+    delete profile.groupWait; delete profile.groupContextWait;
+    if (profile.pauseReason === 'limit') { profile.paused = false; delete profile.pauseReason; delete profile.pausedAt; }
+    this.followUps.delete(profile.id); this.skipReplyWaits.delete(profile.id);
+    for (const [key, controller] of this.replyControllers) if (key === profile.id || key.startsWith(profile.id + ':')) { controller.abort(); this.replyControllers.delete(key); }
+    if (reason !== 'manual') {
+      profile.replyWatchSince = this.now();
+      const cursor = this.cursors.get(profile.id); if (cursor) { cursor.pending = false; cursor.changedAt = this.now(); }
+      if (profile.kind === 'group') {
+        const inbox = readGroupInbox(this.vault, profile);
+        if (inbox.pending.length) settleGroupBatch(this.vault, profile, { ids: inbox.pending.map(message => message.id) });
+      }
+    }
+  }
+  replyReceiptInCurrentRound(profile, row) {
+    return Number.isSafeInteger(row.replyRoundVersion)
+      ? row.replyRoundVersion === (profile.replyRoundVersion || 0)
+      : !profile.replyRoundEndedAt || row.at > profile.replyRoundEndedAt;
+  }
   // 暂停只作用于当前这一轮：对方又发来新消息时自动解除（本人显式关闭除外），
   // 让后续消息照常自动回复，不再被上一条消息的暂停牵连。
   resumeForNewMessage(profile) {
-    if (!profile.paused || profile.pauseReason === 'explicit' ||
+    if (!profile.paused || ['explicit', 'limit'].includes(profile.pauseReason) ||
         profile.delivery?.status === 'sending' || profile.proactiveDelivery?.status === 'sending') return false;
-    profile.paused = false; profile.rounds = 0; if (profile.kind === 'group') { profile.mentionRounds = 0; delete profile.mentionLimitBlocked; } profile.replyWatchSince = this.now();
+    profile.paused = false; profile.replyWatchSince = this.now();
     delete profile.pauseReason; delete profile.pausedAt; delete profile.manualPause;
     delete profile.groupPausedUntil; delete profile.groupPauseReason; delete profile.groupWait;
     this.event('resumed', profile.id);
@@ -497,6 +524,7 @@ export class AIAssistant {
       this.cursors.delete(profile.id);
     }
     if (!profile.paused) return false;
+    this.endReplyRound(profile, 'resumed');
     profile.paused = false; profile.rounds = 0; if (profile.kind === 'group') { profile.mentionRounds = 0; delete profile.mentionLimitBlocked; } profile.replyWatchSince = this.now();
     delete profile.pauseReason; delete profile.pausedAt; delete profile.manualPause;
     delete profile.groupPausedUntil; delete profile.groupPauseReason; delete profile.groupWait;
@@ -527,6 +555,7 @@ export class AIAssistant {
     profile.lastManualAt = this.now();
     this.followUps.delete(profile.id);
     this.event('manual', profile.id);
+    this.endReplyRound(profile, 'manual');
     if (!effectiveTakeover(this.data.settings).enabled) {
       delete profile.manualWait;
       this.replyControllers.get(profile.id)?.abort(); this.replyControllers.delete(profile.id);
@@ -731,7 +760,7 @@ export class AIAssistant {
         // 任一群聊回复方式处于开启状态即视为本人要求 AI 接管，清除此前的暂停。
         this.resumeForSavedReply(profile);
       }
-      else this.data.replyTargets = this.data.replyTargets.filter(x => x !== id);
+      else { this.data.replyTargets = this.data.replyTargets.filter(x => x !== id); this.endReplyRound(profile, 'disabled'); }
       this.syncTargets(); await this.save(); return this.publicState();
     });
   }
@@ -757,7 +786,7 @@ export class AIAssistant {
       this.followUps.delete(id);
       if (before.enabled !== profile.replyOptions.enabled) { profile.replyWatchSince = this.now(); this.cursors.delete(id); delete profile.manualWait; }
       if (profile.replyOptions.enabled) this.data.replyTargets = [...new Set([...this.data.replyTargets, id])];
-      else this.data.replyTargets = this.data.replyTargets.filter(x => x !== id);
+      else { this.data.replyTargets = this.data.replyTargets.filter(x => x !== id); this.endReplyRound(profile, 'disabled'); }
       this.syncTargets(); await this.save(); return this.publicState();
     });
   }
@@ -933,6 +962,7 @@ export class AIAssistant {
     const skipped = this.skipRecords(), errors = this.errorRecords({ limit: 20 });
     const profiles = this.profiles().map(profile => ({
       id: profile.id, paused: !!profile.paused, rounds: profile.rounds || 0, pauseReason: profile.pauseReason || null, replyFlow: profile.replyFlow || null,
+      manualWait: profile.manualWait || null, groupOptions: profile.groupOptions || null, replyOptions: profile.replyOptions || null, mentionRounds: profile.mentionRounds || 0,
       delivery: profile.delivery ? { ...profile.delivery, body: undefined } : null,
       groupReplyLimitBlocked: !!profile.groupReplyLimitBlocked, groupWait: profile.groupWait || null, groupContextWait: profile.groupContextWait || null,
       pendingMemoryId: profile.pendingMemoryId || null, pendingMemoryAt: profile.pendingMemoryAt || null, pendingMemorySource: profile.pendingMemorySource || null, memoryMerge: profile.memoryMerge || null,
@@ -1694,7 +1724,11 @@ export class AIAssistant {
       if (next.enabled && !this.modelReady()) throw new AppError('请先配置模型');
       if (value.enabled === true && !next.proactive && !next.reply) next.reply = true;
       if (next.enabled && !this.data.settings.enabled) this.data.replyWatchSince = this.now();
+      const beforeSelected = new Map(this.profiles().map(profile => [profile.id, this.replySelected(profile)]));
+      const reopened = next.enabled && !this.data.settings.enabled || next.reply && !this.data.settings.reply;
       this.invalidate(); this.data.settings = next;
+      if (value.enabled === false || value.reply === false || reopened) for (const profile of this.profiles()) this.endReplyRound(profile, reopened ? 'reopened' : 'disabled');
+      else for (const profile of this.profiles()) if (beforeSelected.get(profile.id) && !this.replySelected(profile)) this.endReplyRound(profile, 'disabled');
       this.ensureDefaultProfiles();
       if (!next.proactive) for (const profile of this.profiles()) delete profile.continuation;
       if (!next.enabled || !next.proactive) this.pauseQueue();
@@ -1804,6 +1838,7 @@ export class AIAssistant {
       // 个人对象勾选【自动回复】后点击【保存设置】，表示由 AI 接管；群聊走群选项保存。
       // 仅保存风格或策略（未带开关状态）不解除暂停。
       if (replyEnabled === true && (!wasEnabled || previous?.paused)) this.resumeForSavedReply(profile);
+      if (!this.replySelected(profile)) this.endReplyRound(profile, 'disabled');
       this.syncTargets(); await this.save(); return this.publicState();
     });
   }
@@ -1825,13 +1860,14 @@ export class AIAssistant {
         if (typeof value.paused === 'boolean') {
           if (value.paused) this.pauseProfile(profile, 'explicit');
           else {
+            this.endReplyRound(profile, 'resumed');
             // 开启/恢复自动回复：仅更新回复状态并把人物同步到回复目标，不依赖读取聊天记录定位。
             // 游标基线由后续轮询按 replyWatchSince 自动重建，只处理新消息。
             profile.paused = false; delete profile.manualPause; delete profile.pauseReason; delete profile.groupPausedUntil; delete profile.groupPauseReason;
             profile.replyWatchSince = this.now();
             this.data.replyTargets = [...new Set([...this.data.replyTargets, id])];
           }
-          profile.rounds = 0; if (profile.kind === 'group') { profile.mentionRounds = 0; delete profile.mentionLimitBlocked; } this.cursors.delete(id);
+          this.cursors.delete(id);
         }
         this.syncTargets();
         if (value.resetStrategy === true) { delete profile.strategy; delete profile.replyStrategy; }
@@ -2435,7 +2471,7 @@ export class AIAssistant {
       delivery.segmentsSent = Math.min(delivery.segmentsTotal || 1, (delivery.segmentsSent || 0) + 1);
       const partial = delivery.segmentsSent < (delivery.segmentsTotal || 1);
       delivery.interrupted = partial;
-      if (row.source === 'reply' && profile.replyFlow) profile.replyFlow = { ...profile.replyFlow, phase: partial ? 'partial' : 'sent', updatedAt: this.now(), detail: partial ? '已核实部分送达，剩余未发送' : '已核实送达' };
+      if (row.source === 'reply' && this.replyReceiptInCurrentRound(profile, row) && profile.replyFlow) profile.replyFlow = { ...profile.replyFlow, phase: partial ? 'partial' : 'sent', updatedAt: this.now(), detail: partial ? '已核实部分送达，剩余未发送' : '已核实送达' };
       const label = this.nameFields(profile).label;
       if ([`${label}：发送结果待核实；本条不会重复发送`, `${label}：发送结果无法确认；为避免重复发送，本条不会自动重发`].includes(this.notice)) this.notice = `${label}：已确认送达`;
     }
@@ -2473,7 +2509,7 @@ export class AIAssistant {
       if (candidates.length !== 1) continue;
       const oldId = row.id; row.operationId ||= oldId; row.id = candidates[0].id; row.confirmed = true; row.deliveryConfidence = 'confirmed'; row.assumedPresent = false;
       profile.generatedIds = [...new Set([...(profile.generatedIds || []), row.id])];
-      if (row.source === 'reply') profile.rounds = (profile.rounds || 0) + 1;
+      if (row.source === 'reply' && this.replyReceiptInCurrentRound(profile, row)) profile.rounds = (profile.rounds || 0) + 1;
       this.confirmDeliveryReceipt(profile, row);
       changed = true;
       this.data.deletedActivityRecords = (this.data.deletedActivityRecords || []).map(record => record.account === profile.account && record.source === row.source && record.id === oldId ? { ...record, id: row.id } : record);
@@ -2519,7 +2555,7 @@ export class AIAssistant {
       if (!cursor.pending) cursor.pendingAfter = cursor.last;
       if (!cursor.pending || profile.kind !== 'group' && cursor.sender !== last?.sender) cursor.pendingSince = this.now();
       cursor.sender = last?.sender;
-      cursor.pending = last?.direction === 'other' && (last.id !== cursor.last || cursor.pending);
+      cursor.pending = last?.direction === 'other' && (last.id !== cursor.last || cursor.pending) && (!Number.isSafeInteger(last.timestamp) || last.timestamp >= Math.floor((profile.replyWatchSince || 0) / 1000));
       cursor.revision = snapshot.revision; cursor.last = last?.id; cursor.own = own; cursor.changedAt = this.now();
         if (manual) {
           this.observeManual(profile, ownMessage);
@@ -3151,6 +3187,7 @@ export class AIAssistant {
       segments = segments.slice(0, Math.max(0, strategy.maxRounds - cappedRounds));
     }
     const groupReply = mode === 'reply' && profile.kind === 'group';
+    const replyRoundVersion = profile.replyRoundVersion || 0;
     if (groupReply) {
       const rate = groupTimingState(profile);
       if (!skipRate && source === 'realtime' && rate.ordinaryDueAt > this.now()) {
@@ -3187,7 +3224,7 @@ export class AIAssistant {
       // Keep generated text in memory; persist each segment's send intent first.
       if (item) { item.status = 'sending'; item.segmentsSent = sent; item.segmentsTotal = segments.length; }
       if (mode === 'reply' && !sent) this.replyStage(profile, 'sending');
-      profile.delivery = { operationId, body: this.vault.seal({ text }), baseline: fresh.messages.at(-1)?.id, status: 'sending', at: this.now(), source: mode === 'reply' ? 'reply' : 'proactive', segmentsSent: sent, segmentsTotal: segments.length, ...(groupBatch ? { replyTo: groupBatch.ids, recipient: groupBatch.sender } : {}) }; await this.save();
+      profile.delivery = { operationId, body: this.vault.seal({ text }), baseline: fresh.messages.at(-1)?.id, status: 'sending', at: this.now(), source: mode === 'reply' ? 'reply' : 'proactive', ...(mode === 'reply' ? { replyRoundVersion } : {}), segmentsSent: sent, segmentsTotal: segments.length, ...(groupBatch ? { replyTo: groupBatch.ids, recipient: groupBatch.sender } : {}) }; await this.save();
       if (!this.canDeliver(profile, mode, revision, signal)) {
         profile.delivery.status = sent ? 'sent' : 'cancelled'; profile.delivery.interrupted = sent > 0;
         if (item?.status === 'sending') item.status = sent ? 'done' : this.selected(profile, mode) ? 'pending' : 'skipped';
@@ -3224,7 +3261,7 @@ export class AIAssistant {
         if (mode === 'reply') this.replyStage(profile, delivery.status === 'stale' ? 'cancelled' : 'confirming', delivery.status === 'stale' ? '聊天有新消息，重新判断' : '发送结果待核实，不会重复发送');
         if (item) item.status = delivery.status === 'stale' ? sent ? 'done' : 'pending' : 'skipped';
         if (delivery.status !== 'stale') {
-          profile.sentMessages = [...(profile.sentMessages || []), { id: operationId, operationId, at: this.now(), body: this.vault.seal({ text }), source: mode === 'reply' ? 'reply' : 'proactive', confirmed: false, deliveryConfidence: 'unknown', baseline: fresh.messages.at(-1)?.id, ...(mediaFile ? { media: { type: mediaFile.mediaType, name: mediaFile.name }, ...(delivery.voiceReceipt ? { voiceReceipt: delivery.voiceReceipt } : {}) } : {}), ...(source !== mode ? { trigger: source } : {}), ...(item?.taskId ? { taskId: item.taskId } : {}), ...(groupBatch ? { replyTo: groupBatch.ids, recipient: groupBatch.sender } : {}) }];
+          profile.sentMessages = [...(profile.sentMessages || []), { id: operationId, operationId, at: this.now(), body: this.vault.seal({ text }), source: mode === 'reply' ? 'reply' : 'proactive', ...(mode === 'reply' ? { replyRoundVersion } : {}), confirmed: false, deliveryConfidence: 'unknown', baseline: fresh.messages.at(-1)?.id, ...(mediaFile ? { media: { type: mediaFile.mediaType, name: mediaFile.name }, ...(delivery.voiceReceipt ? { voiceReceipt: delivery.voiceReceipt } : {}) } : {}), ...(source !== mode ? { trigger: source } : {}), ...(item?.taskId ? { taskId: item.taskId } : {}), ...(groupBatch ? { replyTo: groupBatch.ids, recipient: groupBatch.sender } : {}) }];
           // Unknown receipts remain audit-only; do not create pending chat rows
           // or a manual recovery gate.
         if (mode === 'reply') {
@@ -3241,11 +3278,12 @@ export class AIAssistant {
         await this.save(); return delivery.status === 'stale' && sent ? 'partial' : 'pending';
       }
       sent++; expectedRevision = delivery.revision;
-      if (mode === 'reply') profile.rounds = (profile.rounds || 0) + 1;
-      if (groupReply && (source === 'atMe' || source === 'atAll')) profile.mentionRounds = (profile.mentionRounds || 0) + 1;
-      if (sent === 1) delete profile.manualWait;
+      const currentRound = mode !== 'reply' || replyRoundVersion === (profile.replyRoundVersion || 0);
+      if (mode === 'reply' && currentRound) profile.rounds = (profile.rounds || 0) + 1;
+      if (groupReply && currentRound && (source === 'atMe' || source === 'atAll')) profile.mentionRounds = (profile.mentionRounds || 0) + 1;
+      if (sent === 1 && currentRound) delete profile.manualWait;
       profile.generatedIds = [...(profile.generatedIds || []), delivery.messageId];
-      profile.sentMessages = [...(profile.sentMessages || []), { id: delivery.messageId, operationId, at: this.now(), body: this.vault.seal({ text }), source: mode === 'reply' ? 'reply' : 'proactive', ...(mediaFile ? { media: { type: mediaFile.mediaType, name: mediaFile.name }, ...(delivery.voiceReceipt ? { voiceReceipt: delivery.voiceReceipt } : {}) } : {}), ...(source !== mode ? { trigger: source } : {}), ...(item?.taskId ? { taskId: item.taskId } : {}), ...(groupBatch ? { replyTo: groupBatch.ids, recipient: groupBatch.sender } : {}) }];
+      profile.sentMessages = [...(profile.sentMessages || []), { id: delivery.messageId, operationId, at: this.now(), body: this.vault.seal({ text }), source: mode === 'reply' ? 'reply' : 'proactive', ...(mode === 'reply' ? { replyRoundVersion } : {}), ...(mediaFile ? { media: { type: mediaFile.mediaType, name: mediaFile.name }, ...(delivery.voiceReceipt ? { voiceReceipt: delivery.voiceReceipt } : {}) } : {}), ...(source !== mode ? { trigger: source } : {}), ...(item?.taskId ? { taskId: item.taskId } : {}), ...(groupBatch ? { replyTo: groupBatch.ids, recipient: groupBatch.sender } : {}) }];
       profile.delivery.status = 'sent'; profile.delivery.segmentsSent = sent;
       // A confirmed prefix must never become a pending whole opening again.
       if (item) { item.status = 'done'; item.segmentsSent = sent; }
@@ -3253,6 +3291,7 @@ export class AIAssistant {
         this.event(mode === 'reply' ? 'replied' : 'contacted', profile.id, source);
         if (mode !== 'reply' && revision === this.revision && this.data.settings.proactive) { profile.continuation = { startedAt: this.now(), strategy: structuredClone(strategy), ...(this.data.queue.scheduleId ? { scheduleId: this.data.queue.scheduleId } : {}) }; profile.rounds = 0; if (profile.kind === 'group') { profile.mentionRounds = 0; delete profile.mentionLimitBlocked; } }
       }
+      if (!currentRound) { await this.save(); return 'partial'; }
       const cursor = this.cursors.get(profile.id) || {};
       Object.assign(cursor, { sent: delivery.messageId, own: delivery.messageId, last: delivery.messageId, pending: false, revision: delivery.revision || fresh.revision, changedAt: this.now() }); this.cursors.set(profile.id, cursor);
       await this.save();

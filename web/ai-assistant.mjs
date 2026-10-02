@@ -11,7 +11,7 @@ import { replyLimitControl, syncReplyLimitControl, parseReplyLimit, replyLimitMa
 import { styleChoice, styleSummary as styleSummaryText } from './ai-style-view.mjs';
 import { learnedObjectDraft } from './ai-learning-draft.mjs';
 import { analysisPage, analysisContactList, copyReport, presetRequest, analysisRequestState, presetChips } from './ai-analysis-view.mjs';
-import { activityPage, activityEntries, activityRows, activityPagination, proactiveRecordRows, liveActivityBox, recentErrorsBox, skipRecordsView } from './ai-activity-view.mjs';
+import { activityPage, activityEntries, activityRows, activityPagination, proactiveRecordRows, liveActivityBox, recentErrorsBox, skipRecordsView, updateActivityCounts } from './ai-activity-view.mjs';
 import { beijingTime, createProactiveUI } from './ai-proactive-view.mjs';
 import { RecordCache, mergeRecordResults } from './ai-record-cache.mjs';
 import { contactName, contactSearch as searchableContact } from './ai-contact-name.mjs';
@@ -74,7 +74,12 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   function objects() { return objectPage(state, objectView()); }
   function drawObjectList() {
     const list = $('#ai-object-list');
-    if (list && state) list.innerHTML = objectList(state, objectView());
+    if (!list || !state) return;
+    const html = objectList(state, objectView());
+    if (list._objectHtml === html) return;
+    const scroll = list.scrollTop, focus = list.contains?.(document.activeElement) ? document.activeElement.closest('[data-ai-object]')?.dataset.aiObject : null;
+    list.innerHTML = html; list._objectHtml = html; list.scrollTop = scroll;
+    if (focus) [...list.querySelectorAll('[data-ai-object]')].find(row => row.dataset.aiObject === focus)?.focus({ preventScroll: true });
   }
   let objectScrollFrame = 0;
   panel.addEventListener('scroll', event => {
@@ -162,6 +167,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     if (saved) ({ logRecords, proactiveHistory, proactiveHistoryPage, errorHistory, errorPage, logFilters } = saved, logFilters.source = 'reply', delete logFilters.taskId);
   }
   function drawRecords() {
+    if (state && tab === 'activity') updateActivityCounts(panel, skipState(), logFilters, logRecords);
     if (state && tab === 'activity' && $('#ai-activity-entries')) $('#ai-activity-entries').innerHTML = activityRows(state, logFilters, logRecords, logLoading, summaryResults);
     const pagination = panel.querySelector('[data-ai-log-pagination]');
     if (state && tab === 'activity' && pagination) pagination.innerHTML = activityPagination(state, logFilters, logRecords);
@@ -528,11 +534,13 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       readiness.textContent = needs.length ? needs.join('；') : '已完成准备，可以选择需要运行的功能';
     }
     proactiveUI.refresh();
+    if (tab === 'overview') drawObjectList();
     if (tab === 'overview' && selectedObject) {
       const execution = panel.querySelector('[data-ai-object-execution]');
       if (execution?.dataset.aiObjectExecution === selectedObject) replaceLiveContent(execution, objectExecutionStatus(state, selectedObject));
     }
     if (tab === 'activity') {
+      updateActivityCounts(panel, skipState(), logFilters, logRecords);
       const liveBox = $('#ai-live-box'); if (liveBox) replaceLiveContent(liveBox, liveActivityBox(state));
       const errBox = $('#ai-recent-errors'); if (errBox) errBox.innerHTML = recentErrorsBox(activityState(), logFilters.errorsOpen, errorLoading);
       const proactiveRecords = $('#ai-proactive-records'); if (proactiveRecords) proactiveRecords.innerHTML = proactiveRecordRows(activityState(), logFilters, proactiveRecordLoading);

@@ -263,7 +263,7 @@ test('applying a reply limit updates only the selected object type and preserves
  assert.equal(a.strategy(continuingGroup,'reply').maxRounds,8);
  const state=a.publicState();
  assert.deepEqual(state.replyRoundLimits,{person:12,group:8});
- const listState={...state,contacts:[{id:'new-person',kind:'person',label:'新联系人'},{id:'new-group',kind:'group',label:'新群聊'}],profiles:[{contact:'new-person',rounds:12},{contact:'new-group',rounds:8,groupOptions:{atMe:true}}],replyRoundLimits:{person:12,group:8}};
+ const listState={...state,settings:{...state.settings,enabled:true,reply:true},contacts:[{id:'new-person',kind:'person',label:'新联系人'},{id:'new-group',kind:'group',label:'新群聊'}],profiles:[{contact:'new-person',rounds:12,replyOptions:{enabled:true}},{contact:'new-group',rounds:8,groupOptions:{atMe:true}}],replyRoundLimits:{person:12,group:8}};
  const personList=objectList(listState,{search:'',kind:'person'}),groupList=objectList(listState,{search:'',kind:'group'});
  assert.match(personList,/12\/12/);assert.match(groupList,/8\/8/);
  const personDetail=objectPage(listState,{selected:'new-person',kind:'person',search:''}),groupDetail=objectPage(listState,{selected:'new-group',kind:'group',search:''});

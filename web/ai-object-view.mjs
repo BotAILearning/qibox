@@ -28,7 +28,7 @@ export function objectList(state, view) {
     const replyLabel = on ? modes.map(([, label]) => label).join(' · ') : '自动回复未开启';
     const maxRounds = profile?.replyStrategy?.maxRounds ?? state.replyRoundLimits?.[c.kind] ?? profile?.strategy?.maxRounds ?? state.replyStrategy?.maxRounds ?? state.strategy?.maxRounds ?? 50;
     const rounds = profile?.rounds || 0;
-    const limited = maxRounds !== 'unlimited' && rounds >= maxRounds;
+    const limited = on && state.settings?.enabled !== false && state.settings?.reply !== false && !profile?.manualWait && maxRounds !== 'unlimited' && rounds >= maxRounds;
     return contactPickerRow(c, { index: i, selected: c.id === view.selected, button: `data-ai-object="${esc(c.id)}" data-ai-object-index="${i}" aria-label="${esc(c.label || c.name || '')}，${esc(replyLabel)}${profile?.paused ? '，已暂停' : ''}，第 ${i + 1} 项，共 ${contacts.length} 项"`, detail: `<small class="ai-contact-reply ${on ? 'on' : 'off'}">${replyLabel}</small>${limited ? `<small class="ai-contact-limit" role="status">已达回复次数上限 ${rounds}/${maxRounds}</small>` : ''}`, trailing: profile?.paused ? '<span class="ai-contact-status">已暂停</span>' : '' });
   }).join('');
   return rows ? `<div data-object-window="${start}:${end}" class="ai-object-spacer" style="height:${start * OBJECT_ROW_HEIGHT}px" aria-hidden="true"></div>${rows}<div class="ai-object-spacer" style="height:${(contacts.length - end) * OBJECT_ROW_HEIGHT}px" aria-hidden="true"></div>` : '<p class="ai-empty">暂无匹配对象，请刷新列表。</p>';

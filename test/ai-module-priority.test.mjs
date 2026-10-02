@@ -27,14 +27,14 @@ test('frequent switches precede configuration while saved off states and waiting
   assert.match(html, /name="acknowledgeAI"[^>]*checked/);
 });
 
-test('execution exceptions and unanswered messages precede history for both record sources', () => {
+test('execution records show reply, unanswered and exceptions in that order', () => {
   const state = { contacts: [], profiles: [], activity: [], events: [], live: [], tasks: [] };
   const html = activityPage(state, { source: 'reply' });
-  before(html, 'id="ai-recent-errors"', 'data-ai-optional="activity-skip"');
-  before(html, 'data-ai-optional="activity-skip"', 'data-ai-optional="activity-reply"');
+  before(html, 'data-ai-optional="activity-reply"', 'data-ai-optional="activity-skip"');
+  before(html, 'data-ai-optional="activity-skip"', 'id="ai-recent-errors"');
   assert.equal((html.match(/id="ai-recent-errors"/g) || []).length, 1);
   const proactive = activityPage(state, { source: 'proactive' });
-  before(proactive, 'id="ai-recent-errors"', 'data-ai-optional="activity-proactive"');
+  before(proactive, 'data-ai-optional="activity-proactive"', 'id="ai-recent-errors"');
   assert.doesNotMatch(proactive, /data-ai-optional="activity-(skip|reply)"/);
 });
 
