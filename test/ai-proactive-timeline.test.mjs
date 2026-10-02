@@ -158,6 +158,7 @@ for (const [name, message, draft, corrected] of [
   ['unknown-time plan', row('unknown-plan', 'other', '今天去试试那个办法'), '怎么样，有效果吗', '之前说的办法，后来有机会试试吗？'],
   ['future-clock activity', row('future-meeting', 'other', '今天准备去开会', '2026-10-03T09:00:00+08:00'), '早，开会顺利', '早，最近怎么样？'],
   ['future-clock implied trip', row('future-trip', 'other', '今天准备去开会', '2026-10-03T09:00:00+08:00'), '早啊，路上注意安全', '早啊'],
+  ['unconfirmed use duration', row('setup-confirmed', 'other', '设置好了，文件也同步好了', '2026-10-01T17:01:00+08:00'), '用了几天感觉怎么样，有没有遇到什么问题？', '用着感觉怎么样？'],
 ]) {
   test(`the real provider audit path retains temporal evidence and rechecks a repaired ${name}`, async t => {
     const { a, bridge, profile } = await fixture(t);
@@ -173,12 +174,14 @@ for (const [name, message, draft, corrected] of [
     assert.equal(result.text, corrected);
     assert.equal(requests.length, 3);
     const generatedInput = JSON.parse(requests[0].messages.at(-1).content);
-    assert.equal(generatedInput.messages[0].temporal.usableAsCurrentState, false);
+    assert.equal(generatedInput.messages[0].temporal.usableAsCurrentState, name === 'unconfirmed use duration' ? undefined : false);
     assert.match(requests[0].messages[0].content, /不能只问“怎么样、有效果吗”/);
+    assert.match(requests[0].messages[0].content, /不补持续时间/);
     const auditInput = JSON.parse(requests[1].messages.at(-1).content);
-    assert.equal(auditInput.speakerHistory[0].messages[0].temporal.usableAsCurrentState, false);
+    assert.equal(auditInput.speakerHistory[0].messages[0].temporal.usableAsCurrentState, name === 'unconfirmed use duration' ? undefined : false);
     assert.match(requests[1].messages[0].content, /提问和祝愿中的预设也须核对/);
     assert.match(requests[1].messages[0].content, /出行关心也在预设行动/);
+    assert.match(requests[1].messages[0].content, /发言间隔不是活动持续时长/);
     assert.equal(JSON.parse(requests[2].messages.at(-1).content).draft.text, corrected);
     assert.equal(bridge.sent.length, 0);
   });
