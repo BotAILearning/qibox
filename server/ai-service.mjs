@@ -8,6 +8,7 @@ import { accountConfiguration, personalInformation, personalFields, selfContext,
 import { selectMemoryForChat } from './ai-memory-context.mjs';
 import { guardFinancialCommitment } from './ai-commitment-guard.mjs';
 import { replySafetyPrompt, replySafetyViolation, replySafetyCorrection } from './ai-reply-safety.mjs';
+import { replyRoleAnchor } from './ai-reply-role.mjs';
 import { annotateSourceDates, annotateChatTimes, staleTemporaryProactive, staleProactiveTimeClaim } from './ai-time-context.mjs';
 import { proactiveTimelinePrompt } from './ai-prompts.mjs';
 import path from 'node:path';
@@ -31,6 +32,7 @@ import { parseSchedule, advanceSchedule } from './ai-schedule.mjs';
 import { groupPendingMessages, groupPendingBySender, groupDefaults, groupOptions, groupReplyEnabled, groupBurst, groupPrompt, groupTimingState, groupRealtimeIntervalMs, groupRealtimeDelayMs } from './ai-group.mjs';
 import { ProactiveTasks } from './ai-proactive.mjs';
 import { historySummary, validReportId } from './ai-report-history.mjs';
+import { safeErrorText, captureErrorContext, publicErrorRecord, relatedErrorRecord } from './ai-error-details.mjs';
 
 const digest = value => createHash('sha256').update(value).digest('hex');
 // Ceiling on concurrent per-profile runs, shared by proactive tasks and replies.
@@ -85,7 +87,7 @@ const skipSnapshotMessageLimit = 24;
 const skipSnapshotTextLimit = 24000;
 // 单条异常文案的长度上限，避免超长报错文本放大体积。
 const errorMessageLimit = 2000;
-const errorMessage = detail => typeof detail === 'string' && detail.trim() ? detail.trim().slice(0, errorMessageLimit) : errorFallbackMessage;
+const errorMessage = detail => safeErrorText(detail, [], errorMessageLimit);
 const memoryMergeEntry = entry => ({
   ...(entry.id ? { id: entry.id } : {}), field: entry.field || 'other', text: entry.text,
   ...(entry.degree ? { degree: entry.degree } : {}), ...(entry.calendar ? { calendar: entry.calendar } : {}),
@@ -166,6 +168,7 @@ export class AIAssistant {
     this.sessionSeen = new Map(); this.watchTokens = new Map();
     this.activeRuns = new Map(); this.proactiveTask = null; this.memoryRuns = new Map();
     this.replyControllers = new Map(); this.analysisRevision = 0;
+    this.errorContexts = new WeakMap();
     this.proactiveV2 = new ProactiveTasks(this);
     this.warmupTimer = null; this.warmupRunning = false; this.lastWarmupAt = 0; this.warmupSucceededAt = 0; this.warmupPid = null;
   }
@@ -287,10 +290,17 @@ export class AIAssistant {
   migrateErrorLog() {
     const dismissed = new Set(Array.isArray(this.data.dismissedErrors) ? this.data.dismissedErrors : []);
     const log = (Array.isArray(this.data.errorLog) ? this.data.errorLog : []).filter(e => e && typeof e.id === 'string');
+    const savedEvents = new Map((this.data.events || []).map(event => [event.id, event]));
+    for (const row of log) {
+      const event = savedEvents.get(row.id);
+      if (!event || row.account && event.account && row.account !== event.account) continue;
+      row.target ||= event.target || null;
+      if (!row.operationId && typeof event.operationId === 'string') row.operationId = event.operationId;
+    }
     const seen = new Set(log.map(e => e.id));
     for (const event of this.data.events || []) {
       if (!['error', 'truncated'].includes(event?.code) || dismissed.has(event.id) || seen.has(event.id)) continue;
-      log.push({ id: event.id, at: Number.isFinite(event.at) ? event.at : 0, account: event.account || null, target: event.target || null, code: event.code, message: errorMessage(event.detail) });
+      log.push({ id: event.id, at: Number.isFinite(event.at) ? event.at : 0, account: event.account || null, target: event.target || null, code: event.code, message: errorMessage(event.detail), ...(typeof event.operationId === 'string' ? { operationId: event.operationId } : {}) });
       seen.add(event.id);
     }
     log.sort((a, b) => b.at - a.at);
@@ -458,6 +468,7 @@ export class AIAssistant {
     });
   }
   event(code, target = null, source = null, detail = null, metadata = null) {
+    if (code === 'error' || code === 'truncated') detail = safeErrorText(detail, this.errorSecrets());
     const entry = { id: randomUUID(), account: this.data.account, code, target, at: this.now(), ...(['reply', 'proactive', 'atMe', 'atAll', 'realtime', 'model-skip', 'system-skip'].includes(source) ? { source } : {}), ...(detail ? { detail } : {}), ...(code === 'skip' && metadata?.messageId ? { messageId: String(metadata.messageId) } : {}), ...(code === 'skip' && metadata?.reasonCode ? { reasonCode: String(metadata.reasonCode) } : {}) };
     this.data.events.unshift(entry); this.data.events = this.data.events.slice(0, 2000);
     if (code === 'skip') {
@@ -471,9 +482,20 @@ export class AIAssistant {
     // 异常同时进一份独立台账，不受 2000 条事件上限挤压，只有手动清空才移除；
     // 台账本身有 10000 条硬上限，超出丢最早一条（异常风暴时保护数据文件）。
     if (code === 'error' || code === 'truncated') {
-      this.data.errorLog.unshift({ id: entry.id, at: entry.at, account: entry.account, target: entry.target || null, code, message: errorMessage(detail), ...(typeof metadata?.operationId === 'string' ? { operationId: metadata.operationId } : {}) });
+      const context = captureErrorContext(this, target, { ...metadata, source: metadata?.source || source, ...(code === 'truncated' ? { stage: 'read', errorCode: 'truncated' } : {}) }, detail);
+      this.data.errorLog.unshift({ id: entry.id, at: entry.at, account: entry.account, target: entry.target || null, code, message: errorMessage(detail), context, ...(context.operationId ? { operationId: context.operationId } : {}) });
       if (this.data.errorLog.length > errorLogLimit) this.data.errorLog.length = errorLogLimit;
     }
+    return entry;
+  }
+  errorSecrets() {
+    try { return [this.config?.apiKey, this.analysisConfig?.apiKey, ...this.models.map(model => model.apiKey)]; } catch { return []; }
+  }
+  rememberErrorContext(error, context) {
+    if (!error || typeof error !== 'object') return;
+    // Capture at the failing boundary. A broad tick catch may only know the
+    // profile; it must not replace the exact pending-message evidence.
+    this.errorContexts.set(error, { ...context, ...(this.errorContexts.get(error) || {}) });
   }
   pauseProfile(profile, reason) {
     profile.paused = true; profile.pauseReason = reason; profile.pausedAt = this.now();
@@ -870,7 +892,19 @@ export class AIAssistant {
     const offset = before ? rows.findIndex(e => e.id === before) + 1 : 0;
     if (before && !offset) throw new AppError('异常分页游标已失效，请刷新');
     const selected = rows.slice(offset, offset + limit), hasMore = offset + selected.length < rows.length;
-    return { records: selected.map(e => ({ id: e.id, at: e.at, message: e.message || errorFallbackMessage, ...(e.resolution === 'sent' && Number.isFinite(e.resolvedAt) ? { resolution: 'sent', resolvedAt: e.resolvedAt } : {}) })), page: { limit, hasMore, nextBefore: hasMore ? selected.at(-1).id : null, total: rows.length } };
+    return { records: selected.map(e => publicErrorRecord(this, e)), page: { limit, hasMore, nextBefore: hasMore ? selected.at(-1).id : null, total: rows.length } };
+  }
+  errorRelatedRecord(id) {
+    const error = this.errorEvents().find(row => row.id === id), related = error && relatedErrorRecord(this, error);
+    if (!related) throw new AppError('关联记录未保存或已删除，请查看异常中已有的当时证据', 404);
+    if (related.source === 'skip') {
+      const row = this.data.skipLog.find(row => row.id === related.id && row.account === this.data.account);
+      return { source: 'skip', record: this.publicSkipRecord(row) };
+    }
+    const row = this.data.proactiveRecords.find(row => row.id === related.id && row.account === this.data.account);
+    const { body, ...record } = structuredClone(row);
+    try { record.text = body ? this.vault.open(body).text : ''; } catch { record.text = ''; record.bodyUnavailable = true; }
+    return { source: 'proactive', record };
   }
   analysisHistory() {
     if (!this.data.account || !Array.isArray(this.data.analysisReports)) return [];
@@ -1103,7 +1137,7 @@ export class AIAssistant {
     const latestIncoming = messages.findLast(message => message.direction === 'other');
     const generate = (correction = '') => this.provider.complete(this.modelFor('proactive'), `${generationPrompt}${contextualStylePrompt}${speakerIdentityPrompt}${naturalChatPrompt}${longTermMemoryPrompt}${timelinePrompt}${reflectiveReplyPrompt}${conversationPrompt}${addressingPrompt}${personalContextPrompt}${presentTimePrompt}${identityPrompt(false)}${proactivePrompt(strategy)}${proactiveTimelinePrompt} 当前只能发送纯文字，不承诺发送媒体、文件或执行付款。本次是独立主动聊天任务，不自动续聊，不更新风格或记忆。${generationProtocol({ multiTurn, followUpAllowed: false, memoryUpdates: false, allowSkip: false })}${extra}${replySafetyPrompt}${naturalAttributionPrompt}${correction}${currentTimeAnchor(time)}`, {
       mode: 'proactive', continuation: false, multiTurn, allowSegments: true, followUp: false, followUpAllowed: false, updateStyle: false, judgeReply: false,
-      kind: profile.kind, replyPerspective: replyPerspective(profile), strategy, style, contextualStyle: contextualReplyStyle(messages), styleOwner: 'self', addressing: { styleScope: 'current-chat', currentStyle: style },
+      kind: profile.kind, replyPerspective: replyPerspective(profile), roleAnchor: replyRoleAnchor(profile), strategy, style, contextualStyle: contextualReplyStyle(messages), styleOwner: 'self', addressing: { styleScope: 'current-chat', currentStyle: style },
       ...time,
       myInformation: selfContext(this, profile.kind), memory: selectMemoryForChat(readMemory(this.vault, profile), { query: `${task.goal}\n${latestIncoming?.text || ''}`, now: this.now() }), capabilities: { sendText: true, sendMedia: false, files: false, calls: false, executeExternalActions: false },
       conversation: { latestIncomingId: latestIncoming?.id || null, lastSelfId: recentSelfMessages.length ? snapshot.messages.filter(message => message.direction === 'self').at(-1)?.id || null : null,
@@ -1349,6 +1383,7 @@ export class AIAssistant {
       proactiveTargets: this.data.proactiveTargets.map(id => ids.get(id)).filter(Boolean) };
   }
   async read(profile, signal, { priority = false } = {}) {
+    try {
     const snapshot = await this.bridge.read({ account: this.data.account, contact: profile.contact, signal, priority });
     if (snapshot.account !== this.data.account) { this.invalidate(); this.data.settings.enabled = false; this.available = false; this.contacts.clear(); this.avatarUrls.clear(); this.avatarReady = false; this.data.contacts = []; this.data.lastScanAt = null; this.pauseQueue(); this.forgetContext(); await this.save(); throw new AppError('微信账号已变化，请重新检测', 409); }
     if (snapshot.contact !== profile.contact || !snapshot.revision || !Array.isArray(snapshot.messages) || snapshot.messages.length > 300) throw new AppError('无法确认聊天对象，请重新检测', 409);
@@ -1365,6 +1400,7 @@ export class AIAssistant {
     const latest = Math.max(0, ...snapshot.messages.map(m => Number.isSafeInteger(m.timestamp) ? m.timestamp : 0));
     if (contact && latest) contact.lastChatAt = Math.max(contact.lastChatAt || 0, latest);
     return snapshot;
+    } catch (error) { this.rememberErrorContext(error, { profileId: profile.id, stage: 'read' }); throw error; }
   }
   truncatedNotice(profile) {
     const last = this.truncatedNoticeAt?.get(profile.contact) || 0;
@@ -1464,7 +1500,7 @@ export class AIAssistant {
         return { profile, material, memoryMaterial, memoryCoverage, source: 'text' in item ? 'paste' : 'learned' };
         } catch (error) {
           if (signal.aborted || revision !== this.revision || error?.message === '学习已取消') throw error;
-          return { failure: { contact: profile?.contact || item.id || null, profileId: profile?.id || null, label: profile?.label || item.label || '联系人', error: error instanceof Error ? error.message : '学习失败', status: error?.status, code: error?.code } };
+          return { failure: { contact: profile?.contact || item.id || null, profileId: profile?.id || null, label: profile?.label || item.label || '联系人', error: error instanceof AppError ? safeErrorText(error.message, this.errorSecrets()) : '学习失败', status: error?.status, code: error?.code, stage: this.errorContexts.get(error)?.stage || 'read' } };
         }
       };
       signal.throwIfAborted();
@@ -1489,10 +1525,10 @@ export class AIAssistant {
             learned.push({ contact: profile.contact, kind: profile.kind, label: profile.label, source, style });
           } catch (error) {
             if (signal.aborted || revision !== this.revision || error?.message === '学习已取消') throw error;
-            learningFailures.push({ profileId: profile.id, label: profile.label, error: error instanceof Error ? error.message : '风格学习失败' });
+            learningFailures.push({ profileId: profile.id, contact: profile.contact, label: profile.label, error: error instanceof AppError ? safeErrorText(error.message, this.errorSecrets()) : '风格学习失败', code: error?.code, stage: 'learning' });
           } finally { this.operation.phase = 'reading'; this.operation.completed++; }
         }
-        for (const failure of learningFailures) this.event('error', failure.profileId, null, `${failure.label}：${failure.error}`);
+        for (const failure of learningFailures) this.event('error', failure.profileId, null, `${failure.label}：${failure.error}`, { contact: failure.contact, source: 'learning', stage: failure.stage, errorCode: failure.code });
         if (learningFailures.length) await this.save();
         if (!learned.length) throw new AppError(learningFailures.map(failure => `${failure.label}：${failure.error}`).join('；') || '没有联系人成功完成风格学习', learningFailures.length === 1 ? learningFailures[0].status || 400 : 400, learningFailures.length === 1 ? learningFailures[0].code : undefined);
         if (learned.length > 1) this.operation.total = items.length + 1;
@@ -1507,7 +1543,7 @@ export class AIAssistant {
           if (learned.length > 1) this.operation.completed++;
         } catch (error) {
           if (signal.aborted || revision !== this.revision || error?.message === '学习已取消') throw error;
-          this.event('error', null, null, `默认风格汇总失败：${error instanceof Error ? error.message : '模型未返回有效汇总'}`);
+          this.event('error', null, null, `默认风格汇总失败：${error instanceof AppError ? safeErrorText(error.message, this.errorSecrets()) : '模型未返回有效汇总'}`, { source: 'default-style', stage: 'default-style', errorCode: error?.code });
           await this.save();
           throw error;
         }
@@ -1573,10 +1609,10 @@ export class AIAssistant {
             memorySuccesses++;
           } catch (error) {
             if (signal.aborted || revision !== this.revision || error?.message === '学习已取消') throw error;
-            learningFailures.push({ profileId: profile.id, label: profile.label, error: error instanceof Error ? error.message : '记忆学习失败' });
+            learningFailures.push({ profileId: profile.id, contact: profile.contact, label: profile.label, error: error instanceof AppError ? safeErrorText(error.message, this.errorSecrets()) : '记忆学习失败', code: error?.code, stage: 'learning' });
           } finally { this.operation.phase = 'reading'; this.operation.completed++; }
         }
-        if (learningFailures.length) { for (const failure of learningFailures) this.event('error', failure.profileId, null, `${failure.label}：${failure.error}`); await this.save(); }
+        if (learningFailures.length) { for (const failure of learningFailures) this.event('error', failure.profileId, null, `${failure.label}：${failure.error}`, { contact: failure.contact, source: 'learning', stage: failure.stage || 'learning', errorCode: failure.code }); await this.save(); }
         if (!memorySuccesses) throw new AppError(learningFailures.map(failure => `${failure.label}：${failure.error}`).join('；') || '没有联系人成功完成记忆学习', learningFailures.length === 1 ? learningFailures[0].status || 400 : 400, learningFailures.length === 1 ? learningFailures[0].code : undefined);
         this.notice = `${emptyMemoryResults ? `${emptyMemoryResults} 位联系人没有发现可保存的新记忆；` : ''}聊天记忆学习完成，请确认后应用${truncatedResults ? `；${truncatedResults} 位联系人仅分析了部分聊天，详情见联系人范围提示` : ''}${learningFailures.length ? `；失败 ${learningFailures.map(failure => `${failure.label}：${failure.error}`).join('；')}` : ''}`;
         return this.publicState();
@@ -1590,7 +1626,7 @@ export class AIAssistant {
         const prepared = await prepareOne(item);
         if (prepared.failure) {
           learningFailures.push(prepared.failure);
-          this.event('error', prepared.failure.profileId, null, `${prepared.failure.label}：${prepared.failure.error}`);
+          this.event('error', prepared.failure.profileId, null, `${prepared.failure.label}：${prepared.failure.error}`, { contact: prepared.failure.contact, source: 'learning', stage: prepared.failure.stage, errorCode: prepared.failure.code });
           await this.save(); this.operation.completed++; continue;
         }
         const { profile, material, source, memoryCoverage } = prepared;
@@ -1634,7 +1670,7 @@ export class AIAssistant {
         } catch (error) {
           if (signal.aborted || revision !== this.revision || error?.message === '学习已取消') throw error;
           learningFailures.push({ profileId: profile.id, label: profile.label, error: error instanceof Error ? error.message : '风格学习失败' });
-          this.event('error', profile.id, null, `${profile.label}：${error instanceof Error ? error.message : '学习失败'}`);
+          this.event('error', profile.id, null, `${profile.label}：${error instanceof AppError ? safeErrorText(error.message, this.errorSecrets()) : '学习失败'}`, { source: 'learning', stage: 'learning', errorCode: error?.code });
           await this.save();
         } finally { this.operation.phase = 'reading'; this.operation.completed++; }
       }
@@ -2589,11 +2625,13 @@ export class AIAssistant {
     const frames = String(error?.stack || '').split('\n').slice(1, 7).map(line => line.trim()).filter(Boolean);
     console.error('[ai-run-failure]', JSON.stringify({ name: error?.name || 'Error', code: error?.code || null, frames }));
     if (revision === this.revision || !this.available) {
-      const message = error instanceof AppError ? error.message : 'AI 操作暂未完成，稍后重试', profile = profileId && this.data.profiles[profileId];
+      const context = this.errorContexts.get(error) || {};
+      profileId ||= context.profileId || null;
+      const message = error instanceof AppError ? safeErrorText(error.message, this.errorSecrets()) : 'AI 操作暂未完成，稍后重试', profile = profileId && this.data.profiles[profileId];
       this.notice = message;
       if (profile) profile.replyRetryAt = Math.max(profile.replyRetryAt || 0, this.now() + 30000);
       else this.retryAt = this.now() + 30000;
-      this.event('error', profileId, profile ? 'reply' : null, message); await this.save();
+      this.event('error', profileId, context.source || (profile ? 'reply' : null), message, { ...context, errorCode: error.code }); await this.save();
     }
   }
   async verifyProvider(value, scope = 'chat') {
@@ -2980,7 +3018,7 @@ export class AIAssistant {
       catch (error) {
         if (signal.aborted || error?.code === 'ai_account_changed' || this.data.account !== profile.account) throw error;
         this.notice = `${profile.label}：需回复内容总结失败，本轮仍会正常回复，后续自动回复时继续重试总结`;
-        this.event('error', profile.id, 'reply', this.notice);
+        this.event('error', profile.id, 'reply', this.notice, { stage: 'media', incomingMessages: pendingMessages });
         await this.save();
       }
     }
@@ -3017,7 +3055,7 @@ export class AIAssistant {
         result = onlyImages && !images.length && profile.kind !== 'group' ? { action: 'skip', mediaSkipped: true } : await this.provider.complete(
           this.modelFor('chat'),
           `${generationPrompt}${contextualStylePrompt}${speakerIdentityPrompt}${naturalChatPrompt}${longTermMemoryPrompt}${timelinePrompt}${personalContextPrompt}${presentTimePrompt}${chatMemoryPrompt}${profile.kind === 'group' ? groupMemoryInstruction : ' 单聊中，对方姓名写入 name；只有用户确实直接这样称呼对方且对象明确时，才把称呼写入 addressing。'}${identityPrompt(allowIdentity)}${conversationPrompt}${replySummaryContext} ${mediaOutputPrompt} 只能发送文字和capabilities明确允许的生成图片或微信原生语音，不能读取或下载任意文件，不能拨打或接听电话，仅能理解实际附带的图片；未附带图片或图片无法读取时，应如实说明无法查看并请对方转成文字，不猜测图片内容。${groupTriggerInstruction}${groupBatch?.sender ? ` 本轮只回复成员ID ${groupBatch.sender} 对应的消息 ${groupBatch.ids.join(',')}，其余成员的消息仅作背景。需要称呼时仅使用members中该ID对应的真实称呼，不编造姓名。` : ''}${profile.groupContextWait?.trigger === 'atMe' ? ' 上轮已等待补充信息，本次必须回复；信息仍不足时用一句简短问题澄清，不能再次wait。' : ''}${currentTask}${currentStyle}${profile.kind === 'group' ? groupPrompt(trigger, allowSegments, profile.groupOptions?.realtimeMode) : ''}${generationProtocol({ multiTurn, allowSegments, group: profile.kind === 'group', followUpAllowed: profile.kind !== 'group' && !followUp, updateStyle: this.data.settings.updateStyle, allowSkip: !mustReply, allowStop: true })}${reflectiveReplyPrompt}${currentTimeAnchor(time)}${mode === 'reply' && !followUp ? ' 本轮只回应conversation.pendingIncomingMessages列出的来信；其中excerpt=true时按ID查阅messages全文。messages中pending=false的旧问题和已发回复只作背景，不能再补答。' : ''}${replySafetyPrompt}${naturalAttributionPrompt}${safetyCorrection}`,
-          { identityPolicy: { asked: identityAsked, allowDisclosure: !!allowIdentity }, images: textOnlyRetry ? [] : images, onlyImages: textOnlyRetry ? false : onlyImages, capabilityConcern: reason, mode, continuation, multiTurn, allowSegments, followUp, followUpAllowed: profile.kind !== 'group' && !followUp, kind: profile.kind, replyPerspective: replyPerspective(profile), conversation, addressing, memory: selectMemoryForChat(readMemory(this.vault, profile), { query: pendingMessages.map(message => message.text || "").join(" ") || (strategy.replyGoal || strategy.purpose || ""), now: this.now() }), ...time, myInformation: selfContext(this, profile.kind), groupState, capabilities: { sendText: true, wechatVoiceText: true, files: false, calls: false, executeExternalActions: false, sendImages, sendAudio, receiveImages: !textOnlyRetry && images.length > 0, sendMedia: sendImages || sendAudio }, strategy, style, contextualStyle: contextualReplyStyle(modelMessages), styleOwner: 'self', judgeReply: profile.kind === 'group' ? trigger !== 'atMe' : followUp || this.replyOptions(profile).judgeReply, updateStyle: this.data.settings.updateStyle, messages: annotateChatTimes(modelMessages, this.now(), time.timezone).map(message => ({ ...withSpeaker(message, profile), pending: conversation.pendingIncomingIds.includes(message.id), aiGenerated: message.aiGenerated === true || (profile.generatedIds || []).includes(message.id) })) }, signal, { validate: value => validateCurrentTimeReply(validateReplyResult(value, { multiTurn, allowSegments, group: profile.kind === 'group' }), time) }
+          { identityPolicy: { asked: identityAsked, allowDisclosure: !!allowIdentity }, images: textOnlyRetry ? [] : images, onlyImages: textOnlyRetry ? false : onlyImages, capabilityConcern: reason, mode, continuation, multiTurn, allowSegments, followUp, followUpAllowed: profile.kind !== 'group' && !followUp, kind: profile.kind, replyPerspective: replyPerspective(profile), roleAnchor: replyRoleAnchor(profile), conversation, addressing, memory: selectMemoryForChat(readMemory(this.vault, profile), { query: pendingMessages.map(message => message.text || "").join(" ") || (strategy.replyGoal || strategy.purpose || ""), now: this.now() }), ...time, myInformation: selfContext(this, profile.kind), groupState, capabilities: { sendText: true, wechatVoiceText: true, files: false, calls: false, executeExternalActions: false, sendImages, sendAudio, receiveImages: !textOnlyRetry && images.length > 0, sendMedia: sendImages || sendAudio }, strategy, style, contextualStyle: contextualReplyStyle(modelMessages), styleOwner: 'self', judgeReply: profile.kind === 'group' ? trigger !== 'atMe' : followUp || this.replyOptions(profile).judgeReply, updateStyle: this.data.settings.updateStyle, messages: annotateChatTimes(modelMessages, this.now(), time.timezone).map(message => ({ ...withSpeaker(message, profile), pending: conversation.pendingIncomingIds.includes(message.id), aiGenerated: message.aiGenerated === true || (profile.generatedIds || []).includes(message.id) })) }, signal, { validate: value => validateCurrentTimeReply(validateReplyResult(value, { multiTurn, allowSegments, group: profile.kind === 'group' }), time) }
         );
         if (result?.action === 'send') {
           const violation = replySafetyViolation(messageSegments(result, { multiTurn, allowSegments }), { allowIdentity, identityAsked, audioText: sendAudio && result.media?.[0]?.type === 'audio' ? result.media[0].text : '' });
@@ -3036,6 +3074,7 @@ export class AIAssistant {
     } catch (error) {
       // Keep the incoming obligation on a failed request. Back off this object
       // alone so a temporary model failure cannot consume a message or stop others.
+      this.rememberErrorContext(error, { profileId: profile.id, source: trigger || mode, stage: 'model', incomingMessages: pendingMessages });
       if (mode === 'reply' && !signal.aborted && error?.code !== 'ai_account_changed') {
         const failedIncoming = pendingMessages.findLast(message => message.direction === 'other');
         const cursor = this.cursors.get(profile.id);
@@ -3101,8 +3140,8 @@ export class AIAssistant {
         : explicitAsk ? `${profile.label}：检测到明确问题，但模型重试后仍未生成文字回复；本轮未发送，新消息仍可正常处理，请检查模型或上下文`
           : `${profile.label}：智能判断已关闭，但模型连续返回跳过，本轮未发送；请调整回复要求或更换模型`;
       const failedMessage = (profile.kind === 'group' && trigger ? snapshot.messages.find(m => m.id === burst?.messages.findLast(item => item.trigger === trigger)?.id) : null) || pendingMessages.findLast(m => m.direction === 'other') || snapshot.messages.findLast(m => m.direction === 'other');
-      if (explicitAsk) this.event('skip', profile.id, 'system-skip', '保护拦截：明确提问重试后仍未生成文字回复；新来信将继续正常处理', { reasonCode: 'explicit-question-no-response', messageId: failedMessage?.id, trigger: trigger || 'reply', incomingMessages: snapshot.messages.filter(message => pendingMessages.some(pending => pending.id === message.id)) });
-      this.event('error', profile.id, trigger, this.notice);
+      const relatedSkip = explicitAsk ? this.event('skip', profile.id, 'system-skip', '保护拦截：明确提问重试后仍未生成文字回复；新来信将继续正常处理', { reasonCode: 'explicit-question-no-response', messageId: failedMessage?.id, trigger: trigger || 'reply', incomingMessages: snapshot.messages.filter(message => pendingMessages.some(pending => pending.id === message.id)) }) : null;
+      this.event('error', profile.id, trigger || mode, this.notice, { stage: 'model', errorCode: 'ai_model_no_text', incomingMessages: pendingMessages, relatedSkipEventId: relatedSkip?.id });
       await this.save(); return;
     }
     const modelMs = this.now() - modelStartedAt;
@@ -3275,7 +3314,7 @@ export class AIAssistant {
         // 发送受阻只暂停"发送"：联系人与聊天数据仍然可用，学习与分析不受影响。
         profile.sendRetryAt = this.now() + 30000 * Math.min(item?.attempts || 1, 3);
         this.notice = item?.reason || `${this.nameFields(profile).label}：消息尚未发送，稍后重试；${diagnosticDetail}`;
-        this.event('error', profile.id, mode, this.notice);
+        this.event('error', profile.id, mode, this.notice, { stage: 'send', operationId, errorCode: delivery.diagnostic?.code, incomingMessages: fresh.messages.filter(message => groupBatch ? groupBatch.ids.includes(message.id) : message.direction === 'other'), evidenceScope: 'chat-context' });
         await this.save(); return sent ? 'partial' : 'pending';
       }
       if (delivery.status !== 'sent' || !delivery.messageId) {

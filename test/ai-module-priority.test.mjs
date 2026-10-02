@@ -56,6 +56,49 @@ test('analysis chooses contacts and dates before optional fields without droppin
   assert.match(defaults, /aria-label="开始分析" disabled/);
 });
 
+function analysisOptionalSection(html, key) {
+  const match = html.match(new RegExp(`<details\\b([^>]*data-ai-optional="${key}"[^>]*)>([\\s\\S]*?)<\\/details>`));
+  assert.ok(match, `the ${key} optional section remains available`);
+  const status = match[2].match(/<summary>[\s\S]*?class="ai-optional-status">([^<]*)<\/span>[\s\S]*?<\/summary>/)?.[1];
+  assert.ok(status, `the ${key} section exposes its current status`);
+  return { attributes: match[1], body: match[2], status };
+}
+
+test('analysis instructions treat whitespace as unfilled while preserving the actual input for editing', () => {
+  const state = { contacts: [], analysis: { history: [] } };
+  for (const [request, expected] of [
+    ['', '点击展开'],
+    ['   ', '点击展开'],
+    ['\t\r\n\u3000 ', '点击展开'],
+    [' \n  请梳理尚未完成的约定。\t ', '已填写'],
+  ]) {
+    const html = analysisPage(state, { contacts: [], request }, null);
+    const section = analysisOptionalSection(html, 'analysis');
+    assert.equal(section.status, expected, `request ${JSON.stringify(request)} has the right saved-state label`);
+    assert.equal(section.body.match(/<textarea\b[^>]*name="request"[^>]*>([\s\S]*?)<\/textarea>/)?.[1], request, 'the status calculation does not rewrite the user input');
+    assert.doesNotMatch(section.body.match(/<textarea\b[^>]*name="request"[^>]*>/)?.[0] || '', /\brequired\b/, 'instructions remain optional');
+  }
+});
+
+test('analysis media summary reflects each explicit opt-in without silently selecting another type', () => {
+  const state = { contacts: [], analysis: { history: [] } };
+  for (const [includeVoice, includeVisual, expected] of [
+    [false, false, '文字聊天'],
+    [true, false, '已启用 1 项'],
+    [false, true, '已启用 1 项'],
+    [true, true, '已启用 2 项'],
+  ]) {
+    const section = analysisOptionalSection(analysisPage(state, { contacts: [], request: '', includeVoice, includeVisual }, null), 'analysis-media');
+    assert.equal(section.status, expected);
+    assert.equal(/\bopen\b/.test(section.attributes), includeVoice || includeVisual, 'saved media choices stay visible for review');
+    for (const [name, selected] of [['includeVoice', includeVoice], ['includeVisual', includeVisual]]) {
+      const input = section.body.match(new RegExp(`<input\\b[^>]*name="${name}"[^>]*>`))?.[0];
+      assert.ok(input, `${name} remains independently editable`);
+      assert.equal(/\bchecked\b/.test(input), selected, `${name} is checked only when explicitly selected`);
+    }
+  }
+});
+
 test('configured models prioritize assignments, but creating and editing models prioritize setup', () => {
   const state = { models: [{ id: 'one', model: '示例模型', baseUrl: 'https://model.test', tested: true }], assignments: { chat: 'one', learningAnalysis: 'one' }, schema: { providerPresets: [] } };
   before(providerPage(state, null), 'class="ai-card ai-assignment-card"', '<aside');

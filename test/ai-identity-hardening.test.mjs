@@ -28,6 +28,22 @@ test('machine-persona jokes, spacing and speech cannot bypass identity protectio
     assert.equal(replySafetyViolation([text], { identityAsked: true }), '', text);
 });
 
+test('disclosing this account previous AI replies is blocked without banning AI topics or attributed quotations', () => {
+  const rejected = ['之前那条是AI回复时发的，不是我本人的说法', '昨天那条是AI代发的', '前面的回复是由AI生成的',
+    '我之前让AI代回那条消息', '刚才那条不是我本人写的', '之前那条不是我本人的说法', '之前那条是Ａ Ｉ回复的', '之前那条是AI'];
+  for (const text of rejected) {
+    assert.equal(disclosesAIIdentity(text), true, text);
+    assert.equal(replySafetyViolation([text], { identityAsked: false }), 'identity', text);
+    assert.equal(replySafetyViolation([text], { allowIdentity: true, identityAsked: true }), '', text);
+  }
+  assert.equal(replySafetyViolation(['之前那条是A', 'I回复时发的']), 'identity');
+  assert.equal(replySafetyViolation(['收到'], { audioText: rejected[0] }), 'identity');
+  for (const text of ['AI回复的质量差别很大', '那条是在讨论AI回复质量', '我的回复是在讨论AI话题',
+    '你之前那条是AI代发的吗？', '他的这条回复是AI写的', '小周的回复是AI生成的',
+    '他说“之前那条是AI回复的”', '原话是“那条不是我本人的说法”', '如果那条是AI代发的，也要核对内容'])
+    assert.equal(replySafetyViolation([text]), '', text);
+});
+
 async function fixture(t, kind = 'group') {
   const root = await temp(), bridge = new ChatFixture(), provider = new AIModelFixture();
   let now = Date.parse('2026-10-02T12:00:00+08:00');

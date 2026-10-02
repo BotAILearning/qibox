@@ -87,6 +87,23 @@ test('unchanged refresh preserves existing controls and text selection, includin
   assert.equal(button.focusCalls.length, 0);
 });
 
+test('a located record root retains exact focus when opening message details changes the next poll', () => {
+  for (const proactive of [false, true]) {
+    const previous = record('record-2', [disclosure('incoming', true)], proactive);
+    const wrong = record('record-1', [], proactive), next = record('record-2', [disclosure('incoming', true)], proactive);
+    const view = fixture('previous closed markup', [previous], new Map([
+      ['message details now open', [wrong, next]],
+    ]));
+    previous.tabIndex = -1; view.document.activeElement = previous;
+    assert.equal(refreshRecordContent(view.root, () => 'message details now open'), true);
+    assert.equal(view.document.activeElement, next); assert.equal(next.tabIndex, -1);
+    assert.deepEqual(next.focusCalls, [{ preventScroll: true }]); assert.equal(wrong.focusCalls.length, 0);
+    assert.equal(view.root.scrollTop, 180);
+    assert.equal(refreshRecordContent(view.root, () => 'message details now open'), false);
+    assert.equal(view.document.activeElement, next); assert.equal(view.writes(), 1);
+  }
+});
+
 test('changed records restore the exact record action without scrolling or choosing another occurrence', () => {
   const previous = mark(), wrongRecord = mark(), next = mark();
   const view = fixture('old', [record('record-2', [previous])], new Map([

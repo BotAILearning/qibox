@@ -6,7 +6,7 @@ const normalize = value => String(value || '').normalize('NFKC').replace(/[\u200
 const clauses = text => normalize(text).split(/[。！？!?，,；;\n]|但是|不过|然而|但|却/).map(value => value.trim()).filter(Boolean);
 const identity = '(?:AI|人工智能|(?:大(?:型)?)?语言模型|大模型|(?:聊天|自动回复)?机器人|(?:智能|AI|自动回复)助手|自动回复系统|bot|chatbot|language model)';
 const introduction = new RegExp(`(?:作为|我(?:这边)?(?:就?是|其实是|确实是|只是|不过是|属于)|这里(?:是|由)|这边(?:是|由))\\s*(?:一[个位名种]?|个|一款)?\\s*(?:自动|智能|负责回复的)?\\s*${identity}`, 'i');
-const generatedIdentity = new RegExp(`(?:我的(?:回复|回答)|这条(?:回复|消息)|本次(?:回复|回答))[^，。！？!?\\n]{0,8}(?:由|是)[^，。！？!?\\n]{0,12}${identity}|我[^，。！？!?\\n]{0,8}(?:由|通过)[^，。！？!?\\n]{0,10}${identity}[^，。！？!?\\n]{0,8}(?:驱动|生成|回复)|\\b(?:I am|I'm|I’m|as|this is)\\s+(?:an?\\s+)?(?:AI|bot|chatbot|automated assistant|(?:large )?language model)\\b`, 'i');
+const generatedIdentity = new RegExp(`(?:我的(?:回复|回答)|这条(?:回复|消息)|本次(?:回复|回答))\\s*(?:其实|确实|就|都|也)?(?:由|是)\\s*(?:由\\s*)?(?:一个|一款)?\\s*${identity}(?:\\s*(?:的|在|帮我|替我|代为|自动))?\\s*(?:驱动|生成|回复|代回|代发|写的|发的|$)|我[^，。！？!?\\n]{0,8}(?:由|通过)[^，。！？!?\\n]{0,10}${identity}[^，。！？!?\\n]{0,8}(?:驱动|生成|回复)|\\b(?:I am|I'm|I’m|as|this is)\\s+(?:an?\\s+)?(?:AI|bot|chatbot|automated assistant|(?:large )?language model)\\b`, 'i');
 const bareIdentity = new RegExp(`^(?:是|由)\\s*${identity}(?:$|\\s*(?:代|回|生成|在回))`, 'i');
 // Adopting a machine persona as a joke still identifies the reply's author.
 // Keep robotics/AI discussion valid; require a machine-body claim or an
@@ -17,6 +17,15 @@ const addressedPersona = new RegExp(`^(?:哈哈|嘿嘿|嗯)?\\s*${identity}[\\s\
 // asks about automated replies. The same words in ordinary chat stay valid.
 const implicitIdentity = /^(?:哈哈|嘿嘿|嗯)?(?:被(?:你|您)(?:发现|识破|看穿)了?|让(?:你|您)(?:发现|识破|看穿)了?|(?:你|您)(?:猜|说|判断)对了?|猜(?:中|对)了|没错|是(?:的|啊|呀|哦)|对(?:的|啊|呀|哦)|确实(?:是|如此))(?:[\s~～…😂😅]*|[了呢呀啊哦哎\s~～…😂😅]*)$/;
 
+// A disclosure about an earlier reply still reveals this account's automated
+// authorship. Require a message/first-person subject, not merely an AI topic.
+const earlier = '(?:之前|此前|刚才|刚刚|前面|先前|昨天|上次|早先)';
+const ownMessage = `(?:(?:我(?:的)?|(?:我)?${earlier}(?:发的|说的|的)?)\\s*)?(?:(?:这|那|上|前)(?:一)?(?:条|句|段)(?:消息|回复|回答|话|说法)?|(?:本次)?(?:回复|消息|回答|说法))`;
+const generatedOwnMessage = new RegExp(`^${ownMessage}\\s*(?:其实|确实|就|都|也)?(?:是|由)\\s*(?:由\\s*)?(?:一个|一款)?\\s*${identity}(?:\\s*(?:的|在|帮我|替我|代为|自动|工具))?\\s*(?:代回|代发|回复|回的|生成|写的|发的|$)`, 'i');
+const assistedOwnReply = new RegExp(`^我(?:${earlier})?[^，。！？!?\\n]{0,6}(?:用|让|通过|叫|找)[^，。！？!?\\n]{0,8}${identity}[^，。！？!?\\n]{0,12}(?:代回|代发|回复(?:你|的|消息)|替我回|帮我回)`, 'i');
+const deniedOwnAuthorship = new RegExp(`^${ownMessage}[^，。！？!?\\n]{0,4}(?:不是|并非|不属于)(?:我本人|我自己|本人)(?:亲自)?(?:的)?(?:说法|回复|回答|原话|发的|写的|说的)`);
+const otherMessageSubject = new RegExp(`^(?:你|您|他|她|他们|她们|对方|别人)(?:的|${earlier}(?:发的|说的|的)?|(?:这|那|上|前)(?:一)?(?:条|句|段))`);
+
 function quotedOrHypothetical(part) {
   // Attribution and questions about someone else's actions are not new claims.
   // Bare quotes do not authorize a claim: an instruction to echo "已执行任务"
@@ -26,8 +35,10 @@ function quotedOrHypothetical(part) {
 }
 
 export function disclosesAIIdentity(text) {
-    return clauses(text).some(part => !quotedOrHypothetical(part) && (introduction.test(part) || generatedIdentity.test(part) || bareIdentity.test(part) || machinePersona.test(part)
-      || introduction.test(part.replace(/\s+/g, ''))));
+    return clauses(text).some(part => !quotedOrHypothetical(part) && !otherMessageSubject.test(part) &&
+      (introduction.test(part) || generatedIdentity.test(part) || bareIdentity.test(part) || machinePersona.test(part)
+      || generatedOwnMessage.test(part) || assistedOwnReply.test(part) || deniedOwnAuthorship.test(part)
+      || [introduction, generatedOwnMessage, assistedOwnReply, deniedOwnAuthorship].some(pattern => pattern.test(part.replace(/\s+/g, '')))));
 }
 
 const externalAction = '(?:执行|运行|办理|处理|完成|搞定|办妥|提交|发送|转发|联系|通知|下单|付款|转账|支付|预约|预订|报名|购买|取消|删除|清空|修改|设置|安装|卸载|重启|部署|发布|上传|下载|保存|创建|打开|关闭|查询|查阅|搜索|检索|查过|查到|验证|核实|核对|检查|同步|备份)';
@@ -59,6 +70,6 @@ export function replySafetyViolation(segments, { allowIdentity = false, identity
 
 export function replySafetyCorrection(reason) {
   return reason === 'identity'
-    ? ' 上一份正文违规说明了AI/机器人身份，也包括间接承认。不能用“被你发现了”“你猜对了”“是的”“没错”承认自动回复，也不能顺着机器人称呼接“机器人不用健身”“保持出厂设置”“靠充电”等机器身份玩笑。重新拟写自然的微信接话，可简短询问对方疑虑，不说明身份、后台或生成过程；不能编造真人在场证明。只返回原协议要求的JSON。'
+    ? ' 上一份正文违规说明了AI/机器人身份，也包括间接承认。不能用“被你发现了”“你猜对了”“是的”“没错”承认自动回复，也不能顺着机器人称呼接“机器人不用健身”“保持出厂设置”“靠充电”等机器身份玩笑。当前或旧账号回复都不能说明“之前那条是AI回复/AI代发”“那条不是我本人的说法”；纠正旧身份错误不需要解释代发来源，更不能编造“我不是医生”等否定身份。重新拟写自然的微信接话，可简短询问对方疑虑或回应实质问题，不说明身份、后台或生成过程；不能编造真人在场证明。只返回原协议要求的JSON。'
     : ' 上一份正文声称或承诺执行没有证据的操作。当前没有执行外部任务的工具，不得说已完成、已执行、已帮对方处理或正在操作；普通回复也没有安排未来通知，不能补“确定了告诉你”等承诺。改为自然说明尚不确定、给出可实际发送的文字建议或询问必要信息。只返回原协议要求的JSON。';
 }

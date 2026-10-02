@@ -1,5 +1,6 @@
 import { hasSpeakerTurns, speakerTurns, speakerHistory, speakerAuditPrompt, speakerAuditInput, applySpeakerAudit, naturalSpeakerAuditPrompt, speakerGroundingPrompt, replyRelations, confirmedSpeakerHistory, naturalTurnBrief } from './ai-speakers.mjs';
 import { identityPrompt } from './ai-reply-rules.mjs';
+import { assertReplyRoleInput, assertReplyRoleDraft, replyRolePrompt, replyRoleAuditPrompt, replyRoleEvidencePrompt } from './ai-reply-role.mjs';
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -304,6 +305,8 @@ export class AIProvider {
     }
   }
   async complete(config, system, input, signal, { format = 'json', budget: requestedBudget, retry = true, validate, requireImages = false } = {}) {
+    assertReplyRoleInput(input);
+    const roleSystem = input.roleAnchor && hasSpeakerTurns(input) ? system + replyRolePrompt + replyRoleEvidencePrompt : system;
     const anthropic = config.protocol === 'anthropic', endpoint = providerEndpoints(config).complete;
     // M3's Anthropic endpoint defaults to thinking off. Natural references need
     // reasoning, especially when checking several actors and implicit subjects.
@@ -314,7 +317,7 @@ export class AIProvider {
     const validImages = images.filter(x => x && ['image/png','image/jpeg','image/gif','image/webp'].includes(x.mime) && typeof x.data === 'string' && x.data.length <= 5600000).slice(0,3);
     if (requireImages && (!images.length || validImages.length !== images.length)) throw new AppError('图片或视频帧不符合模型输入要求', 400);
     const expanded = hasSpeakerTurns(input) ? { ...textInput, messages: input.messages, replySpeakerHistory: speakerHistory(input.messages).map(({ messages, ...group }) => ({ ...group, messageIds: messages.map(message => message.id) })), confirmedSpeakerHistory: confirmedSpeakerHistory(input.messages).filter(group => group.speaker.role === 'self'), replyRelations: replyRelations(input.messages), naturalTurnBrief: naturalTurnBrief(input.messages) } : textInput;
-    const encoded = encodeModelRequest(system, compactModelInput(expanded));
+    const encoded = encodeModelRequest(roleSystem, compactModelInput(expanded));
     const text = JSON.stringify(encoded.input);
     const requestContent = validImages.length ? [{type:'text',text}, ...validImages.flatMap(x => [{type:'text',text:'图片对应消息 '+encoded.id(x.messageId)}, anthropic ? {type:'image',source:{type:'base64',media_type:x.mime,data:x.data}} : {type:'image_url',image_url:{url:'data:'+x.mime+';base64,'+x.data}}])] : text;
     // Only Anthropic used to receive an output budget; elsewhere the server's
@@ -389,6 +392,7 @@ export class AIProvider {
           if (format === 'report' && !result?.report?.trim()) console.warn('[ai-analysis-report-shape]', JSON.stringify(analysisReportFormatDiagnostic(content, data, size)));
           try {
             const checked = typeof validate === 'function' ? await validate(result) : result;
+            assertReplyRoleDraft(checked, input);
             if (!hasSpeakerTurns(input) || checked?.action !== 'send') return checked;
             attributionStarted = true;
             let candidate = checked;
@@ -396,22 +400,24 @@ export class AIProvider {
             for (let pass = 0; pass < 3; pass++) {
               const auditInput = speakerAuditInput(input, candidate);
               const auditSystem = speakerAuditPrompt + naturalSpeakerAuditPrompt + speakerGroundingPrompt
-                + (input.identityPolicy?.asked ? identityPrompt(input.identityPolicy.allowDisclosure === true)
-                  + (input.identityPolicy.asked && !input.identityPolicy.allowDisclosure ? ' 本轮身份问题不要求自动肯定或否定；简短询问对方疑虑属于完整合法回应，不算漏答。不能把这种回应修正成“被你发现了”“不是我亲自回的”或任何自动回复说明，也不能增加真人在场证明。' : '') : '');
+                + (input.roleAnchor ? replyRoleAuditPrompt + replyRoleEvidencePrompt : '')
+                + identityPrompt(input.mode === 'reply' && input.identityPolicy?.asked === true && input.identityPolicy.allowDisclosure === true)
+                + (input.identityPolicy?.asked && !input.identityPolicy.allowDisclosure ? ' 本轮身份问题不要求自动肯定或否定；简短询问对方疑虑属于完整合法回应，不算漏答。不能把这种回应修正成“被你发现了”“不是我亲自回的”或任何自动回复说明，也不能增加真人在场证明。' : '');
               let audit = await this.complete(config, auditSystem, auditInput, signal, { budget: 8192, retry: false });
               let verified;
-              try { verified = applySpeakerAudit(candidate, audit, { requireGrounding: true, requiredReplyIds: auditInput.requiredReplyIds, allowSkip: auditInput.allowSkip }); }
+              try { verified = applySpeakerAudit(candidate, audit, { requireGrounding: true, requireRole: !!input.roleAnchor, requiredReplyIds: auditInput.requiredReplyIds, allowSkip: auditInput.allowSkip }); }
               catch (error) {
                 if (!retry || repairedAudit || error.code !== 'ai_model_schema') throw error;
                 // One repair of the checker's protocol, never a bypass. Keep the
                 // original draft and evidence; missing comment coverage must
                 // produce a corrected draft rather than invented coverage.
                 repairedAudit = true;
-                audit = await this.complete(config, auditSystem + ' 上次核验JSON缺少有效字段。重新完整核对原draftParts，每个partId都有checks；consistent=true时requiredReplyIds必须逐项有实际正文对应的replyCoverage。没有接住评论就consistent=false并返回完整修正text，不得为通过校验捏造覆盖片段。', auditInput, signal, { budget: 8192, retry: false });
-                verified = applySpeakerAudit(candidate, audit, { requireGrounding: true, requiredReplyIds: auditInput.requiredReplyIds, allowSkip: auditInput.allowSkip });
+                audit = await this.complete(config, auditSystem + ' 上次核验JSON缺少有效字段。重新完整核对原draftParts，每个partId都有checks；consistent=true时requiredReplyIds必须逐项有实际正文对应的replyCoverage，roleAnchor存在时还必须完整返回符合固定作者的roleCheck。没有接住评论或固定角色冲突就consistent=false并返回完整修正text，不得为通过校验捏造覆盖片段或角色结论。', auditInput, signal, { budget: 8192, retry: false });
+                verified = applySpeakerAudit(candidate, audit, { requireGrounding: true, requireRole: !!input.roleAnchor, requiredReplyIds: auditInput.requiredReplyIds, allowSkip: auditInput.allowSkip });
               }
               if (audit.consistent) return candidate;
               candidate = typeof validate === 'function' ? await validate(verified) : verified;
+              assertReplyRoleDraft(candidate, input);
               if (candidate?.action !== 'send') return candidate;
               if (pass === 2) throw new AppError('回复的发言归属仍有冲突，当前草稿未发送', 502, 'ai_model_schema');
               console.info('[ai-speaker-corrected]', JSON.stringify({ mode: input.mode, kind: input.kind || 'person' }));
@@ -444,7 +450,7 @@ export class AIProvider {
         const retryable = error instanceof AppError ? retryableCode.includes(error.code) : true;
         if (retryable && retry && !attributionStarted && attempt < MODEL_RETRY_LIMIT) {
           await this.backoff(attempt, signal);
-          if (error instanceof AppError && error.code !== 'ai_model_retry') currentSystem = `${system}\n上一次返回未通过格式或业务结构校验。${error.code === 'ai_model_time' ? error.message + '。' : ''}请基于同一份输入修正后重新回答，只返回符合原要求的完整 JSON 对象，不要解释。`;
+          if (error instanceof AppError && error.code !== 'ai_model_retry') currentSystem = `${encoded.system}\n上一次返回未通过格式或业务结构校验。${error.code === 'ai_model_time' ? error.message + '。' : ''}请基于同一份输入修正后重新回答，只返回符合原要求的完整 JSON 对象，不要解释。`;
           continue;
         }
         if (error instanceof AppError) throw error;

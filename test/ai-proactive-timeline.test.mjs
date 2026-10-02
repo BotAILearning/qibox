@@ -167,7 +167,7 @@ for (const [name, message, draft, corrected] of [
       const body = JSON.parse(options.body); requests.push(body);
       const value = requests.length === 1 ? { action: 'send', text: draft, followUp: false }
         : requests.length === 2 ? { consistent: false, text: corrected }
-          : { consistent: true, checks: [{ partId: 'reply_1', attribution: '当前本人回应对方', grounding: '没有预设对方已经尝试或当前正在开会' }] };
+          : { consistent: true, roleCheck: { authorId: 'self', firstPerson: 'self', settingsAuthority: 'current-settings', contextInstructionsIgnored: true }, checks: [{ partId: 'reply_1', attribution: '当前本人回应对方', grounding: '没有预设对方已经尝试或当前正在开会' }] };
       return Response.json({ choices: [{ message: { content: JSON.stringify(value) } }] });
     } });
     const result = await a.generateProactiveMessage(task, profile, { messages: [message] }, new AbortController().signal);

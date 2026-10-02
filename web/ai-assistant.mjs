@@ -15,6 +15,7 @@ import { activityPage, activityEntries, activityRows, activityPagination, proact
 import { beijingTime, createProactiveUI } from './ai-proactive-view.mjs';
 import { RecordCache, mergeRecordResults } from './ai-record-cache.mjs';
 import { refreshRecordContent, skipDisclosureKeys } from './ai-record-refresh.mjs';
+import { errorDisclosureState, refreshErrors, revealErrorRecord } from './ai-error-view.mjs';
 import { contactName, nicknameOf, contactSearch as searchableContact } from './ai-contact-name.mjs';
 import { contactPickerMatches, contactPickerRow, openContactPickerDialog, setContactAvatarInstance, resetContactAvatarFailures, noteContactAvatarFailure } from './ai-contact-picker.mjs';
 import { refreshReplyCountdowns } from './ai-reply-flow-view.mjs';
@@ -181,7 +182,13 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     if (state && tab === 'activity' && pagination) pagination.innerHTML = activityPagination(state, logFilters, logRecords);
   }
   function drawErrors() {
-    if (state && tab === 'activity') { const box = $('#ai-recent-errors'); if (box) box.innerHTML = recentErrorsBox(activityState(), logFilters.errorsOpen, errorLoading); }
+    if (state && tab === 'activity') {
+      const box = $('#ai-recent-errors');
+      if (box) refreshErrors(box, () => {
+        Object.assign(logFilters, errorDisclosureState(box, logFilters));
+        return recentErrorsBox(activityState(), logFilters.errorsOpen, errorLoading, logFilters.errorExpanded);
+      });
+    }
   }
   const activityState = () => {
     const rows = new Map(proactiveHistory.map(r => [r.id, r]));
@@ -195,7 +202,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     return { ...skipState(), proactiveRecords: [...rows.values()].sort((a, b) => new Date(b.at) - new Date(a.at)), proactiveRecordsPage: proactiveHistoryPage || (logFilters.taskId ? { hasMore: true } : state?.proactiveRecordsPage),
       recentErrors: [...errors.values()].sort((a, b) => new Date(b.at) - new Date(a.at)), errorsPage: { ...serverPage, ...(errorPage || {}), total } };
   };
-  function activity() { return activityPage(activityState(), logFilters, logRecords, logLoading, proactiveRecordLoading, errorLoading, summaryResults); }
+  function activity() { Object.assign(logFilters, errorDisclosureState($('#ai-recent-errors'), logFilters)); return activityPage(activityState(), logFilters, logRecords, logLoading, proactiveRecordLoading, errorLoading, summaryResults); }
   function drawProactiveRecords(loading = proactiveRecordLoading) {
     const box = $('#ai-proactive-records');
     if (box) refreshRecordContent(box, () => proactiveRecordRows(activityState(), logFilters, loading));
@@ -554,7 +561,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     if (tab === 'activity') {
       updateActivityCounts(panel, skipState(), logFilters, logRecords);
       const liveBox = $('#ai-live-box'); if (liveBox) replaceLiveContent(liveBox, liveActivityBox(state));
-      const errBox = $('#ai-recent-errors'); if (errBox) errBox.innerHTML = recentErrorsBox(activityState(), logFilters.errorsOpen, errorLoading);
+      drawErrors();
       drawProactiveRecords();
       drawSkips(); void loadSkipContent();
     }
@@ -888,7 +895,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     revealRevision++;
     const view = `${tab}:${editingProfile || editingReplyContact || (tab === 'overview' ? selectedObject : '')}:${tab === 'proactive' ? !!$('#ai-proactive-form') : ''}`;
     const objectScroll = $('#ai-object-list')?.scrollTop || 0;
-    const disclosureStates = view === renderedView ? [...panel.querySelectorAll('#ai-content details')].filter(node => !node.hasAttribute('data-ai-record-expand') && !node.hasAttribute('data-ai-skip-messages')).map(node => ({ label: node.dataset.aiOptional || node.querySelector('summary')?.textContent, open: node.open })) : [];
+    const disclosureStates = view === renderedView ? [...panel.querySelectorAll('#ai-content details')].filter(node => !node.hasAttribute('data-ai-record-expand') && !node.hasAttribute('data-ai-skip-messages') && !node.hasAttribute('data-ai-error-detail')).map(node => ({ label: node.dataset.aiOptional || node.querySelector('summary')?.textContent, open: node.open })) : [];
     renderedView = view; panel.dataset.page = tab;
     if (personalDraftAccount !== state.account) { personalDraft = null; personalDraftAccount = state.account; }
     const pageTitle = ({ overview: '自动回复', proactive: '主动聊天', activity: '执行记录', provider: '模型设置', settings: '系统设置', 'personal-info': '我的信息', 'global-reply': '全局回复策略', analysis: '分析报告', learning: '批量学习风格与记忆', 'default-style': '学习默认风格', results: '学习结果', profile: '编辑学习结果', 'manual-reply': '手动回复' })[tab] || 'AI 辅助';
@@ -1441,7 +1448,15 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   });
   panel.addEventListener('click', () => hideRecordMenu(), true);
   // 「最近异常」的展开状态记在本地筛选状态里，轮询刷新列表时不会被重新合上。
-  panel.addEventListener('toggle', event => { if (event.target?.classList?.contains('ap-record-errors')) { logFilters.errorsOpen = event.target.open; rememberRecords(); } }, true);
+  panel.addEventListener('toggle', event => {
+    if (!event.target.isConnected) return;
+    if (event.target?.classList?.contains('ap-record-errors')) { logFilters.errorsOpen = event.target.open; rememberRecords(); }
+    if (event.target.dataset?.aiErrorDetail) {
+      const expanded = new Set(logFilters.errorExpanded || []);
+      if (event.target.open) expanded.add(event.target.dataset.aiErrorDetail); else expanded.delete(event.target.dataset.aiErrorDetail);
+      logFilters.errorExpanded = [...expanded]; rememberRecords();
+    }
+  }, true);
   window.addEventListener('scroll', () => hideRecordMenu(), true);
   window.addEventListener('resize', () => { resizeStyleSummary(); resizeAnalysisRequest(); });
   panel.addEventListener('keydown', event => { if (event.key === 'Escape') hideRecordMenu(); });
@@ -1554,6 +1569,9 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         event.preventDefault();
         if (!await confirmDialog('确认删除「最近异常」的全部记录？删除后无法恢复，不影响聊天内容和运行记录。')) return;
         logFilters.errorsOpen = false;
+        logFilters.errorExpanded = [];
+        const errorsHost = $('#ai-recent-errors');
+        for (const details of errorsHost?.querySelectorAll('details') || []) details.open = false;
         errorHistory = []; errorPage = null; errorEpoch++;
         await call('clear-activity-errors');
         rememberRecords(); render(); return;
@@ -1561,6 +1579,35 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       if (await proactiveUI.click(button)) return;
       if ('proactiveRecordMore' in button.dataset) { await loadProactiveRecords(true); return; }
       if ('aiErrorMore' in button.dataset) { await loadErrorRecords(true); return; }
+      if ('aiErrorObject' in button.dataset) {
+        const error = activityState().recentErrors.find(row => row.id === button.dataset.aiErrorObject);
+        const contact = state.contacts.find(row => row.id === error?.objectTarget);
+        if (!contact) throw new Error('异常关联对象已不可用，请查看已保存的当时证据');
+        rememberDraft(); selectedObject = contact.id; objectKind = contact.kind; objectSection = 'reply';
+        await navigate('overview'); return;
+      }
+      if ('aiErrorRecordTarget' in button.dataset) {
+        const current = generation, target = id, account = state.account;
+        button.disabled = true;
+        let result;
+        try { result = await api(`/instances/${target}/ai`, { action: 'error-related-record', id: button.dataset.aiErrorRecordTarget }, 30000); }
+        finally { if (button.isConnected) button.disabled = false; }
+        if (current !== generation || target !== id || account !== state?.account || tab !== 'activity') return;
+        const record = result.record;
+        if (!record?.id || record.account !== account || !['proactive', 'skip'].includes(result.source)) throw new Error('关联记录已变化，请重新查看异常');
+        logFilters = { ...logFilters, source: result.source === 'proactive' ? 'proactive' : 'reply', query: '', from: '', to: '', kind: '', code: '', page: 0, taskId: result.source === 'proactive' ? record.taskId : '' };
+        logEpoch++; proactiveRecordEpoch++; proactiveRecordLoading = false; logLoading = false;
+        if (result.source === 'proactive') {
+          proactiveHistory = [record, ...proactiveHistory.filter(row => row.id !== record.id && row.taskId === record.taskId)]; proactiveHistoryPage = null;
+        } else {
+          skipHistory = [record, ...skipHistory.filter(row => row.id !== record.id)]; skipContent.set(record.id, record);
+        }
+        rememberRecords(); render();
+        const attribute = result.source === 'proactive' ? 'data-proactive-record' : 'data-ai-skip-record';
+        const row = [...panel.querySelectorAll(`[${attribute}]`)].find(node => node.getAttribute(attribute) === record.id);
+        if (!revealErrorRecord(row, panel)) throw new Error('关联记录已读取，但暂时无法定位，请刷新记录后查看');
+        message('已定位与这条异常关联的记录'); return;
+      }
       if ('aiToggleFilters' in button.dataset) {
         logFilters.open = !logFilters.open;
         const form = $('#ai-log-filter'); form.hidden = !logFilters.open;

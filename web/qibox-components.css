@@ -519,6 +519,43 @@
 #ai-panel .ai-activity-page .ap-record-errors li { display: grid; grid-template-columns: 142px minmax(0,1fr); gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--qbx-line); font-size: 13px; }
 #ai-panel .ai-activity-page .ap-record-errors li:last-child { border-bottom: 0; }
 #ai-panel .ai-activity-page .ap-record-errors time { color: var(--qbx-muted); font-size: 12px; }
+#ai-panel .ai-error-record-list { display: grid; gap: 12px; }
+#ai-panel .ai-error-record { min-width: 0; border: 1px solid var(--qbx-line); border-radius: 10px; overflow: hidden; }
+#ai-panel .ai-error-summary { display: flex; align-items: flex-start; gap: 16px; padding: 16px; list-style: none; cursor: pointer; }
+#ai-panel .ai-error-summary::-webkit-details-marker { display: none; }
+#ai-panel .ai-error-summary::after { content: ''; flex: 0 0 auto; width: 7px; height: 7px; margin: 6px 2px 0 auto; border-right: 2px solid var(--qbx-muted); border-bottom: 2px solid var(--qbx-muted); transform: rotate(45deg); }
+#ai-panel .ai-error-detail[open]>.ai-error-summary::after { transform: rotate(225deg); }
+#ai-panel .ai-error-summary:focus-visible { outline: 2px solid var(--qi-focus); outline-offset: -3px; border-radius: 8px; }
+#ai-panel .ai-error-summary:hover { background: var(--qi-hover); }
+#ai-panel .ai-error-time { flex: 0 0 142px; padding-top: 2px; }
+#ai-panel .ai-error-summary-copy { flex: 1 1 auto; min-width: 0; display: grid; gap: 8px; overflow-wrap: anywhere; }
+#ai-panel .ai-error-object { color: var(--qbx-ink); font-size: 14px; font-weight: 600; line-height: 1.6; }
+#ai-panel .ai-error-message { color: var(--qbx-ink); font-size: 13px; font-weight: 600; line-height: 1.6; }
+#ai-panel .ai-error-chips { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; min-width: 0; }
+#ai-panel .ai-error-chip { max-width: 100%; padding: 3px 8px; border-radius: 6px; background: var(--qi-hover); color: var(--qbx-muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+#ai-panel .ai-error-detail-body { padding: 0 16px 16px; border-top: 1px solid var(--qbx-line); }
+#ai-panel .ai-error-meta { display: grid; grid-template-columns: max-content minmax(0,1fr); gap: 8px 16px; margin: 16px 0; font-size: 12px; line-height: 1.6; }
+#ai-panel .ai-error-meta dt { color: var(--qbx-muted); }
+#ai-panel .ai-error-meta dd { min-width: 0; margin: 0; color: var(--qbx-ink); overflow-wrap: anywhere; }
+#ai-panel .ai-error-evidence { min-width: 0; padding-top: 12px; border-top: 1px solid var(--qbx-line); }
+#ai-panel .ai-error-evidence h5 { margin: 0 0 8px; color: var(--qbx-ink); font-size: 13px; }
+#ai-panel .ai-error-context-note { margin: 10px 0; color: var(--qbx-muted); font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+#ai-panel .ai-error-message-list { display: grid; gap: 12px; margin: 0; padding-left: 22px; }
+.qiapp-product #ai-panel .ai-activity-page .ai-error-message-list>li { display: list-item; min-width: 0; padding: 0; border: 0; color: var(--qbx-ink); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.qiapp-product #ai-panel .ai-activity-page .ai-error-message-list>li>time { display: inline-block; margin-left: 12px; white-space: normal; }
+#ai-panel .ai-error-message-list>li>p { margin: 8px 0; }
+#ai-panel .ai-error-message-id { display: block; font-size: 11px; color: var(--qbx-muted); overflow-wrap: anywhere; }
+#ai-panel .ai-error-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+#ai-panel .ai-error-actions>button { min-height: 44px; max-width: 100%; white-space: normal; text-align: left; }
+@media(max-width:600px) {
+  #ai-panel .ai-error-summary { display: grid; grid-template-columns: minmax(0,1fr) 9px; gap: 8px 12px; padding: 14px; }
+  #ai-panel .ai-error-time { grid-column: 1; }
+  #ai-panel .ai-error-summary-copy { grid-column: 1; }
+  #ai-panel .ai-error-summary::after { grid-column: 2; grid-row: 1; }
+  #ai-panel .ai-error-detail-body { padding-inline: 14px; }
+  #ai-panel .ai-error-meta { grid-template-columns: minmax(0,1fr); gap: 4px; }
+  #ai-panel .ai-error-meta dd { margin-bottom: 8px; }
+}
 #ai-panel .ai-activity-page #ai-activity-entries { border: 0; border-radius: 0; background: transparent; overflow: visible; }
 #ai-panel .ai-reply-record-card { border: 1px solid var(--qbx-line); border-radius: 12px; box-shadow: none; }
 #ai-panel .ai-activity-page button.ai-record-contact-link {

@@ -22,6 +22,7 @@ function focusIdentity(host) {
   const recordAttribute = record && recordAttributes.find(attribute => record.hasAttribute(attribute));
   const recordId = recordAttribute && record.getAttribute(recordAttribute);
   const identity = recordId ? { recordAttribute, recordId } : {};
+  if (active === record && recordId) return { ...identity, recordRoot: true };
   const actionAttribute = actionAttributes.find(attribute => active.hasAttribute(attribute));
   if (actionAttribute) return record && !recordId ? null : { ...identity, actionAttribute, actionId: active.getAttribute(actionAttribute) };
   if (active.tagName === 'SUMMARY') {
@@ -38,12 +39,15 @@ function restoreFocus(host, identity) {
       .find(record => record.getAttribute(identity.recordAttribute) === identity.recordId)
     : host;
   if (!scope) return;
-  const target = identity.disclosureId !== undefined
+  const target = identity.recordRoot ? scope : identity.disclosureId !== undefined
     ? [...scope.querySelectorAll('details[data-ai-skip-messages]')]
       .find(disclosure => disclosure.getAttribute('data-ai-skip-messages') === identity.disclosureId)?.querySelector('summary')
     : [...scope.querySelectorAll(`[${identity.actionAttribute}]`)]
       .find(action => action.getAttribute(identity.actionAttribute) === identity.actionId);
-  if (target && !target.disabled) target.focus({ preventScroll: true });
+  if (target && !target.disabled) {
+    if (identity.recordRoot) target.tabIndex = -1;
+    target.focus({ preventScroll: true });
+  }
 }
 
 // render may first copy current disclosure.open values into its view state.

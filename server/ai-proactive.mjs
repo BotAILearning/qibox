@@ -201,7 +201,7 @@ export class ProactiveTasks {
     });
   }
   item(c) { return { id: randomUUID(), contact: c.id, label: c.label, ...(c.nickname ? { nickname: c.nickname } : {}), profileId: c.profileId, status: 'pending', attempts: 0 }; }
-  record(task, item, status, reason = '', text) {
+  record(task, item, status, reason = '', text, errorContext = {}) {
     const a = this.ai;
     let record = a.data.proactiveRecords.find(r => r.id === item.recordId);
     if (!record) {
@@ -213,6 +213,7 @@ export class ProactiveTasks {
     if (item.operationId) record.operationId = item.operationId;
     if (item.messageId) record.messageId = item.messageId;
     item.status = status; item.reason = reason;
+    if (status === 'failed') a.event('error', item.profileId, 'proactive', reason, { ...errorContext, taskId: task.id, proactiveRecordId: record.id, operationId: item.operationId });
     return record;
   }
   resolveProfile(profileId) {
@@ -340,7 +341,7 @@ export class ProactiveTasks {
     }
     let texts = messageSegments(result, { multiTurn: true, allowSkip: false });
     if (result.action !== 'send') {
-      this.record(task, item, result.action === 'skip' ? 'skipped' : 'failed', result.action === 'skip' ? '模型判断本次无需发送' : result.action === 'stop' ? '对方要求停止联系，请人工核对' : '需要本人决定，请人工核对');
+      this.record(task, item, result.action === 'skip' ? 'skipped' : 'failed', result.action === 'skip' ? '模型判断本次无需发送' : result.action === 'stop' ? '对方要求停止联系，请人工核对' : '需要本人决定，请人工核对', undefined, { stage: 'model', incomingMessages: context.messages, evidenceScope: 'chat-context' });
       // 只记录、不暂停：需要本人处理或对方要求停止都体现在运行记录与任务状态里，
       // 暂停与恢复交给自动回复那套状态统一处理。
       return null;
@@ -359,13 +360,13 @@ export class ProactiveTasks {
       if (!profile || a.data.profiles[item.profileId] !== profile || profile.account !== task.account) throw new AppError('联系人配置已变化，请刷新后重试');
       if (this.expired(task)) throw new AppError('本轮执行时间已过，未发送', 409, 'proactive_expired');
     };
-    let enteredSend = false, sent = 0, texts = [], planned = 0;
+    let enteredSend = false, sent = 0, texts = [], planned = 0, errorStage = 'read', errorMessages = [];
     const partial = reason => { this.record(task, item, 'sent', `已发送 ${sent}/${planned} 段；${reason}`, texts.slice(0, sent).join('\n')); item.interrupted = true; };
     try {
       check(); item.status = 'generating'; item.attempts++; await a.save(); check();
       if (!a.contacts.has(item.contact) || !profile) throw new AppError('联系人暂不可读取，请刷新联系人后重试');
       if (profile.proactiveDelivery?.status === 'sending') throw new AppError('此联系人正在发送，请稍后重试');
-      const snapshot = await a.read(profile, signal); check();
+      const snapshot = await a.read(profile, signal); errorMessages = snapshot.messages; check();
       await a.observe(profile, snapshot); check();
       await this.waitManualWindow(item.profileId, signal); check();
       if (this.blocked(profile)) throw new AppError('本人已接管或已要求停止联系，本次未发送');
@@ -374,9 +375,10 @@ export class ProactiveTasks {
       // message arriving mid-generation regenerates once against the newer chat
       // rather than cancelling; anything after that still gets delivered.
       for (let regen = 0; regen < 2; regen++) {
+        errorStage = 'model'; errorMessages = context.messages;
         prepared = await this.draft(task, item, profile, context, signal, check);
         if (!prepared) return;
-        fresh = await a.read(profile, signal); check();
+        errorStage = 'read'; fresh = await a.read(profile, signal); errorMessages = fresh.messages; check();
         await a.observe(profile, fresh); check();
         if (this.blocked(profile)) throw new AppError('本人已接管或已要求停止联系，本次未发送');
         if (fresh.revision === context.revision || regen > 0) break;
@@ -390,7 +392,7 @@ export class ProactiveTasks {
         const text = plan[index];
         if (sent) {
           await a.delay(a.randomDelay('segmentDelay'), signal); check();
-          fresh = await a.read(profile, signal); check(); await a.observe(profile, fresh); check();
+          errorStage = 'read'; fresh = await a.read(profile, signal); errorMessages = fresh.messages; check(); await a.observe(profile, fresh); check();
           if (this.blocked(profile)) { partial('本人已接管或已要求停止联系，剩余段落已取消'); return; }
           if (fresh.revision !== expectedRevision) {
             // 第一段发出后已把本次任务背景交给自动回复。对方在分段
@@ -409,7 +411,7 @@ export class ProactiveTasks {
         record.segments = item.segments; record.segmentsTotal = planned; record.segmentsSent = sent;
         profile.proactiveDelivery = { operationId: item.operationId, status: 'sending', at: a.now(), source: 'proactive', taskId: task.id, segmentsSent: sent, segmentsTotal: planned };
         // Persist intent and exact generated text before crossing the native boundary.
-        await a.save(); check(); enteredSend = true;
+        errorStage = 'send'; await a.save(); check(); enteredSend = true;
         let delivery;
         try { delivery = await a.bridge.send({ account: task.account, contact: item.contact, revision: fresh.revision, text, operationId: item.operationId, signal }); }
         catch (error) {
@@ -437,7 +439,7 @@ export class ProactiveTasks {
           if (sent) { partial('后续消息未提交，剩余段落已取消'); return; }
           if (windowSignal?.aborted) this.record(task, item, 'skipped', '执行窗口已结束，消息未提交');
           else if (!valid()) { this.record(task, item, 'cancelled', '任务已取消，消息未提交'); item.status = task.status === 'ended' ? 'cancelled' : 'pending'; delete item.recordId; }
-          else this.record(task, item, 'failed', delivery.status === 'stale' ? '聊天内容已变化，消息未发送' : notSentReason(delivery));
+          else this.record(task, item, 'failed', delivery.status === 'stale' ? '聊天内容已变化，消息未发送' : notSentReason(delivery), undefined, { stage: 'send', errorCode: delivery.diagnostic?.code, incomingMessages: errorMessages, evidenceScope: 'chat-context' });
           return;
         } else {
           segment.status = 'unknown';
@@ -460,7 +462,7 @@ export class ProactiveTasks {
         else { if (profile?.proactiveDelivery && profile.proactiveDelivery.operationId === item.operationId) profile.proactiveDelivery.status = 'cancelled'; this.record(task, item, 'cancelled', '提交前取消，未发送'); item.status = task.status === 'ended' ? 'cancelled' : 'pending'; delete item.recordId; }
       } else if (!valid()) { item.status = task.status === 'ended' ? 'cancelled' : 'pending'; }
       else if (error.code === 'proactive_expired') { if (profile?.proactiveDelivery && profile.proactiveDelivery.operationId === item.operationId) profile.proactiveDelivery.status = 'cancelled'; this.record(task, item, 'skipped', error.message); }
-      else this.record(task, item, 'failed', error instanceof AppError ? error.message : '本次执行失败，请检查模型或微信后重试');
+      else this.record(task, item, 'failed', error instanceof AppError ? error.message : '本次执行失败，请检查模型或微信后重试', undefined, { stage: a.errorContexts.get(error)?.stage || errorStage, errorCode: error.code, incomingMessages: errorStage === 'read' ? [] : errorMessages, evidenceScope: 'chat-context' });
     } finally {
       if (!task.contacts.some(c => c.id === item.contact) && item.status === 'pending') item.status = 'cancelled';
       this.settle(task); await a.save();

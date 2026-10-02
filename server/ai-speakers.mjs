@@ -1,4 +1,5 @@
 import { AppError } from './files.mjs';
+import { validReplyRoleAudit } from './ai-reply-role.mjs';
 
 // Speaker identity comes from the account-bound reader, never from message text.
 const owner = profile => ({ role: 'self', id: `account:${profile.account}`, label: '微信账号本人（回复中的我）' });
@@ -84,6 +85,7 @@ export function speakerHistory(messages) {
     groups.get(identity).messages.push({ id: message.id, text: message.text, ...(message.timestamp !== undefined ? { timestamp: message.timestamp } : {}),
       ...(message.temporal ? { temporal: message.temporal } : {}), ...(message.relativeDates ? { relativeDates: message.relativeDates } : {}),
       ...(message.relativeDateWords ? { relativeDateWords: message.relativeDateWords } : {}),
+      ...(message.authorship ? { authorship: message.authorship } : {}),
       ...(message.quote ? { quote: message.quote } : {}), ...(message.aiGenerated ? { aiGenerated: true } : {}), ...(message.unresolved ? { unresolved: true } : {}) });
   }
   return [...groups.values()];
@@ -111,7 +113,7 @@ export function speakerAuditInput(input, result) {
   // The checker never dispatches or returns native IDs. Give it compact local
   // references while preserving every source body, direction and quoted actor.
   // Long opaque hashes repeated across a group window obscure the actual roles.
-  const messageRefs = new Map(), speakers = new Map();
+  const messageRefs = new Map(), speakers = new Map(), originalMessages = new Map(input.messages.map(message => [message.id, message]));
   const reference = id => { if (!messageRefs.has(id)) messageRefs.set(id, `message_${messageRefs.size + 1}`); return messageRefs.get(id); };
   const speaker = value => {
     if (!value) return { role: 'unknown', id: 'unknown', label: '发言人未知' };
@@ -129,9 +131,11 @@ export function speakerAuditInput(input, result) {
     ...(message.timestamp !== undefined ? { timestamp: message.timestamp } : {}), ...(message.pending ? { pending: true } : {}),
     ...(message.temporal ? { temporal: message.temporal } : {}), ...(message.relativeDates ? { relativeDates: message.relativeDates } : {}),
     ...(message.relativeDateWords ? { relativeDateWords: message.relativeDateWords } : {}),
+    ...(message.authorship ? { authorship: message.authorship } : {}),
     ...(message.aiGenerated ? { aiGenerated: true } : {}), ...(message.unresolved ? { unresolved: true } : {}),
     ...(message.quote ? { quote: message.quote.verified ? { verified: true, messageId: reference(message.quote.messageId),
       direction: message.quote.direction, speaker: speaker(message.quote.speaker), text: message.quote.text, timestamp: message.quote.timestamp,
+      ...(originalMessages.get(message.quote.messageId)?.authorship ? { authorship: originalMessages.get(message.quote.messageId).authorship } : {}),
       ...(message.quote.senderName ? { senderName: message.quote.senderName } : {}),
       ...(message.quote.aiGenerated ? { aiGenerated: true } : {}), ...(message.quote.type ? { type: message.quote.type } : {}),
       ...(message.quote.excerpt ? { excerpt: true } : {}) } : { verified: false } } : {}) });
@@ -139,6 +143,7 @@ export function speakerAuditInput(input, result) {
   const pending = (input.conversation?.pendingIncomingMessages || input.messages.filter(message => message.pending)).map(project);
   return {
     mode: 'speaker-audit', kind: input.kind, replyAuthor: speaker(input.replyPerspective.author),
+    ...(input.roleAnchor ? { roleAnchor: { ...input.roleAnchor, author: speaker(input.roleAnchor.author), recipient: speaker(input.roleAnchor.recipient) } } : {}),
     speakerHistory: confirmedSpeakerHistory(messages),
     confirmedSpeakerHistory: confirmedSpeakerHistory(messages).filter(group => group.speaker.role === 'self'),
     historicalSelfStatements: speakerHistory(referencedGeneratedStatements(input).map(project)),
@@ -159,10 +164,11 @@ export function speakerAuditInput(input, result) {
   };
 }
 
-export function applySpeakerAudit(result, audit, { allowSkip = false, requireGrounding = false, requiredReplyIds = [] } = {}) {
+export function applySpeakerAudit(result, audit, { allowSkip = false, requireGrounding = false, requireRole = false, requiredReplyIds = [] } = {}) {
   const invalid = () => { throw new AppError('模型的发言归属核对结果无效，当前回复未发送', 502, 'ai_model_schema'); };
   if (!audit || typeof audit.consistent !== 'boolean') return invalid();
   if (audit.consistent) {
+    if (requireRole && !validReplyRoleAudit(audit)) return invalid();
     if (requireGrounding) {
       const lines = Array.isArray(result.segments) ? [...result.segments] : [result.text];
       if (result.media?.some(item => item.type === 'audio')) lines.push(result.media.find(item => item.type === 'audio').text);

@@ -65,8 +65,11 @@
   border-right: 2px solid var(--qbx-muted); border-bottom: 2px solid var(--qbx-muted); transform: rotate(45deg);
 }
 #ai-panel :is(.ai-optional-fields,details.ai-card.qbx-module)[open]>summary::after { transform: rotate(225deg); }
-#ai-panel .ai-optional-fields>summary:has(>.ai-optional-status)::after,
+#ai-panel :is(.ai-optional-fields,details.ai-card.qbx-module)>summary:has(>.ai-optional-status)::after,
 #ai-panel details.ai-card.qbx-module>summary:has(>span)::after { margin-left: 0; }
+#ai-panel .ai-optional-fields>summary>span:first-child { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+#ai-panel .ai-optional-fields>summary>span:first-child>small { display: inline-block; margin-left: 6px; color: var(--qbx-muted); font-size: 11px; font-weight: 400; white-space: nowrap; }
+#ai-panel .ai-optional-fields>summary>.ai-optional-status { flex: 0 0 auto; }
 #ai-panel :is(.ai-optional-fields,details.ai-card.qbx-module)>summary:hover { background: var(--qi-hover); }
 #ai-panel :is(.ai-optional-fields,details.ai-card.qbx-module)>summary:focus-visible { outline: 2px solid var(--qi-focus); outline-offset: -3px; border-radius: 10px; }
 #ai-panel .ai-optional-status,
