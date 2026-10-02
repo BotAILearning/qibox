@@ -558,6 +558,44 @@
 #ai-panel .ai-activity-page .ap-table-scroll { max-width: 100%; border-color: var(--qbx-line); overflow: auto; }
 #ai-panel .ai-activity-page .ap-record-table { min-width: 760px; }
 #ai-panel .ai-activity-page .ap-proactive-record-table { min-width: 760px; }
+#ai-panel .ai-review-record-list { display: grid; gap: 12px; min-width: 0; }
+#ai-panel .ai-review-record-card { min-width: 0; border: 1px solid var(--qbx-line); border-radius: 12px; background: var(--qbx-surface); }
+#ai-panel .ai-review-record-head { display: grid; grid-template-columns: minmax(0,1fr) 142px; align-items: start; gap: 16px; padding: 18px; border-bottom: 1px solid var(--qbx-line); }
+#ai-panel .ai-review-record-head .ai-record-contact-link { width: 100%; min-width: 0; }
+#ai-panel .ai-review-record-person-copy { flex: 1; min-width: 0; }
+#ai-panel .ai-review-record-person-copy :is(strong,small) { display: block; }
+#ai-panel .ai-review-record-person-copy strong { white-space: normal; overflow-wrap: anywhere; line-height: 1.6; }
+#ai-panel .ai-review-record-person-copy small { margin-top: 3px; color: var(--qbx-muted); font-size: 12px; }
+#ai-panel .ai-review-record-body { display: grid; grid-template-columns: minmax(0,1fr) minmax(180px,230px); gap: 20px; padding: 16px 18px 18px; }
+#ai-panel .ai-review-record-body>* { min-width: 0; }
+#ai-panel .ai-review-record-context { padding-left: 18px; border-left: 1px solid var(--qbx-line); font-size: 13px; overflow-wrap: anywhere; }
+#ai-panel .ai-review-record-context .ai-skip-source { color: var(--qbx-ink); }
+#ai-panel .ai-review-record-context .ai-skip-reason { margin: 6px 0 0; color: var(--qbx-muted); font-size: 12px; line-height: 1.65; }
+#ai-panel .ai-review-record-actions { display: grid; justify-items: start; gap: 8px; margin-top: 12px; }
+#ai-panel .ai-activity-page .ai-review-record-actions button { min-height: 44px; min-width: 96px; margin: 0; white-space: normal; }
+#ai-panel .ai-review-record-card .ai-skip-message { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 4px 12px; font-size: 14px; }
+#ai-panel .ai-review-record-card .ai-skip-sender { min-width: 0; overflow-wrap: anywhere; line-height: 1.6; }
+#ai-panel .ai-review-record-card .ai-skip-message time { min-width: 0; margin: 0; align-self: start; line-height: 1.8; }
+#ai-panel .ai-review-record-card .ap-record-text { grid-column: 1/-1; margin: 4px 0 0; font-size: 14px; line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; }
+#ai-panel .ai-review-record-card .ai-skip-message>small { grid-column: 1/-1; color: var(--qbx-muted); font-size: 12px; }
+#ai-panel .ai-review-record-content>.ai-help { margin: 0; }
+#ai-panel .ai-review-record-identity { min-width: 0; }
+#ai-panel .ai-review-record-task { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 10px; margin: 0 0 10px; }
+#ai-panel .ai-review-record-task small { flex: none; color: var(--qbx-muted); font-size: 12px; }
+#ai-panel .ai-review-record-task strong { min-width: 0; overflow-wrap: anywhere; color: var(--qbx-ink); font-size: 14px; line-height: 1.6; }
+#ai-panel .ai-review-record-execution { padding: 16px 18px 18px; min-width: 0; }
+#ai-panel .ai-review-record-status { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; }
+#ai-panel .ai-review-record-status .ap-record-status { font-size: 13px; }
+#ai-panel .ai-review-record-status small { color: var(--qbx-muted); font-size: 12px; }
+#ai-panel .ai-review-record-execution>.ai-help { margin-top: 8px; overflow-wrap: anywhere; }
+/* Virtual rows have an 80px pitch. Bound only this list; other pickers reflow. */
+#ai-panel #ai-object-list .ai-object-row { padding-block: 8px; }
+#ai-panel #ai-object-list .ai-contact-info b { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; max-height: 36px; overflow: hidden; white-space: normal; overflow-wrap: anywhere; text-overflow: ellipsis; line-height: 18px; }
+#ai-panel #ai-object-list .ai-object-row:has(.ai-contact-limit) .ai-contact-info b { -webkit-line-clamp: 1; max-height: 18px; }
+#ai-panel :is(.ai-analysis-history-list h4,.ai-analysis-report-grid .ai-card-heading h3,.ai-style-group>summary,#ai-profile-form>h3) { min-width: 0; overflow-wrap: anywhere; }
+#ai-panel .ai-analysis-history-detail .ai-page-heading>div { min-width: 0; }
+#ai-panel .ai-analysis-history-detail .ai-page-heading p { overflow-wrap: anywhere; }
+#ai-panel .ai-activity-page :is(.ap-record-errors li>span,.ap-record-live li>div) { min-width: 0; overflow-wrap: anywhere; }
 #ai-panel .qbx-settings-group.ai-card.qi-card { padding: 0; }
 #ai-panel .qbx-settings-group footer { gap: 12px; flex-wrap: wrap; padding: 16px 20px; }
 #ai-panel .qbx-settings-group footer>span { flex: 1 1 220px; }
@@ -655,6 +693,12 @@
   #ai-panel .ai-reply-history-list li>button { grid-column: 1/-1; grid-row: 3; justify-self: end; }
 }
 @container qbx-records (max-width:760px) {
+  #ai-panel .ai-review-record-head { grid-template-columns: minmax(0,1fr); gap: 8px; padding: 16px; }
+  #ai-panel .ai-review-record-head .ai-reply-record-time { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+  #ai-panel .ai-review-record-body { grid-template-columns: minmax(0,1fr); gap: 14px; padding: 14px 16px 16px; }
+  #ai-panel .ai-review-record-context { display: grid; gap: 6px; padding: 12px 0 0; border-left: 0; border-top: 1px solid var(--qbx-line); }
+  #ai-panel .ai-review-record-actions { margin-top: 4px; }
+  #ai-panel .ai-review-record-execution { padding: 14px 16px 16px; }
   #ai-panel .ai-activity-page .qbx-record-section { --record-padding: 16px; }
   #ai-panel .ai-activity-page .ap-record-errors li { grid-template-columns: minmax(0,1fr); gap: 6px; }
   #ai-panel .ai-activity-page .ap-record-block .ap-table-scroll { border: 0; border-radius: 0; overflow: visible; }
@@ -672,6 +716,8 @@
   #ai-panel .ai-activity-page :is(.ap-record-table,#ai-proactive-records .ap-proactive-record-table) td[colspan]::before { content: none; }
 }
 @container qbx-records (max-width:460px) {
+  #ai-panel .ai-review-record-card .ai-skip-message { grid-template-columns: minmax(0,1fr); }
+  #ai-panel .ai-review-record-card .ai-skip-message time { grid-column: 1; }
   #ai-panel .qbx-record-section-tools .ai-record-kind-tabs { flex-wrap: wrap; gap: 6px; }
   #ai-panel .qbx-record-section-tools { gap: 10px; }
   #ai-panel .qbx-record-section-tools>button { margin-left: 0; }

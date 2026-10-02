@@ -14,7 +14,8 @@ import { analysisPage, analysisContactList, copyReport, presetRequest, analysisR
 import { activityPage, activityEntries, activityRows, activityPagination, proactiveRecordRows, liveActivityBox, recentErrorsBox, skipRecordsView, updateActivityCounts } from './ai-activity-view.mjs';
 import { beijingTime, createProactiveUI } from './ai-proactive-view.mjs';
 import { RecordCache, mergeRecordResults } from './ai-record-cache.mjs';
-import { contactName, contactSearch as searchableContact } from './ai-contact-name.mjs';
+import { refreshRecordContent, skipDisclosureKeys } from './ai-record-refresh.mjs';
+import { contactName, nicknameOf, contactSearch as searchableContact } from './ai-contact-name.mjs';
 import { contactPickerMatches, contactPickerRow, openContactPickerDialog, setContactAvatarInstance, resetContactAvatarFailures, noteContactAvatarFailure } from './ai-contact-picker.mjs';
 import { refreshReplyCountdowns } from './ai-reply-flow-view.mjs';
 import { dismissibleNotice } from './dismissible-notice.mjs';
@@ -52,6 +53,10 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   // module-level arrow would throw "ReferenceError: state is not defined".
   const profileContact = profile => (state.contacts || []).find(c => c.id === profile?.contact);
   const profileName = profile => contactName(profile, profileContact(profile));
+  const profilePlainName = profile => {
+    const contact = profileContact(profile), nickname = nicknameOf(profile, contact);
+    return String(profile?.label ?? contact?.label ?? '联系人') + (nickname ? `（${nickname}）` : '');
+  };
   let lastActivity = 0;
   let replyDraft = null, editingProfile = null, profileReturn = 'results';
   let contactsLoaded = false, contactsLoading = false, resultProfileIds = null;
@@ -115,7 +120,10 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   }
   function drawSkips() {
     const box = tab === 'activity' && $('#ai-skip-records');
-    if (box) box.outerHTML = skipRecordsView(skipState());
+    if (box) refreshRecordContent(box, () => {
+      logFilters.skipMessageExpanded = skipDisclosureKeys(box, logFilters.skipMessageExpanded);
+      return skipRecordsView(skipState());
+    }, { outerMarkup: true });
   }
   async function loadSkipContent(retry = false) {
     if (!state || skipLoading || logFilters.source !== 'reply') return;
@@ -188,13 +196,17 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       recentErrors: [...errors.values()].sort((a, b) => new Date(b.at) - new Date(a.at)), errorsPage: { ...serverPage, ...(errorPage || {}), total } };
   };
   function activity() { return activityPage(activityState(), logFilters, logRecords, logLoading, proactiveRecordLoading, errorLoading, summaryResults); }
+  function drawProactiveRecords(loading = proactiveRecordLoading) {
+    const box = $('#ai-proactive-records');
+    if (box) refreshRecordContent(box, () => proactiveRecordRows(activityState(), logFilters, loading));
+  }
   async function loadProactiveRecords(more = false) {
     if (proactiveRecordLoading) return;
     const current = generation, target = id, epoch = ++proactiveRecordEpoch, taskId = logFilters.taskId || '';
     const page = proactiveHistoryPage || (!taskId ? state?.proactiveRecordsPage : null);
     if (more && !page?.hasMore) return;
     proactiveRecordLoading = true;
-    if ($('#ai-proactive-records')) $('#ai-proactive-records').innerHTML = proactiveRecordRows(activityState(), logFilters, true);
+    drawProactiveRecords(true);
     try {
       const result = await api(`/instances/${target}/ai`, { action: 'proactive-records', value: { ...(taskId ? { taskId } : {}), limit: 50, ...(more && page?.nextBefore ? { before: page.nextBefore } : {}) } }, 130000);
       if (current !== generation || target !== id || epoch !== proactiveRecordEpoch) return;
@@ -209,7 +221,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     finally {
       if (current === generation && epoch === proactiveRecordEpoch) {
         proactiveRecordLoading = false;
-        if ($('#ai-proactive-records')) $('#ai-proactive-records').innerHTML = proactiveRecordRows(activityState(), logFilters, false);
+        drawProactiveRecords(false);
       }
     }
   }
@@ -543,7 +555,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       updateActivityCounts(panel, skipState(), logFilters, logRecords);
       const liveBox = $('#ai-live-box'); if (liveBox) replaceLiveContent(liveBox, liveActivityBox(state));
       const errBox = $('#ai-recent-errors'); if (errBox) errBox.innerHTML = recentErrorsBox(activityState(), logFilters.errorsOpen, errorLoading);
-      const proactiveRecords = $('#ai-proactive-records'); if (proactiveRecords) proactiveRecords.innerHTML = proactiveRecordRows(activityState(), logFilters, proactiveRecordLoading);
+      drawProactiveRecords();
       drawSkips(); void loadSkipContent();
     }
     if (state.notice) { const note = $('#ai-state-notice'); if (note) note.textContent = state.notice; }
@@ -735,7 +747,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   }
   function styleResults(profiles, editable = true) {
     if (!profiles.length) return '';
-    const edit = p => `<button type="button" class="quiet" data-ai-profile="${esc(p.id)}">${profileName(p)} · ${editable ? '调整' : '查看'}${p.paused ? ' · 待你处理' : ''}</button>`;
+    const edit = p => `<button type="button" class="quiet" data-ai-profile="${esc(p.id)}" aria-label="${editable ? '调整' : '查看'}${esc(profilePlainName(p))}的学习结果">${editable ? '调整' : '查看'}${p.paused ? ' · 待你处理' : ''}</button>`;
     return profiles.map(p => {
       const combined = p.pendingMemorySource === 'combined';
       const memory = combined ? p.pendingMemory : p.memory;
@@ -798,7 +810,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   }
   function results() {
     const profiles = selectProfiles().filter(p => (p.learnedAt && p.learnedStyle) || p.pendingStyle).filter(p => !resultProfileIds || resultProfileIds.has(p.id));
-    return back('学习结果') + (profiles.length ? profiles.map(p => styleResults([{...p,style:p.pendingStyle || p.style}]) + '<div class="ai-actions ai-result-footer"><button type="button" class="secondary" data-ai-nav="overview">返回</button>' + (p.contact && state.contacts.some(c => c.id === p.contact) ? '<button type="button" class="primary" data-ai-apply-result="' + esc(p.id) + '">' + (p.pendingMemorySource === 'combined' ? '应用风格和记忆' : '应用到 ' + profileName(p)) + '</button>' : '') + '</div>').join('') : '<p class="ai-empty">还没有学习结果</p>');
+    return back('学习结果') + (profiles.length ? profiles.map(p => styleResults([{...p,style:p.pendingStyle || p.style}]) + '<div class="ai-actions ai-result-footer"><button type="button" class="secondary" data-ai-nav="overview">返回</button>' + (p.contact && state.contacts.some(c => c.id === p.contact) ? '<button type="button" class="primary" data-ai-apply-result="' + esc(p.id) + '" aria-label="将学习结果应用到' + esc(profilePlainName(p)) + '">' + (p.pendingMemorySource === 'combined' ? '应用风格和记忆' : '应用到此对象') + '</button>' : '') + '</div>').join('') : '<p class="ai-empty">还没有学习结果</p>');
   }
   function advancedSettings() { return settingsPage(state); }
   function proactive() { return proactiveUI.page(); }
@@ -1198,7 +1210,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     if (event.target.id === 'ai-log-search') {
       logFilters.query = event.target.value; logFilters.page = 0; rememberRecords();
       drawRecords();
-      const proactiveRowsNode = $('#ai-proactive-records'); if (proactiveRowsNode) proactiveRowsNode.innerHTML = proactiveRecordRows(activityState(), logFilters, proactiveRecordLoading);
+      drawProactiveRecords();
       return;
     }
     if (event.target.id === 'ai-analysis-search') {

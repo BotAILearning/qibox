@@ -1,5 +1,5 @@
 import { icon } from './ai-icons.mjs';
-import { contactName, contactSearch, esc } from './ai-contact-name.mjs';
+import { contactName, contactSearch, nicknameOf, esc } from './ai-contact-name.mjs';
 
 let avatarInstance = null;
 const failedAvatars = new Set();
@@ -35,7 +35,9 @@ export function contactPickerAvatar(contact, index = 0, className = 'ai-monogram
 }
 
 export function contactPickerRow(contact, { index = 0, selected = false, multiple = false, input = '', button = '', detail = '', trailing = '', className = '', disabled = false, hidden = false } = {}) {
-  const body = `${contactPickerAvatar(contact, index)}<span class="ai-contact-info"><b>${contactName(contact)}</b>${detail}</span>${trailing}`;
+  const nickname = nicknameOf(contact);
+  const plainName = String(contact?.label || '') + (nickname ? `（${nickname}）` : '');
+  const body = `${contactPickerAvatar(contact, index)}<span class="ai-contact-info"><b title="${esc(plainName)}">${contactName(contact)}</b>${detail}</span>${trailing}`;
   if (multiple) return `<label class="ai-object-row ai-contact-picker-row ai-contact-picker-multiple ${selected ? 'selected ' : ''}${className}" ${hidden ? 'hidden' : ''}><input type="checkbox" ${input} ${selected ? 'checked' : ''} ${disabled ? 'disabled' : ''}>${body}</label>`;
   return `<button type="button" class="ai-object-row ai-contact-picker-row ${selected ? 'selected ' : ''}${className}" ${button} aria-pressed="${selected}">${body}</button>`;
 }

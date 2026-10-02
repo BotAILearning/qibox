@@ -27,5 +27,5 @@ test('unknown group identities never use the group name as sender; unavailable a
   const missing = skipRecordsView(state({ contentUnavailable: true, contentUnavailableMessage: '原消息已不可读取 <重试>' }));
   assert.match(missing, /原消息已不可读取 &lt;重试&gt;/);
   assert.doesNotMatch(missing, />true</);
-  assert.match(skipRecordsView({}), /colspan="5"/);
+  assert.match(skipRecordsView({}), /暂无未回复记录/);
 });
