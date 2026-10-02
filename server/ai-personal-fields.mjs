@@ -1,5 +1,7 @@
 // Shared by the model's accepted field keys and the account information form.
-// Keep existing keys when improving labels so saved information stays intact.
+// Retired keys remain accepted for saved-data compatibility, but are not
+// editable fields or facts supplied to the model.
+export const retiredPersonalFields = ['timezone'];
 export const personalFieldDefinitions = [
   { key: 'addressing', label: '称呼', group: 'common', input: 'short', hint: '聊天中希望别人怎样称呼你', example: '例如：小林、阿辰' },
   { key: 'city', label: '所在城市', group: 'common', input: 'short', hint: '用于理解地点、见面和出行话题', example: '例如：深圳，通常在南山区活动' },
@@ -16,7 +18,6 @@ export const personalFieldDefinitions = [
   { key: 'birthday', label: '生日与重要日期', group: 'more', rows: 3, hint: '可注明公历或农历、纪念日及对应的人', example: '例如：生日是公历 6 月 18 日；每年 9 月 1 日是纪念日' },
   { key: 'hometown', label: '家乡', group: 'more', input: 'short', hint: '与现在所在城市区分，用于家乡和生活经历话题', example: '例如：广东潮州' },
   { key: 'relationships', label: '家庭与关系', group: 'more', rows: 3, hint: '选填你愿意用于聊天的家庭或关系信息', example: '例如：和家人住在一起；只使用这里明确填写的关系' },
-  { key: 'timezone', label: '所在时区', group: 'more', input: 'short', hint: '不填默认北京时间；境外可填写标准时区名称', example: '例如：Asia/Shanghai、America/New_York' },
   { key: 'other', label: '其他信息', group: 'more', rows: 5, wide: true, hint: '前面未覆盖、但聊天时可能需要的事实', example: '补充其他已确认的信息，避免填写密码、证件号等敏感内容' },
 ];
 export const personalFields = personalFieldDefinitions.map(({ key, label }) => [key, label]);

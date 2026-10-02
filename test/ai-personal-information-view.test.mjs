@@ -27,6 +27,15 @@ test('an explicit group-permission change applies to the entire edited field and
   assert.equal(shared[0].allowGroup, true);
 });
 
+test('saving visible information preserves hidden retired entries without mutating their stored identity or sharing scope', () => {
+  const timezone = { id: 'old-zone', field: 'timezone', text: 'America/New_York', allowGroup: true, updatedAt: 12, source: 'manual', expiresAt: 1 };
+  const state = { personalInformation: { entries: [timezone, { id: 'city', field: 'city', text: '深圳', allowGroup: false }] } };
+  const saved = personalEntriesFromForm(form([{ field: 'city', text: '杭州' }]), state);
+  assert.deepEqual(saved, [{ id: 'city', field: 'city', text: '杭州', allowGroup: false }, { id: 'old-zone', field: 'timezone', text: 'America/New_York', allowGroup: true, updatedAt: 12, source: 'manual' }]);
+  assert.equal(timezone.expiresAt, 1);
+  assert.equal(state.personalInformation.entries[1].text, '深圳');
+});
+
 test('personal cards escape text and preserve multiline short-field values without adding expiry controls', () => {
   const text = '深圳\n<script>bad()</script>';
   const html = personalInformationPage({ account: 'a', personalInformation: { entries: [{ field: 'city', text, allowGroup: false }] } });

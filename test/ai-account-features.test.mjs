@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { AIAssistant } from '../server/ai-service.mjs';
 import { personalInformation, selfContext, stageSelfSuggestions, styleTabs, saveObjectStyle } from '../server/ai-account-configuration.mjs';
 import { currentChatTime, guardTimeGreeting } from '../server/ai-chat-context.mjs';
+import { personalFieldDefinitions, retiredPersonalFields } from '../server/ai-personal-fields.mjs';
 import { validateReplyResult } from '../server/ai-prompts.mjs';
 import { ChatFixture, AIModelFixture, modelConfig } from './ai-fixtures.mjs';
 import { temp, cleanup } from './fixtures.mjs';
@@ -60,6 +61,61 @@ test('new conversation-scene fields persist while unconfirmed model suggestions 
   assert.deepEqual(selfContext(a, 'group').map(row => row.field), ['relationships']);
   assert.ok(a.publicState().personalFields.some(([key]) => key === 'hometown'));
   await assert.rejects(a.configuration({ type: 'personal-information', entries: [{ field: 'password', text: 'invalid' }] }), /请检查个人信息/);
+});
+
+test('retired timezone stays encrypted and survives current-field saves/history without becoming model context', async t => {
+  const { a, advance } = await fixture(t);
+  assert.deepEqual(retiredPersonalFields, ['timezone']);
+  assert.equal(personalFieldDefinitions.length, 16);
+  assert.ok(!personalFieldDefinitions.some(row => row.key === 'timezone'));
+  assert.ok(!a.publicState().personalFields.some(([field]) => field === 'timezone'));
+  await a.configuration({ type: 'personal-information', entries: [
+    { id: 'legacy-zone', field: 'timezone', text: 'America/New_York', allowGroup: true },
+    { id: 'shared-city', field: 'city', text: '纽约', allowGroup: true },
+    { id: 'private-status', field: 'status', text: '近期在家', allowGroup: false },
+  ] });
+  const legacy = structuredClone(personalInformation(a).entries.find(row => row.field === 'timezone'));
+  assert.deepEqual(selfContext(a, 'person').map(row => row.field), ['city', 'status']);
+  assert.deepEqual(selfContext(a, 'group').map(row => row.field), ['city']);
+  for (const kind of ['person', 'group']) {
+    const context = currentChatTime(a.now(), selfContext(a, kind));
+    assert.equal(context.timezone, 'Asia/Shanghai'); assert.equal(context.timeContext.hour, 15);
+  }
+  advance(1000);
+  const beforeEdit = a.now();
+  await a.configuration({ type: 'personal-information', entries: [{ id: 'shared-city', field: 'city', text: '上海', allowGroup: true }] });
+  assert.deepEqual(personalInformation(a).entries.find(row => row.field === 'timezone'), legacy);
+  const oldVersion = personalInformation(a).history.find(row => row.at === beforeEdit && row.entries.some(entry => entry.id === 'legacy-zone'));
+  assert.ok(oldVersion, 'the old timezone remains in the restorable historical snapshot');
+  await a.configuration({ type: 'personal-restore', at: oldVersion.at });
+  assert.deepEqual(personalInformation(a).entries.find(row => row.field === 'timezone'), legacy);
+  assert.ok(selfContext(a, 'person').every(row => row.field !== 'timezone'));
+  assert.ok(selfContext(a, 'group').every(row => row.field !== 'timezone'));
+  assert.doesNotMatch(await readFile(a.file, 'utf8'), /America\/New_York/);
+});
+
+test('a legacy timezone save payload remains accepted while new model suggestions cannot add a retired field', async t => {
+  const { a } = await fixture(t);
+  await a.configuration({ type: 'personal-information', entries: [{ id: 'legacy-zone', field: 'timezone', text: 'America/New_York' }] });
+  await a.configuration({ type: 'personal-information', entries: [{ id: 'legacy-zone', field: 'timezone', text: 'Europe/London', allowGroup: true }] });
+  assert.equal(personalInformation(a).entries.find(row => row.field === 'timezone').text, 'Europe/London');
+  assert.deepEqual(selfContext(a, 'person'), []); assert.deepEqual(selfContext(a, 'group'), []);
+  const source = { id: 'human-timezone', direction: 'self', text: '我现在用伦敦时间，常住伦敦。' };
+  assert.equal(stageSelfSuggestions(a, [{ field: 'timezone', text: 'Europe/London', messageId: source.id }], [source]), false);
+  assert.deepEqual(personalInformation(a).suggestions, []);
+  assert.equal(stageSelfSuggestions(a, [{ field: 'timezone', text: 'Europe/London', messageId: source.id }, { field: 'city', text: '伦敦', messageId: source.id }], [source]), true);
+  assert.deepEqual(personalInformation(a).suggestions.map(row => row.field), ['city']);
+});
+
+test('preserving a retired field never permits duplicate IDs or bypasses the existing account entry limit', async t => {
+  const { a } = await fixture(t);
+  await a.configuration({ type: 'personal-information', entries: [{ id: 'legacy-zone', field: 'timezone', text: 'America/New_York' }] });
+  const original = a.data.personalInformation[a.data.account];
+  await assert.rejects(a.configuration({ type: 'personal-information', entries: [{ id: 'legacy-zone', field: 'city', text: '上海' }] }), /编号无效/);
+  assert.equal(a.data.personalInformation[a.data.account], original);
+  await assert.rejects(a.configuration({ type: 'personal-information', entries: Array.from({ length: 100 }, (_, index) => ({ id: `active-${index}`, field: 'other', text: `已确认信息 ${index}` })) }), /最多保存100条/);
+  assert.equal(a.data.personalInformation[a.data.account], original);
+  assert.equal(personalInformation(a).entries.find(row => row.field === 'timezone').text, 'America/New_York');
 });
 
 test('stale personal drafts and history actions cannot read or write a newly connected account', async t => {

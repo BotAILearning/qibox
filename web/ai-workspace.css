@@ -1693,12 +1693,10 @@ dialog.ai-record-delete-dialog p{margin:0 0 20px;line-height:1.65}
 .ai-personal-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; }
 #ai-panel .ai-personal-form { padding:24px; }
 #ai-panel .ai-personal-intro { display:flex; align-items:flex-start; gap:24px; padding-bottom:20px; border-bottom:1px solid var(--ai-border); }
-#ai-panel .ai-personal-intro h4 { font-size:17px; margin-bottom:8px; }
-#ai-panel .ai-personal-intro p { color:var(--ai-muted); font-size:12px; margin:4px 0; }
+#ai-panel .ai-personal-intro h4 { font-size:17px; margin:0; }
 #ai-panel .ai-personal-progress { flex-shrink:0; margin-left:auto; padding:6px 11px; border-radius:8px; background:var(--ai-soft); color:var(--ai-primary); font-size:12px; white-space:nowrap; }
 #ai-panel .ai-personal-section-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:20px 0 12px; }
 #ai-panel .ai-personal-section-heading h4 { margin:0; }
-#ai-panel .ai-personal-section-heading>span { color:var(--ai-muted); font-size:12px; }
 #ai-panel .ai-personal-fields { gap:12px; align-items:start; }
 #ai-panel .ai-personal-card { min-width:0; border:1px solid var(--ai-border); border-radius:10px; background:#fff; overflow:hidden; }
 #ai-panel .ai-personal-card>summary { padding:10px 14px; cursor:pointer; list-style:none; min-height:44px; }
@@ -1718,7 +1716,6 @@ dialog.ai-record-delete-dialog p{margin:0 0 20px;line-height:1.65}
 #ai-panel .ai-personal-edit-label svg { width:14px; height:14px; }
 #ai-panel .ai-personal-card[open] .ai-personal-edit-label svg { transform:rotate(90deg); }
 #ai-panel .ai-personal-preview { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; white-space:pre-wrap; overflow-wrap:anywhere; color:var(--ai-text); margin:3px 0 0; line-height:1.65; }
-#ai-panel [data-state=empty] .ai-personal-preview { color:var(--ai-muted); font-size:12px; }
 #ai-panel .ai-personal-scope { display:block; color:var(--ai-muted); margin-top:5px; font-size:11px; }
 #ai-panel .ai-personal-card[open] .ai-personal-preview,#ai-panel .ai-personal-card[open] .ai-personal-scope { display:none; }
 #ai-panel .ai-personal-editor { padding:0 16px 16px; }
@@ -1726,8 +1723,7 @@ dialog.ai-record-delete-dialog p{margin:0 0 20px;line-height:1.65}
 #ai-panel .ai-personal-editor input[type=text],#ai-panel .ai-personal-editor textarea { display:block; width:100%; min-height:0; border:1px solid var(--ai-border); border-radius:7px; padding:10px 12px; font:inherit; }
 #ai-panel .ai-personal-editor input[type=text] { height:42px; }
 #ai-panel .ai-personal-editor textarea { resize:vertical; line-height:1.7; }
-#ai-panel .ai-personal-input-help { display:flex; gap:12px; justify-content:space-between; margin:7px 0 12px; }
-#ai-panel .ai-personal-input-help p { font-size:11.5px; margin:0; color:var(--ai-muted); }
+#ai-panel .ai-personal-input-help { display:flex; justify-content:flex-end; margin:7px 0 12px; }
 #ai-panel .ai-personal-input-help>span { color:var(--ai-muted); font-size:11px; white-space:nowrap; }
 #ai-panel .ai-personal-share { display:flex; align-items:center; gap:8px; color:var(--ai-muted); font-size:12px; cursor:pointer; min-height:44px; }
 #ai-panel .ai-personal-share input { width:16px; height:16px; margin:0; }
@@ -1760,8 +1756,6 @@ dialog.ai-record-delete-dialog p{margin:0 0 20px;line-height:1.65}
 #ai-panel .ai-personal-card[open] { grid-column:1/-1; }
 #ai-panel .ai-personal-form { scroll-padding-bottom:80px; }
 #ai-panel .ai-personal-editor :is(input,textarea) { scroll-margin-bottom:90px; }
-#ai-panel .ai-personal-guide { margin-top:8px; font-size:12px; color:var(--ai-muted); }
-#ai-panel .ai-personal-guide>summary { cursor:pointer; min-height:30px; }
 @media(max-width:760px) {
   #ai-panel .ai-personal-form .ai-personal-save { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; padding:10px 0; }
   #ai-panel .ai-personal-form .ai-personal-save>span { min-width:0; font-size:11px; }

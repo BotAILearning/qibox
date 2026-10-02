@@ -1,5 +1,6 @@
 import { confirmDialog, productDialog } from './dialogs.mjs';
 import { personalInformationPage, personalEntriesFromForm, personalDraftFromForm, updatePersonalInformationForm, globalReplyStrategyPage, objectStyleTabs } from './ai-account-settings.mjs';
+import { retiredPersonalFields } from '../server/ai-personal-fields.mjs';
 import { dateRangeField, chooseDateRange } from './ai-date-range.mjs';
 import { providerPage } from './ai-provider-view.mjs';
 import { settingsPage } from './ai-settings-view.mjs';
@@ -1758,7 +1759,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         const current = generation, target = id, account = state.account;
         const at = Number(button.dataset.aiPersonalHistory), result = await api(`/instances/${target}/ai`, { action: 'configuration', value: { type: 'personal-history', account, at } });
         if (current !== generation || target !== id || account !== state?.account) return;
-        if (!await productDialog({ title: '恢复这个历史版本？', message: (result.history.entries.map(row => (state.personalFields.find(([key]) => key === row.field)?.[1] || row.field) + '：' + row.text).join('\n') || '这个版本没有个人信息。') + ($('#ai-personal-information-form')?.dataset.dirty === 'true' ? '\n当前尚未保存的编辑也将被替换。' : ''), confirm: '确认恢复' })) return;
+        if (!await productDialog({ title: '恢复这个历史版本？', message: (result.history.entries.filter(row => !retiredPersonalFields.includes(row.field)).map(row => (state.personalFields.find(([key]) => key === row.field)?.[1] || row.field) + '：' + row.text).join('\n') || '这个版本没有当前可填写的信息。') + ($('#ai-personal-information-form')?.dataset.dirty === 'true' ? '\n当前尚未保存的编辑也将被替换。' : ''), confirm: '确认恢复' })) return;
         if (current !== generation || target !== id || account !== state?.account) return;
         await workflow(async step => {
           await step('configuration', { value: { type: 'personal-restore', account, at } });

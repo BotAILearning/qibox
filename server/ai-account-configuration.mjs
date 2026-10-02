@@ -3,7 +3,7 @@ import { AppError } from './files.mjs';
 import { replyStrategyValue, styleValue, defaultStyle as fallbackStyle } from './ai-schema.mjs';
 import { replyPresets } from './ai-presets.mjs';
 import { recordSource, isDeletedActivityRecord } from './ai-activity-records.mjs';
-import { personalFields } from './ai-personal-fields.mjs';
+import { personalFields, retiredPersonalFields } from './ai-personal-fields.mjs';
 export { personalFields } from './ai-personal-fields.mjs';
 
 const withoutExpiry = ({ expiresAt, ...entry }) => entry;
@@ -15,7 +15,7 @@ export function personalInformation(a) {
   return timelessInformation(body ? a.vault.open(body) : {});
 }
 export function selfContext(a, kind) {
-  return personalInformation(a).entries.filter(entry => kind !== 'group' || entry.allowGroup)
+  return personalInformation(a).entries.filter(entry => !retiredPersonalFields.includes(entry.field) && (kind !== 'group' || entry.allowGroup))
     .map(({ field, text, updatedAt }) => ({ field, text, source: 'user-confirmed', updatedAt }));
 }
 export function stageSelfSuggestions(a, suggestions, messages) {
@@ -83,12 +83,20 @@ export async function accountConfiguration(a, value) {
       if (!Array.isArray(value.entries) || value.entries.length > 100) throw new AppError('个人信息最多保存100条');
       const previous = personalInformation(a), ids = new Set();
       const entries = value.entries.map(entry => {
-        if (!personalFields.some(([field]) => field === entry.field) || typeof entry.text !== 'string' || entry.text.length > 2000) throw new AppError('请检查个人信息内容');
+        if (!(personalFields.some(([field]) => field === entry.field) || retiredPersonalFields.includes(entry.field)) || typeof entry.text !== 'string' || entry.text.length > 2000) throw new AppError('请检查个人信息内容');
         const id = entry.id || randomUUID();
         if (typeof id !== 'string' || id.length > 80 || ids.has(id)) throw new AppError('个人信息编号无效'); ids.add(id);
         return { id, field: entry.field, text: entry.text.trim(), allowGroup: entry.allowGroup === true,
           source: 'manual', updatedAt: a.now() };
       }).filter(entry => entry.text);
+      // A form with only current fields cannot delete legacy hidden information
+      // as a side effect of saving another field. Explicit old payloads retain
+      // their previous replacement semantics, including clearing an empty value.
+      for (const entry of previous.entries.filter(row => retiredPersonalFields.includes(row.field) && !value.entries.some(submitted => submitted.field === row.field))) {
+        if (ids.has(entry.id)) throw new AppError('个人信息编号无效');
+        ids.add(entry.id); entries.push(entry);
+      }
+      if (entries.length > 100) throw new AppError('个人信息最多保存100条');
       a.data.personalInformation ||= {};
       a.data.personalInformation[a.data.account] = a.vault.seal({ entries, suggestions: previous.suggestions,
         history: [...previous.history, { at: a.now(), entries: previous.entries }].slice(-20) });
