@@ -129,24 +129,37 @@ function scheduleEditor(s) {
       </div>${once && timing === 'now' ? '<p class="ap-schedule-inline-note">任务创建后开始执行。</p>' : !once && s.mode === 'random' ? '<p class="ap-schedule-inline-note">每次在时间段内随机选择；结束时间早于开始时间时跨至次日。</p>' : ''}
     </div>` : ''}</section>`;
 }
-function taskEditor(state, draft) {
+function taskEditor(state, draft, view = {}) {
   const task = draft.id && state.proactiveTasks?.find(t => t.id === draft.id), readonly = !!draft.id && (!task || task.status === 'ended'), s = draft.schedule;
   const heading = readonly ? '查看任务' : draft.id ? '编辑任务' : '新建任务';
-  return `<header class="ap-heading ap-editor-heading"><button type="button" class="secondary" data-proactive-back>← 返回任务列表</button><div><span class="ap-editor-kicker">主动聊天 / 任务设置</span><h3>${heading}</h3><p>${readonly ? '已结束或删除的任务仅供查看。' : draft.id ? '调整联系人和执行规则，保存后保持当前任务状态。' : '按顺序完成联系人、沟通内容与执行安排。'}</p></div></header>${task?.migrationRequired ? `<div class="ap-readiness ap-migration-summary"><b>旧任务已暂停，请核对后再继续。</b><p>${esc(task.migrationSummary || task.legacyScheduleText || task.legacySchedule?.text || '原安排未记录')}</p><p>${task.migrationScheduleMapped ? '已预填可识别的原执行周期，请核对时间和联系人。' : '原周期无法可靠转换，请明确选择下方执行周期；不会自动按一次任务保存。'}</p></div>` : ''}<form id="ai-proactive-form" class="ap-editor ap-editor-layout"><fieldset ${readonly ? 'disabled' : ''}>
+  return `<header class="ap-heading ap-editor-heading"><button type="button" class="secondary" data-proactive-back>← 返回任务列表</button><div><span class="ap-editor-kicker">主动聊天 / 任务设置</span><h3>${heading}</h3><p>${readonly ? '已结束或删除的任务仅供查看。' : draft.id ? '调整联系人和执行规则，保存后保持当前任务状态。' : '按顺序完成联系人、沟通内容与执行安排。'}</p></div></header>${task?.migrationRequired ? `<div class="ap-readiness ap-migration-summary"><b>旧任务已暂停，请核对后再继续。</b><p>${esc(task.migrationSummary || task.legacyScheduleText || task.legacySchedule?.text || '原安排未记录')}</p><p>${task.migrationScheduleMapped ? '已预填可识别的原执行周期，请核对时间和联系人。' : '原周期无法可靠转换，请明确选择下方执行周期；不会自动按一次任务保存。'}</p></div>` : ''}<form id="ai-proactive-form" class="ap-editor ap-editor-layout" aria-busy="${!!view.submitting}"><fieldset ${readonly || view.submitting ? 'disabled' : ''}>
     <section class="ap-form-card ap-editor-contacts"><div class="ap-card-head"><div class="ap-editor-section-title"><span class="ap-editor-step">01</span><div><h4>选择联系人</h4><p>已开启自动回复、已学习的联系人依次优先显示。</p></div></div><button type="button" class="secondary" data-proactive-pick>＋ 添加联系人</button></div><div class="ap-contact-summary">从微信联系人中选择 <b id="ai-proactive-contact-count">已选 ${draft.contacts.length} 人</b></div><div class="ap-selected" id="ai-proactive-selected">${(() => { const off = new Set(replyOffContacts(state, draft.contacts).map(c => c.id)); return draft.contacts.map(c => `<span class="ap-chip">${contactName(c) || esc(c.id)}${off.has(c.id) ? '（未开自动回复）' : ''}<button type="button" data-proactive-remove="${esc(c.id)}" aria-label="移除 ${esc(c.label || c.id)}">×</button></span>`).join(''); })() || '<div class="ap-empty ap-empty-contacts">暂未选择联系人<br>点击右上角“添加联系人”开始选择</div>'}</div>${(() => { const off = replyOffContacts(state, draft.contacts); return off.length ? `<div class="ap-reply-hint"><p>${esc(off.map(c => contactName(c) || c.id).join('、'))} 未开启自动回复：任务仍会按计划发起，但对方此后的回复不会再被自动处理。</p><button type="button" class="secondary" data-proactive-enable-reply>为这些联系人开启自动回复</button></div>` : ''; })()}</section>
     <section class="ap-form-card ap-editor-brief"><div class="ap-editor-section-title"><span class="ap-editor-step">02</span><div><h4>沟通内容</h4><p>写清这次联系的目标，以及需要遵守的表达要求。</p></div></div><div class="ap-editor-brief-fields"><label class="ai-field">任务名称<input name="name" maxlength="120" required value="${esc(draft.name)}" placeholder="例如：春日问候计划"></label><label class="ai-field">任务类型<select name="taskType">${taskTypes.map(([key, label]) => option(key, label, draft.taskType === key)).join('')}</select></label></div><label class="ai-field">聊天目标<textarea name="goal" rows="4" maxlength="6000" required placeholder="例如：自然问候近况，询问周末是否有空…">${esc(draft.goal)}</textarea></label><details class="ai-optional-fields ap-optional-requirements" data-ai-optional="proactive-requirements"><summary><span>其他要求 <small>选填</small></span><span class="ai-optional-status">${draft.requirements ? '已填写' : '点击展开'}</span></summary><div class="ap-optional-body"><label class="ai-field">其他要求<textarea name="requirements" rows="3" maxlength="6000" placeholder="例如：称呼对方小名；语气轻松；不要提及工作压力…">${esc(draft.requirements)}</textarea></label><p class="ap-field-help">可补充称呼、语气、禁用话题或必须提到的信息。</p></div></details></section>
     ${scheduleEditor(s)}
-    </fieldset><div class="ap-editor-confirm"><div><span class="ap-editor-confirm-label">提交前核对</span><strong id="ai-proactive-review">${draft.contacts.length} 位联系人 · ${esc(editorScheduleLabel(s))}</strong><p>任务按安排主动发起；对方后续消息按该联系人的自动回复设置处理。</p></div><footer class="ap-editor-footer"><button type="button" class="secondary" data-proactive-cancel>${readonly ? '返回列表' : '取消'}</button>${readonly ? '' : `<button type="submit" class="primary" data-proactive-submit>${draft.id ? '保存修改' : '新建任务'}</button>`}</footer></div></form>`;
+    </fieldset><p id="ai-proactive-submit-error" class="ap-readiness" role="alert" ${view.submitError ? '' : 'hidden'}>${esc(view.submitError)}</p><div class="ap-editor-confirm"><div><span class="ap-editor-confirm-label">提交前核对</span><strong id="ai-proactive-review">${draft.contacts.length} 位联系人 · ${esc(editorScheduleLabel(s))}</strong><p>任务按安排主动发起；对方后续消息按该联系人的自动回复设置处理。</p></div><footer class="ap-editor-footer"><button type="button" class="secondary" data-proactive-cancel>${readonly ? '返回列表' : '取消'}</button>${readonly ? '' : `<button type="submit" class="primary" data-proactive-submit ${view.submitting ? 'disabled' : ''}>${view.submitting ? draft.id ? '正在保存…' : '正在创建…' : draft.id ? '保存修改' : '新建任务'}</button>`}</footer></div></form>`;
 }
 export function proactivePage(state, view = {}) {
-  return `<div class="ai-proactive-page" data-proactive-root>${view.editing && view.draft ? taskEditor(state, view.draft) : `<header class="ap-heading"><div><h3>主动聊天</h3><p>让每一次主动联系都有目标、有边界，也随时可接管。</p></div><button type="button" class="primary" data-proactive-new>＋ ${view.draft ? '继续编辑任务' : '新建任务'}</button></header><div id="ai-proactive-list">${proactiveTable(state, view)}</div>`}</div>`;
+  return `<div class="ai-proactive-page" data-proactive-root>${view.editing && view.draft ? taskEditor(state, view.draft, view) : `<header class="ap-heading"><div><h3>主动聊天</h3><p>让每一次主动联系都有目标、有边界，也随时可接管。</p></div><button type="button" class="primary" data-proactive-new>＋ ${view.draft ? '继续编辑任务' : '新建任务'}</button></header><div id="ai-proactive-list">${proactiveTable(state, view)}</div>`}</div>`;
 }
 // View-local state survives polling and rerenders, and resets on instance changes.
 export function createProactiveUI({ panel, getState, context, isBusy, mutate, render, showRecords, refreshContacts, enableReply = async () => {} }) {
-  let view = { filter: 'all', menu: '', editing: false, draft: null }, contactDialog = null, dialog = null, returnFocus = null;
+  let view = { filter: 'all', menu: '', editing: false, draft: null }, contactDialog = null, dialog = null, returnFocus = null, pendingSubmit = null;
   const form = () => panel.querySelector('#ai-proactive-form');
   const remember = () => { view.draft = readTaskDraft(form(), view.draft); };
   const updateReview = () => { const node = form()?.querySelector('#ai-proactive-review'); if (node && view.draft) node.textContent = `${view.draft.contacts.length} 位联系人 · ${editorScheduleLabel(view.draft.schedule)}`; };
+  function submitError(message = '') {
+    view.submitError = message;
+    const node = form()?.querySelector('#ai-proactive-submit-error');
+    if (node) { node.textContent = message; node.hidden = !message; }
+  }
+  function focusControl(attribute, value, taskId) {
+    const button = [...(panel.querySelectorAll?.(`[${attribute}]`) || [])].find(node => node.getAttribute(attribute) === value && (!taskId || node.dataset.taskId === taskId));
+    button?.focus({ preventScroll: true });
+    return !!button;
+  }
+  function focusTaskList(taskId) {
+    if (!taskId || !focusControl('data-proactive-menu', taskId)) panel.querySelector('[data-proactive-new]')?.focus({ preventScroll: true });
+  }
   function closeDialog() {
     if (dialog) { dialog.close(); dialog.remove(); dialog = null; }
     if (returnFocus?.isConnected) returnFocus.focus();
@@ -172,14 +185,20 @@ export function createProactiveUI({ panel, getState, context, isBusy, mutate, re
   async function click(button) {
     if (!button.closest('[data-proactive-root]')) return false;
     if ([...button.attributes].every(a => !a.name.startsWith('data-proactive-'))) return false;
+    if (pendingSubmit) return true;
     if (isBusy()) throw new Error('请等待当前操作完成');
     remember();
-    if (button.hasAttribute('data-proactive-expand')) { const key = button.dataset.proactiveExpand; const expanded = new Set(view.expandedTasks || []); if (expanded.has(key)) expanded.delete(key); else expanded.add(key); view.expandedTasks = [...expanded]; render(); }
+    if (button.hasAttribute('data-proactive-expand')) { const key = button.dataset.proactiveExpand; const expanded = new Set(view.expandedTasks || []); if (expanded.has(key)) expanded.delete(key); else expanded.add(key); view.expandedTasks = [...expanded]; render(); focusControl('data-proactive-expand', key); }
     else if (button.hasAttribute('data-proactive-new')) { view.draft ||= taskDraft(); view.editing = true; view.menu = ''; render(); }
-    else if (button.hasAttribute('data-proactive-back')) { view.editing = false; render(); }
-    else if (button.hasAttribute('data-proactive-cancel')) { view.editing = false; view.draft = null; render(); }
+    else if (button.hasAttribute('data-proactive-back')) { view.editing = false; render(); focusTaskList(view.draft?.id); }
+    else if (button.hasAttribute('data-proactive-cancel')) { const taskId = view.draft?.id; view.editing = false; view.draft = null; submitError(); render(); focusTaskList(taskId); }
     else if (button.hasAttribute('data-proactive-pick')) pickContacts();
-    else if (button.hasAttribute('data-proactive-remove')) { if (!await confirmDialog('确认从任务中移除这个联系人？保存任务后生效。')) return true; view.draft.contacts = view.draft.contacts.filter(c => c.id !== button.dataset.proactiveRemove); render(); }
+    else if (button.hasAttribute('data-proactive-remove')) {
+      const current = context(), draft = view.draft;
+      if (!draft || !await confirmDialog('确认从任务中移除这个联系人？保存任务后生效。') || current !== context() || view.draft?.id !== draft.id || view.draft?.requestId !== draft.requestId) return true;
+      view.draft.contacts = view.draft.contacts.filter(c => c.id !== button.dataset.proactiveRemove); render();
+      panel.querySelector('[data-proactive-pick]')?.focus({ preventScroll: true });
+    }
     else if (button.hasAttribute('data-proactive-enable-reply')) {
       const contacts = replyOffContacts(getState(), view.draft?.contacts || []).map(c => c.id);
       if (!contacts.length) { render(); return true; }
@@ -187,13 +206,13 @@ export function createProactiveUI({ panel, getState, context, isBusy, mutate, re
       try { await enableReply(contacts); } finally { button.disabled = false; }
       render();
     }
-    else if (button.hasAttribute('data-proactive-filter')) { view.filter = button.dataset.proactiveFilter; view.menu = ''; render(); }
+    else if (button.hasAttribute('data-proactive-filter')) { view.filter = button.dataset.proactiveFilter; view.menu = ''; render(); focusControl('data-proactive-filter', view.filter); }
     else if (button.hasAttribute('data-proactive-menu')) { view.menu = view.menu === button.dataset.proactiveMenu ? '' : button.dataset.proactiveMenu; refresh(true); }
     else if (button.dataset.proactiveCommand) {
       const command = button.dataset.proactiveCommand, id = button.dataset.taskId, task = getState().proactiveTasks?.find(t => t.id === id);
       if (!task) throw new Error('任务已变化，请刷新列表');
       view.menu = '';
-      if (command === 'edit') { view.draft = taskDraft(task); view.editing = true; render(); }
+      if (command === 'edit') { view.draft = taskDraft(task); view.editing = true; submitError(); render(); }
       else if (command === 'records') { await showRecords(id); }
       else if (command === 'delete') {
         refresh(true);
@@ -203,7 +222,7 @@ export function createProactiveUI({ panel, getState, context, isBusy, mutate, re
           if (b.hasAttribute('data-proactive-delete-cancel')) { closeDialog(); return; }
           if (!b.hasAttribute('data-proactive-delete-confirm') || b.disabled) return;
           b.disabled = true;
-          try { await mutate({ command: 'delete', id }, () => { if (view.draft?.id === id) view.draft = null; closeDialog(); }, '任务已删除，运行记录已保留'); }
+          try { await mutate({ command: 'delete', id }, () => { if (current !== context()) return; if (view.draft?.id === id) view.draft = null; closeDialog(); }, '任务已删除，运行记录已保留'); }
           catch (e) { if (current === context() && dialog === node) { node.querySelector('.ap-picker-error').textContent = e.message; b.disabled = false; } }
         });
       } else {
@@ -219,36 +238,49 @@ export function createProactiveUI({ panel, getState, context, isBusy, mutate, re
       panel.querySelector('[data-proactive-cleanup-scope]')?.focus({ preventScroll: true }); return true;
     }
     if (!input.closest('#ai-proactive-form')) return false;
+    const previousType = view.draft?.taskType;
     remember();
     if (input.name === 'taskType') {
-      const template = taskTypes.find(([key]) => key === input.value)?.[2];
-      if (template) { view.draft.goal = template; form().elements.goal.value = template; }
+      const template = taskTypes.find(([key]) => key === input.value)?.[2], previousTemplate = taskTypes.find(([key]) => key === previousType)?.[2];
+      if (template && (!view.draft.goal.trim() || view.draft.goal.trim() === previousTemplate)) { view.draft.goal = template; form().elements.goal.value = template; }
     }
     updateReview();
     if (['cycle', 'mode', 'onceTiming'].includes(input.name)) { render(); form()?.querySelector(`[name="${input.name}"]:checked`)?.focus?.({ preventScroll: true }); }
     return true;
   }
   async function submit() {
+    if (pendingSubmit) return;
+    if (isBusy()) throw new Error('请等待当前操作完成');
     remember();
     const draft = view.draft, task = draft?.id && getState().proactiveTasks?.find(t => t.id === draft.id);
     if (!draft || draft.id && (!task || task.status === 'ended')) throw new Error('任务已结束或移除，无法修改');
-    const value = taskPayload(draft), button = form()?.querySelector('[type=submit]'), fields = form()?.querySelector('fieldset');
-    if (button) button.disabled = true;
+    let value;
+    try { value = taskPayload(draft); }
+    catch (e) { submitError(e.message); throw e; }
+    submitError();
+    const operation = {}, current = context(), editor = form(), button = editor?.querySelector('[type=submit]'), fields = editor?.querySelector('fieldset');
+    pendingSubmit = operation;
+    if (button) { button.disabled = true; button.textContent = draft.id ? '正在保存…' : '正在创建…'; }
     if (fields) fields.disabled = true;
-    const current = context();
-    try { await mutate(value, () => { view.draft = null; view.editing = false; view.filter = 'all'; }, value.command === 'edit' ? '修改已保存，任务状态保持不变' : '任务已创建，执行情况请查看任务列表和运行记录'); }
+    editor?.setAttribute('aria-busy', 'true');
+    try { await mutate(value, () => { if (current !== context()) return; view.draft = null; view.editing = false; view.filter = 'all'; submitError(); }, value.command === 'edit' ? '修改已保存，任务状态保持不变' : '任务已创建，执行情况请查看任务列表和运行记录'); }
+    catch (e) { if (current === context()) submitError(`保存未完成，草稿已保留。${e.message}`); throw e; }
     finally {
+      if (pendingSubmit === operation) pendingSubmit = null;
       if (current === context()) {
         const latest = draft.id && getState().proactiveTasks?.find(t => t.id === draft.id);
         const readonly = draft.id && (!latest || latest.status === 'ended');
-        if (button?.isConnected) button.disabled = !!readonly;
+        if (button?.isConnected) { button.disabled = !!readonly; button.textContent = draft.id ? '保存修改' : '新建任务'; }
         if (fields?.isConnected) fields.disabled = !!readonly;
+        if (editor?.isConnected) editor.setAttribute('aria-busy', 'false');
       }
     }
   }
   function refresh(force = false) {
 
-    const host = panel.querySelector('#ai-proactive-list');
+    const host = panel.querySelector('#ai-proactive-list'), active = globalThis.document?.activeElement;
+    const focusAttribute = host?.contains?.(active) && ['data-proactive-filter', 'data-proactive-menu', 'data-proactive-command', 'data-proactive-expand'].find(attribute => active.hasAttribute?.(attribute));
+    const focusValue = focusAttribute && active.getAttribute(focusAttribute), focusTask = active?.dataset?.taskId;
     // Leave open menus, the cleanup selector and all editor inputs intact during polling.
     const scopeInput = host?.querySelector('[data-proactive-cleanup-scope]');
     if (host && (force || !view.menu)) {
@@ -263,6 +295,7 @@ export function createProactiveUI({ panel, getState, context, isBusy, mutate, re
         for (const child of [...list.children]) if (!child.classList.contains('ap-reference-toolbar')) child.remove();
         for (const child of [...template.content.querySelector('.ap-reference-list').children]) if (!child.classList.contains('ap-reference-toolbar')) list.append(child);
       } else host.innerHTML = html;
+      if (focusAttribute && !focusControl(focusAttribute, focusValue, focusTask) && focusTask) focusControl('data-proactive-menu', focusTask);
     }
     const task = view.draft?.id && getState().proactiveTasks?.find(t => t.id === view.draft.id);
     if (form() && view.draft?.id && (!task || task.status === 'ended')) {
@@ -271,9 +304,15 @@ export function createProactiveUI({ panel, getState, context, isBusy, mutate, re
     }
   }
   return {
-    page: () => proactivePage(getState(), view), remember, click, change, submit, refresh,
+    page: () => proactivePage(getState(), { ...view, submitting: !!pendingSubmit }), remember, click, change, submit, refresh,
     closeOverlay: () => { if (contactDialog) { contactDialog.close(); contactDialog = null; return true; } if (dialog) { closeDialog(); return true; } if (view.menu) { view.menu = ''; refresh(true); return true; } return false; },
-    closeMenu: () => { if (view.menu) { view.menu = ''; refresh(true); } },
-    reset: () => { contactDialog?.close(); contactDialog = null; closeDialog(); view = { filter: 'all', menu: '', editing: false, draft: null }; },
+    closeMenu: () => {
+      if (!view.menu) return;
+      view.menu = '';
+      // Keep the original click target connected until the delegated click runs.
+      for (const menu of panel.querySelectorAll?.('.ap-action-menu') || []) menu.remove();
+      for (const button of panel.querySelectorAll?.('[data-proactive-menu]') || []) button.setAttribute('aria-expanded', 'false');
+    },
+    reset: () => { contactDialog?.close(); contactDialog = null; closeDialog(); pendingSubmit = null; view = { filter: 'all', menu: '', editing: false, draft: null }; },
   };
 }

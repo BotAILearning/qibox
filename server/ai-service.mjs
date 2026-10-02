@@ -8,7 +8,8 @@ import { accountConfiguration, personalInformation, personalFields, selfContext,
 import { selectMemoryForChat } from './ai-memory-context.mjs';
 import { guardFinancialCommitment } from './ai-commitment-guard.mjs';
 import { replySafetyPrompt, replySafetyViolation, replySafetyCorrection } from './ai-reply-safety.mjs';
-import { annotateSourceDates, staleTemporaryProactive } from './ai-time-context.mjs';
+import { annotateSourceDates, annotateChatTimes, staleTemporaryProactive, staleProactiveTimeClaim } from './ai-time-context.mjs';
+import { proactiveTimelinePrompt } from './ai-prompts.mjs';
 import path from 'node:path';
 import { chatMemoryPrompt, groupMemoryInstruction, mergeMemory, editMemory as changeMemory, pointInTimeMemory } from './ai-wiki.mjs';
 import { defaultTakeover, takeoverValue, effectiveTakeover, identityPrompt, asksIdentity } from './ai-reply-rules.mjs';
@@ -1087,34 +1088,43 @@ export class AIAssistant {
       ? profile.style : { summary: '自然、简洁、礼貌；默认不加称呼，不推断关系。' };
     const strategy = { purpose: task.goal, content: task.goal, boundaries: task.requirements, facts: '', persona: '', maxRounds: 1 };
     const multiTurn = true;
-    const time = currentChatTime(this.now(), selfContext(this, profile.kind));
-    const messages = authoredMessages(this.vault, profile, snapshot.messages).map(message => withSpeaker(message, profile));
+    const startedAt = this.now();
+    const time = currentChatTime(startedAt, selfContext(this, profile.kind));
+    const messages = annotateChatTimes(authoredMessages(this.vault, profile, snapshot.messages), startedAt, time.timezone)
+      .map(message => ({ ...withSpeaker(message, profile), pending: false }));
     const emphasis = message => {
       const chars = Array.from(message.text || ''), truncated = chars.length > 360;
       return { id: message.id, direction: message.direction, speaker: message.speaker, ...(message.sender ? { sender: message.sender } : {}), text: (truncated ? chars.slice(-360) : chars).join(''), timestamp: message.timestamp ?? null,
+        temporal: message.temporal, ...(message.relativeDates ? { relativeDates: message.relativeDates } : {}),
+        ...(message.relativeDateWords ? { relativeDateWords: message.relativeDateWords } : {}),
         aiGenerated: message.aiGenerated === true, ...(truncated ? { truncated: true } : {}) };
     };
     const recentSelfMessages = messages.filter(message => message.direction === 'self').slice(-8).map(emphasis);
     const latestIncoming = messages.findLast(message => message.direction === 'other');
-    const generate = (correction = '') => this.provider.complete(this.modelFor('proactive'), `${generationPrompt}${contextualStylePrompt}${speakerIdentityPrompt}${naturalChatPrompt}${longTermMemoryPrompt}${timelinePrompt}${reflectiveReplyPrompt}${conversationPrompt}${addressingPrompt}${personalContextPrompt}${presentTimePrompt}${identityPrompt(false)}${proactivePrompt(strategy)} 当前只能发送纯文字，不承诺发送媒体、文件或执行付款。本次是独立主动聊天任务，不自动续聊，不更新风格或记忆。${generationProtocol({ multiTurn, followUpAllowed: false, memoryUpdates: false, allowSkip: false })}${extra}${replySafetyPrompt}${naturalAttributionPrompt}${correction}${currentTimeAnchor(time)}`, {
+    const generate = (correction = '') => this.provider.complete(this.modelFor('proactive'), `${generationPrompt}${contextualStylePrompt}${speakerIdentityPrompt}${naturalChatPrompt}${longTermMemoryPrompt}${timelinePrompt}${reflectiveReplyPrompt}${conversationPrompt}${addressingPrompt}${personalContextPrompt}${presentTimePrompt}${identityPrompt(false)}${proactivePrompt(strategy)}${proactiveTimelinePrompt} 当前只能发送纯文字，不承诺发送媒体、文件或执行付款。本次是独立主动聊天任务，不自动续聊，不更新风格或记忆。${generationProtocol({ multiTurn, followUpAllowed: false, memoryUpdates: false, allowSkip: false })}${extra}${replySafetyPrompt}${naturalAttributionPrompt}${correction}${currentTimeAnchor(time)}`, {
       mode: 'proactive', continuation: false, multiTurn, allowSegments: true, followUp: false, followUpAllowed: false, updateStyle: false, judgeReply: false,
       kind: profile.kind, replyPerspective: replyPerspective(profile), strategy, style, contextualStyle: contextualReplyStyle(messages), styleOwner: 'self', addressing: { styleScope: 'current-chat', currentStyle: style },
       ...time,
       myInformation: selfContext(this, profile.kind), memory: selectMemoryForChat(readMemory(this.vault, profile), { query: `${task.goal}\n${latestIncoming?.text || ''}`, now: this.now() }), capabilities: { sendText: true, sendMedia: false, files: false, calls: false, executeExternalActions: false },
       conversation: { latestIncomingId: latestIncoming?.id || null, lastSelfId: recentSelfMessages.length ? snapshot.messages.filter(message => message.direction === 'self').at(-1)?.id || null : null,
-        recentSelfMessages, latestIncoming: latestIncoming ? emphasis(latestIncoming) : null },
+        pendingIncomingIds: [], pendingIncomingMessages: [], recentSelfMessages, latestIncoming: latestIncoming ? emphasis(latestIncoming) : null },
       messages
     }, signal, { validate: value => validateCurrentTimeReply(validateReplyResult(value, { multiTurn }), time) });
     let result = await generate();
     const safetyReason = value => value?.action === 'send' ? replySafetyViolation(messageSegments(value, { multiTurn })) : '';
     let violation = safetyReason(result);
     const skipped = String(result?.action || '').trim().toLowerCase() === 'skip';
-    if (violation || skipped || staleTemporaryProactive(result, snapshot.messages, this.now(), task.goal)) {
+    let staleTime = staleProactiveTimeClaim(result, snapshot.messages, startedAt);
+    if (violation || skipped || staleTime || staleTemporaryProactive(result, snapshot.messages, this.now(), task.goal)) {
       if (signal.aborted) throw new AppError('操作已取消', 409);
-      result = await generate(violation ? replySafetyCorrection(violation) : ' 重新开场：围绕 strategy.purpose 说一条新消息；旧病情、压力等临时状态不可作为普通问候的由头，也不问“好点了吗”“还累吗”。只使用已确认的事实，返回 action=send。');
+      result = await generate(violation ? replySafetyCorrection(violation) : staleTime
+        ? ' 重新开场：最近对方来信已过去数小时，不能声称“你刚才说/刚刚问”或直接接续当时的临时活动。依据 temporal 和本次目标自然跟进相关旧事的进展，不预设结果，不复问未答问题。只使用已确认事实，返回 action=send。'
+        : ' 重新开场：围绕 strategy.purpose 说一条新消息；旧病情、压力等临时状态不可作为普通问候的由头，也不问“好点了吗”“还累吗”。只使用已确认的事实，返回 action=send。');
       violation = safetyReason(result);
+      staleTime = staleProactiveTimeClaim(result, snapshot.messages, startedAt);
     }
     if (violation) throw new AppError(violation === 'identity' ? '主动消息未通过身份规则，本次未发送' : '主动消息声称执行了未核实的操作，本次未发送');
+    if (staleTime) throw new AppError('主动消息仍将历史来信当作刚刚发生，本次未发送');
     if (staleTemporaryProactive(result, snapshot.messages, this.now(), task.goal)) {
       if (/问候|打招呼|寒暄|聊聊近况/u.test(String(task.goal || ''))) return { action: 'send', text: '最近怎么样？', followUp: false };
       throw new AppError('主动消息仍在接续过期状态，本次未发送');
@@ -3007,7 +3017,7 @@ export class AIAssistant {
         result = onlyImages && !images.length && profile.kind !== 'group' ? { action: 'skip', mediaSkipped: true } : await this.provider.complete(
           this.modelFor('chat'),
           `${generationPrompt}${contextualStylePrompt}${speakerIdentityPrompt}${naturalChatPrompt}${longTermMemoryPrompt}${timelinePrompt}${personalContextPrompt}${presentTimePrompt}${chatMemoryPrompt}${profile.kind === 'group' ? groupMemoryInstruction : ' 单聊中，对方姓名写入 name；只有用户确实直接这样称呼对方且对象明确时，才把称呼写入 addressing。'}${identityPrompt(allowIdentity)}${conversationPrompt}${replySummaryContext} ${mediaOutputPrompt} 只能发送文字和capabilities明确允许的生成图片或微信原生语音，不能读取或下载任意文件，不能拨打或接听电话，仅能理解实际附带的图片；未附带图片或图片无法读取时，应如实说明无法查看并请对方转成文字，不猜测图片内容。${groupTriggerInstruction}${groupBatch?.sender ? ` 本轮只回复成员ID ${groupBatch.sender} 对应的消息 ${groupBatch.ids.join(',')}，其余成员的消息仅作背景。需要称呼时仅使用members中该ID对应的真实称呼，不编造姓名。` : ''}${profile.groupContextWait?.trigger === 'atMe' ? ' 上轮已等待补充信息，本次必须回复；信息仍不足时用一句简短问题澄清，不能再次wait。' : ''}${currentTask}${currentStyle}${profile.kind === 'group' ? groupPrompt(trigger, allowSegments, profile.groupOptions?.realtimeMode) : ''}${generationProtocol({ multiTurn, allowSegments, group: profile.kind === 'group', followUpAllowed: profile.kind !== 'group' && !followUp, updateStyle: this.data.settings.updateStyle, allowSkip: !mustReply, allowStop: true })}${reflectiveReplyPrompt}${currentTimeAnchor(time)}${mode === 'reply' && !followUp ? ' 本轮只回应conversation.pendingIncomingMessages列出的来信；其中excerpt=true时按ID查阅messages全文。messages中pending=false的旧问题和已发回复只作背景，不能再补答。' : ''}${replySafetyPrompt}${naturalAttributionPrompt}${safetyCorrection}`,
-          { identityPolicy: { asked: identityAsked, allowDisclosure: !!allowIdentity }, images: textOnlyRetry ? [] : images, onlyImages: textOnlyRetry ? false : onlyImages, capabilityConcern: reason, mode, continuation, multiTurn, allowSegments, followUp, followUpAllowed: profile.kind !== 'group' && !followUp, kind: profile.kind, replyPerspective: replyPerspective(profile), conversation, addressing, memory: selectMemoryForChat(readMemory(this.vault, profile), { query: pendingMessages.map(message => message.text || "").join(" ") || (strategy.replyGoal || strategy.purpose || ""), now: this.now() }), ...time, myInformation: selfContext(this, profile.kind), groupState, capabilities: { sendText: true, wechatVoiceText: true, files: false, calls: false, executeExternalActions: false, sendImages, sendAudio, receiveImages: !textOnlyRetry && images.length > 0, sendMedia: sendImages || sendAudio }, strategy, style, contextualStyle: contextualReplyStyle(modelMessages), styleOwner: 'self', judgeReply: profile.kind === 'group' ? trigger !== 'atMe' : followUp || this.replyOptions(profile).judgeReply, updateStyle: this.data.settings.updateStyle, messages: modelMessages.map(message => ({ ...withSpeaker(message, profile), pending: conversation.pendingIncomingIds.includes(message.id), aiGenerated: message.aiGenerated === true || (profile.generatedIds || []).includes(message.id) })) }, signal, { validate: value => validateCurrentTimeReply(validateReplyResult(value, { multiTurn, allowSegments, group: profile.kind === 'group' }), time) }
+          { identityPolicy: { asked: identityAsked, allowDisclosure: !!allowIdentity }, images: textOnlyRetry ? [] : images, onlyImages: textOnlyRetry ? false : onlyImages, capabilityConcern: reason, mode, continuation, multiTurn, allowSegments, followUp, followUpAllowed: profile.kind !== 'group' && !followUp, kind: profile.kind, replyPerspective: replyPerspective(profile), conversation, addressing, memory: selectMemoryForChat(readMemory(this.vault, profile), { query: pendingMessages.map(message => message.text || "").join(" ") || (strategy.replyGoal || strategy.purpose || ""), now: this.now() }), ...time, myInformation: selfContext(this, profile.kind), groupState, capabilities: { sendText: true, wechatVoiceText: true, files: false, calls: false, executeExternalActions: false, sendImages, sendAudio, receiveImages: !textOnlyRetry && images.length > 0, sendMedia: sendImages || sendAudio }, strategy, style, contextualStyle: contextualReplyStyle(modelMessages), styleOwner: 'self', judgeReply: profile.kind === 'group' ? trigger !== 'atMe' : followUp || this.replyOptions(profile).judgeReply, updateStyle: this.data.settings.updateStyle, messages: annotateChatTimes(modelMessages, this.now(), time.timezone).map(message => ({ ...withSpeaker(message, profile), pending: conversation.pendingIncomingIds.includes(message.id), aiGenerated: message.aiGenerated === true || (profile.generatedIds || []).includes(message.id) })) }, signal, { validate: value => validateCurrentTimeReply(validateReplyResult(value, { multiTurn, allowSegments, group: profile.kind === 'group' }), time) }
         );
         if (result?.action === 'send') {
           const violation = replySafetyViolation(messageSegments(result, { multiTurn, allowSegments }), { allowIdentity, identityAsked, audioText: sendAudio && result.media?.[0]?.type === 'audio' ? result.media[0].text : '' });

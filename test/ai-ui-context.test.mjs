@@ -42,8 +42,16 @@ function surface() {
     node,
     dismissFeedback: () => handlers.get('created-button:click')(),
     applyDialog: () => handlers.get('created-dialog:click')({ target: { closest: () => ({ hasAttribute: name => name === 'data-apply' }) } }),
-    form: (selector, entries) => { const form = { id: selector.slice(1), entries, querySelector: () => null }; forms.set(selector, form); return form; },
-    unmount: selector => forms.delete(selector),
+    form: (selector, entries) => {
+      const attributes = new Map(), form = { id: selector.slice(1), entries, isConnected: true, querySelector: () => null,
+        setAttribute(name, value) { attributes.set(name, String(value)); },
+        getAttribute(name) { return attributes.get(name) ?? null; },
+        hasAttribute(name) { return attributes.has(name); },
+        removeAttribute(name) { attributes.delete(name); },
+      };
+      forms.set(selector, form); return form;
+    },
+    unmount: selector => { const form = forms.get(selector); if (form) form.isConnected = false; forms.delete(selector); },
     navigate: aiNav => handlers.get('#ai-panel:click')({ target: { closest: () => buttonNode({ aiNav }) } }),
     change: target => { target.closest ||= () => null; return handlers.get('#ai-panel:change')({ target }); },
     input: target => handlers.get('#ai-panel:input')({ target: { closest: () => null, ...target } }),

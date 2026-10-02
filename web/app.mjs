@@ -10,6 +10,7 @@ import { desktopReconnect } from './desktop-reconnect.mjs';
 import { aiAssistant } from './ai-assistant.mjs';
 import { desktopAudio } from './desktop-audio.mjs';
 import { dismissibleNotice } from './dismissible-notice.mjs';
+import { visibleRefresh, stateRefreshDelay } from './visible-refresh.mjs';
 import './qiapp-adopt.mjs';
 
 const $ = selector => document.querySelector(selector);
@@ -111,7 +112,11 @@ async function api(route, data, timeout = data === undefined ? 15000 : 120000) {
   const headers = { ...await hostHeaders(), ...(data === undefined ? {} : { 'Content-Type': 'application/json', 'X-CSRF-Token': session?.csrf || '' }) };
   let response;
   try { response = await fetch(`${prefix}/api${route}`, { method: data === undefined ? 'GET' : 'POST', credentials: 'same-origin', headers, body: data === undefined ? undefined : JSON.stringify(data), signal: AbortSignal.timeout(timeout) }); }
-  catch (error) { if (error.name === 'TimeoutError') throw new Error('连接超时，请重试'); throw error; }
+  catch (error) {
+    if (error.name === 'TimeoutError') throw new Error(data === undefined ? '连接超时，将自动重连' : '连接超时，请先核对操作结果再重试');
+    if (error instanceof TypeError) throw new Error(data === undefined ? '网络连接已中断，将自动重连' : '网络连接已中断，请先核对操作结果再重试');
+    throw error;
+  }
   if (response.status === 401) invalidateHostToken();
   let result; try { result = await response.json(); } catch { throw new Error('连接已中断，请刷新页面'); }
   if (!response.ok) throw Object.assign(new Error(result.error || '操作未完成，请重试'), { code: result.code }); return result;
@@ -398,12 +403,13 @@ function renderDesktop() {
   $('#desktop-status').textContent = desktopStatus(runtime, desktopConnected, waiting);
 }
 async function refresh() {
-  if (polling) return; polling = true;
+  if (polling) return true; polling = true;
   try {
     state = await api('/state'); render(); renderDesktop(); connectionNotice.show('');
     if (mobileLoginId && state.instances.find(item => item.id === mobileLoginId)?.runtime.loginStatus === 'logged-in') mobileLoginComplete(mobileLoginId);
+    return true;
   }
-  catch (e) { connectionNotice.show(e.message, true, { repeat: false }); }
+  catch (e) { connectionNotice.show(e.message, true, { repeat: false }); return false; }
   finally { polling = false; }
 }
 function centerMobileLoginViewport(client) {
@@ -710,14 +716,18 @@ document.addEventListener('click', async event => {
 async function init() {
   try {
     session = await api('/session'); $('#version').textContent = `栖盒 ${session.product.buildId || session.product.version}`;
-    await refresh();
-    if (!session.consent.accepted) consentDialog(); else await picker.refresh();
-    setInterval(refresh, 1000);
+    const loaded = await refresh();
+    if (!session.consent.accepted) consentDialog();
+    else void picker.refresh().catch(error => connectionNotice.show(error.message, true, { repeat: false }));
+    return loaded;
   } catch (e) {
     connectionNotice.show(e.name === 'TimeoutError' ? '连接超时，请检查网络' : e.message, true, { repeat: false });
-    // The NAS gateway/SDK can be unavailable briefly while an app is opening.
-    // Retry session initialization; polling alone cannot recover without it.
-    setTimeout(init, 3000);
+    return false;
   }
 }
-init();
+const stateRefresh = visibleRefresh({ document, window,
+  refresh: () => session ? refresh() : init(),
+  interval: () => stateRefreshDelay({ ready: !!session, busy: desktopConnecting || busyIds.size > 0, job: state?.library?.job, instances: state?.instances }),
+});
+window.addEventListener('offline', () => connectionNotice.show('网络连接已中断，当前显示最近的状态；恢复连接后将自动更新', true, { repeat: false }));
+stateRefresh.start();

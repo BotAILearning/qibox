@@ -5,7 +5,7 @@ import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { randomBytes, createHmac, timingSafeEqual } from 'node:crypto';
-import { mkdir, readFile, chmod, rm, lstat } from 'node:fs/promises';
+import { mkdir, chmod, rm, lstat } from 'node:fs/promises';
 import { WebSocketServer } from 'ws';
 import { AppError, jsonFile } from './files.mjs';
 import { PackageLibrary } from './packages.mjs';
@@ -20,6 +20,7 @@ import { streamAudio } from './audio.mjs';
 import { proxyWebApp } from './web-app.mjs';
 import { exportAnalysisReports } from './ai-report-export.mjs';
 import { readWechatAvatar } from './ai-avatar.mjs';
+import { StaticAssets } from './static-assets.mjs';
 
 const moduleRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const equal = (a, b) => typeof a === 'string' && typeof b === 'string' && Buffer.byteLength(a) === Buffer.byteLength(b) && timingSafeEqual(Buffer.from(a), Buffer.from(b));
@@ -48,6 +49,7 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
   }
   function check(req, user) { if (req.headers['sec-fetch-site'] === 'cross-site' || !equal(req.headers['x-csrf-token'], token(user.uid))) throw new AppError('页面已过期，请刷新后重试', 403); }
   const library = new PackageLibrary({ appRoot, dataRoot, dev, fetcher, extract, arch, ...(trustedHashes ? { trustedHashes } : {}) }); await library.init();
+  const assets = new StaticAssets(path.join(appRoot, 'public'));
   const users = new Instances({ appRoot, dataRoot, dev, host, library, runtimeFactory, aiProvider, deferRestore }); await users.init();
   library.beforeInstall = async () => { await users.ensureAssets(); if (users.assets.status === 'error') throw new AppError('准备失败，请重新打开栖盒'); };
   library.beforeUninstall = () => users.suspendForUninstall();
@@ -244,8 +246,7 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
         files[`/vendor/qiapp-ui/${stylesheet}.css`] = [`vendor/qiapp-ui/${stylesheet}.css`, 'text/css'];
       }
       if (!files[route]) throw new AppError('页面不存在', 404);
-      const [file, type] = files[route]; const bytes = await readFile(path.join(appRoot, 'public', file));
-      res.writeHead(200, { 'Content-Type': type.startsWith('text/') ? `${type}; charset=utf-8` : type, 'Cache-Control': 'no-cache' }); res.end(req.method === 'HEAD' ? undefined : bytes);
+      const [file, type] = files[route]; await assets.send(file, type, req, res);
     } catch (error) {
       if (res.headersSent) { res.destroy(); return; }
       if (!(error instanceof AppError)) console.error('Request failed:', error.message);

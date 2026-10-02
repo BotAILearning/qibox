@@ -4,6 +4,7 @@ import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { mkdir, readFile, writeFile, chmod, access, rename, rm, readdir, stat, symlink } from 'node:fs/promises';
 import { createWriteStream } from 'node:fs';
+import { attachRuntimeLog } from './runtime-log.mjs';
 import { AppError, atomicJson, jsonFile, hashFile } from './files.mjs';
 import { activateWechatWindow, restoreWechatWindow, wechatWindowVisible, DesktopWindowState } from './desktop.mjs';
 import { fontConfiguration } from './fonts.mjs';
@@ -163,9 +164,8 @@ export class Runtime {
   child(bin, args, env, name, cwd = env.HOME, displayPipe = false) {
     const stream = createWriteStream(path.join(this.logPath, `${name}.log`), { flags: 'w', mode: 0o600 });
     const process = spawn(bin, args, { env, cwd, detached: true, stdio: ['ignore', 'pipe', 'pipe', ...(displayPipe ? ['pipe'] : [])] });
-    process.stdout.pipe(stream, { end: false }); process.stderr.pipe(stream, { end: false });
-    process.on('error', error => { stream.write(String(error)); this.lastError = `${name}: ${error.message}`; });
-    process.on('close', () => stream.end());
+    attachRuntimeLog(process, stream, error => { this.lastError = `${name}: runtime log unavailable (${error.code || 'IO_ERROR'})`; });
+    process.on('error', error => { this.lastError = `${name}: ${error.message}`; });
     this.processes.push({ process, name });
     return process;
   }
