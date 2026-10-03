@@ -1105,6 +1105,8 @@ dialog {
  #ai-panel .ai-object-save>.primary{min-height:48px;flex:1}
 }
 @media(max-width:860px){
+ /* Mobile detail cards use natural height; the content pane owns their scroll. */
+ #ai-panel[data-page=overview].object-selected #ai-content{overflow-x:hidden;overflow-y:auto;-webkit-overflow-scrolling:touch}
  #ai-panel .ai-object-reference .ai-reference-profile,#ai-panel .ai-object-reference .ai-reference-panel{border:0;border-radius:0;box-shadow:none;overflow:visible;background:#fff}
  #ai-panel .ai-object-reference .ai-reference-profile{border-bottom:1px solid var(--ai-border);padding-bottom:10px}
  #ai-panel .ai-object-reference .ai-object-detail{overflow:visible;max-height:none;flex:none;min-height:0}
