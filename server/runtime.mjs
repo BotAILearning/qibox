@@ -279,7 +279,9 @@ export class Runtime {
       if (this.isWechat) try { await startAudio(this, env); } catch (error) { this.audioError = error.message; this.audioSocket = null; }
       if (this.isWechat) { clearInterval(this.audioRecovery); this.audioRecovery = setInterval(() => { if (this.status === 'running') void ensureAudio(this).catch(error => { this.audioError = error.message; }); }, 5000); this.audioRecovery.unref(); }
       // Official executables include private libraries; retain PulseAudio lookup.
-      const wechat = this.child(binary, [], this.isWechat ? { ...env, LD_LIBRARY_PATH: `${path.join(applicationRoot, 'opt/wechat')}:${path.join(applicationRoot, 'opt/wechat/RadiumWMPF/runtime')}:${env.LD_LIBRARY_PATH}:/lib/${triple}/pulseaudio` } : env, this.isWechat ? 'wechat' : 'application');
+      // Radium and VLC ship incompatible libraries with the same SONAME.
+      // Their own $ORIGIN RUNPATH must resolve those component-local libraries.
+      const wechat = this.child(binary, [], this.isWechat ? { ...env, LD_LIBRARY_PATH: `${path.join(applicationRoot, 'opt/wechat')}:${env.LD_LIBRARY_PATH}:/lib/${triple}/pulseaudio` } : env, this.isWechat ? 'wechat' : 'application');
       await delay(2500);
       if (wechat.exitCode !== null || wechat.signalCode !== null) throw new Error(`WeChat exited with ${wechat.signalCode || wechat.exitCode}`);
       this.status = 'running'; this.message = '';
