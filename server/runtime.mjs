@@ -17,6 +17,7 @@ import { prepareManualFiles } from './manual-files.mjs';
 import { startAudio, ensureAudio } from './audio.mjs';
 import { startFileChooser } from './file-chooser.mjs';
 import { prepareXvfb, displayReady } from './x11.mjs';
+import { wechatLibraryPath } from './wechat-libraries.mjs';
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function exists(file) { try { await access(file); return true; } catch { return false; } }
@@ -278,10 +279,8 @@ export class Runtime {
       if (!binary) throw new Error('Application executable not found');
       if (this.isWechat) try { await startAudio(this, env); } catch (error) { this.audioError = error.message; this.audioSocket = null; }
       if (this.isWechat) { clearInterval(this.audioRecovery); this.audioRecovery = setInterval(() => { if (this.status === 'running') void ensureAudio(this).catch(error => { this.audioError = error.message; }); }, 5000); this.audioRecovery.unref(); }
-      // Official executables include private libraries; retain PulseAudio lookup.
-      // Radium and VLC ship incompatible libraries with the same SONAME.
-      // Their own $ORIGIN RUNPATH must resolve those component-local libraries.
-      const wechat = this.child(binary, [], this.isWechat ? { ...env, LD_LIBRARY_PATH: `${path.join(applicationRoot, 'opt/wechat')}:${env.LD_LIBRARY_PATH}:/lib/${triple}/pulseaudio` } : env, this.isWechat ? 'wechat' : 'application');
+      const libraryPath = this.isWechat ? await wechatLibraryPath(applicationRoot, session, env.LD_LIBRARY_PATH, triple) : null;
+      const wechat = this.child(binary, [], this.isWechat ? { ...env, LD_LIBRARY_PATH: libraryPath } : env, this.isWechat ? 'wechat' : 'application');
       await delay(2500);
       if (wechat.exitCode !== null || wechat.signalCode !== null) throw new Error(`WeChat exited with ${wechat.signalCode || wechat.exitCode}`);
       this.status = 'running'; this.message = '';
