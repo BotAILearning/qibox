@@ -96,7 +96,10 @@ export function localFiles({ screen, input, panel, api, upload, download, openFo
   const abort = async (request = current) => {
     const ownsCurrent = current === request;
     if (request) exporter.discard(request.id);
-    if (ownsCurrent) { current = null; controller?.abort(); controller = null; hide(); }
+    if (ownsCurrent) {
+      current = null; controller?.abort(); controller = null; hide();
+      choose.disabled = false; copy.disabled = false; if (nas) nas.disabled = false;
+    }
     if (request) await call('cancel', { id: request.id }).catch(() => {});
     if (ownsCurrent && !disposed && !current) focus?.();
   };

@@ -1,8 +1,18 @@
 import { writeClipboardText } from './clipboard-write.mjs';
 
+function selection(promise, signal) {
+  signal.throwIfAborted();
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(signal.reason);
+    signal.addEventListener('abort', abort, { once: true });
+    Promise.resolve(promise).then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
+  });
+}
+
 export function fileExporter({ call, download, openFolder, show, notify }) {
   const clipboardCache = new Map();
   async function ready(request, name, signal) {
+    signal.throwIfAborted();
     if (request.operation !== 'save') return;
     await call('export-start', { id: request.id, name });
     const deadline = Date.now() + 10 * 60 * 1000;
@@ -86,8 +96,9 @@ export function fileExporter({ call, download, openFolder, show, notify }) {
         notify('已请求打开 NAS 中的文件所在目录'); return;
       }
       // Open the picker in the original trusted click before awaiting the NAS.
-      if (request.count > 1 && window.showDirectoryPicker) directory = await window.showDirectoryPicker({ mode: 'readwrite' });
-      else if (request.count === 1 && window.showSaveFilePicker) target = await window.showSaveFilePicker({ suggestedName: name });
+      signal.throwIfAborted();
+      if (request.count > 1 && window.showDirectoryPicker) directory = await selection(window.showDirectoryPicker({ mode: 'readwrite' }), signal);
+      else if (request.count === 1 && window.showSaveFilePicker) target = await selection(window.showSaveFilePicker({ suggestedName: name }), signal);
       await ready(request, name, signal);
       for (let index = 0; index < request.count; index++) {
         signal.throwIfAborted(); show(`正在保存文件 ${index + 1}/${request.count}…`);

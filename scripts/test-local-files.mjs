@@ -80,6 +80,29 @@ try {
   await page.locator('#file-transfer').waitFor({ state: 'hidden' });
   assert.equal(responses.at(-1).response, 1);
   assert.equal(responses.at(-1).uris, undefined);
+  // A browser-native save picker may still be pending when the web request is
+  // cancelled. The next request must restore both destination buttons.
+  const beforeSaveStarts = fileRequests.filter(body => JSON.parse(body)?.action === 'export-start').length;
+  await page.evaluate(() => {
+    window.pendingSavePicker = Promise.withResolvers();
+    window.showSaveFilePicker = () => window.pendingSavePicker.promise;
+  });
+  chooser.receive({ operation: 'save', id: randomUUID(), name: 'old-save.txt' });
+  await page.mouse.click(box.x + 50, box.y + 50);
+  await page.locator('[data-file-choose]').click();
+  assert.equal(await page.locator('[data-file-choose]').isEnabled(), false);
+  await page.locator('[data-file-cancel]').click();
+  await page.locator('#file-transfer').waitFor({ state: 'hidden' });
+  chooser.receive({ operation: 'save', id: randomUUID(), name: 'next-save.txt' });
+  await page.mouse.click(box.x + 50, box.y + 50);
+  await page.locator('#file-transfer').waitFor({ state: 'visible' });
+  assert.equal(await page.locator('[data-file-choose]').isEnabled(), true);
+  assert.equal(await page.locator('[data-file-nas]').isEnabled(), true);
+  await page.evaluate(() => window.pendingSavePicker.resolve({ createWritable() { throw Error('Late cancelled picker must not write'); } }));
+  assert.equal(fileRequests.filter(body => JSON.parse(body)?.action === 'export-start').length, beforeSaveStarts);
+  await page.locator('[data-file-cancel]').click();
+  await page.locator('#file-transfer').waitFor({ state: 'hidden' });
+  report.checks.push('Cancelling a pending browser save picker releases the next destination buttons and ignores its late result');
   // A cancelled old upload must not hide a new connection's file dialog.
   let oldPlan;
   await page.route('**/files', route => {
