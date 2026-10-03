@@ -24,6 +24,14 @@ elf = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(elf)
 
 
+def compression_name(label, preset):
+    return 'x86-9e' if label == 'x64' else 'lzma2-' + str(preset & ~lzma.PRESET_EXTREME) + ('e' if preset & lzma.PRESET_EXTREME else '')
+
+
+def runtime_fingerprint(locks, policy, preset):
+    return hashlib.sha256(json.dumps({'locks': locks, 'policy': policy, 'preset': preset, 'version': 3}, sort_keys=True).encode()).hexdigest()
+
+
 def apply_policy(arch, tree, spool, policy):
     excluded = policy.get(arch, {}).get('excluded', {})
     for name, expected in excluded.items():
@@ -169,7 +177,7 @@ def archive_tree(label, tree, spool, preset):
     destination = OUT / 'shared' / filename
     pending.replace(destination)
     proof = {'file': filename, 'sha256': hashed, 'bytes': destination.stat().st_size,
-             'members': len(tree), 'compression': 'x86-9e' if label == 'x64' else 'lzma2-9',
+             'members': len(tree), 'compression': compression_name(label, preset),
              'inventorySha256': hashlib.sha256(json.dumps(expected, sort_keys=True).encode()).hexdigest()}
     print(json.dumps({'archive': label, 'bytes': proof['bytes'], 'members': len(tree), 'seconds': round(time.monotonic() - started, 2)}), flush=True)
     return proof
@@ -179,9 +187,9 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / 'shared').mkdir(exist_ok=True)
     locks = {arch: json.loads((ROOT / 'config' / name).read_text('utf8')) for arch, name in [('x64', 'runtime-lock.json'), ('arm64', 'runtime-lock-arm64.json')]}
-    preset = 9
+    preset = 9 | lzma.PRESET_EXTREME
     policy = json.loads((ROOT / 'config/runtime-policy.json').read_text('utf8'))
-    fingerprint = hashlib.sha256(json.dumps({'locks': locks, 'policy': policy, 'preset': preset, 'version': 2}, sort_keys=True).encode()).hexdigest()
+    fingerprint = runtime_fingerprint(locks, policy, preset)
     existing_path = OUT / 'provenance.json'
     existing = json.loads(existing_path.read_text()) if existing_path.exists() else {}
     if existing.get('fingerprint') == fingerprint and set(existing.get('groups', {})) == {'common', 'x64', 'arm64'}:
@@ -192,7 +200,7 @@ def main():
             for item in lock['packages']:
                 if digest(cache / item['file']) != item['sha256']:
                     raise ValueError('Original archive digest mismatch: ' + item['name'])
-        complete = all((OUT / 'shared' / p['file']).is_file() and digest(OUT / 'shared' / p['file']) == p['sha256'] for p in existing['groups'].values())
+        complete = all(p.get('compression', 'lzma2-9') == compression_name(g, preset) and (OUT / 'shared' / p['file']).is_file() and digest(OUT / 'shared' / p['file']) == p['sha256'] for g, p in existing['groups'].items())
         for arch, original in locks.items():
             expected = {**original, 'payloadFormat': 3, 'archives': [{'payloadFile': existing['groups'][g]['file'], 'payloadSha256': existing['groups'][g]['sha256']} for g in ['common', arch]]}
             cached = OUT / arch / 'runtime-lock.json'
@@ -220,7 +228,7 @@ def main():
             expected = {name: signature(*value) for name, value in tree.items()}
             inventory_hash = hashlib.sha256(json.dumps(expected, sort_keys=True).encode()).hexdigest()
             previous = existing.get('groups', {}).get(label, {})
-            compression = 'x86-9e' if label == 'x64' else 'lzma2-9'
+            compression = compression_name(label, preset)
             # Format-3 initial common/ARM64 archives used the same LZMA2-9.
             if previous.get('inventorySha256') == inventory_hash and previous.get('compression', 'lzma2-9') == compression and (OUT / 'shared' / previous['file']).is_file() and digest(OUT / 'shared' / previous['file']) == previous['sha256']:
                 proofs[label] = {**previous, 'compression': compression}
