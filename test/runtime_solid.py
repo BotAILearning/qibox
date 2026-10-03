@@ -6,6 +6,7 @@ import sys
 import tarfile
 import tempfile
 import unittest
+from unittest.mock import patch
 
 scripts = pathlib.Path(__file__).resolve().parents[1] / 'scripts'
 sys.path.insert(0, str(scripts))
@@ -77,6 +78,26 @@ class SolidRuntimeTests(unittest.TestCase):
         package['sha256'] = '0' * 64
         with self.assertRaisesRegex(ValueError, 'digest mismatch'):
             solid.inventory('x64', {'packages': [package]}, self.spool)
+
+    def test_policy_rejects_changed_sources_and_retained_links(self):
+        package = self.package('optional', [('usr/lib/optional', b'GUI', tarfile.REGTYPE, ''),
+                                             ('usr/lib/link', b'', tarfile.SYMTYPE, 'optional')])
+        tree = solid.inventory('x64', {'packages': [package]}, self.spool)
+        policy = {'x64': {'excluded': {'usr/lib/optional': solid.signature(*tree['usr/lib/optional'])}}}
+        with self.assertRaisesRegex(ValueError, 'Retained runtime link'):
+            solid.apply_policy('x64', tree, self.spool, policy)
+        policy['x64']['excluded']['usr/lib/optional'][-1] = 'changed'
+        with self.assertRaisesRegex(ValueError, 'policy source changed'):
+            solid.apply_policy('x64', tree, self.spool, policy)
+
+    def test_policy_refuses_libraries_with_retained_consumers(self):
+        package = self.package('optional', [('usr/lib/optional', b'LIBRARY', tarfile.REGTYPE, ''),
+                                             ('usr/bin/application', b'APPLICATION', tarfile.REGTYPE, '')])
+        tree = solid.inventory('x64', {'packages': [package]}, self.spool)
+        policy = {'x64': {'excluded': {'usr/lib/optional': solid.signature(*tree['usr/lib/optional'])}}}
+        with patch.object(solid.elf, 'elf_dynamic', side_effect=lambda data: {'soname': 'optional.so', 'needed': []} if data == b'LIBRARY' else {'soname': None, 'needed': ['optional.so']}):
+            with self.assertRaisesRegex(ValueError, 'Retained ELF needs'):
+                solid.apply_policy('x64', tree, self.spool, policy)
 
 
 if __name__ == '__main__':

@@ -130,7 +130,7 @@ try {
   await page.getByRole('button', { name: '重命名', exact: true }).first().click(); await page.locator('input[name=name]').fill('办公室'); await page.getByRole('button', { name: '确定', exact: true }).click();
   await page.getByRole('heading', { name: '办公室', exact: true }).waitFor();
   const market = await page.locator('#store-panel').boundingBox(), desktop = await page.locator('#mine-panel').boundingBox();
-  assert.ok(market.x + market.width < desktop.x && Math.abs(market.y - desktop.y) < 1);
+  assert.ok(desktop.x + desktop.width < market.x && Math.abs(market.y - desktop.y) < 1);
   assert.equal(await page.locator('#store-panel #add-instance').count(), 1);
   assert.equal(await page.locator('#mine-panel #add-instance').count(), 0);
   assert.equal(await page.locator('[data-instance] .desktop-icon').count(), 2);
@@ -138,7 +138,7 @@ try {
   const firstIcon = await page.locator('.desktop-icon').first().boundingBox(), secondIcon = await page.locator('.desktop-icon').nth(1).boundingBox();
   assert.ok(secondIcon.x > firstIcon.x && Math.abs(firstIcon.y - secondIcon.y) < 1);
   assert.equal(await page.getByRole('button', { name: '启动设置', exact: true }).first().isVisible(), false);
-  report.checks.push('Market is on the left, desktop on the right; add/restore/install stay in the market; desktop uses named icon buttons and compact menus');
+  report.checks.push('Desktop is the main area on the left and market is the right sidebar; add/restore/install stay in the market; desktop uses named icon buttons and compact menus');
   await page.locator('#toast').waitFor({ state: 'hidden' });
   await page.screenshot({ path: path.join(root, 'reports/screenshots/desktop-installed.png'), fullPage: true });
   await page.locator('.app-menu summary').first().click();

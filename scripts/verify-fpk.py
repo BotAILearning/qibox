@@ -38,6 +38,9 @@ with tarfile.open(fpk, 'r:*') as package:
         assert not forbidden, forbidden
         arches = ['x64', 'arm64'] if manifest['platform'] == 'all' else ['arm64' if manifest['platform'] == 'arm' else 'x64']
         provenance = json.loads(read('payload/provenance.json')) if 'payload/provenance.json' in members else None
+        if provenance and 'policy' in provenance:
+            assert provenance['policy'] == json.loads(read('config/runtime-policy.json'))
+            assert source_matches('config/runtime-policy.json', pathlib.Path(__file__).resolve().parent.parent / 'config/runtime-policy.json')
         verified_payloads = set()
         for arch in arches:
             prefix = 'payload/' + arch + '/'

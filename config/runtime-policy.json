@@ -1,0 +1,254 @@
+{
+  "version": 1,
+  "x64": {
+    "reason": "Qibox exposes WeChat remote input, not the optional Fcitx pinyin dictionary management settings window. Keep the engine, dictionaries, receiving modules, base Qt widgets, fonts and media stack. ARM64 remains unchanged until device evidence exists.",
+    "excluded": {
+      "usr/lib/x86_64-linux-gnu/fcitx5/qt5/libpinyindictmanager.so": [
+        "0",
+        420,
+        0,
+        0,
+        "",
+        133440,
+        "cfa355e9819d39606fd316339639e059cda846a532f7f11c129c2e6cdea6c08e"
+      ],
+      "usr/lib/x86_64-linux-gnu/libQt5Positioning.so.5.15.8": [
+        "0",
+        420,
+        0,
+        0,
+        "",
+        582104,
+        "30db686fc91dda839b96f5ad1547b7a7c04567ac4025a4fb5065982a20b4e859"
+      ],
+      "usr/lib/x86_64-linux-gnu/libQt5Positioning.so.5": [
+        "2",
+        511,
+        0,
+        0,
+        "libQt5Positioning.so.5.15.8",
+        0,
+        null
+      ],
+      "usr/lib/x86_64-linux-gnu/libQt5Positioning.so.5.15": [
+        "2",
+        511,
+        0,
+        0,
+        "libQt5Positioning.so.5.15.8",
+        0,
+        null
+      ],
+      "usr/lib/x86_64-linux-gnu/libQt5Qml.so.5.15.8": [
+        "0",
+        420,
+        0,
+        0,
+        "",
+        4696936,
+        "1da800f6acfe0cd515ec4fef264e0a968e71a8447596606641b379a3defe7070"
+      ],
+      "usr/lib/x86_64-linux-gnu/qt5/qml/builtins.qmltypes": [
+        "0",
+        420,
+        0,
+        0,
+        "",
+        58807,
+        "3e39b14c92ed12c16238c0a093cb6fb096602025398431ffe11ea88fc5158277"
+      ],
+      "usr/lib/x86_64-linux-gnu/libQt5Qml.so.5": [
+        "2",
+        511,
+        0,
+        0,
+        "libQt5Qml.so.5.15.8",
+        0,
+        null
+      ],
+      "usr/lib/x86_64-linux-gnu/libQt5Qml.so.5.15": [
+        "2",
+        511,
+        0,
+        0,
+        "libQt5Qml.so.5.15.8",
+        0,
+        null
+      ],
+      "usr/lib/x86_64-linux-gnu/libQt5QmlModels.so.5.15.8": [
+        "0",
+        420,
+        0,
+        0,
+        "",
+        555152,
+        "e54035178dd04ed0c8fec894f4963cfaa67203441f4d94f96f76b50543274bfc"
+      ],
+      "usr/lib/x86_64-linux-gnu/libQt5QmlModels.so.5": [
+        "2",
+        511,
+        0,
+        0,
+        "libQt5QmlModels.so.5.15.8",
+        0,
+        null
+      ],
+      "usr/lib/x86_64-linux-gnu/libQt5QmlModels.so.5.15": [
+        "2",
+        511,
+        0,
+        0,
+        "libQt5QmlModels.so.5.15.8",
+        0,
+        null
+      ],
+      "usr/lib/x86_64-linux-gnu/libQt5Quick.so.5.15.8": [
+        "0",
+        420,
+        0,
+        0,
+        "",
+        5627184,
+        "2ee6ce2a756aa229c6ec76ebd2db008a224a6efc2c695665d53d8def1019d8bf"
+      ],
+      "usr/lib/x86_64-linux-gnu/libQt5Quick.so.5": [
+        "2",
+        511,
+        0,
+        0,
+        "libQt5Quick.so.5.15.8",
+        0,
+        null
+      ],
+      "usr/lib/x86_64-linux-gnu/libQt5Quick.so.5.15": [
+        "2",
+        511,
+        0,
+        0,
+        "libQt5Quick.so.5.15.8",
+        0,
+        null
+      ],
+      "usr/lib/x86_64-linux-gnu/libQt5QuickWidgets.so.5.15.8": [
+        "0",
+        420,
+        0,
+        0,
+        "",
+        84040,
+        "04479b807d7f565a092f2e3221fd1b6fae02a7225b5c6282cbd2e5dc8d6c5baa"
+      ],
+      "usr/lib/x86_64-linux-gnu/libQt5QuickWidgets.so.5": [
+        "2",
+        511,
+        0,
+        0,
+        "libQt5QuickWidgets.so.5.15.8",
+        0,
+        null
+      ],
+      "usr/lib/x86_64-linux-gnu/libQt5QuickWidgets.so.5.15": [
+        "2",
+        511,
+        0,
+        0,
+        "libQt5QuickWidgets.so.5.15.8",
+        0,
+        null
+      ],
+      "usr/lib/x86_64-linux-gnu/libQt5WebChannel.so.5.15.8": [
+        "0",
+        420,
+        0,
+        0,
+        "",
+        151344,
+        "44220dd4421d285aa26d1a236f7819621ed0ca26253d9e4922187305b2a47938"
+      ],
+      "usr/lib/x86_64-linux-gnu/libQt5WebChannel.so.5": [
+        "2",
+        511,
+        0,
+        0,
+        "libQt5WebChannel.so.5.15.8",
+        0,
+        null
+      ],
+      "usr/lib/x86_64-linux-gnu/libQt5WebChannel.so.5.15": [
+        "2",
+        511,
+        0,
+        0,
+        "libQt5WebChannel.so.5.15.8",
+        0,
+        null
+      ],
+      "usr/lib/x86_64-linux-gnu/libQt5WebEngineCore.so.5.15.13": [
+        "0",
+        420,
+        0,
+        0,
+        "",
+        131560360,
+        "db779d939c6e2c6aa107466eaadb9c4b05247de0d85c9ef137029a003a866bf6"
+      ],
+      "usr/lib/x86_64-linux-gnu/qt5/libexec/QtWebEngineProcess": [
+        "0",
+        493,
+        0,
+        0,
+        "",
+        14488,
+        "6b78b381ec7c8f3571c0ca90148abe0681b793e1d68c4c31c1497942e79c49bb"
+      ],
+      "usr/lib/x86_64-linux-gnu/libQt5WebEngineCore.so.5": [
+        "2",
+        511,
+        0,
+        0,
+        "libQt5WebEngineCore.so.5.15.13",
+        0,
+        null
+      ],
+      "usr/lib/x86_64-linux-gnu/libQt5WebEngineCore.so.5.15": [
+        "2",
+        511,
+        0,
+        0,
+        "libQt5WebEngineCore.so.5.15.13",
+        0,
+        null
+      ],
+      "usr/lib/x86_64-linux-gnu/libQt5WebEngineWidgets.so.5.15.13": [
+        "0",
+        420,
+        0,
+        0,
+        "",
+        305224,
+        "57c233dd708f6dcfc3fbb287c8163d9a0416c8124c68d3033596541286c5724e"
+      ],
+      "usr/lib/x86_64-linux-gnu/libQt5WebEngineWidgets.so.5": [
+        "2",
+        511,
+        0,
+        0,
+        "libQt5WebEngineWidgets.so.5.15.13",
+        0,
+        null
+      ],
+      "usr/lib/x86_64-linux-gnu/libQt5WebEngineWidgets.so.5.15": [
+        "2",
+        511,
+        0,
+        0,
+        "libQt5WebEngineWidgets.so.5.15.13",
+        0,
+        null
+      ]
+    }
+  },
+  "arm64": {
+    "excluded": {}
+  }
+}

@@ -12,11 +12,40 @@ import posixpath
 import tarfile
 import tempfile
 import time
+import importlib.util
 
 from prepare_runtime_slim_import import removable
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 OUT = ROOT / '.cache/runtime-solid'
+
+spec = importlib.util.spec_from_file_location('runtime_elf', pathlib.Path(__file__).with_name('audit-runtime-dependencies.py'))
+elf = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(elf)
+
+
+def apply_policy(arch, tree, spool, policy):
+    excluded = policy.get(arch, {}).get('excluded', {})
+    for name, expected in excluded.items():
+        if canonical(name) != name or name not in tree or signature(*tree[name]) != expected:
+            raise ValueError('Runtime policy source changed: ' + name)
+    removed_sonames = set()
+    for name in excluded:
+        member, content = tree[name]
+        info = elf.elf_dynamic((spool / content).read_bytes()) if member.isfile() else None
+        if info and info['soname']:
+            removed_sonames.add(info['soname'])
+    retained = {name: item for name, item in tree.items() if name not in excluded}
+    for name, (member, content) in retained.items():
+        if member.issym() or member.islnk():
+            target = posixpath.normpath(posixpath.join(posixpath.dirname(name), member.linkname) if member.issym() else member.linkname)
+            if target in excluded:
+                raise ValueError('Retained runtime link needs removed path: ' + name)
+        if member.isfile():
+            info = elf.elf_dynamic((spool / content).read_bytes())
+            if info and removed_sonames.intersection(info['needed']):
+                raise ValueError('Retained ELF needs removed runtime library: ' + name)
+    return retained
 
 
 def digest(file):
@@ -117,7 +146,8 @@ def archive_tree(label, tree, spool, preset):
         ordered.extend(ready)
         emitted.update(ready)
         deferred = [n for n in deferred if n not in emitted]
-    with lzma.LZMAFile(pending, 'w', preset=preset, check=lzma.CHECK_SHA256) as compressed:
+    compression = {'filters': [{'id': lzma.FILTER_X86}, {'id': lzma.FILTER_LZMA2, 'preset': 9 | lzma.PRESET_EXTREME}]} if label == 'x64' else {'preset': preset}
+    with lzma.LZMAFile(pending, 'w', **compression, check=lzma.CHECK_SHA256) as compressed:
         with tarfile.open(fileobj=compressed, mode='w|', format=tarfile.PAX_FORMAT) as archive:
             for name in ordered:
                 member, content = tree[name]
@@ -139,7 +169,8 @@ def archive_tree(label, tree, spool, preset):
     destination = OUT / 'shared' / filename
     pending.replace(destination)
     proof = {'file': filename, 'sha256': hashed, 'bytes': destination.stat().st_size,
-             'members': len(tree), 'inventorySha256': hashlib.sha256(json.dumps(expected, sort_keys=True).encode()).hexdigest()}
+             'members': len(tree), 'compression': 'x86-9e' if label == 'x64' else 'lzma2-9',
+             'inventorySha256': hashlib.sha256(json.dumps(expected, sort_keys=True).encode()).hexdigest()}
     print(json.dumps({'archive': label, 'bytes': proof['bytes'], 'members': len(tree), 'seconds': round(time.monotonic() - started, 2)}), flush=True)
     return proof
 
@@ -149,9 +180,29 @@ def main():
     (OUT / 'shared').mkdir(exist_ok=True)
     locks = {arch: json.loads((ROOT / 'config' / name).read_text('utf8')) for arch, name in [('x64', 'runtime-lock.json'), ('arm64', 'runtime-lock-arm64.json')]}
     preset = 9
+    policy = json.loads((ROOT / 'config/runtime-policy.json').read_text('utf8'))
+    fingerprint = hashlib.sha256(json.dumps({'locks': locks, 'policy': policy, 'preset': preset, 'version': 2}, sort_keys=True).encode()).hexdigest()
+    existing_path = OUT / 'provenance.json'
+    existing = json.loads(existing_path.read_text()) if existing_path.exists() else {}
+    if existing.get('fingerprint') == fingerprint and set(existing.get('groups', {})) == {'common', 'x64', 'arm64'}:
+        # Reuse a complete, verified output without rewriting thousands of
+        # unchanged files. Source archives are still hashed on every build.
+        for arch, lock in locks.items():
+            cache = ROOT / ('.cache/runtime' if arch == 'x64' else '.cache/runtime-arm64')
+            for item in lock['packages']:
+                if digest(cache / item['file']) != item['sha256']:
+                    raise ValueError('Original archive digest mismatch: ' + item['name'])
+        complete = all((OUT / 'shared' / p['file']).is_file() and digest(OUT / 'shared' / p['file']) == p['sha256'] for p in existing['groups'].values())
+        for arch, original in locks.items():
+            expected = {**original, 'payloadFormat': 3, 'archives': [{'payloadFile': existing['groups'][g]['file'], 'payloadSha256': existing['groups'][g]['sha256']} for g in ['common', arch]]}
+            cached = OUT / arch / 'runtime-lock.json'
+            complete = complete and cached.is_file() and json.loads(cached.read_text('utf8')) == expected
+        if complete:
+            print(json.dumps({'format': 3, 'reused': True, 'archives': 3, 'bytes': existing['bytes']}), flush=True)
+            return
     with tempfile.TemporaryDirectory(prefix='qibox-solid-', dir=OUT) as temp:
         spool = pathlib.Path(temp)
-        trees = {arch: inventory(arch, lock, spool) for arch, lock in locks.items()}
+        trees = {arch: apply_policy(arch, inventory(arch, lock, spool), spool, policy) for arch, lock in locks.items()}
         common = {name for name in trees['x64'].keys() & trees['arm64'].keys() if signature(*trees['x64'][name]) == signature(*trees['arm64'][name])}
         changed = True
         while changed:
@@ -164,13 +215,18 @@ def main():
             reconstructed = {**groups['common'], **groups[arch]}
             if {n: signature(*v) for n, v in reconstructed.items()} != {n: signature(*v) for n, v in trees[arch].items()}:
                 raise ValueError('Architecture reconstruction differs: ' + arch)
-        fingerprint = hashlib.sha256(json.dumps({'locks': locks, 'preset': preset, 'version': 1}, sort_keys=True).encode()).hexdigest()
-        existing_path = OUT / 'provenance.json'
-        existing = json.loads(existing_path.read_text()) if existing_path.exists() else {}
-        if existing.get('fingerprint') == fingerprint and all((OUT / 'shared' / v['file']).is_file() and digest(OUT / 'shared' / v['file']) == v['sha256'] for v in existing.get('groups', {}).values()) and len(existing.get('groups', {})) == 3:
-            proofs = existing['groups']
-        else:
-            proofs = {label: archive_tree(label, tree, spool, preset) for label, tree in groups.items()}
+        proofs = {}
+        for label, tree in groups.items():
+            expected = {name: signature(*value) for name, value in tree.items()}
+            inventory_hash = hashlib.sha256(json.dumps(expected, sort_keys=True).encode()).hexdigest()
+            previous = existing.get('groups', {}).get(label, {})
+            compression = 'x86-9e' if label == 'x64' else 'lzma2-9'
+            # Format-3 initial common/ARM64 archives used the same LZMA2-9.
+            if previous.get('inventorySha256') == inventory_hash and previous.get('compression', 'lzma2-9') == compression and (OUT / 'shared' / previous['file']).is_file() and digest(OUT / 'shared' / previous['file']) == previous['sha256']:
+                proofs[label] = {**previous, 'compression': compression}
+                print(json.dumps({'archive': label, 'reused': True, 'bytes': previous['bytes']}), flush=True)
+            else:
+                proofs[label] = archive_tree(label, tree, spool, preset)
         for arch, lock in locks.items():
             lock['payloadFormat'] = 3
             lock['archives'] = [{'payloadFile': proofs[group]['file'], 'payloadSha256': proofs[group]['sha256']} for group in ['common', arch]]
@@ -181,6 +237,7 @@ def main():
             (folder / 'inventory.json').write_text(json.dumps(manifest, sort_keys=True) + '\n', encoding='utf8')
         proof = {'format': 3, 'fingerprint': fingerprint, 'references': sum(len(lock['packages']) for lock in locks.values()),
                  'archives': len(proofs), 'bytes': sum(p['bytes'] for p in proofs.values()), 'groups': proofs,
+                 'policy': policy,
                  'sources': {arch: [{'name': item['name'], 'sha256': item['sha256']} for item in lock['packages']] for arch, lock in locks.items()}}
         existing_path.write_text(json.dumps(proof, ensure_ascii=False, indent=2) + '\n', encoding='utf8')
         print(json.dumps({k: proof[k] for k in ['format', 'references', 'archives', 'bytes']}), flush=True)
