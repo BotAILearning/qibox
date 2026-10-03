@@ -17,6 +17,23 @@ import pathlib
 from clipboard_payload import LOCAL_TARGET
 
 
+def save_filename(current_name, current_file, extension):
+    if current_name:
+        return current_name
+    # XDG current_file is a NUL-terminated filesystem byte path, not a string.
+    # Use only its basename as the suggestion; never open or expose the path.
+    if isinstance(current_file, bytes) and len(current_file) <= 32768 and current_file.startswith(b'/') and current_file.endswith(b'\0'):
+        raw = current_file[:-1]
+        if b'\0' not in raw:
+            try:
+                name = raw.rsplit(b'/', 1)[-1].decode('utf-8')
+                if name and name not in ('.', '..'):
+                    return name
+            except UnicodeDecodeError:
+                pass
+    return '微信图片.' + extension
+
+
 def main():
     # This helper uses GTK only for clipboard/folder services. It must not wait
     # for WeChat's accessibility registry during portal startup.
@@ -50,7 +67,8 @@ def main():
     get_uint = api(glib, 'g_variant_get_uint32', c.c_uint, [ptr])
     child_count = api(glib, 'g_variant_n_children', c.c_size_t, [ptr])
     is_type = api(glib, 'g_variant_is_of_type', c.c_int, [ptr, ptr])
-    type_string, type_boolean = variant_type(b's'), variant_type(b'b')
+    type_string, type_boolean, type_bytes = variant_type(b's'), variant_type(b'b'), variant_type(b'ay')
+    fixed_array = api(glib, 'g_variant_get_fixed_array', ptr, [ptr, c.POINTER(c.c_size_t), c.c_size_t])
 
     def option(options, key, default=None):
         value = lookup(options, key.encode(), None)
@@ -59,6 +77,10 @@ def main():
         try:
             if is_type(value, type_string): return get_string(value, None).decode('utf-8')
             if is_type(value, type_boolean): return bool(get_boolean(value))
+            if key == 'current_file' and is_type(value, type_bytes):
+                size = c.c_size_t()
+                data = fixed_array(value, c.byref(size), 1)
+                return c.string_at(data, size.value) if data and 0 < size.value <= 32768 else b''
             return default
         finally:
             unref(value)
@@ -243,7 +265,7 @@ def main():
                 if method_name == b'SaveFile':
                     # The image viewer omits current_name; provide an extension
                     # so the native image writer can select an output format.
-                    name = option(options, 'current_name', '') or '微信图片.' + image_extension(options)
+                    name = save_filename(option(options, 'current_name', ''), option(options, 'current_file', b''), image_extension(options))
                     print(json.dumps({'type': 'request', 'id': request_id, 'operation': 'save', 'name': name}), flush=True)
                 elif option(options, 'directory', False):
                     native_dialog(request_id, title, options, False, True)
