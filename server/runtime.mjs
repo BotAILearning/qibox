@@ -11,7 +11,7 @@ import { fontConfiguration } from './fonts.mjs';
 import { AutoLoginVerifier, readNativeLogin } from './auto-login.mjs';
 import { LoginState } from './login-state.mjs';
 
-import { architecture, runtimeLibraries, runtimePayload, runtimeArchive } from './platform.mjs';
+import { architecture, runtimeLibraries, runtimePayload, runtimeArchive, runtimeArchives } from './platform.mjs';
 import { ownClipboard } from './clipboard.mjs';
 import { prepareManualFiles } from './manual-files.mjs';
 import { startAudio, ensureAudio } from './audio.mjs';
@@ -135,7 +135,7 @@ export class Runtime {
         if (!staging.startsWith(path.resolve(this.dataRoot) + path.sep)) throw new Error('Runtime path escaped data root');
         await clearRuntimeCache(staging);
         await mkdir(staging, { recursive: true, mode: 0o700 });
-        const archives = this.lock.packages;
+        const archives = runtimeArchives(this.lock);
         for (let i = 0; i < archives.length; i++) {
           this.message = `正在准备应用 ${Math.round(i / archives.length * 100)}%`;
           const archive = archives[i];

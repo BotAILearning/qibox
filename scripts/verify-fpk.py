@@ -46,6 +46,20 @@ with tarfile.open(fpk, 'r:*') as package:
             original_name = 'runtime-lock.json' if arch == 'x64' else 'runtime-lock-arm64.json'
             original = json.loads(read('config/' + original_name))
             assert [{k:v for k,v in item.items() if k not in ('payloadFile','payloadSha256')} for item in lock['packages']] == original['packages']
+            if lock.get('payloadFormat') == 3:
+                assert provenance['format'] == 3
+                assert provenance['sources'][arch] == [{'name': item['name'], 'sha256': item['sha256']} for item in original['packages']]
+                assert len(lock['archives']) == 2
+                assert len({item['payloadFile'] for item in lock['archives']}) == 2
+                for item, group in zip(lock['archives'], ['common', arch]):
+                    proof = provenance['groups'][group]
+                    assert item['payloadFile'] == proof['file'] == item['payloadSha256'] + '-data.tar.xz'
+                    assert item['payloadSha256'] == proof['sha256']
+                    filename = 'payload/shared/' + item['payloadFile']
+                    assert hashes[filename] == item['payloadSha256']
+                    assert members[filename].size == proof['bytes']
+                    verified_payloads.add(filename)
+                continue
             for item in lock['packages']:
                 filename, expected = prefix + item['file'], item['sha256']
                 if lock.get('payloadFormat') == 2:
@@ -57,6 +71,7 @@ with tarfile.open(fpk, 'r:*') as package:
                 if filename not in verified_payloads:
                     assert hashes[filename] == expected
                     verified_payloads.add(filename)
+        assert set(hashes) == verified_payloads, 'Unreferenced runtime archives must not be packaged'
         for name in ['server/index.mjs', 'server/install-deb.py', 'server/packages.mjs', 'server/progress.mjs', 'public/app.js', 'public/style.css', 'public/backgrounds/mist.jpg']:
             assert name in members
         assert not any(re.search(r'ugos|ugreen|desktop-stream|native-identity|http-desktop', name, re.I) for name in members), 'Removed platform components must not be packaged'

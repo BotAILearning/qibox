@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { architecture, officialWechatUrl, runtimeLibraries, runtimePayload, runtimeArchive, platformConfig, gatewayIdentity } from '../server/platform.mjs';
+import { architecture, officialWechatUrl, runtimeLibraries, runtimePayload, runtimeArchive, runtimeArchives, platformConfig, gatewayIdentity } from '../server/platform.mjs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { PackageLibrary } from '../server/packages.mjs';
 import { root } from '../scripts/tooling.mjs';
@@ -26,6 +26,19 @@ test('one FPK selects only the current architecture, with older flat payload com
     assert.equal(await runtimePayload(appRoot, 'arm64'), path.join(appRoot, 'payload/arm64'));
     await assert.rejects(runtimePayload(appRoot, 'arm'), /ARM64/);
   } finally { await cleanup(appRoot); }
+});
+
+test('consolidated runtime extracts the shared tree before architecture files and rejects malformed manifests', () => {
+  const common = { payloadFile: 'a'.repeat(64) + '-data.tar.xz', payloadSha256: 'a'.repeat(64) };
+  const own = { payloadFile: 'b'.repeat(64) + '-data.tar.xz', payloadSha256: 'b'.repeat(64) };
+  assert.deepEqual(runtimeArchives({ payloadFormat: 3, archives: [common, own] }), [common, own]);
+  const packages = [{ file: 'original.tar.xz', sha256: 'a'.repeat(64) }];
+  assert.deepEqual(runtimeArchives({ packages }), packages);
+  assert.deepEqual(runtimeArchives({ payloadFormat: 2, packages }), packages);
+  for (const archives of [[], null, [common, common], [{ ...common, payloadFile: '../escaped.tar.xz' }], [{ ...common, payloadSha256: 'invalid' }]]) {
+    assert.throws(() => runtimeArchives({ payloadFormat: 3, archives }), /Invalid consolidated/);
+  }
+  assert.throws(() => runtimeArchives({ payloadFormat: 4, packages }), /Unsupported/);
 });
 
 test('target architecture selects executable format, runtime libraries and official WeChat source together', () => {

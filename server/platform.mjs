@@ -28,6 +28,20 @@ export function runtimeArchive(appRoot, payloadRoot, entry) {
   if (!/^[a-zA-Z0-9_.+-]+$/.test(entry.file)) throw new Error('Invalid runtime payload name');
   return { filename: path.join(payloadRoot, entry.file), sha256: entry.sha256 };
 }
+export function runtimeArchives(lock) {
+  if (lock.payloadFormat === 3) {
+    if (!Array.isArray(lock.archives) || !lock.archives.length ||
+        lock.archives.some(entry => !/^[a-f0-9]{64}$/.test(entry.payloadSha256) ||
+          entry.payloadFile !== `${entry.payloadSha256}-data.tar.xz`) ||
+        new Set(lock.archives.map(entry => entry.payloadFile)).size !== lock.archives.length) {
+      throw new Error('Invalid consolidated runtime archives');
+    }
+    return lock.archives;
+  }
+  if (lock.payloadFormat !== undefined && lock.payloadFormat !== 2) throw new Error('Unsupported runtime payload format');
+  if (!Array.isArray(lock.packages) || !lock.packages.length) throw new Error('Missing runtime packages');
+  return lock.packages;
+}
 export function platformConfig(env = process.env) {
   return { host: 'fnos', appRoot: env.TRIM_APPDEST, dataRoot: env.TRIM_PKGVAR, prefix: '/app/qibox', nasPicker: true };
 }

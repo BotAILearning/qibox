@@ -6,7 +6,7 @@ import sharp from 'sharp';
 import { root, python, run } from './tooling.mjs';
 import { hashFile, within } from '../server/files.mjs';
 import { download } from './download.mjs';
-import { architecture } from '../server/platform.mjs';
+import { architecture, runtimeArchives } from '../server/platform.mjs';
 import { prepareFonts } from './prepare-fonts.mjs';
 import { checkWebAssets } from './check-web-assets.mjs';
 const requestedArch = process.argv.find(x => x.startsWith('--arch='))?.slice(7) || 'all';
@@ -55,28 +55,27 @@ if (!process.argv.includes('--ui-only')) {
   }
   await writeFile(path.join(app, 'package.json'), JSON.stringify({ name: product.appname, version: product.version, type: 'module', private: true }));
   let components = 0;
-  await run(python, [path.join(root, 'scripts/prepare-runtime-slim.py')]);
+  await run(python, [path.join(root, 'scripts/prepare-runtime-solid.py')]);
   const sharedPayload = path.join(app, 'payload/shared'); await mkdir(sharedPayload, { recursive: true });
   const copiedPayloads = new Set();
   for (const target of targets) {
   const lockName = target.node === 'arm64' ? 'runtime-lock-arm64.json' : 'runtime-lock.json';
-  const slimLock = path.join(root, '.cache/runtime-slim', target.node, 'runtime-lock.json');
+  const slimLock = path.join(root, '.cache/runtime-solid', target.node, 'runtime-lock.json');
   const lock = JSON.parse(await readFile(slimLock, 'utf8'));
   if (lock.wechat || lock.packages.some(x => /wechat/i.test(x.name))) throw new Error('WeChat must never be bundled');
   const payload = path.join(app, 'payload', target.node); await mkdir(payload, { recursive: true });
   await cp(slimLock, path.join(payload, 'runtime-lock.json'));
-  for (const entry of lock.packages) {
-    if (!/^[a-zA-Z0-9_.+-]+$/.test(entry.file)) throw new Error('Invalid component filename');
+  for (const entry of runtimeArchives(lock)) {
     if (!/^[a-f0-9]{64}$/.test(entry.payloadSha256) || entry.payloadFile !== `${entry.payloadSha256}-data.tar.xz`) throw new Error('Invalid shared payload reference');
-    const source = path.join(root, '.cache/runtime-slim/shared', entry.payloadFile);
+    const source = path.join(root, '.cache/runtime-solid/shared', entry.payloadFile);
     if (!copiedPayloads.has(entry.payloadFile)) {
       if (await hashFile(source) !== entry.payloadSha256) throw new Error(`Hash mismatch: ${entry.file}`);
       await cp(source, path.join(sharedPayload, entry.payloadFile)); copiedPayloads.add(entry.payloadFile);
     }
-    components++;
   }
+  components += lock.packages.length;
   }
-  await cp(path.join(root, '.cache/runtime-slim/provenance.json'), path.join(app, 'payload/provenance.json'));
+  await cp(path.join(root, '.cache/runtime-solid/provenance.json'), path.join(app, 'payload/provenance.json'));
   const licenseRoot = path.join(app, 'licenses/npm'); await mkdir(licenseRoot, { recursive: true });
   for (const [name, license] of [['ws', 'LICENSE'], ['@novnc/novnc', 'LICENSE.txt'], ['@trimjs/web-app', 'package.json']]) {
     await mkdir(path.join(licenseRoot, name), { recursive: true });

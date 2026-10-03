@@ -20,7 +20,9 @@ await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve));
 const base = `http://127.0.0.1:${app.server.address().port}${app.prefix}`;
 const report = { startedAt: new Date().toISOString(), note: 'Real Edge + noVNC + application WebSocket proxy connected to an RFB protocol fixture. CDP composition exercises browser IME events; no OS candidate window or real Linux/WeChat process is tested.', checks: [] };
 let browser;
-const until = async predicate => { for (let i = 0; i < 100; i++) { if (predicate()) return; await new Promise(resolve => setTimeout(resolve, 20)); } throw new Error('Protocol assertion timed out'); };
+// Idle state polling runs every five seconds. Allow a complete polling cycle
+// plus browser processing when asserting an interrupted state request.
+const until = async predicate => { for (let i = 0; i < 500; i++) { if (predicate()) return; await new Promise(resolve => setTimeout(resolve, 20)); } throw new Error('Protocol assertion timed out'); };
 try {
   browser = await chromium.launch({ channel: 'msedge', headless: true });
   await mkdir(path.join(root, process.env.QIBOX_TEST_OUTPUT || 'reports', 'screenshots'), { recursive: true });
