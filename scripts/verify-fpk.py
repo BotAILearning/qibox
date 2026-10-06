@@ -24,6 +24,29 @@ with tarfile.open(fpk, 'r:*') as package:
                 hashes[name] = hashlib.file_digest(stream, 'sha256').hexdigest()
             else:
                 contents[name] = stream.read()
+        # Install-time assets must restore every original font/dependency byte.
+        if 'config/app-assets.json' in contents:
+            assets=json.loads(contents['config/app-assets.json'])
+            assert assets['format']==1 and re.fullmatch(r'[a-f0-9]{64}',assets['sha256'])
+            assert assets['file']==assets['sha256']+'-assets.tar.xz'
+            compressed=contents['assets/'+assets['file']]
+            assert len(compressed)==assets['bytes'] and hashlib.sha256(compressed).hexdigest()==assets['sha256']
+            restored={};directories=set()
+            with tarfile.open(fileobj=io.BytesIO(compressed),mode='r:xz') as resource:
+                for member in resource:
+                    name=member.name
+                    assert not name.startswith('/') and '..' not in pathlib.PurePosixPath(name).parts
+                    assert name=='fonts' or name=='node_modules' or name.startswith(('fonts/','node_modules/'))
+                    assert name not in restored and name not in directories
+                    if member.isdir():directories.add(name);continue
+                    assert member.isfile() and member.mode==0o644
+                    data=resource.extractfile(member).read();item=assets['files'][name]
+                    assert item['bytes']==len(data) and item['sha256']==hashlib.sha256(data).hexdigest() and item['mode']==member.mode
+                    assert name not in contents,'Application assets must not be bundled twice'
+                    restored[name]=data
+            assert set(restored)==set(assets['files']) and directories==set(assets['directories'])
+            assert set(name for name in contents if name.startswith('assets/'))=={'assets/'+assets['file']}
+            contents.update(restored)
         def read(name): return contents[name]
         backups = [name for name in members if re.search(r'\.(?:bak|before)(?:$|[.\-_])', pathlib.PurePosixPath(name).name, re.I)]
         assert not backups, backups
@@ -90,6 +113,8 @@ with tarfile.open(fpk, 'r:*') as package:
         assert source_matches('server/fonts.mjs', pathlib.Path(__file__).resolve().parent.parent / 'server/fonts.mjs')
         for name in ['server/file-chooser.mjs', 'server/file-export.mjs', 'server/file-portal.py', 'server/login-state.mjs', 'server/desktop.mjs', 'server/ai-analysis.mjs', 'public/ai-workspace.css']:
             assert source_matches(name, pathlib.Path(__file__).resolve().parent.parent / name), name
+        if 'config/app-assets.json' in contents:
+            assert source_matches('server/app-assets.mjs', pathlib.Path(__file__).resolve().parent.parent / 'server/app-assets.mjs')
         for name in ['ai-service.mjs', 'ai-account-configuration.mjs', 'ai-chat-context.mjs', 'ai-group-inbox.mjs', 'ai-media-output.mjs', 'ai-activity-records.mjs', 'ai-proactive.mjs', 'ai-prompts.mjs', 'ai-prepared-send.mjs', 'ai-data.mjs', 'wechat-data.py', 'wechat-sqlite.py', 'ai-schema.mjs', 'ai-provider.mjs', 'ai-presets.mjs', 'ai-capabilities.mjs', 'ai-native.mjs', 'ai-native.py', 'ai-native-controls.py', 'ai-native-render.py', 'ai-ledger.mjs', 'rfb-input.mjs']:
             assert source_matches('server/' + name, pathlib.Path(__file__).resolve().parent.parent / 'server' / name), name
         fonts = json.loads(read('config/fonts.json'))

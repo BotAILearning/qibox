@@ -19,6 +19,7 @@ case "${1:-}" in
 start)
     if running; then exit 0; fi
     command -v node >/dev/null || exit 1
+    node "${TRIM_APPDEST}/server/app-assets.mjs"
     nohup node "$ENTRY" >> "${TRIM_PKGVAR}/logs/service.log" 2>&1 </dev/null &
     started_pid=$!
     printf '%s\n' "$started_pid" > "$PID_FILE"

@@ -87,6 +87,10 @@ if (!process.argv.includes('--ui-only')) {
     await mkdir(path.join(licenseRoot, name), { recursive: true });
     await cp(path.join(source, license), path.join(licenseRoot, name, license));
   }
+  // Restore these exact bytes during installation, before the service imports
+  // its dependencies. Both architectures share the same application resources.
+  await run(python, [path.join(root, 'scripts/prepare-app-assets.py'), app]);
+  for (const name of ['fonts', 'node_modules']) await rm(within(app, path.join(app, name)), { recursive: true });
   const ui = path.join(app, 'ui'); await mkdir(path.join(ui, 'images'), { recursive: true });
   await writeFile(path.join(ui, 'config'), JSON.stringify({ '.url': { [`${product.appname}.Application`]: { title: product.displayName, icon: `images/qibox-${iconRevision}_{0}.png`, type: 'url', protocol: '', gatewayPrefix: product.gatewayPrefix, gatewaySocket: 'app.sock', url: `${product.gatewayPrefix}/`, allUsers: true } } }, null, 2));
   for (const pixels of [64, 256]) {
@@ -96,7 +100,8 @@ if (!process.argv.includes('--ui-only')) {
   const manifest = { appname: product.appname, version: product.version, display_name: product.displayName, desc: '在 NAS 上安装应用，支持微信多开和持续备份。', platform: product.platform, os_min_version: product.minOSVersion, source: 'thirdparty', maintainer: product.publisher, distributor: product.publisher, desktop_uidir: 'ui', desktop_applaunchname: `${product.appname}.Application`, install_dep_apps: 'nodejs_v22', ctl_stop: 'true', checkport: 'false', micro_app: 'true' };
   await writeFile(path.join(directory, 'manifest'), Object.entries(manifest).map(([k, v]) => `${k}=${v}`).join('\n') + '\n');
   await mkdir(path.join(directory, 'wizard'), { recursive: true });
-  for (const name of ['install_init', 'install_callback', 'config_init', 'config_callback', 'upgrade_callback', 'uninstall_callback']) await writeFile(path.join(directory, 'cmd', name), '#!/bin/bash\nexit 0\n');
+  for (const name of ['install_init', 'config_init', 'config_callback', 'uninstall_callback']) await writeFile(path.join(directory, 'cmd', name), '#!/bin/bash\nexit 0\n');
+  for (const name of ['install_callback', 'upgrade_callback']) await writeFile(path.join(directory, 'cmd', name), '#!/bin/bash\nset -eu\nexport PATH="/var/apps/nodejs_v22/target/bin:/usr/local/bin:/usr/bin:/bin"\n: "${TRIM_APPDEST:?}"\nnode "${TRIM_APPDEST}/server/app-assets.mjs"\n');
   for (const name of ['upgrade_init', 'uninstall_init']) await writeFile(path.join(directory, 'cmd', name), '#!/bin/bash\nset -eu\nSCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"\n"${SCRIPT_DIR}/main" stop\n');
   for (const name of await readdir(path.join(directory, 'cmd'))) {
     const file = path.join(directory, 'cmd', name); await writeFile(file, (await readFile(file, 'utf8')).replaceAll('\r\n', '\n')); await chmod(file, 0o755);

@@ -25,11 +25,24 @@ spec.loader.exec_module(elf)
 
 
 def compression_name(label, preset):
+    if label == 'arm64':
+        return 'lzma2-9e-lc2-lp2-pb2'
     return 'x86-9e' if label == 'x64' else 'lzma2-' + str(preset & ~lzma.PRESET_EXTREME) + ('e' if preset & lzma.PRESET_EXTREME else '')
 
 
 def runtime_fingerprint(locks, policy, preset):
-    return hashlib.sha256(json.dumps({'locks': locks, 'policy': policy, 'preset': preset, 'version': 3}, sort_keys=True).encode()).hexdigest()
+    return hashlib.sha256(json.dumps({'locks': locks, 'policy': policy, 'preset': preset, 'version': 3,
+                                     'compression': {g: compression_name(g, preset) for g in ['common', 'x64', 'arm64']}}, sort_keys=True).encode()).hexdigest()
+
+
+def compression_options(label, preset):
+    if label == 'x64':
+        return {'filters': [{'id': lzma.FILTER_X86}, {'id': lzma.FILTER_LZMA2, 'preset': 9 | lzma.PRESET_EXTREME}]}
+    if label == 'arm64':
+        # Old LZMA2 format, same 64 MiB dictionary; only lossless probability
+        # contexts change. No newer ARM64 filter or decoder is required.
+        return {'filters': [{'id': lzma.FILTER_LZMA2, 'preset': 9 | lzma.PRESET_EXTREME, 'lc': 2, 'lp': 2, 'pb': 2}]}
+    return {'preset': preset}
 
 
 def apply_policy(arch, tree, spool, policy):
@@ -154,7 +167,7 @@ def archive_tree(label, tree, spool, preset):
         ordered.extend(ready)
         emitted.update(ready)
         deferred = [n for n in deferred if n not in emitted]
-    compression = {'filters': [{'id': lzma.FILTER_X86}, {'id': lzma.FILTER_LZMA2, 'preset': 9 | lzma.PRESET_EXTREME}]} if label == 'x64' else {'preset': preset}
+    compression = compression_options(label, preset)
     with lzma.LZMAFile(pending, 'w', **compression, check=lzma.CHECK_SHA256) as compressed:
         with tarfile.open(fileobj=compressed, mode='w|', format=tarfile.PAX_FORMAT) as archive:
             for name in ordered:

@@ -1,6 +1,7 @@
 import hashlib
 import importlib.util
 import io
+import lzma
 import pathlib
 import sys
 import tarfile
@@ -17,6 +18,18 @@ sys.path.pop(0)
 
 
 class SolidRuntimeTests(unittest.TestCase):
+    def test_arm_context_profile_preserves_bytes_and_changes_cache_fingerprint(self):
+        data = bytes(range(256)) * 32
+        options = solid.compression_options('arm64', 9 | lzma.PRESET_EXTREME)
+        self.assertEqual(len(options['filters']), 1)
+        self.assertEqual(options['filters'][0]['id'], lzma.FILTER_LZMA2)
+        encoded = lzma.compress(data, check=lzma.CHECK_SHA256, **options)
+        self.assertEqual(lzma.decompress(encoded), data)
+        self.assertEqual(solid.compression_name('arm64', 9 | lzma.PRESET_EXTREME), 'lzma2-9e-lc2-lp2-pb2')
+        with patch.object(solid, 'compression_name', return_value='old'):
+            old = solid.runtime_fingerprint({}, {}, 9 | lzma.PRESET_EXTREME)
+        self.assertNotEqual(old, solid.runtime_fingerprint({}, {}, 9 | lzma.PRESET_EXTREME))
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = pathlib.Path(self.temp.name)
