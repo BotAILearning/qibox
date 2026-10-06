@@ -64,6 +64,29 @@ def expected_text(before, inserted, start, end, count):
     return encoded[:start * 2].decode('utf-16-le') + inserted + encoded[end * 2:].decode('utf-16-le')
 
 
+def paste_keys():
+    # Reading accessibility controls does not initialize the inspector's
+    # pointer helper. Open an independent X11 connection without moving focus.
+    with controls.x11_connection() as (xlib, display, errors):
+        xtest = c.CDLL('libXtst.so.6')
+        xlib.XKeysymToKeycode.argtypes = [c.c_void_p, c.c_ulong]
+        xlib.XKeysymToKeycode.restype = c.c_uint
+        xtest.XTestFakeKeyEvent.argtypes = [c.c_void_p, c.c_uint, c.c_int, c.c_ulong]
+        control = xlib.XKeysymToKeycode(display, 0xffe3)
+        key = xlib.XKeysymToKeycode(display, ord('v'))
+        if not control or not key or errors:
+            raise ValueError('paste key unavailable')
+        try:
+            xtest.XTestFakeKeyEvent(display, control, 1, 0)
+            xtest.XTestFakeKeyEvent(display, key, 1, 0)
+            xtest.XTestFakeKeyEvent(display, key, 0, 0)
+        finally:
+            xtest.XTestFakeKeyEvent(display, control, 0, 0)
+            xlib.XSync(display, False)
+        if errors:
+            raise ValueError('paste key unavailable')
+
+
 def paste(ins, inserted):
     obj = focused(ins)
     before = value(ins, obj)
@@ -85,20 +108,7 @@ def paste(ins, inserted):
     ins.require_foreground()
     if 12 not in ins.states(obj) or value(ins, obj) != before:
         raise ValueError('focus changed')
-    ins.xlib.XKeysymToKeycode.argtypes = [c.c_void_p, c.c_ulong]
-    ins.xlib.XKeysymToKeycode.restype = c.c_uint
-    ins.xtest.XTestFakeKeyEvent.argtypes = [c.c_void_p, c.c_uint, c.c_int, c.c_ulong]
-    control = ins.xlib.XKeysymToKeycode(ins.display, 0xffe3)
-    key = ins.xlib.XKeysymToKeycode(ins.display, ord('v'))
-    if not control or not key:
-        raise ValueError('paste key unavailable')
-    try:
-        ins.xtest.XTestFakeKeyEvent(ins.display, control, 1, 0)
-        ins.xtest.XTestFakeKeyEvent(ins.display, key, 1, 0)
-        ins.xtest.XTestFakeKeyEvent(ins.display, key, 0, 0)
-    finally:
-        ins.xtest.XTestFakeKeyEvent(ins.display, control, 0, 0)
-        ins.xlib.XFlush(ins.display)
+    paste_keys()
     for _ in range(60):
         ins.check()
         ins.require_foreground()

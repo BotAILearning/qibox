@@ -19,7 +19,7 @@ def prepare(app):
         directories.add(folder)
     if not files or not any(p.startswith('fonts/') for p in files) or not any(p.startswith('node_modules/') for p in files):raise ValueError('Application assets are incomplete')
     pending=output/'app-assets.pending.tar.xz'
-    with lzma.LZMAFile(pending,'w',preset=9|lzma.PRESET_EXTREME,check=lzma.CHECK_SHA256) as compressed:
+    with lzma.LZMAFile(pending,'w',filters=[{'id':lzma.FILTER_LZMA2,'preset':9|lzma.PRESET_EXTREME,'lc':4,'lp':0,'pb':0}],check=lzma.CHECK_SHA256) as compressed:
         with tarfile.open(fileobj=compressed,mode='w|',format=tarfile.PAX_FORMAT) as archive:
             for name in sorted(directories):
                 member=tarfile.TarInfo(name);member.type=tarfile.DIRTYPE;member.mode=0o755;archive.addfile(member)
