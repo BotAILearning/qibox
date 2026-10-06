@@ -580,7 +580,7 @@ async function openDesktop(id, start = true, login = false, allowMobile = false,
       if (mobileLoginView) centerMobileLoginViewport(client);
       reconnect.connected();
       pointer = desktopPointer($('#remote-canvas canvas'));
-      ime = nativeInput({ input: $('#native-input'), screen: $('#desktop-screen'), client, mac: /Mac/.test(navigator.platform), paste: text => api(`/instances/${id}/clipboard`, { text }, 10000), pasteFiles: async files => api(`/instances/${id}/clipboard`, { files: await clipboardFiles(files) }, 30000), notify,
+      ime = nativeInput({ input: $('#native-input'), screen: $('#desktop-screen'), client, mac: /Mac/.test(navigator.platform), paste: text => api(`/instances/${id}/clipboard`, { text, paste: true }, 15000), pasteFiles: async files => api(`/instances/${id}/clipboard`, { files: await clipboardFiles(files) }, 30000), notify,
         connected: () => generation === remoteGeneration && desktopConnected, recover: text => showInputRecovery(id, text) });
       $('#input-recovery').hidden = !inputDrafts.has(id);
       if (inputDrafts.has(id)) { ime.pause(); showInputRecovery(id, inputDrafts.get(id)); }

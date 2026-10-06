@@ -115,6 +115,8 @@ with tarfile.open(fpk, 'r:*') as package:
             assert source_matches(name, pathlib.Path(__file__).resolve().parent.parent / name), name
         if 'config/app-assets.json' in contents:
             assert source_matches('server/app-assets.mjs', pathlib.Path(__file__).resolve().parent.parent / 'server/app-assets.mjs')
+        for name in ['server/manual-text.mjs', 'server/manual-text.py']:
+            assert source_matches(name, pathlib.Path(__file__).resolve().parent.parent / name), name
         for name in ['ai-service.mjs', 'ai-account-configuration.mjs', 'ai-chat-context.mjs', 'ai-group-inbox.mjs', 'ai-media-output.mjs', 'ai-activity-records.mjs', 'ai-proactive.mjs', 'ai-prompts.mjs', 'ai-prepared-send.mjs', 'ai-data.mjs', 'wechat-data.py', 'wechat-sqlite.py', 'ai-schema.mjs', 'ai-provider.mjs', 'ai-presets.mjs', 'ai-capabilities.mjs', 'ai-native.mjs', 'ai-native.py', 'ai-native-controls.py', 'ai-native-render.py', 'ai-ledger.mjs', 'rfb-input.mjs']:
             assert source_matches('server/' + name, pathlib.Path(__file__).resolve().parent.parent / 'server' / name), name
         fonts = json.loads(read('config/fonts.json'))

@@ -14,6 +14,7 @@ const special = { Backspace: 0xff08, Tab: 0xff09, Enter: 0xff0d, Escape: 0xff1b,
 export function nativeInput({ input, screen, client, paste, pasteFiles, notify, connected = () => true, recover = text => { input.value = text; input.classList.add('composing'); }, mac = false, touch = false }) {
   let composing = false, ended = null, disposed = false, pending = Promise.resolve(), blocked = 0, epoch = 0;
   let failed = false, retained = '';
+  let pendingCommit = null;
   let anchor = { x: 0, y: 0 };
   const listeners = [];
   const listen = (target, type, handler, options) => { target.addEventListener(type, handler, options); listeners.push(() => target.removeEventListener(type, handler, options)); };
@@ -26,6 +27,7 @@ export function nativeInput({ input, screen, client, paste, pasteFiles, notify, 
     input.style.top = `${Math.max(0, Math.min(box.height - 36, anchor.y))}px`;
   };
   const enqueue = (action, text = '', settled = () => {}) => {
+    if (!text) pendingCommit = null;
     const queuedEpoch = epoch;
     if (text) blocked++;
     pending = pending.then(async () => {
@@ -34,7 +36,7 @@ export function nativeInput({ input, screen, client, paste, pasteFiles, notify, 
     }).catch(error => {
       const firstFailure = queuedEpoch === epoch;
       if (firstFailure) epoch++;
-      if (text) { failed = true; retained += text; recover(retained); }
+      if (text) { failed = true; retained += typeof text === 'object' ? text.value : text; recover(retained); }
       if (!disposed && firstFailure) notify(error.message || '输入未完成，请核对微信草稿');
     }).finally(() => { if (text) blocked--; settled(); });
   };
@@ -52,19 +54,35 @@ export function nativeInput({ input, screen, client, paste, pasteFiles, notify, 
       }
     }
   };
+  const performPaste = async text => {
+    const activeEpoch = epoch;
+    const result = await paste(text);
+    if (disposed || activeEpoch !== epoch || !connected()) throw new Error('输入未完成，请核对微信草稿');
+    if (result?.pasteRequired !== false) chord(0x76, { ctrlKey: true });
+  };
   const pasteText = text => {
     if (!text) return;
     if (new TextEncoder().encode(text).length > 60000) { notify('文字过长，请分段粘贴'); return; }
-    enqueue(async () => {
-      const activeEpoch = epoch;
-      await paste(text);
-      if (disposed || activeEpoch !== epoch || !connected()) throw new Error('输入未完成，请核对微信草稿');
-      chord(0x76, { ctrlKey: true });
-    }, text);
+    pendingCommit = null;
+    enqueue(() => performPaste(text), text);
   };
   // Commit IME/Unicode through the instance's private clipboard. A Unicode
   // keysym can be silently ignored by the remote application/input method.
-  const commit = text => { if (text) { if (/[^\x20-\x7e]/.test(text)) pasteText(text); else enqueue(() => sendCommittedText(client, text), text); } };
+  const commit = text => {
+    if (!text) return;
+    if (new TextEncoder().encode(text).length > 60000) { notify('文字过长，请分段粘贴'); return; }
+    // Adjacent committed fragments queued during a native paste form one
+    // insertion. Do not launch a clipboard owner for every fast typed glyph.
+    if (pendingCommit && pendingCommit.epoch === epoch && new TextEncoder().encode(pendingCommit.value + text).length <= 60000) {
+      pendingCommit.value += text; return;
+    }
+    const batch = { value: text, epoch }; pendingCommit = batch;
+    enqueue(async () => {
+      if (pendingCommit === batch) pendingCommit = null;
+      if (/[^\x20-\x7e]/.test(batch.value)) await performPaste(batch.value);
+      else sendCommittedText(client, batch.value);
+    }, batch);
+  };
   const pasteLocalFiles = files => {
     if (!pasteFiles) { notify('当前连接暂不支持文件粘贴'); return; }
     blocked++;

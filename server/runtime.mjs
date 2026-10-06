@@ -13,6 +13,7 @@ import { LoginState } from './login-state.mjs';
 
 import { architecture, runtimeLibraries, runtimePayload, runtimeArchive, runtimeArchives } from './platform.mjs';
 import { ownClipboard } from './clipboard.mjs';
+import { pasteManualText } from './manual-text.mjs';
 import { prepareManualFiles } from './manual-files.mjs';
 import { startAudio, ensureAudio } from './audio.mjs';
 import { startFileChooser } from './file-chooser.mjs';
@@ -346,7 +347,7 @@ export class Runtime {
     await command(`${this.runtimeRoot}/usr/bin/fcitx5-remote`, [chinese ? '-o' : '-c'], this.desktopEnv);
     return { chinese };
   }
-  async setClipboard(text) {
+  async setClipboard(text, { paste = false } = {}) {
     if (this.status !== 'running' || !this.desktopEnv) throw new AppError('请先打开应用', 409);
     if (this.clipboardSetting) throw new AppError('正在粘贴，请稍候', 409);
     if (this.isWechat && typeof text === 'object' && (text.files?.length !== 1 || !['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(text.files[0].type))) {
@@ -355,11 +356,18 @@ export class Runtime {
     }
     this.clipboardSetting = ownClipboard({ ...(typeof text === 'object' ? { files: text.files } : { text }), env: this.desktopEnv, appRoot: this.appRoot, runtimeRoot: this.runtimeRoot, previous: this.clipboardProcess });
     let process;
-    try { process = await this.clipboardSetting; } finally { this.clipboardSetting = null; }
+    try {
+      process = await this.clipboardSetting;
+      if (paste && this.isWechat && typeof text === 'string') {
+        this.clipboardSetting = pasteManualText(this, text);
+        await this.clipboardSetting;
+      }
+    } catch (error) { process?.kill(); throw error; }
+    finally { this.clipboardSetting = null; }
     this.clipboardProcess = process;
     const entry = { process, name: 'clipboard' }; this.processes.push(entry);
     process.once('close', () => { this.processes = this.processes.filter(item => item !== entry); if (this.clipboardProcess === process) this.clipboardProcess = null; });
-    return { ready: true };
+    return { ready: true, ...(paste && this.isWechat && typeof text === 'string' ? { pasteRequired: false } : {}) };
   }
   async stop({ force = false, deadline = Infinity } = {}) {
     this.status = 'stopping';

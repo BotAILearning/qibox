@@ -72,7 +72,7 @@ test('trailing composition input does not swallow a later equal committed string
   fire(input, 'compositionstart'); fire(input, 'compositionend', { data: '好' });
   fire(input, 'input', { data: '好', inputType: 'insertText' });
   input.value = '好'; fire(input, 'input', { data: '好', inputType: 'insertText' });
-  await bridge.flush(); assert.deepEqual(pasted, ['好', '好']); bridge.dispose();
+  await bridge.flush(); assert.equal(pasted.join(''), '好好'); bridge.dispose();
 });
 
 test('composition anchor stays inside the desktop and does not move during composition', () => {
@@ -181,4 +181,24 @@ test('a single multiline committed insertion is captured before the browser spli
   assert.deepEqual(pasted, ['第一行🙂\n第二行\t结尾']);
   assert.deepEqual(keys, [[0xffe3, 'ControlLeft', true], [0x76], [0xffe3, 'ControlLeft', false]]);
   assert.equal(input.value, ''); bridge.dispose();
+});
+
+test('rapid committed glyphs wait for native insertion before replacing the clipboard and never press paste twice', async () => {
+  const ready = Promise.withResolvers(), received = [];
+  const { input, bridge, keys } = setup({ paste: async text => {
+    received.push(text); if (received.length === 1) await ready.promise;
+    return { pasteRequired: false };
+  } });
+  fire(input, 'input', { data: '中' }); await Promise.resolve();
+  for (const text of ['文', '😀', ' ABC']) fire(input, 'input', { data: text });
+  fire(input, 'keydown', { key: 'Enter' });
+  await Promise.resolve(); assert.deepEqual(received, ['中']); assert.deepEqual(keys, []);
+  ready.resolve(); await bridge.flush();
+  assert.deepEqual(received, ['中', '文😀 ABC']); assert.deepEqual(keys, [[0xff0d]]); bridge.dispose();
+});
+
+test('editing shortcuts separate committed batches and preserve insertion order', async () => {
+  const { input, pasted, bridge, keys } = setup({ paste: async text => { pasted.push(text); return { pasteRequired: false }; } });
+  fire(input, 'input', { data: '甲' }); fire(input, 'keydown', { key: 'Backspace' }); fire(input, 'input', { data: '乙' });
+  await bridge.flush(); assert.deepEqual(pasted, ['甲', '乙']); assert.deepEqual(keys, [[0xff08]]); bridge.dispose();
 });

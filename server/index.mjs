@@ -223,7 +223,7 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
         if (action === 'clipboard') {
           if (data.files) validateClipboardFiles(data.files); else validateClipboard(data.text);
           await item.runtime.manualInput?.({ source: 'clipboard-api', type: 'clipboard', held: false });
-          return send(res, 200, await item.exclusive(() => item.runtime.setClipboard(data.files ? { files: data.files } : data.text)));
+          return send(res, 200, await item.exclusive(() => item.runtime.setClipboard(data.files ? { files: data.files } : data.text, { paste: data.paste === true })));
         }
         if (action === 'desktop') {
           return await item.exclusive(async () => {
