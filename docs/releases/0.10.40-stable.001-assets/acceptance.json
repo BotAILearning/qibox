@@ -1,0 +1,13 @@
+{
+  "buildId": "0.10.40-stable.001",
+  "sourceCommit": "2c8593d44d30cfc6c6722c359a5327004e5f7b3f",
+  "package": {"bytes": 490733943, "sha256": "e386f3a60704d77858690c9d5707cca8919bcd8cd79e9013d1105379c362ecc7", "architecture": "all"},
+  "sourceChecks": {"nodePassed": 1130, "pythonPassed": 314, "syntaxAndVersions": true},
+  "device": {"architecture": "x64", "officialUpgradeStatus": 2, "officialUpgradeProgress": 100, "packageFilesMatched": 478, "restoredAssetFilesMatched": 1129, "runtimeMembersMatched": 17291, "excludedPathsAbsent": 27, "preferencesFilesPreserved": 3, "wechatProcesses": 3, "mainAndTestAutoLogin": true},
+  "bootstrap": {"concurrentColdStarts": 2, "coldMs": 8139, "warmMs": 70, "chinesePdfBytes": 57419, "stockPythonAndTarArmDecode": true, "fullArmDecodedTarBytes": 700160000, "fullArmDecodedTarSha256": "c496a9ada43d49f07c66fe33cc54cad862ef5b6668286e6884968c7480202fc2"},
+  "nativeWechat": {"rapidUnicodeExactNativeMenuCopy": true, "multilineExactNativeMenuCopy": true, "selectionAndKeyBarrierExactNativeMenuCopy": true, "searchFieldUnicode": true, "selfFileUploadAndSend": true, "originalUnicodeSaveFilename": true, "saveCancelThenBothTargetsEnabled": true, "imageUploadPreviewAndNativeMenuCopy": true, "copiedPngBytes": 282, "copiedPngWidth": 64, "copiedPngHeight": 64, "videoFinalTimecode": "00:07.917", "videoFinalFrame": 95, "draftAndSearchCleared": true, "browserClipboardRestored": true},
+  "audio": {"startedAt": "2026-10-06T15:22:34.181Z", "finishedAt": "2026-10-06T15:23:24.198Z", "status": 200, "format": "s16le;rate=48000;channels=2", "bytes": 9505512, "nonzeroBytes": 1152906},
+  "dependencyChecks": {"wechatVendorElfs": 106, "introducedMissingLibraries": 0, "h264Frames": 96, "opus": true, "pinyinActivatedAndRestored": true, "cjkAndEmojiFonts": true, "privateSdkOnlyTxFfmpeg": true, "noGlobalRadiumPath": true},
+  "unverified": ["ARM hardware", "real voice and video calls", "physical speakers and microphones", "Windows system clipboard", "physical mobile device", "system input candidates", "native save picker completed file", "fnOS parent SDK file and folder selection", "browser binary image paste automation", "all WeChat menus and third-party business"],
+  "unadoptedArmBcjAdditionalPotentialBytes": 10551636
+}
