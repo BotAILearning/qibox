@@ -1,0 +1,117 @@
+{
+  "version": "0.10.41-stable.001",
+  "date": "2026-10-08",
+  "status": "passed",
+  "sourceCommit": "ffffb82353255fe8a9e5bcbdb7e64f0a7c7e0eba",
+  "package": {
+    "file": "qibox-0.10.41-stable.001-all.fpk",
+    "bytes": 490731468,
+    "sha256": "7516a83aedf3318b0849a406f3f3bc4405042e3a637fedaac6e6026c62a87084",
+    "architectures": [
+      "x64",
+      "arm64"
+    ],
+    "officialBuilder": true,
+    "fullArchiveAndPermissionVerification": true,
+    "preservedPayloadFiles": 472,
+    "changedPayloadFiles": [
+      "config/product.json",
+      "package.json",
+      "public/app.js",
+      "public/index.html",
+      "server/ai-group.mjs",
+      "server/ai-service.mjs"
+    ],
+    "runtimeArchivesPreserved": true
+  },
+  "sourceTests": {
+    "node": {
+      "pass": 1136,
+      "fail": 0,
+      "skipped": 0
+    },
+    "python": {
+      "pass": 314
+    },
+    "syntaxAndVersion": "passed"
+  },
+  "browserFixture": {
+    "status": "passed",
+    "viewport": "1440x900",
+    "default": {
+      "enabled": true,
+      "minutes": 5
+    },
+    "offHidesAndDisablesMinutes": true,
+    "onAcceptsCustomMinutes": 8,
+    "visibleWaitAndSkipReply": true,
+    "errors": []
+  },
+  "device": {
+    "platform": "fnOS",
+    "architecture": "x64",
+    "upgradeTask": "1791433844896529218-qibox",
+    "upgradeStatus": 2,
+    "upgradeProgress": 100,
+    "deployedFiles": {
+      "checked": 478,
+      "mismatches": []
+    },
+    "skipWait": {
+      "normalMergeWaitClicked": true,
+      "normalRemainingSecondsApproximately": 36,
+      "retryWaitClicked": true,
+      "requestAcknowledgementRenderedSafely": true,
+      "requestAndSendPhasesObserved": true,
+      "deliveredRounds": 2,
+      "uniqueReplies": 2,
+      "nativeReceivingBubblesObserved": 2,
+      "lastDeliveryStatus": "sent",
+      "errors": {
+        "receiver": [],
+        "senderCurrentConnection": [],
+        "senderProxyReplacement": [
+          {
+            "level": "error",
+            "message": "Tried changing state of a disconnected RFB object",
+            "timestamp": "2026-10-08T04:37:55.092Z",
+            "url": "http://127.0.0.1:34351/app/qibox/app.js?v=59a8364dcdc7d672"
+          }
+        ]
+      },
+      "model": "Temporary loopback fixture; generation and speaker audit use production protocol",
+      "successfulRoundModelRequests": 4,
+      "fixtureSetupRejectedBeforeSuccessfulRounds": true
+    },
+    "groupReasons": {
+      "newAtOthersRows": 2,
+      "legacyHonestRows": 23,
+      "misleadingMissingTriggerRows": 0,
+      "checkedRows": 44,
+      "originalMentionFlagsChecked": 6,
+      "originalAtOthersMessages": 6,
+      "configuredTriggersPreserved": {
+        "atMe": true,
+        "atAll": true,
+        "realtime": true,
+        "realtimeMode": "proactive"
+      }
+    },
+    "restoration": {
+      "checkedSettingsFiles": 6,
+      "changedPreferences": [],
+      "testHistoryPreserved": true,
+      "temporaryProviderRemoved": true,
+      "fixturePortClosed": true,
+      "previewConnectionsClosed": true,
+      "wechatProcesses": 3,
+      "mainAccountLoggedIn": true,
+      "runtimeMemoryUpdatesPreserved": 1
+    }
+  },
+  "boundaries": [
+    "ARM64 hardware not available; package validation only",
+    "External model quality and availability not covered",
+    "Other existing media/call behavior not fully retested"
+  ]
+}
