@@ -25,6 +25,15 @@ export function groupTrigger(message, options) {
   if (m.others) return null;
   return options.realtime ? 'realtime' : null;
 }
+export function groupSkipReason(message, options = {}) {
+  const mentions = message?.mentions;
+  if (!mentions?.verified) return { reasonCode: 'group-mentions-unverified', detail: '无法确认消息的 @ 对象，本轮未自动回复' };
+  if (mentions.self && !options.atMe) return { reasonCode: 'group-at-me-disabled', detail: '该群未开启 @我时回复', trigger: 'atMe' };
+  if (mentions.all && !options.atAll) return { reasonCode: 'group-at-all-disabled', detail: '该群未开启 @所有人时回复', trigger: 'atAll' };
+  if (mentions.others && !mentions.self && !mentions.all) return { reasonCode: 'group-at-others', detail: '消息仅 @ 其他成员，本轮不参与' };
+  if (!mentions.self && !mentions.all && !options.realtime) return { reasonCode: 'group-realtime-disabled', detail: '该群未开启实时回复', trigger: 'realtime' };
+  return { reasonCode: 'group-trigger-missing', detail: '本轮没有符合已开启群聊回复条件的新消息' };
+}
 export function groupBurst(messages, cursor, options, baselines = {}) {
   const anchor = messages.findIndex(m => m.id === cursor?.pendingAfter);
   const start = Math.max(anchor, messages.findLastIndex(m => m.direction === 'self'));

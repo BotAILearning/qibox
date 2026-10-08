@@ -515,6 +515,12 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     try { result = await api(`/instances/${target}/ai${compact && state ? '?view=live' + (selectedObject ? '&contact=' + encodeURIComponent(selectedObject) : '') : ''}`, action ? { action, ...extras } : undefined, ['learn', 'scan'].includes(action) ? 30 * 60 * 1000 : 130000); }
     catch (error) { if (current !== generation || target !== id || epoch !== requestEpoch) return null; throw error; }
     if (current !== generation || target !== id || epoch !== requestEpoch) return null;
+    // The action acknowledges a queued request; it does not return an AI state.
+    // Keep the current account and drafts if the follow-up read temporarily fails.
+    if (action === 'skip-reply-wait' && result.accepted === true) {
+      try { return await call(undefined, {}, true); }
+      catch { return result; }
+    }
     if (state && state.account !== result.account) {
       personalDraft = null; personalDraftAccount = null;
       analysisHistoryEpoch++; analysisHistoryReport = null; analysisResult = null; resetAnalysisExport();

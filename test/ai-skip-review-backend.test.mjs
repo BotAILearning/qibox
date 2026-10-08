@@ -51,7 +51,7 @@ test('model skip call stores all pending original messages without keeping a tra
   assert.deepEqual(row.incomingMessages.map(message => message.text), ['先问一个问题', '再补充一句']);
 });
 
-test('group trigger skip snapshots only the current pending incoming burst', async t => {
+test('disabled realtime skip snapshots only the current pending incoming burst', async t => {
   const { a, bridge, profile, advance } = await fixture(t, 'group');
   await a.setGroupOptions({ contact: profile.contact, atMe: true });
   const sender = 'b'.repeat(64);
@@ -59,7 +59,7 @@ test('group trigger skip snapshots only the current pending incoming burst', asy
     timestamp: 1700000000, sender, senderName: '群成员乙', mentions: { verified: true, self: false, all: false, others: false },
   });
   await a.tick(); advance(3000); await a.tick();
-  const row = a.publicState().skipRecords.find(item => item.reasonCode === 'group-trigger-missing');
+  const row = a.publicState().skipRecords.find(item => item.reasonCode === 'group-realtime-disabled');
   assert.ok(row);
   assert.deepEqual(row.incomingMessages.map(message => message.id), [incoming.id]);
   assert.equal(row.incomingMessages[0].senderName, '群成员乙');

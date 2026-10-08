@@ -29,7 +29,7 @@ import { categories, styleOptions, avoidOptions, defaultStyle, styleSchema, styl
 import { providerPresets, goalPresets, replyPresets } from './ai-presets.mjs';
 import { unsupportedTextAction, promisesMedia } from './ai-capabilities.mjs';
 import { parseSchedule, advanceSchedule } from './ai-schedule.mjs';
-import { groupPendingMessages, groupPendingBySender, groupDefaults, groupOptions, groupReplyEnabled, groupBurst, groupPrompt, groupTimingState, groupRealtimeIntervalMs, groupRealtimeDelayMs } from './ai-group.mjs';
+import { groupPendingMessages, groupPendingBySender, groupDefaults, groupOptions, groupReplyEnabled, groupBurst, groupSkipReason, groupPrompt, groupTimingState, groupRealtimeIntervalMs, groupRealtimeDelayMs } from './ai-group.mjs';
 import { ProactiveTasks } from './ai-proactive.mjs';
 import { historySummary, validReportId } from './ai-report-history.mjs';
 import { safeErrorText, captureErrorContext, publicErrorRecord, relatedErrorRecord } from './ai-error-details.mjs';
@@ -2580,7 +2580,15 @@ export class AIAssistant {
       observeGroupInbox(this.vault, profile, history, cursor, this.now());
     }
     inbox = profile.kind === 'group' ? observeGroupInbox(this.vault, profile, snapshot, cursor, this.now()) : null;
-    if (inbox?.ignored?.length) this.event('skip', profile.id, 'system-skip', '群聊来信未满足已开启的回复条件', { reasonCode: 'group-trigger-missing', messageId: inbox.ignored.at(-1).id, trigger: 'realtime', incomingMessages: inbox.ignored });
+    if (inbox?.ignored?.length) {
+      const reasons = new Map();
+      for (const message of inbox.ignored) {
+        const reason = groupSkipReason(message, profile.groupOptions);
+        if (!reasons.has(reason.reasonCode)) reasons.set(reason.reasonCode, { ...reason, messages: [] });
+        reasons.get(reason.reasonCode).messages.push(message);
+      }
+      for (const { messages, detail, ...reason } of reasons.values()) this.event('skip', profile.id, 'system-skip', detail, { ...reason, messageId: messages.at(-1).id, incomingMessages: messages });
+    }
     const syncInbox = () => { if (inbox) { cursor.pending = inbox.pending.length > 0; cursor.pendingSince = inbox.pending[0]?.queuedAt ?? cursor.pendingSince; cursor.trigger = nextGroupBatch(inbox)?.trigger || null; } };
     if (!cursor) {
       const since = profile.replyWatchSince || profile.replyConfiguredAt;
@@ -2931,7 +2939,7 @@ export class AIAssistant {
           profile.mentionLimitBlocked = true;
           this.event('limit', profile.id, cappedTrigger, '已达到该群的回复次数上限', { messageId: incoming?.id, trigger: cappedTrigger });
         }
-        else this.event('skip', profile.id, 'system-skip', '系统判断：没有已启用的群聊触发方式', { reasonCode: 'group-trigger-missing', messageId: incoming?.id, incomingMessages: skippedIncoming });
+        else this.event('skip', profile.id, 'system-skip', '本轮没有符合已开启群聊回复条件的新消息', { reasonCode: 'group-trigger-missing', messageId: incoming?.id, incomingMessages: skippedIncoming });
         await this.save(); return;
       }
       const key = `${profile.id}:${trigger}`, controller = this.replyControllers.get(key) || new AbortController();

@@ -15,7 +15,7 @@ test.afterEach(() => { globalThis.window = originalWindow; });
 // minimal DOM surface only supplies elements used by attach/render; no browser,
 // model service or native desktop is involved in these context-switch tests.
 function surface() {
-  const nodes = new Map(), handlers = new Map(), forms = new Map();
+  const nodes = new Map(), handlers = new Map(), forms = new Map(), panelClicks = [];
   const attribute = key => 'data-' + key.replace(/[A-Z]/g, letter => '-' + letter.toLowerCase());
   const buttonNode = dataset => ({ dataset, attributes: Object.keys(dataset).map(key => ({ name: attribute(key) })),
     closest: selector => selector === '[data-proactive-root]' && Object.keys(dataset).some(key => key.startsWith('proactive')) ? {} : null,
@@ -33,7 +33,7 @@ function surface() {
       setAttribute() {}, focus() {}, replaceChildren(...values) { children = values; }, append() {}, remove() {},
       close() { handlers.get(`${selector}:close`)?.(); }, showModal() {},
       querySelector: node, querySelectorAll: () => [],
-      addEventListener(type, handler) { handlers.set(`${selector}:${type}`, handler); },
+      addEventListener(type, handler) { if (selector === '#ai-panel' && type === 'click') panelClicks.push(handler); handlers.set(`${selector}:${type}`, handler); },
       });
     }
     return nodes.get(selector);
@@ -57,7 +57,8 @@ function surface() {
     input: target => handlers.get('#ai-panel:input')({ target: { closest: () => null, ...target } }),
     submit: form => handlers.get('#ai-panel:submit')({ preventDefault() {}, target: form }),
     click: action => handlers.get('#ai-panel:click')({ target: { closest: () => buttonNode(action === 'new-proactive' ? { proactiveNew: '' } : { aiAction: action }) } }),
-    button: dataset => handlers.get('#ai-panel:click')({ preventDefault() {}, target: { closest: () => buttonNode(dataset) } }) };
+    button: dataset => handlers.get('#ai-panel:click')({ preventDefault() {}, target: { closest: () => buttonNode(dataset) } }),
+    skipWait: id => { const button = buttonNode({ aiSkipReplyWait: id }); for (const click of panelClicks) click({ preventDefault() {}, target: { closest: selector => ['button', '[data-ai-skip-reply-wait]'].includes(selector) ? button : null } }); } };
 }
 
 const availableState = () => ({ settings: { enabled: false, replyDelay: 8 },
@@ -558,3 +559,44 @@ test('a reveal response for a different provider is rejected without displaying 
 
 
 
+
+for (const refreshFails of [false, true]) test('skip acknowledgement preserves full state when live refresh ' + (refreshFails ? 'fails' : 'succeeds'), { timeout: 2000 }, async t => {
+  const originalDocument = globalThis.document, dom = surface(), calls = [];
+  globalThis.document = dom.document;
+  const snapshot = { ...availableState(), account: 'account-a', configurationRevision: 1 };
+  const entered = Promise.withResolvers();
+  const controller = aiAssistant({ api: async (url, payload) => {
+    calls.push({ url, action: payload?.action });
+    if (payload?.action === 'skip-reply-wait') return { accepted: true, id: payload.id };
+    if (url.includes('?view=live')) { entered.resolve(); if (refreshFails) throw new Error('temporary read failure'); return { compact: true, account: 'account-a', configurationRevision: 1, profiles: [], live: [] }; }
+    return snapshot;
+  } });
+  t.after(() => { controller.detach(); globalThis.document = originalDocument; });
+  await controller.attach('instance-a'); calls.length = 0;
+  dom.input({ id: 'ai-object-search', value: 'Fixture' });
+  dom.skipWait('profile-a'); await entered.promise;
+  for (let i = 0; i < 10 && !dom.node('#ai-feedback').textContent.includes('已跳过等待'); i++) await new Promise(setImmediate);
+  assert.match(dom.node('#ai-feedback').textContent, /已跳过等待/);
+  assert.doesNotMatch(dom.node('#ai-feedback').textContent, /undefined|temporary read failure/);
+  assert.match(dom.node('#ai-content').innerHTML, /Fixture/);
+  assert.equal(calls.filter(call => call.action === 'skip-reply-wait').length, 1);
+  assert.equal(calls.filter(call => call.url.includes('?view=live')).length, 1);
+});
+
+test('a delayed skip acknowledgement cannot refresh or replace a newly selected instance', { timeout: 2000 }, async t => {
+  const originalDocument = globalThis.document, dom = surface(), entered = Promise.withResolvers(), released = Promise.withResolvers(), calls = [];
+  globalThis.document = dom.document;
+  const controller = aiAssistant({ api: async (url, payload) => {
+    calls.push({ url, action: payload?.action });
+    if (payload?.action === 'skip-reply-wait') { entered.resolve(); await released.promise; return { accepted: true, id: payload.id }; }
+    return { ...availableState(), account: url.includes('instance-b') ? 'account-b' : 'account-a' };
+  } });
+  t.after(() => { released.resolve(); controller.detach(); globalThis.document = originalDocument; });
+  await controller.attach('instance-a'); calls.length = 0;
+  dom.skipWait('profile-a'); await entered.promise;
+  controller.detach(); await controller.attach('instance-b'); const renders = dom.node('#ai-content').writes;
+  released.resolve(); await new Promise(setImmediate);
+  assert.equal(dom.node('#ai-content').writes, renders);
+  assert.equal(calls.some(call => call.url.includes('?view=live')), false);
+  assert.doesNotMatch(dom.node('#ai-feedback').textContent, /已跳过等待|undefined/);
+});

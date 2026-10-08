@@ -118,3 +118,29 @@ test('manual group reply settles earlier obligations and leaves later incoming m
   assert.deepEqual(inbox.pending.filter(message => message.trigger === 'atMe').map(message => message.id), [two.id]);
   assert.equal(bridge.sent.length, 0);
 });
+
+
+test('ignored group messages retain their distinct verified reasons instead of claiming configuration is missing', async t => {
+  const { a, bridge, profile, push } = await fixture(t);
+  await a.setGroupOptions({ contact: profile.contact, atMe: false, atAll: false, realtime: true });
+  const others = push('甲', false, '@其他成员 的问题'); others.mentions.others = true;
+  const unknown = push('乙', false, '无法确认提及'); unknown.mentions.verified = false;
+  const atMe = push('丙', true, '@我 的问题');
+  const atAll = push('丁', false, '@所有人 的问题'); atAll.mentions.all = true;
+  await a.tick();
+  const records = a.publicState().skipRecords.filter(row => row.target === profile.id);
+  for (const [message, reason, trigger] of [[others, 'group-at-others', undefined], [unknown, 'group-mentions-unverified', undefined], [atMe, 'group-at-me-disabled', 'atMe'], [atAll, 'group-at-all-disabled', 'atAll']]) {
+    const record = records.find(row => row.messageId === message.id);
+    assert.equal(record.reasonCode, reason); assert.equal(record.trigger, trigger);
+    assert.deepEqual(record.incomingMessages.map(row => row.id), [message.id]);
+  }
+  assert.equal(bridge.sent.length, 0);
+});
+
+test('ordinary group traffic identifies the disabled realtime switch while mentions remain enabled', async t => {
+  const { a, profile, push } = await fixture(t);
+  await a.setGroupOptions({ contact: profile.contact, realtime: false });
+  const message = push('甲', false, '普通消息'); await a.tick();
+  const record = a.publicState().skipRecords.find(row => row.messageId === message.id);
+  assert.equal(record.reasonCode, 'group-realtime-disabled'); assert.equal(record.trigger, 'realtime');
+});

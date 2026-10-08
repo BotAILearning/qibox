@@ -29,3 +29,19 @@ test('unknown group identities never use the group name as sender; unavailable a
   assert.doesNotMatch(missing, />true</);
   assert.match(skipRecordsView({}), /暂无未回复记录/);
 });
+
+
+test('group skip review shows specific reasons and preserves honest wording for legacy records', () => {
+  for (const [reasonCode, label, trigger] of [
+    ['group-at-others', '消息仅 @ 其他成员，本轮不参与'],
+    ['group-mentions-unverified', '无法确认消息的 @ 对象'],
+    ['group-at-me-disabled', '该群未开启 @我时回复', 'atMe'],
+    ['group-at-all-disabled', '该群未开启 @所有人时回复', 'atAll'],
+    ['group-realtime-disabled', '该群未开启实时回复', 'realtime'],
+    ['group-trigger-missing', '来信未满足已开启的群聊回复条件', 'realtime'],
+  ]) {
+    const html = skipRecordsView(state({ source: 'system-skip', reasonCode, trigger }));
+    assert.ok(html.includes(label)); assert.doesNotMatch(html, /群聊未配置触发方式/);
+    if (!trigger) assert.doesNotMatch(html, /系统拦截 · 群聊实时/);
+  }
+});
