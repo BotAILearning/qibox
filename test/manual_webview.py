@@ -1,4 +1,4 @@
-"""Article input must remain available without releasing the chat draft guard."""
+"""Moments/article clicks remain available without releasing the chat guard."""
 import ctypes as c
 import io
 import importlib.util
@@ -25,7 +25,7 @@ class FakeX:
         self.owner, self.active, self.hit = 43, 10, 20
         self.map_state, self.inside, self.errors = 2, True, []
         self.XDefaultRootWindow = lambda display: 1
-        self.XInternAtom = lambda display, name, existing: {b'_NET_ACTIVE_WINDOW':100,b'_NET_WM_PID':101,b'WINDOW':33,b'CARDINAL':6}[name]
+        self.XInternAtom = lambda display, name, existing: {b'_NET_ACTIVE_WINDOW':100,b'_NET_WM_PID':101,b'WINDOW':33,b'CARDINAL':6,b'WM_CLASS':102,b'STRING':31}[name]
         self.XGetWindowAttributes = self.attrs
         self.XTranslateCoordinates = Fn(self.translate)
         self.XQueryTree = Fn(self.tree)
@@ -63,6 +63,25 @@ class ArticleInput(unittest.TestCase):
         for mutation in ('hit','inside','map_state','errors'):
             fake=FakeX();setattr(fake,mutation,{'hit':30,'inside':False,'map_state':0,'errors':[True]}[mutation])
             with self.subTest(mutation=mutation):self.assertFalse(self.run_probe(fake))
+    def test_same_process_moments_click_requires_exact_title_and_class(self):
+        fake=FakeX();fake.owner=42
+        with patch.object(windows,'x11_window_title',return_value='朋友圈'),patch.object(windows,'x11_property_array',return_value=b'wechat\0wechat\0'):
+            self.assertTrue(self.run_probe(fake,identity=None))
+            for title in ('微信','设置','朋友圈 - other'):
+                with patch.object(windows,'x11_window_title',return_value=title):
+                    self.assertFalse(self.run_probe(fake))
+            with patch.object(windows,'x11_property_array',return_value=b'other\0other\0'):
+                self.assertFalse(self.run_probe(fake))
+    def test_moments_cannot_bypass_keyboard_or_topmost_hit_checks(self):
+        fake=FakeX();fake.owner=42
+        with patch.object(windows,'x11_window_title',return_value='朋友圈'),patch.object(windows,'x11_property_array',return_value=b'wechat\0wechat\0'):
+            self.assertFalse(self.run_probe(fake,event={'type':'key','submitKey':True}))
+            fake.hit=30;self.assertFalse(self.run_probe(fake))
+            fake.hit=20;fake.inside=False;self.assertFalse(self.run_probe(fake))
+    def test_moments_title_change_during_check_fails_closed(self):
+        fake=FakeX();fake.owner=42
+        with patch.object(windows,'x11_window_title',side_effect=['朋友圈','微信']),patch.object(windows,'x11_property_array',return_value=b'wechat\0wechat\0'):
+            self.assertFalse(self.run_probe(fake))
     def test_enter_and_invalid_coordinates_cannot_bypass_guard(self):
         for event in ({'type':'key','submitKey':True},{'type':'pointer','x':True,'y':20},{'type':'pointer','x':-1,'y':20}):
             self.assertFalse(self.run_probe(FakeX(),event=event))

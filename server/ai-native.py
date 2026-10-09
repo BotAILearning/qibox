@@ -327,8 +327,8 @@ class ChatAdapter:
         if action == 'input-status':
             # Inspect only; never navigate, erase a draft or press Send here.
             event = request.get('event') or {}
-            # Article windows belong to the verified WeChatAppEx child rather
-            # than the chat PID. Their manual clicks cannot submit its AI draft.
+            # Owned Moments/article clicks cannot submit the AI chat draft.
+            # Keep that draft unresolved while allowing the auxiliary window.
             webview = module('qibox_manual_webview', 'manual-webview.py')
             if webview.manual_webview_pointer(ins.pid, event,
                                              module('qibox_manual_windows', 'native-windows.py'), ins.check):

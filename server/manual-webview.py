@@ -1,4 +1,4 @@
-"""Read-only hit testing for manual input in this WeChat's article subprocess.
+"""Read-only hit testing for this WeChat's Moments and article windows.
 
 This never authorizes an AI send or clears an unresolved chat draft.
 """
@@ -51,7 +51,21 @@ def manual_webview_pointer(pid, event, windows, check):
                 return False
             active = windows.x11_property32(x, display, root, atoms['_NET_ACTIVE_WINDOW'], atoms['WINDOW'])
             owner = windows.x11_property32(x, display, active, atoms['_NET_WM_PID'], atoms['CARDINAL'])
-            identity = webview_identity(pid, owner)
+            def identity_for_window():
+                if owner != pid:
+                    return webview_identity(pid, owner)
+                # Moments is a separate NORMAL window of the chat process.
+                # It cannot submit the AI's chat draft. Authenticate its exact
+                # title/class; other same-PID windows still use the chat guard.
+                if windows.x11_window_title(x, display, active) != '朋友圈':
+                    return None
+                prop = x.XInternAtom(display, b'WM_CLASS', 1)
+                kind = x.XInternAtom(display, b'STRING', 1)
+                if not prop or not kind or windows.x11_property_array(
+                        x, display, active, prop, kind, 8) != b'wechat\0wechat\0':
+                    return None
+                return ('moments', pid)
+            identity = identity_for_window()
             if identity is None:
                 return False
             attrs = windows.XWindowAttributes()
@@ -94,7 +108,7 @@ def manual_webview_pointer(pid, event, windows, check):
             check()
             after = windows.x11_property32(x, display, root, atoms['_NET_ACTIVE_WINDOW'], atoms['WINDOW'])
             after_owner = windows.x11_property32(x, display, active, atoms['_NET_WM_PID'], atoms['CARDINAL'])
-            if errors or after != active or after_owner != owner or webview_identity(pid, owner) != identity:
+            if errors or after != active or after_owner != owner or identity_for_window() != identity:
                 return False
             return True
     except (windows.ControlsUnavailable, OSError, AttributeError, ValueError):
