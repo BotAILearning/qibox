@@ -17,7 +17,7 @@ export function objectExecutionStatus(state, contactId) {
   const profile = state.profiles.find(p => p.contact === contactId);
   const live = (state.live || []).find(row => row.id === profile?.id);
   const unavailable = state.waiting === true && !live;
-  const labels = { waiting: '等待汇总', summarizing: '汇总上下文', requesting: 'AI 请求中', generating: 'AI 请求中', sending: '发送中', confirming: '核实发送结果', sent: '已发送', failed: '发送失败', partial: '部分已发送', skipped: '本轮不回复', cancelled: '已取消' };
+  const labels = { waiting: '等待汇总', summarizing: '汇总上下文', requesting: 'AI 请求中', generating: 'AI 请求中', sending: '发送中', confirming: '核实发送结果', unconfirmed: '核验已结束', sent: '已发送', failed: '发送失败', partial: '部分已发送', skipped: '本轮不回复', cancelled: '已取消' };
   const phase = live?.phase || 'idle';
   const replyOn = state.settings?.enabled !== false && state.settings?.reply !== false && !profile?.manualWait && (profile?.kind === 'group' ? ['realtime','atMe','atAll'].some(key => profile.groupOptions?.[key]) : personReplyEnabled(state, profile));
   const label = unavailable ? !state.available ? '正在恢复微信读取' : '等待微信或模型配置' : replyOn && profile?.groupReplyLimitBlocked ? '已达到回复次数上限' : phase === 'waiting' && live?.canRetry ? '等待重试' : phase === 'waiting' && live?.reason === '等待补充信息' ? '等待补充信息' : labels[phase] || '等待新消息';

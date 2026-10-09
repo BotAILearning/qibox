@@ -151,6 +151,7 @@ function tailMemoryMaterial(messages, budget = memoryMaterialChars) {
   } };
 }
 const validKey = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
+const receiptCheckWindowMs = 180000, receiptCheckIntervalMs = 10000;
 const defaultSettings = () => ({ enabled: false, acknowledgeAI: false, takeover: defaultTakeover(), proactive: false, reply: true, replyScope: 'selected', judgeReply: true, updateStyle: false, replyDelay: 20, multiTurn: false, segmentDelayMin: 15, segmentDelayMax: 60, followUpDelayMin: 45, followUpDelayMax: 120 });
 const fixedTimingSettings = Object.freeze({ replyDelay: 20, segmentDelayMin: 15, segmentDelayMax: 60, followUpDelayMin: 45, followUpDelayMax: 120 });
 const defaults = () => ({ version: 1, account: null, contacts: [], lastScanAt: null, settings: defaultSettings(), strategy: strategyValue({}), replyStrategy: replyStrategyValue({}), replyRoundLimits: { person: null, group: null }, profiles: {}, targets: [], replyTargets: [], proactiveTargets: [], queue: { status: 'idle', items: [], nextAt: null }, events: [], skipLog: [], pendingReplySummaries: [], errorLog: [], deletedActivityRecords: [], analysisReports: [], modelList: [], modelAssignments: {}, modelTested: {}, learnedDefaultStyle: null, defaultStyleSnapshot: null });
@@ -1083,7 +1084,8 @@ export class AIAssistant {
       const flow = profile.replyFlow;
       if (active.has(profile.id) || !flow) continue;
       const running = this.activeRuns.has(profile.id) && ['summarizing', 'requesting', 'sending'].includes(flow.phase);
-      if (running || flow.phase === 'confirming' && profile.delivery?.status === 'unknown') live.push({ id: profile.id, ...this.nameFields(profile), kind: profile.kind, replyFlow: true, phase: flow.phase, reason: flow.detail || '' });
+      if (running || flow.phase === 'confirming' && profile.delivery?.status === 'unknown'
+        || flow.phase === 'unconfirmed' && profile.delivery?.status === 'unconfirmed') live.push({ id: profile.id, ...this.nameFields(profile), kind: profile.kind, replyFlow: true, phase: flow.phase, reason: flow.detail || '' });
     }
     for (const row of live) {
       const profile = this.data.profiles[row.id];
@@ -2483,7 +2485,7 @@ export class AIAssistant {
   }
   restoreDeliveryReceipts(profile) {
     const attempts = new Map((profile.sentMessages || []).filter(row => row.deliveryConfidence === 'unknown' && row.body).map(row => [row.operationId || row.id, row]));
-    if (profile.delivery?.status === 'unknown') attempts.set(profile.delivery.operationId, profile.delivery);
+    if (['unknown', 'unconfirmed'].includes(profile.delivery?.status)) attempts.set(profile.delivery.operationId, profile.delivery);
     if (!attempts.size) return;
     const generatedIds = new Set(profile.generatedIds || []), byOperation = new Map(), byBaseline = new Map(), bodies = new Map(), aliases = new Map();
     for (const row of profile.sentMessages || []) {
@@ -2498,8 +2500,9 @@ export class AIAssistant {
     };
     for (const [operationId, attempt] of attempts) {
       if (!operationId || !attempt.body || !validKey(attempt.baseline)) continue;
-      const receipts = byOperation.get(operationId) || (byBaseline.get(attempt.baseline) || []).filter(row =>
-        !row.operationId && row.at >= attempt.at && row.at <= attempt.at + 180000 && bodyText(attempt) !== null && bodyText(row) === bodyText(attempt));
+      const receipts = (byOperation.get(operationId) || (byBaseline.get(attempt.baseline) || []).filter(row =>
+        !row.operationId && row.at >= attempt.at && row.at <= attempt.at + 180000))
+        .filter(row => bodyText(attempt) !== null && bodyText(row) === bodyText(attempt));
       if (receipts.length !== 1) continue;
       const receipt = receipts[0]; receipt.operationId ||= operationId;
       aliases.set(operationId, receipt.id);
@@ -2549,7 +2552,8 @@ export class AIAssistant {
       const boundary = snapshot.messages.findIndex(message => message.id === row.baseline);
       if (row.baseline && boundary < 0) continue;
       if (!Number.isFinite(row.at)) continue;
-      const text = this.vault.open(row.body).text;
+      let text;
+      try { text = this.vault.open(row.body).text; } catch { continue; }
       const candidates = snapshot.messages.slice(boundary + 1).filter(message => message.direction === 'self' && !(profile.generatedIds || []).includes(message.id) && Number.isSafeInteger(message.timestamp) && Math.abs(message.timestamp * 1000 - row.at) <= 180000 &&
         (voice ? message.type === 'voice' && Number.isSafeInteger(message.voiceDurationMs) && Math.abs(message.voiceDurationMs - voice.durationMs) <= 1500 && message.timestamp * 1000 >= voice.startAt - 2000 && message.timestamp * 1000 <= voice.endAt + 2000 : message.text === text));
       if (candidates.length !== 1) continue;
@@ -2561,6 +2565,59 @@ export class AIAssistant {
       this.data.deletedActivityRecords = (this.data.deletedActivityRecords || []).map(record => record.account === profile.account && record.source === row.source && record.id === oldId ? { ...record, id: row.id } : record);
     }
     return changed;
+  }
+  async checkDeliveryReceipts(signal = this.controller.signal) {
+    // Receipts must be polled even when the session index is unchanged or AI
+    // sending is disabled. This read-only job never dispatches a second send.
+    if (this.receiptChecking || this.closed) return;
+    this.receiptChecking = true;
+    this.receiptFinished = Promise.withResolvers();
+    const revision = this.revision, account = this.data.account;
+    let changed = false;
+    try {
+      const profiles = this.profiles().filter(p => p.account === account && p.delivery?.status === 'unknown'
+        && this.now() >= (p.delivery.receiptCheckAt || 0)).slice(0, 2);
+      for (const profile of profiles) {
+        const delivery = profile.delivery, operationId = delivery.operationId;
+        const current = () => !signal.aborted && revision === this.revision && account === this.data.account
+          && this.data.profiles[profile.id] === profile && profile.delivery === delivery && delivery.operationId === operationId;
+        delivery.receiptCheckAt = this.now() + receiptCheckIntervalMs;
+        const pending = (profile.sentMessages || []).filter(row => row.deliveryConfidence === 'unknown'
+          && (row.operationId || row.id) === operationId && row.body);
+        let evidence = 'unavailable';
+        if (pending.length && this.ready() && this.contacts.has(profile.contact)) {
+          try {
+            const receiptSignal = AbortSignal.any([signal, AbortSignal.timeout(8000)]);
+            const snapshot = await this.read(profile, receiptSignal, { priority: true });
+            if (!current()) return;
+            this.reconcileUnknownReplies(profile, snapshot); changed = true;
+            if (delivery.status === 'unknown' && this.bridge.readRange && Number.isFinite(delivery.at)) {
+              const times = pending.map(row => row.at).filter(Number.isFinite);
+              const from = Math.floor(Math.min(delivery.at, ...times) / 1000) - 180;
+              const to = Math.ceil(Math.max(delivery.at, ...times) / 1000) + 181;
+              const history = await this.bridge.readRange({ account, contact: profile.contact, from: Math.max(0, from), to, signal: receiptSignal });
+              if (!current()) return;
+              if (history.account !== account || history.contact !== profile.contact || !Array.isArray(history.messages)) throw new AppError('无法确认发送回执范围', 409);
+              if (!history.truncated) { this.reconcileUnknownReplies(profile, history); evidence = 'complete'; }
+            } else evidence = snapshot.truncated ? 'limited' : 'recent';
+          } catch (error) {
+            if (!current() || error.code === 'ai_account_changed') return;
+          }
+        }
+        if (!current()) return;
+        const at = Number.isFinite(delivery.at) ? delivery.at : 0;
+        if (delivery.status === 'unknown' && this.now() - at >= receiptCheckWindowMs) {
+          delivery.status = 'unconfirmed'; delivery.receiptConcludedAt = this.now(); delivery.receiptEvidence = evidence;
+          const detail = `${delivery.segmentsSent ? '部分消息已确认发送；未能核实其余发送结果' : '未能核实发送结果'}，已结束核验，本条不会自动重发`;
+          if (profile.replyFlow?.phase === 'confirming') profile.replyFlow = { ...profile.replyFlow, phase: 'unconfirmed', updatedAt: this.now(), detail };
+          for (const row of pending) { row.receiptConcludedAt = this.now(); row.receiptEvidence = evidence; }
+          this.event('uncertain', profile.id, delivery.source || 'reply', detail, { operationId });
+          if (this.notice === `${this.nameFields(profile).label}：发送结果待核实；本条不会重复发送`) this.notice = `${this.nameFields(profile).label}：${detail}`;
+          changed = true;
+        }
+      }
+      if (changed && !signal.aborted && revision === this.revision && account === this.data.account) await this.save();
+    } finally { this.receiptChecking = false; this.receiptFinished.resolve(); }
   }
   async observe(profile, snapshot) {
     const receiptsChanged = this.reconcileUnknownReplies(profile, snapshot), waitRepaired = this.reconcileManualWait(profile, snapshot);
@@ -2746,6 +2803,9 @@ export class AIAssistant {
     this.memoryRuns.set(profile.id, task); task.catch(() => {});
   }
   async tick({ background = false, urgentReplyId = null } = {}) {
+    if (this.receiptChecking) return;
+    if (!this.ticking && !this.closed && !this.operation && !this.scanOperation
+      && this.profiles().some(p => p.delivery?.status === 'unknown' && this.now() >= (p.delivery.receiptCheckAt || 0))) await this.checkDeliveryReceipts();
     if (this.ticking || this.closed || !this.data.settings.enabled || this.operation || this.scanOperation || !urgentReplyId && this.now() < (this.retryAt || 0)) return;
     if (this.sendBlockedUntil && this.now() >= this.sendBlockedUntil) this.sendBlockedUntil = 0;
     if (this.manualHolds.size || this.now() < (this.userBusyUntil || 0)) return;
@@ -3383,5 +3443,5 @@ export class AIAssistant {
     return { noted: true };
   }
   userActivity() { this.userBusyUntil = this.now() + 15000; this.followUps.clear(); if (!this.operation && (this.ticking || this.activeRuns.size)) this.invalidate(); return { noted: true }; }
-  async close() { this.closed = true; clearInterval(this.timer); clearInterval(this.warmupTimer); this.invalidate(); this.pauseQueue(); await this.tickFinished?.promise; await Promise.allSettled([...this.activeRuns.values(), ...this.memoryRuns.values()]); await this.learningFinished?.promise; await this.actions; await this.save(); await this.writes; await this.bridge.close?.(); }
+  async close() { this.closed = true; clearInterval(this.timer); clearInterval(this.warmupTimer); this.invalidate(); this.pauseQueue(); await this.receiptFinished?.promise; await this.tickFinished?.promise; await Promise.allSettled([...this.activeRuns.values(), ...this.memoryRuns.values()]); await this.learningFinished?.promise; await this.actions; await this.save(); await this.writes; await this.bridge.close?.(); }
 }

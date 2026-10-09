@@ -10,6 +10,7 @@ import { defaultStyle } from '../server/ai-schema.mjs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { LoginState } from '../server/login-state.mjs';
+import { AppError } from '../server/files.mjs';
 
 const account = key('data-account'), contact = key('contact-a'), second = key('contact-b'), revision = key('r1');
 const person = { id: contact, label: '同名联系人', kind: 'person', native: { account: key('native-account'), contact: key('native-contact') } };
@@ -36,6 +37,34 @@ function fixture(handler) {
     } });
   return { bridge, runtime, calls };
 }
+
+test('a busy chat snapshot retries only the same read within a bounded window', async () => {
+  for (const range of [false, true]) {
+    let reads = 0; const { bridge } = fixture(action => {
+      if (['read', 'read-range'].includes(action) && ++reads < 3) throw new AppError('busy', 409, 'ai_data_database_changed');
+    });
+    const delays = []; bridge.receiptDelay = async ms => delays.push(ms);
+    await bridge.scan();
+    const result = await (range ? bridge.readRange({ account, contact, from: 0, to: 200 }) : bridge.read({ account, contact }));
+    assert.equal(result.contact, contact); assert.equal(reads, 3); assert.deepEqual(delays, [150, 300]);
+  }
+});
+
+test('persistent, permanent, cancelled and replaced-account reads never retry indefinitely', async () => {
+  for (const scenario of ['busy', 'permanent', 'cancelled', 'replaced']) {
+    let reads = 0; const controller = new AbortController();
+    const { bridge } = fixture(action => {
+      if (action === 'read') { reads++; throw new AppError('unavailable', 409, scenario === 'permanent' ? 'ai_data_unavailable' : 'ai_data_database_changed'); }
+    });
+    bridge.receiptDelay = async () => {
+      if (scenario === 'cancelled') controller.abort();
+      if (scenario === 'replaced') bridge.bindings.clear();
+    };
+    await bridge.scan();
+    await assert.rejects(bridge.read({ account, contact, signal: controller.signal }));
+    assert.equal(reads, scenario === 'busy' ? 3 : 1);
+  }
+});
 
 async function receiptFixture({ status = 'uncertain', response, unsafe = false, throws = false, committed = true } = {}) {
   const { bridge, runtime } = fixture();

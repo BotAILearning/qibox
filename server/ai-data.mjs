@@ -367,7 +367,23 @@ export class DataChatBridge extends NativeChatBridge {
     const binding = this.binding(args);
     // Set by the bridge caller: an interactive read skipping the queue.
     const priority = args.priority === true;
-    const result = await this.data(range ? 'read-range' : 'read', { account: binding.account, contact: binding.id, ...(range ? { from: args.from, to: args.to, skipUnparsed: true } : {}) }, context, { priority });
+    let result;
+    for (let attempt = 0; ; attempt++) {
+      this.check(context);
+      if (this.bindings.get(binding.id) !== binding) throw unavailable();
+      try {
+        result = await this.data(range ? 'read-range' : 'read', { account: binding.account, contact: binding.id, ...(range ? { from: args.from, to: args.to, skipUnparsed: true } : {}) }, context, { priority });
+        break;
+      } catch (error) {
+        // A busy WAL is a transient snapshot race. Retry only this read, with
+        // the same bound account/process; sending and permanent errors never
+        // pass through this retry path.
+        if (error.code !== 'ai_data_database_changed' || attempt >= 2) throw error;
+        this.check(context);
+        if (this.bindings.get(binding.id) !== binding) throw unavailable();
+        await this.receiptDelay(150 * (attempt + 1), undefined, { signal: context.signal });
+      }
+    }
     if (this.bindings.get(binding.id) !== binding) throw unavailable();
     const maxMessages = range ? 150000 : 300;
     if (result.contact !== binding.id || !key(result.revision) || !Array.isArray(result.messages) || result.messages.length > maxMessages ||

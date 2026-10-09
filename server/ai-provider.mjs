@@ -1,6 +1,5 @@
-import { hasSpeakerTurns, speakerTurns, speakerHistory, speakerAuditPrompt, speakerAuditInput, applySpeakerAudit, naturalSpeakerAuditPrompt, speakerGroundingPrompt, replyRelations, confirmedSpeakerHistory, naturalTurnBrief } from './ai-speakers.mjs';
-import { identityPrompt } from './ai-reply-rules.mjs';
-import { assertReplyRoleInput, assertReplyRoleDraft, replyRolePrompt, replyRoleAuditPrompt, replyRoleEvidencePrompt } from './ai-reply-role.mjs';
+import { hasSpeakerTurns, speakerTurns, speakerHistory, replyRelations, confirmedSpeakerHistory, naturalTurnBrief } from './ai-speakers.mjs';
+import { assertReplyRoleInput, assertReplyRoleDraft, replyRolePrompt, replyRoleEvidencePrompt, replySelfCheckPrompt } from './ai-reply-role.mjs';
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -306,7 +305,7 @@ export class AIProvider {
   }
   async complete(config, system, input, signal, { format = 'json', budget: requestedBudget, retry = true, validate, requireImages = false } = {}) {
     assertReplyRoleInput(input);
-    const roleSystem = input.roleAnchor && hasSpeakerTurns(input) ? system + replyRolePrompt + replyRoleEvidencePrompt : system;
+    const roleSystem = ['reply', 'proactive'].includes(input?.mode) ? system + (input.roleAnchor ? replyRolePrompt + replyRoleEvidencePrompt : '') + replySelfCheckPrompt : system;
     const anthropic = config.protocol === 'anthropic', endpoint = providerEndpoints(config).complete;
     // M3's Anthropic endpoint defaults to thinking off. Natural references need
     // reasoning, especially when checking several actors and implicit subjects.
@@ -324,11 +323,17 @@ export class AIProvider {
     // own default applied, and several hosts default to something small enough
     // to cut a real answer off mid-JSON. Ask for room explicitly instead.
     let budget = requestedBudget ?? outputBudget(textInput);
-    let response, droppedBudget = false, currentSystem = encoded.system, attributionStarted = false;
+    let response, droppedBudget = false, currentSystem = encoded.system;
     for (let attempt = 0; ; attempt++) {
-      attributionStarted = false;
       try {
         const requestBody = { model: config.model, stream: false, ...(budget ? { max_tokens: budget } : {}),
+          // GLM 5.3 defaults to max reasoning, which routinely exhausts the
+          // saved 60-second deadline for chat/audit calls. Its official API
+          // supports low while retaining thinking; never send unsupported off.
+          ...(!anthropic && ['open.bigmodel.cn', 'api.z.ai'].includes(new URL(config.baseUrl).hostname)
+            && /^glm-5\.3(?:-flashx?)?$/i.test(config.model)
+            && ['reply', 'proactive', 'speaker-audit'].includes(input.mode)
+            ? { thinking: { type: 'enabled' }, reasoning_effort: 'low' } : {}),
           ...(reasonAboutSpeakers ? { thinking: { type: 'adaptive' }, ...(!anthropic ? { reasoning_split: true } : {}) } : {}),
           ...(anthropic ? { system: currentSystem, messages: speakerTurns(input, requestContent) }
             : { messages: [{ role: 'system', content: currentSystem }, ...speakerTurns(input, requestContent)] }) };
@@ -393,35 +398,9 @@ export class AIProvider {
           try {
             const checked = typeof validate === 'function' ? await validate(result) : result;
             assertReplyRoleDraft(checked, input);
-            if (!hasSpeakerTurns(input) || checked?.action !== 'send') return checked;
-            attributionStarted = true;
-            let candidate = checked;
-            let repairedAudit = false;
-            for (let pass = 0; pass < 3; pass++) {
-              const auditInput = speakerAuditInput(input, candidate);
-              const auditSystem = speakerAuditPrompt + naturalSpeakerAuditPrompt + speakerGroundingPrompt
-                + (input.roleAnchor ? replyRoleAuditPrompt + replyRoleEvidencePrompt : '')
-                + identityPrompt(input.mode === 'reply' && input.identityPolicy?.asked === true && input.identityPolicy.allowDisclosure === true)
-                + (input.identityPolicy?.asked && !input.identityPolicy.allowDisclosure ? ' 本轮身份问题不要求自动肯定或否定；简短询问对方疑虑属于完整合法回应，不算漏答。不能把这种回应修正成“被你发现了”“不是我亲自回的”或任何自动回复说明，也不能增加真人在场证明。' : '');
-              let audit = await this.complete(config, auditSystem, auditInput, signal, { budget: 8192, retry: false });
-              let verified;
-              try { verified = applySpeakerAudit(candidate, audit, { requireGrounding: true, requireRole: !!input.roleAnchor, requiredReplyIds: auditInput.requiredReplyIds, allowSkip: auditInput.allowSkip }); }
-              catch (error) {
-                if (!retry || repairedAudit || error.code !== 'ai_model_schema') throw error;
-                // One repair of the checker's protocol, never a bypass. Keep the
-                // original draft and evidence; missing comment coverage must
-                // produce a corrected draft rather than invented coverage.
-                repairedAudit = true;
-                audit = await this.complete(config, auditSystem + ' 上次核验JSON缺少有效字段。重新完整核对原draftParts，每个partId都有checks；consistent=true时requiredReplyIds必须逐项有实际正文对应的replyCoverage，roleAnchor存在时还必须完整返回符合固定作者的roleCheck。没有接住评论或固定角色冲突就consistent=false并返回完整修正text，不得为通过校验捏造覆盖片段或角色结论。', auditInput, signal, { budget: 8192, retry: false });
-                verified = applySpeakerAudit(candidate, audit, { requireGrounding: true, requireRole: !!input.roleAnchor, requiredReplyIds: auditInput.requiredReplyIds, allowSkip: auditInput.allowSkip });
-              }
-              if (audit.consistent) return candidate;
-              candidate = typeof validate === 'function' ? await validate(verified) : verified;
-              assertReplyRoleDraft(candidate, input);
-              if (candidate?.action !== 'send') return candidate;
-              if (pass === 2) throw new AppError('回复的发言归属仍有冲突，当前草稿未发送', 502, 'ai_model_schema');
-              console.info('[ai-speaker-corrected]', JSON.stringify({ mode: input.mode, kind: input.kind || 'person' }));
-            }
+            // Role/grounding self-check is part of this generation request.
+            // Local contract validation remains; no second model call is made.
+            return checked;
           }
           catch (error) {
             if ((input?.defaultStyle || Array.isArray(input?.profiles)) && error?.code === 'ai_model_schema') {
@@ -448,13 +427,14 @@ export class AIProvider {
         if (signal?.aborted) throw new AppError('操作已取消', 409);
         const retryableCode = ['ai_model_retry', 'ai_model_response', 'ai_model_format', 'ai_model_schema', 'ai_model_incomplete', 'ai_model_time'];
         const retryable = error instanceof AppError ? retryableCode.includes(error.code) : true;
-        if (retryable && retry && !attributionStarted && attempt < MODEL_RETRY_LIMIT) {
+        if (retryable && retry && attempt < MODEL_RETRY_LIMIT) {
           await this.backoff(attempt, signal);
           if (error instanceof AppError && error.code !== 'ai_model_retry') currentSystem = `${encoded.system}\n上一次返回未通过格式或业务结构校验。${error.code === 'ai_model_time' ? error.message + '。' : ''}请基于同一份输入修正后重新回答，只返回符合原要求的完整 JSON 对象，不要解释。`;
           continue;
         }
         if (error instanceof AppError) throw error;
-        throw new AppError(error.name === 'TimeoutError' ? '模型响应超时，请稍后重试' : '无法连接模型服务，请检查网络和服务地址', 502, 'ai_model_connection');
+        const timedOut = error.name === 'TimeoutError';
+        throw new AppError(timedOut ? '模型响应超时，请稍后重试' : '无法连接模型服务，请检查网络和服务地址', timedOut ? 504 : 502, timedOut ? 'ai_model_timeout' : 'ai_model_connection');
       }
     }
   }

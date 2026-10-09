@@ -3,11 +3,9 @@ import assert from 'node:assert/strict';
 import { AIProvider } from '../server/ai-provider.mjs';
 import { withSpeaker, replyPerspective } from '../server/ai-speakers.mjs';
 import { modelConfig, key } from './ai-fixtures.mjs';
+import { validateReplyResult } from '../server/ai-prompts.mjs';
 
-const auditPass = (text, audio) => ({ consistent: true, checks: [text, ...(audio ? [audio] : [])].map(value =>
-  ({ text: value, attribution: '按已核验发言人保留本人和对方的归属。', grounding: '与原始资料一致；普通接话无新增经历或承诺。' })) });
-
-for(const protocol of ['openai','anthropic']) test(`${protocol}: attribution checks retain the identity switch instead of forcing identity answers`,async()=>{
+for(const protocol of ['openai','anthropic']) test(`${protocol}: a single generation retains the identity switch and includes its own role self-check`,async()=>{
   const profile={account:key('account'),contact:key('contact'),kind:'person'};
   for(const allowDisclosure of [false,true]){
     const requests=[],text=allowDisclosure?'是AI代回的。':'哪里听着不自然？';
@@ -15,39 +13,39 @@ for(const protocol of ['openai','anthropic']) test(`${protocol}: attribution che
     const input={mode:'reply',identityPolicy,replyPerspective:replyPerspective(profile),messages:[withSpeaker({id:'question',direction:'other',text:'你这是不是AI回复的？'},profile)]};
     const provider=new AIProvider({fetcher:async(_url,init)=>{
       const body=JSON.parse(init.body);requests.push(body);
-      const value=requests.length===1?{action:'send',text}:auditPass(text);
+      const value={action:'send',text};
       return Response.json(protocol==='anthropic'?{content:[{type:'text',text:JSON.stringify(value)}]}:{choices:[{message:{content:JSON.stringify(value)}}]});
     }});
     const result=await provider.complete({...modelConfig,protocol},'按身份设置回复',input);
-    assert.equal(result.text,text);assert.equal(requests.length,2);
-    const audit=requests[1],system=protocol==='anthropic'?audit.system:audit.messages[0].content;
-    assert.deepEqual(JSON.parse(audit.messages.at(-1).content).identityPolicy,identityPolicy);
-    assert.match(system,allowDisclosure?/如实简短说明由AI代为回复/:/简短询问对方疑虑属于完整合法回应/);
+    assert.equal(result.text,text);assert.equal(requests.length,1);
+    const request=requests[0],system=protocol==='anthropic'?request.system:request.messages[0].content;
+    assert.deepEqual(JSON.parse(request.messages.at(-1).content).identityPolicy,identityPolicy);
+    assert.match(system,/同次生成自检/);assert.match(system,/遵守当前策略和identityPolicy/);
+    assert.doesNotMatch(system,/roleCheck|consistent=true/);
   }
 });
 
-for (const protocol of ['anthropic','openai']) test(`${protocol}: official M3 attribution checks enable reasoning without leaking it or changing generation and other tasks`, async () => {
+for (const protocol of ['anthropic','openai']) test(`${protocol}: generation stays single-request on official and custom M3 hosts and ignores private reasoning blocks`, async () => {
   const profile={account:key('account'),contact:key('contact'),kind:'person'};
   const input={mode:'reply',replyPerspective:replyPerspective(profile),messages:[withSpeaker({id:key('self'),direction:'self',text:'今天洗了一堆衣服。'},profile)]};
   for(const scenario of [
-    {baseUrl:'https://api.minimaxi.com/anthropic',model:'MiniMax-M3',enabled:true,input},
-    {baseUrl:'https://api.minimax.io/v1',model:'MiniMax-M3',enabled:true,input},
-    {baseUrl:'https://models.example.test/v1',model:'MiniMax-M3',enabled:false,input},
-    {baseUrl:'https://api.minimax.io/v1',model:'another-model',enabled:false,input},
-    {baseUrl:'https://api.minimax.io/v1',model:'MiniMax-M3',enabled:false,input:{mode:'analysis',messages:input.messages}},
+    {baseUrl:'https://api.minimaxi.com/anthropic',model:'MiniMax-M3',input},
+    {baseUrl:'https://api.minimax.io/v1',model:'MiniMax-M3',input},
+    {baseUrl:'https://models.example.test/v1',model:'MiniMax-M3',input},
+    {baseUrl:'https://api.minimax.io/v1',model:'another-model',input},
+    {baseUrl:'https://api.minimax.io/v1',model:'MiniMax-M3',input:{mode:'analysis',messages:input.messages}},
   ]){
     const requests=[];
     const provider=new AIProvider({fetcher:async(_url,options)=>{
       const body=JSON.parse(options.body);requests.push(body);
-      const reasoning=scenario.enabled&&requests.length>1;
-      assert.deepEqual(body.thinking,reasoning?{type:'adaptive'}:undefined);
-      assert.equal(body.reasoning_split,reasoning&&protocol==='openai'?true:undefined);
-      const result=requests.length===1?{action:'send',text:'谢谢夸奖。'}:auditPass('谢谢夸奖。');
+      assert.equal(body.thinking,undefined);
+      assert.equal(body.reasoning_split,undefined);
+      const result={action:'send',text:'谢谢夸奖。'};
       return Response.json(protocol==='anthropic'?{content:[{type:'thinking',thinking:'PRIVATE_REASONING'},{type:'text',text:JSON.stringify(result)}]}:{choices:[{message:{reasoning_content:'PRIVATE_REASONING',content:JSON.stringify(result)}}]});
     }});
     const result=await provider.complete({...modelConfig,baseUrl:scenario.baseUrl,model:scenario.model,protocol},'按协议回复。',scenario.input);
     assert.equal(result.text,'谢谢夸奖。');assert.doesNotMatch(JSON.stringify(result),/PRIVATE_REASONING/);
-    assert.equal(requests.length,scenario.input.mode==='reply'?2:1);
+    assert.equal(requests.length,1);
   }
 });
 
@@ -65,11 +63,11 @@ for (const protocol of ['openai', 'anthropic']) test(`${protocol}: provider task
   const original = structuredClone(input);
   const provider = new AIProvider({ fetcher: async (_url, init) => {
     bodies.push(JSON.parse(init.body));
-    const content = JSON.stringify(bodies.length === 1 ? {action:'send',text:'收到'} : auditPass('收到'));
+    const content = JSON.stringify({action:'send',text:'收到'});
     return Response.json(protocol === 'anthropic' ? { content: [{ type: 'text', text: content }] } : { choices: [{ message: { content } }] });
   } });
   await provider.complete({ ...modelConfig, protocol }, '只能按已验证归属回复。', input);
-  assert.equal(bodies.length, 2);
+  assert.equal(bodies.length, 1);
   const body = bodies[0], turns = protocol === 'anthropic' ? body.messages : body.messages.slice(1);
   assert.equal(turns.length, 1); assert.equal(turns[0].role, 'user');
   const last = turns.at(-1).content;
@@ -128,7 +126,7 @@ for(const protocol of ['openai','anthropic'])test(`${protocol}: image references
   assert.equal(result.selfMemorySuggestions[0].evidence[0],id);
 });
 
-test('a swapped draft is corrected before returning to the sender and cannot change action or follow-up controls', async () => {
+test('one generation receives both actor histories and returns only the final reply controls', async () => {
   const profile = { account: key('account'), contact: key('contact'), kind: 'person' }, calls = [];
   const input = { mode: 'reply', replyPerspective: replyPerspective(profile), messages: [
     withSpeaker({ id: 'mine', direction: 'self', text: '我提的周六。' }, profile),
@@ -136,69 +134,60 @@ test('a swapped draft is corrected before returning to the sender and cannot cha
   ] };
   const provider = new AIProvider({ fetcher: async (_url, init) => {
     const body = JSON.parse(init.body); calls.push(body);
-    const result = calls.length === 1 ? { action: 'send', text: '你提周六，我改周日。', followUp: false }
-      : calls.length === 2 ? { consistent: false, text: '我提周六，你改周日。', action: 'stop', followUp: true } : auditPass('我提周六，你改周日。');
+    const result = { action: 'send', text: '我提周六，你改周日。', followUp: false };
     return Response.json({ choices: [{ message: { content: JSON.stringify(result) } }] });
   } });
   const result = await provider.complete({ ...modelConfig, protocol: 'openai' }, '回信', input);
-  assert.equal(calls.length, 3); assert.deepEqual(result, { action: 'send', text: '我提周六，你改周日。', followUp: false });
-  const auditInput = JSON.parse(calls[1].messages.at(-1).content);
-  assert.equal(auditInput.mode, 'speaker-audit');
-  assert.equal(auditInput.speakerHistory[0].messages[0].text, '我提的周六。');
+  assert.equal(calls.length, 1); assert.deepEqual(result, { action: 'send', text: '我提周六，你改周日。', followUp: false });
+  const wireInput = JSON.parse(calls[0].messages.at(-1).content);
+  assert.equal(wireInput.mode, 'reply');
+  assert.deepEqual(wireInput.messages.map(m => m.speaker.role), ['self', 'other']);
+  assert.match(calls[0].messages[0].content, /不能交换经历/);
 });
 
-test('an invalid attribution check blocks the draft, and corrected audio must be verified alongside text', async () => {
+test('local output validation rejects an invalid final reply without a separate role-check request', async () => {
   const profile = { account: key('account'), contact: key('contact'), kind: 'person' };
   const input = { mode: 'reply', replyPerspective: replyPerspective(profile), messages: [withSpeaker({ id: 'mine', direction: 'self', text: '我住杭州。' }, profile)] };
-  for (const audit of [{ text: '缺少核对结论' }, { consistent: true }, auditPass('我住杭州。'), { consistent: false, text: '我住杭州。' }]) {
+  for (const invalid of [{ action: 'send' }, { action: 'skip', text: '不能携带正文' }, { action: 'send', text: '收到', followUp: 'yes' }]) {
     let calls = 0;
     const provider = new AIProvider({ fetcher: async () => {
-      const value = ++calls === 1 ? { action: 'send', text: '我住苏州。', media: [{ type: 'audio', text: '我住苏州。' }] } : audit;
-      return Response.json({ choices: [{ message: { content: JSON.stringify(value) } }] });
+      calls++;
+      return Response.json({ choices: [{ message: { content: JSON.stringify(invalid) } }] });
     } });
-    await assert.rejects(provider.complete({ ...modelConfig, protocol: 'openai' }, '回信', input, undefined, { retry: false }), /归属核对结果无效/);
-    assert.equal(calls, 2);
+    await assert.rejects(provider.complete({ ...modelConfig, protocol: 'openai' }, '回信', input, undefined, { retry: false, validate: validateReplyResult }), { code: 'ai_model_schema' });
+    assert.equal(calls, 1);
   }
 });
 
-test('a correction that still conflicts is never returned, and a verified audio correction replaces both channels', async () => {
+test('one generation keeps the final text and spoken transcript together', async () => {
   const profile = { account: key('account'), contact: key('contact'), kind: 'person' };
   const input = { mode: 'reply', replyPerspective: replyPerspective(profile), messages: [withSpeaker({ id: 'mine', direction: 'self', text: '我住杭州。' }, profile)] };
-  for (const verified of [false, true]) {
-    let calls = 0;
-    const provider = new AIProvider({ fetcher: async () => {
-      const value = ++calls === 1 ? { action: 'send', text: '我住苏州。', media: [{ type: 'audio', text: '我住苏州。' }] }
-        : calls === 2 || !verified ? { consistent: false, text: '我住杭州。', audioText: '我住杭州。' } : auditPass('我住杭州。','我住杭州。');
-      return Response.json({ choices: [{ message: { content: JSON.stringify(value) } }] });
-    } });
-    const operation = provider.complete({ ...modelConfig, protocol: 'openai' }, '回信', input, undefined, { retry: false });
-    if (verified) {
-      const result = await operation; assert.equal(result.text, '我住杭州。'); assert.equal(result.media[0].text, '我住杭州。');
-    } else await assert.rejects(operation, /归属仍有冲突/);
-    assert.equal(calls, verified ? 3 : 4);
-  }
+  let calls = 0;
+  const provider = new AIProvider({ fetcher: async (_url, options) => {
+    calls++;
+    assert.match(JSON.parse(options.body).messages[0].content, /全部segments及语音全文/);
+    return Response.json({ choices: [{ message: { content: JSON.stringify({ action: 'send', text: '我住杭州。', media: [{ type: 'audio', text: '我住杭州。' }] }) } }] });
+  } });
+  const result = await provider.complete({ ...modelConfig, protocol: 'openai' }, '回信', input, undefined, { validate: validateReplyResult });
+  assert.equal(result.text, '我住杭州。'); assert.equal(result.media[0].text, '我住杭州。'); assert.equal(calls, 1);
 });
 
-test('one malformed coverage audit can repair the draft without dropping its comment or weakening the checks', async () => {
+test('one generation keeps the quoted comment and latest incoming message linked', async () => {
   const profile={account:key('account'),contact:key('contact'),kind:'person'};
   const own=withSpeaker({id:key('own'),direction:'self',text:'我洗了衣服。'},profile);
   const incoming=withSpeaker({id:key('new'),direction:'other',text:'很勤快，我整理了桌面。',pending:true,
     quote:{verified:true,messageId:own.id,direction:'self',text:own.text,speaker:own.speaker}},profile);
-  const input={mode:'reply',replyPerspective:replyPerspective(profile),messages:[own,incoming]};
-  for(const repaired of [true,false]){
-    const bodies=[];
-    const provider=new AIProvider({fetcher:async(_url,options)=>{
-      const body=JSON.parse(options.body);bodies.push(body);
-      const value=bodies.length===1?{action:'send',text:'桌面整好了挺好。',followUp:false}
-        :bodies.length===2||!repaired?{consistent:true,checks:[{partId:'reply_1',attribution:'回应对方',grounding:'对方明确整理桌面'}]}
-        :bodies.length===3?{consistent:false,text:'哈哈，桌面整理好了挺好。'}
-        :{...auditPass('哈哈，桌面整理好了挺好。'),replyCoverage:[{messageId:'message_2',text:'哈哈',attribution:'接受对本人勤快的评论'}]};
-      return Response.json({choices:[{message:{content:JSON.stringify(value)}}]});
-    }});
-    const operation=provider.complete({...modelConfig,protocol:'openai'},'自然回应双方事项',input);
-    if(repaired){const result=await operation;assert.equal(result.text,'哈哈，桌面整理好了挺好。');assert.equal(bodies.length,4);}
-    else {await assert.rejects(operation,/归属核对结果无效/);assert.equal(bodies.length,3);}
-    assert.match(bodies[2].messages[0].content,/不得为通过校验捏造覆盖片段/);
-    assert.deepEqual(JSON.parse(bodies[1].messages.at(-1).content),JSON.parse(bodies[2].messages.at(-1).content));
-  }
+  const input={mode:'reply',replyPerspective:replyPerspective(profile),messages:[own,incoming],conversation:{pendingIncomingIds:[incoming.id],pendingIncomingMessages:[incoming]}};
+  const bodies=[];
+  const provider=new AIProvider({fetcher:async(_url,options)=>{
+    const body=JSON.parse(options.body);bodies.push(body);
+    const wire=JSON.parse(body.messages.at(-1).content),pending=wire.conversation.pendingIncomingMessages[0];
+    assert.equal(pending.quote.speaker.role,'self'); assert.equal(pending.speaker.role,'other');
+    assert.equal(pending.quote.messageId,wire.messages[0].id);
+    assert.deepEqual(wire.conversation.pendingIncomingIds,[wire.messages[1].id]);
+    assert.match(body.messages[0].content,/接住对本人原话的评论/);
+    return Response.json({choices:[{message:{content:JSON.stringify({action:'send',text:'哈哈，桌面整理好了挺好。',followUp:false})}}]});
+  }});
+  const result=await provider.complete({...modelConfig,protocol:'openai'},'自然回应双方事项',input);
+  assert.equal(result.text,'哈哈，桌面整理好了挺好。');assert.equal(bodies.length,1);
 });

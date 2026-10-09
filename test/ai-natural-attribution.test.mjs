@@ -112,26 +112,25 @@ test('grounded approval covers every reply clause and voice without omitting fac
  }
 });
 
-test('actual provider sends natural quote context to an independent checker and rechecks its corrected draft',async()=>{
+test('actual provider preserves natural quote context in one generation and requests an internal self-check',async()=>{
  const profile={account,contact,kind:'group'};const messages=[own,incoming].map(m=>withSpeaker(m,profile));let calls=0;
  const provider=new AIProvider({fetcher:async(_url,options)=>{
   const body=JSON.parse(options.body);calls++;
-  let output;
-  if(calls===1){assert.match(JSON.stringify(body.messages),/今天我洗了好多/);output={action:'send',text:'辛苦你了，洗被子真累。'};}
-  else{
-   assert.match(body.messages[0].content,/自然接话的归属/);
-   const audit=JSON.parse(body.messages[1].content);
-   assert.equal(audit.pendingIncomingMessages[0].quote.speaker.role,'self');
-   if(calls===2)output={consistent:false,text:'是洗了一大堆哈哈。'};
-   else{assert.equal(audit.draft.text,'是洗了一大堆哈哈。');output={consistent:true,checks:[{text:audit.draft.text,attribution:'洗衣的是本人，群成员夸本人。',grounding:'本人原话明确说今天洗了好多衣服被子，没有新增天气、地点或邀约。'}],replyCoverage:[{messageId:audit.requiredReplyIds[0],text:audit.draft.text,attribution:'接住夸本人洗得多的评论。'}]};}
-  }
+  assert.match(JSON.stringify(body.messages),/今天我洗了好多/);
+  assert.match(body.messages[0].content,/同次生成自检/);
+  const wire=JSON.parse(body.messages[1].content);
+  assert.equal(wire.mode,'reply');
+  assert.equal(wire.conversation.pendingIncomingMessages[0].quote.speaker.role,'self');
+  assert.equal(wire.conversation.pendingIncomingMessages[0].speaker.role,'group_member');
+  assert.equal(wire.conversation.pendingIncomingMessages[0].quote.messageId,wire.messages[0].id);
+  const output={action:'send',text:'是洗了一大堆哈哈。'};
   return new Response(JSON.stringify({choices:[{message:{content:JSON.stringify(output)},finish_reason:'stop'}]}),{status:200});
  }});
  const result=await provider.complete(modelConfig,'只返回回复 JSON。',{mode:'reply',kind:'group',replyPerspective:replyPerspective(profile),messages,conversation:{pendingIncomingIds:[incoming.id],pendingIncomingMessages:[messages[1]]}});
- assert.equal(result.text,'是洗了一大堆哈哈。');assert.equal(calls,3);
+ assert.equal(result.text,'是洗了一大堆哈哈。');assert.equal(calls,1);
 });
 
-test('auditor may decline optional group interjections but cannot drop a required or proactive reply',async()=>{
+test('legacy audit helpers keep optional-group semantics and one generation can return its final skip directly',async()=>{
  const draft={action:'send',text:'我也在现场，晒得很。',followUp:true,media:[{type:'image',prompt:'unused'}]};
  assert.deepEqual(applySpeakerAudit(draft,{consistent:false,action:'skip'},{allowSkip:true}),{action:'skip',followUp:false});
  assert.throws(()=>applySpeakerAudit(draft,{consistent:false,action:'skip'}),{code:'ai_model_schema'});
@@ -140,16 +139,10 @@ test('auditor may decline optional group interjections but cannot drop a require
  }
  let calls=0;
  const provider=new AIProvider({fetcher:async()=>{
-  const output=++calls===1?draft:{consistent:false,action:'skip'};
+  calls++;
+  const output={action:'skip',followUp:false};
   return new Response(JSON.stringify({choices:[{message:{content:JSON.stringify(output)},finish_reason:'stop'}]}),{status:200});
  }});
  const result=await provider.complete(modelConfig,'只返回JSON。',{mode:'reply',kind:'group',groupState:{trigger:'realtime'},replyPerspective:replyPerspective({account,contact,kind:'group'}),messages:[own,incoming].map(m=>withSpeaker(m,{account,contact,kind:'group'}))});
- assert.deepEqual(result,{action:'skip',followUp:false});assert.equal(calls,2);
- calls=0;
- const secondChecker=new AIProvider({fetcher:async()=>{
-  const output=[draft,{consistent:false,text:'大家今天都挺累。'},{consistent:false,action:'skip'}][calls++];
-  return new Response(JSON.stringify({choices:[{message:{content:JSON.stringify(output)},finish_reason:'stop'}]}),{status:200});
- }});
- const final=await secondChecker.complete(modelConfig,'只返回JSON。',{mode:'reply',kind:'group',groupState:{trigger:'realtime'},replyPerspective:replyPerspective({account,contact,kind:'group'}),messages:[own,incoming].map(m=>withSpeaker(m,{account,contact,kind:'group'}))});
- assert.deepEqual(final,{action:'skip',followUp:false});assert.equal(calls,3);
+ assert.deepEqual(result,{action:'skip',followUp:false});assert.equal(calls,1);
 });
