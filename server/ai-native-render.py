@@ -15,6 +15,36 @@ INCOMING = 0xEEEEF0
 OUTGOING = 0x9DF29F
 TIME_LABEL = re.compile(r'(?:(?:星期[一二三四五六日天]|昨天|今天|前天|周[一二三四五六日天])\s+|(?:\d{4}[年/-])?\d{1,2}[月/-]\d{1,2}日?\s+)?(?:[01]?\d|2[0-3]):[0-5]\d(?::[0-5]\d)?')
 MEDIA_LABEL = re.compile(r'\[(?:图片|动画表情|视频|语音|文件|位置|链接|聊天记录|小程序|视频号|转账|红包)\].*', re.S)
+CONTEXT_MEDIA = {'图片': 'image', '图片消息': 'image', '[图片]': 'image',
+                 '视频': 'video', '视频消息': 'video', '[视频]': 'video'}
+
+
+def media_kind(text):
+    return CONTEXT_MEDIA.get(text.strip()) if isinstance(text, str) else None
+
+
+def sample_fraction(colors, value):
+    if not isinstance(colors, Counter) or any(type(color) is not int or not 0 <= color <= 0xffffff or type(count) is not int or count < 0 for color, count in colors.items()):
+        raise ValueError('invalid pixel samples')
+    total = sum(colors.values())
+    if total < 50: raise ValueError('clipped row')
+    return colors.get(value, 0) / total
+
+
+def classify_media_row(text, height, left, right, left_bubble, right_bubble):
+    """Media context for voice alignment only; never authorize a text send.
+
+    Pictures have arbitrary colors instead of the text bubble fill. Require a
+    known native media label, one avatar lane and an empty opposite lane. The
+    caller must also match the media type and a unique text anchor to the DB.
+    """
+    if not media_kind(text): raise ValueError('unsupported message content')
+    if type(height) is not int or height < 39: raise ValueError('clipped row')
+    lb, rb = sample_fraction(left, BACKGROUND), sample_fraction(right, BACKGROUND)
+    lbb, rbb = sample_fraction(left_bubble, BACKGROUND), sample_fraction(right_bubble, BACKGROUND)
+    if rb >= .98 and lb < .65 and lbb < .98 and rbb >= .98: return 'other'
+    if lb >= .98 and rb < .65 and rbb < .98 and lbb >= .98: return 'self'
+    raise ValueError('unsupported message rendering')
 
 
 def classify_row(text, height, left, right, left_bubble, right_bubble):
@@ -23,13 +53,7 @@ def classify_row(text, height, left, right, left_bubble, right_bubble):
         raise ValueError('unsupported message content')
     if type(height) is not int or height < 39:
         raise ValueError('clipped row')
-    def fraction(colors, value):
-        if not isinstance(colors, Counter) or any(type(color) is not int or not 0 <= color <= 0xffffff or type(count) is not int or count < 0 for color, count in colors.items()):
-            raise ValueError('invalid pixel samples')
-        total = sum(colors.values())
-        if total < 50:
-            raise ValueError('clipped row')
-        return colors.get(value, 0) / total
+    fraction = sample_fraction
     lb, rb = fraction(left, BACKGROUND), fraction(right, BACKGROUND)
     lbb, rbb = fraction(left_bubble, BACKGROUND), fraction(right_bubble, BACKGROUND)
     lbi, rbo = fraction(left_bubble, INCOMING), fraction(right_bubble, OUTGOING)
@@ -82,7 +106,7 @@ class DesktopFrame:
     def pixel(self, x, y):
         return self.xlib.XGetPixel(self.image, x, y) & 0xffffff
 
-    def direction(self, text, bounds):
+    def direction(self, text, bounds, *, media_context=False):
         vx, vy, width, height = self.bounds
         x, y, w, h = bounds
         top = y - vy
@@ -92,7 +116,8 @@ class DesktopFrame:
         # bubble and empty opposite lanes; other layouts need separate evidence.
         def patch(start, end):
             return Counter(self.pixel(xx, yy) for yy in range(top+8, top+min(h, 42), 2) for xx in range(start, end, 2))
-        return classify_row(text, h, patch(20,52), patch(width-52,width-20), patch(60,90), patch(width-90,width-60))
+        classifier = classify_media_row if media_context else classify_row
+        return classifier(text, h, patch(20,52), patch(width-52,width-20), patch(60,90), patch(width-90,width-60))
 
     def close(self):
         if self.image:

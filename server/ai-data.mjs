@@ -245,7 +245,7 @@ export class DataChatBridge extends NativeChatBridge {
       const image=result.image;
       if (!image) return null;
       if (!['image/jpeg','image/png','image/gif','image/webp'].includes(image.mime) || typeof image.data !== 'string' || image.data.length > 5600000 || !/^[A-Za-z0-9+/]+={0,2}$/.test(image.data)) throw unavailable();
-      return {messageId:args.messageId,mime:image.mime,data:image.data};
+      return {messageId:args.messageId,mime:image.mime,data:image.data,...(image.thumbnail === true ? {thumbnail:true} : {})};
     }
     if (action === 'read-video') {
       const binding = this.binding(args);

@@ -38,8 +38,8 @@ test('no unique receipt has a final honest conclusion, survives restart, and nev
   const {a,p,advance,sends}=await fixture(t);advance(181000);await a.checkDeliveryReceipts();
   assert.equal(p.delivery.status,'unconfirmed');assert.equal(p.rounds,0);assert.equal(p.replyFlow.phase,'unconfirmed');
   assert.match(p.replyFlow.detail,/已结束核验.*不会自动重发/);assert.equal(p.sentMessages[0].deliveryConfidence,'unknown');
-  const live=a.liveStates().find(row=>row.id===p.id);assert.equal(live.phase,'unconfirmed');
-  assert.match(replyFlowMarkup(p,live),/核验已结束/);assert.doesNotMatch(replyFlowMarkup(p,live,{allowSkip:true}),/data-ai-skip-reply-wait/);
+  assert.equal(a.liveStates().find(row=>row.id===p.id),undefined);
+  assert.equal(replyFlowMarkup(p,undefined,{allowSkip:true}),'');
   await a.checkDeliveryReceipts();assert.equal(sends(),0);
   p.handledIncomingId = p.delivery.baseline;
   await a.settings({ enabled: true }); await a.tick(); await a.tick(); assert.equal(sends(), 0);

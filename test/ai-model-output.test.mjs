@@ -82,10 +82,10 @@ test('提示词对返回结构有明确约定，对正文写法不做格式化�
   assert.match(batchLearningPrompt, /profiles 的长度必须与输入 conversations 的长度完全一致/);
 });
 
-test('未转化语音在实时回复可跳过，明确提及仍回复文字说明', () => {
+test('未转化语音和未识别图片均跳过，包括明确提及', () => {
   assert.match(conversationPrompt, /unresolved=true 表示该条语音未转化出文字，直接忽略该条语音/);
-  assert.match(conversationPrompt, /@所有人及实时回复可返回 action=skip/);
-  assert.match(conversationPrompt, /已验证的@我仍须用文字说明暂时无法读取/);
+  assert.match(conversationPrompt, /无论私聊或群聊、是否@我，都直接返回action=skip/);
+  assert.match(conversationPrompt, /不发送解释或要求对方转文字/);
 });
 
 test('记忆学习覆盖全部材料、筛掉寒暄占位并允许空 entries', () => {

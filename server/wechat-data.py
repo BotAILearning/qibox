@@ -1227,7 +1227,10 @@ def execute(request, pid, home, check, cache=None):
         session_hint = None
     # A cold native-session scan can take seconds and does not read chat data.
     # Exclude that work from the interval requiring stable DB/WAL versions.
-    versions = file_versions(files)
+    resource_file = root / 'message/message_resource.db' if request.get('action') == 'read-image' else None
+    resource_file = safe_file(root, resource_file) if resource_file is not None and resource_file.is_file() else None
+    key_files = files + ([resource_file] if resource_file is not None else [])
+    versions = file_versions(key_files)
     cache_key = (request.get('action'), request.get('account'), request.get('contact'), request.get('messageId'), request.get('skipUnparsed') is True, bounds, tuple(str(f) for f in files))
     if cache is not None:
         previous = cache.snapshots.get(cache_key)
@@ -1241,12 +1244,12 @@ def execute(request, pid, home, check, cache=None):
                 cache.clear()
                 return {'error': 'account-changed'}
             check()
-            check_versions(files, versions)
+            check_versions(key_files, versions)
             cache.snapshots.move_to_end(cache_key)
             return {**previous[1], **({'sessionHint': session_hint} if request['action'] == 'read' else {})}
     # contact.db authenticates the account and the address book: without its key
     # there is no read at all, so it is never skipped as "already searched".
-    keys = cache.authenticated_keys(pid, files, check, required=(contact_file,)) if cache is not None else discover_keys(pid, 3, files, check)
+    keys = cache.authenticated_keys(pid, key_files, check, required=(contact_file,)) if cache is not None else discover_keys(pid, 3, key_files, check)
     def database(file):
         with file.open('rb') as stream:
             salt = stream.read(16)
@@ -1283,7 +1286,7 @@ def execute(request, pid, home, check, cache=None):
                 return {'error': 'account-changed'}
             result = {'available': True, 'account': account}
             if cache is not None: cache.remember(cache_key, versions, result)
-            check_versions(files, versions)
+            check_versions(key_files, versions)
             check()
             return result
         avatar_columns = ", small_head_url, big_head_url" if {'small_head_url', 'big_head_url'} <= columns else ", '', ''"
@@ -1337,7 +1340,7 @@ def execute(request, pid, home, check, cache=None):
                         keep = ordered_keys[:RANGE_MAX_MESSAGES + 1] if bounds else ordered_keys[-RECENT_REPLY_SCAN:]
                         candidates = {key: candidates[key] for key in keep}
                     finally: shard.close()
-                check_versions(files, versions)
+                check_versions(key_files, versions)
                 metadata_more = bool(bounds and len(candidates) > RANGE_MAX_MESSAGES)
                 if metadata_more:
                     keep = sorted(candidates, key=lambda key: min(x['_order'] for x in candidates[key]))[:RANGE_MAX_MESSAGES + 1]
@@ -1448,7 +1451,12 @@ def execute(request, pid, home, check, cache=None):
                           'revision': message_revision(recent)}
                 if request['action'] == 'read-image':
                     message = next((m for m in ordered if m['id'] == request.get('messageId') and m.get('type') == 'image' and m['direction'] in ('self', 'other')), None)
-                    image = images.read_image(root.parent, target['username'], message.get('_image'), message['timestamp'], check) if message else None
+                    resource_db = database(resource_file) if resource_file is not None else None
+                    try:
+                        resource = images.image_resource(resource_db, target['username'], message) if resource_db is not None and message else None
+                    finally:
+                        if resource_db is not None: resource_db.close()
+                    image = images.read_image(root.parent, target['username'], message.get('_image'), message['timestamp'], check, resource=resource) if message else None
                     result = {'account': account, 'contact': target['id'], 'messageId': request.get('messageId'), 'image': image}
                 if request['action'] == 'read-video':
                     message = next((m for m in ordered if m['id'] == request.get('messageId') and m.get('type') == 'video' and m['direction'] in ('self', 'other')), None)
@@ -1465,7 +1473,7 @@ def execute(request, pid, home, check, cache=None):
         if active_root(pid, home) != root:
             if cache is not None: cache.clear()
             return {'error': 'account-changed'}
-        check_versions(files, versions)
+        check_versions(key_files, versions)
         check()
         # A range can carry up to 30,000 messages and nearly the worker's line
         # budget. Do not retain that body in the 15-minute snapshot cache; the

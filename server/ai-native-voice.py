@@ -79,14 +79,16 @@ def align(rows, messages, target):
     # Native history includes date/time separator rows; callers remove only
     # independently classified system rows, never arbitrary unknown messages.
     if len(rows) > len(messages) or len(rows) < 2: raise ValueError('voice context unavailable')
-    def signature(m): return (m['direction'], '[语音]' if m.get('type') == 'voice' else m['text'])
+    def signature(m):
+        placeholder = {'voice': '[语音]', 'image': '[图片]', 'video': '[视频]'}.get(m.get('type'))
+        return (m['direction'], m.get('type', 'text'), placeholder or m['text'])
     visible = [signature(m) for m in rows]
     starts = [start for start in range(len(messages) - len(rows) + 1)
               if visible == [signature(m) for m in messages[start:start + len(rows)]]]
     if len(starts) != 1: raise ValueError('voice context changed')
     start = starts[0]
-    anchor = [m['text'] for m in rows if m.get('type') != 'voice' and m.get('direction') in ('self', 'other')]
-    if not anchor or not any(sum(x.get('text') == text and x.get('type') != 'voice' for x in messages) == 1 for text in anchor):
+    anchor = [m['text'] for m in rows if m.get('type', 'text') == 'text' and m.get('direction') in ('self', 'other')]
+    if not anchor or not any(sum(x.get('text') == text and x.get('type', 'text') == 'text' for x in messages) == 1 for text in anchor):
         raise ValueError('voice context ambiguous')
     index = candidates[0] - start
     if index < 0: raise ValueError('voice before viewport')
@@ -140,7 +142,7 @@ def rebase_visible_rows(rows, baseline, target_index, viewport_top, row_objects,
     # rows alone cannot prove that a similarly sized replacement is the same
     # native message after virtualization.
     target_offset = target_index - start
-    if not any(offset != target_offset and entry.get('type') != 'voice'
+    if not any(offset != target_offset and entry.get('type', 'text') == 'text'
                and entry.get('direction') in ('self', 'other')
                for offset, entry in enumerate(retained)):
         raise ValueError('voice context ambiguous')
@@ -167,8 +169,10 @@ def convert(adapter, request, account, contact):
                 if bounds[1] < viewport[1] or bounds[1] + bounds[3] > viewport[1] + viewport[3]:
                     continue
                 voice = voice_row(name)
-                direction = frame.direction('语音消息' if voice else name, bounds)
-                item = {'text': name, 'direction': direction, **({'type': 'voice'} if voice else {}),
+                media = adapter.render.media_kind(name) if not voice else None
+                direction = frame.direction(name, bounds, media_context=True) if media else frame.direction('语音消息' if voice else name, bounds)
+                kind = 'voice' if voice else media
+                item = {'text': name, 'direction': direction, **({'type': kind} if kind else {}),
                         'index': i, 'obj': ins.call('get_child_at_index', c.c_void_p, layout['message_list'], i)}
                 baseline.append(item)
                 if direction != 'system': visible.append(item)

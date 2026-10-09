@@ -57,7 +57,7 @@ export function proactiveRecordRows(state, filters = {}, loading = false) {
   }).join('') || `<div class="ap-empty">${loading ? '正在读取主动聊天记录…' : '已加载范围内暂无符合条件的主动聊天记录'}</div>`}</div><footer class="ap-record-footer"><span>已加载 ${state.proactiveRecords?.length || 0} 条，当前筛选显示 ${records.length} 条</span>${state.proactiveRecordsPage?.hasMore ? `<button class="secondary" type="button" data-proactive-record-more ${loading ? 'disabled' : ''}>${loading ? '正在读取…' : '加载更早记录'}</button>` : '<span>当前加载范围已到末尾</span>'}</footer>`;
 }
 export function liveActivityBox(state) {
-  const live = state.live || [];
+  const live = (state.live || []).filter(row => ['waiting', 'summarizing', 'requesting', 'generating', 'sending', 'confirming', 'failed'].includes(row.phase));
   if (!live.length) return '';
   return `<details class="ap-record-live qbx-record-section" data-ai-optional="activity-live"><summary><h4>实时状态</h4></summary><div class="qbx-record-section-body"><ul>${live.map(x => {
     const profile = (state.profiles || []).find(profile => profile.id === x.id);

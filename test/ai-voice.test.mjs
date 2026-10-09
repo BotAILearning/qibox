@@ -38,9 +38,9 @@ for (const failure of ['missing', 'empty', 'error', 'stale']) test(`voice ${fail
     return failure === 'stale' ? { status: 'stale' } : { text: '', source: 'wechat' };
   };
   provider.next = async input => { assert.equal(input.capabilityConcern,'voice'); return {action:'skip'}; };
-  await a.tick(); assert.equal(bridge.sent.length, 0); assert.equal(provider.calls.length, failure === 'stale' ? 0 : 1);
+  await a.tick(); assert.equal(bridge.sent.length, 0); assert.equal(provider.calls.length, 0);
   if (failure === 'stale') assert.equal(!!p.paused, false);
-  else { assert.equal(p.paused, false); assert.equal(a.publicState().skipRecords[0].source, 'model-skip'); }
+  else { assert.equal(p.paused, false); assert.equal(a.publicState().skipRecords[0].source, 'system-skip'); assert.equal(a.liveStates().some(row=>row.id===p.id),false); }
 });
 
 test('a manual reply during conversion cancels the older voice reply', async t => {
@@ -73,7 +73,7 @@ test('two pending WeChat voice transcripts reach the model together beside expli
   bridge.transcribe = async ({ messageId }) => { converted.push(messageId); return { text: transcripts.get(messageId), source: 'wechat' }; };
   provider.next = async input => {
     const old = input.messages.find(message => message.id === oldVoice.id);
-    assert.equal(old.unresolved, true);
+    assert.equal(old, undefined);
     const one = input.messages.find(message => message.id === first.id);
     const two = input.messages.find(message => message.id === second.id);
     assert.equal(one.text, transcripts.get(first.id)); assert.equal(one.transcriptionSource, 'wechat'); assert.equal(one.unresolved, undefined);

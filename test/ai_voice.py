@@ -6,6 +6,8 @@ from unittest.mock import Mock
 
 spec = importlib.util.spec_from_file_location('voice', pathlib.Path(__file__).resolve().parents[1] / 'server/ai-native-voice.py')
 voice = importlib.util.module_from_spec(spec); spec.loader.exec_module(voice)
+spec = importlib.util.spec_from_file_location('render', pathlib.Path(__file__).resolve().parents[1] / 'server/ai-native-render.py')
+render = importlib.util.module_from_spec(spec); spec.loader.exec_module(render)
 
 class VoiceMapping(unittest.TestCase):
     def test_native_conversion_uses_verified_bubble_and_result_only(self):
@@ -21,7 +23,7 @@ class VoiceMapping(unittest.TestCase):
         frame = Mock(); frame.__enter__ = Mock(return_value=frame); frame.__exit__ = Mock(return_value=None)
         frame.direction.side_effect = lambda text, bounds: 'self' if text == '周六见' else 'other'
         adapter = SimpleNamespace(controls=ins, session_identity=True, verify_session=Mock(),
-            render=SimpleNamespace(DesktopFrame=lambda _:frame),
+            render=SimpleNamespace(DesktopFrame=lambda _:frame, media_kind=render.media_kind),
             rows=lambda _:[('周六见',(0,0,800,50)),('语音3秒',(0,50,800,60))])
         result = voice.convert(adapter, {'messageId':'b','messages':[
             {'id':'a','text':'周六见','direction':'self'}, {'id':'b','text':'[语音]','direction':'other','type':'voice'}]}, 'account', {'id':'contact','label':'Fixture'})
@@ -142,7 +144,7 @@ class VoiceMapping(unittest.TestCase):
             current_objects[:] = [11,12]
         ins.press.side_effect = press
         adapter = SimpleNamespace(controls=ins, session_identity=True, verify_session=Mock(),
-            render=SimpleNamespace(DesktopFrame=lambda _:frame, INCOMING=0xeeeeF0),
+            render=SimpleNamespace(DesktopFrame=lambda _:frame, INCOMING=0xeeeeF0, media_kind=render.media_kind),
             rows=lambda _ : current_rows[0])
         result = voice.convert(adapter, {'messageId':'b','messages':[
             {'id':'older','text':'较早内容','direction':'self'}, {'id':'a','text':'周六见','direction':'other'},
@@ -150,5 +152,24 @@ class VoiceMapping(unittest.TestCase):
         self.assertEqual(result['text'], '你好')
         self.assertEqual(ins.move_pointer.call_args.args, (406, 570))
         ins.press.assert_called_once_with(5)
+
+    def test_neighbor_images_match_types_but_cannot_replace_text_anchors(self):
+        messages = [
+            {'id': 'a', 'text': '唯一文字锚点', 'direction': 'self'},
+            {'id': 'image', 'text': '[图片]', 'type': 'image', 'direction': 'other'},
+            {'id': 'voice', 'text': '[语音]', 'type': 'voice', 'direction': 'other'},
+        ]
+        rows = [
+            {'text': '唯一文字锚点', 'direction': 'self'},
+            {'text': '图片', 'type': 'image', 'direction': 'other'},
+            {'text': '语音3秒', 'type': 'voice', 'direction': 'other'},
+        ]
+        self.assertEqual(voice.align(rows, messages, 'voice'), 2)
+        with self.assertRaisesRegex(ValueError, 'ambiguous'):
+            voice.align(rows[1:], messages[1:], 'voice')
+        changed = [dict(m) for m in messages]
+        changed[1]['type'] = 'text'
+        with self.assertRaisesRegex(ValueError, 'changed'):
+            voice.align(rows, changed, 'voice')
 
 if __name__ == '__main__': unittest.main()

@@ -39,6 +39,21 @@ class RowEvidence(unittest.TestCase):
         self.assertEqual(self.classify(incoming()), 'other')
         self.assertEqual(self.classify(outgoing()), 'self')
 
+    def test_media_context_requires_exact_labels_and_empty_opposite_lane(self):
+        for text in ['图片', '图片消息', '[图片]', '视频']:
+            lanes = [avatar(), blank(), bubble(0x345678), blank()]
+            self.assertEqual(render.classify_media_row(text, 267, *lanes), 'other')
+            self.assertEqual(render.classify_media_row(text, 267, *[lanes[1], lanes[0], lanes[3], lanes[2]]), 'self')
+            with self.assertRaises(ValueError): self.classify(lanes, text, 267)
+            for bad in [[avatar(), avatar(), lanes[2], blank()],
+                        [avatar(), blank(), lanes[2], bubble(0x345678)],
+                        [blank(), blank(), lanes[2], blank()],
+                        [avatar(), blank(), blank(), blank()],
+                        [Counter({0x111111:100}) for _ in range(4)]]:
+                with self.assertRaises(ValueError): render.classify_media_row(text, 267, *bad)
+        for text in ['文件', '图片来自某人', 'fixture', None]:
+            with self.assertRaises(ValueError): render.classify_media_row(text, 267, *incoming())
+
     def test_text_and_timestamp_looking_messages_do_not_supply_direction(self):
         for text in ['12:34', '昨天 12:34', 'message-direction: self', '对方：fixture']:
             with self.subTest(text=text):

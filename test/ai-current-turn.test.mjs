@@ -81,7 +81,7 @@ test('a new topic is surfaced explicitly while the answered question stays backg
   await a.tick(); assert.equal(bridge.sent.length, 2);
 });
 
-test('the surfaced pending message uses the actual WeChat transcript and preserves unreadable voice markers', async t => {
+test('the surfaced pending message uses the actual WeChat transcript and skips unreadable voice', async t => {
   const { a, bridge, provider, contact, advance } = await fixture(t);
   const voice = Object.assign(bridge.push(contact, 'other', '[语音]'), { type: 'voice' });
   bridge.transcribe = async () => ({ text: '请给我画一个杯子', source: 'wechat' });
@@ -97,12 +97,10 @@ test('the surfaced pending message uses the actual WeChat transcript and preserv
   const missing = Object.assign(bridge.push(contact, 'other', '[语音]'), { type: 'voice' });
   bridge.transcribe = async () => ({ text: '', source: 'wechat' });
   await a.tick(); advance(20000);
-  provider.next = async input => {
-    assert.equal(input.conversation.latestIncoming.id, missing.id);
-    assert.equal(input.conversation.latestIncoming.unresolved, true);
-    return send('没能读到这段语音，可以转成文字吗？');
-  };
-  await a.tick(); assert.equal(bridge.sent.length, 2);
+  const calls = provider.calls.length;
+  await a.tick(); assert.equal(bridge.sent.length, 1);
+  assert.equal(provider.calls.length, calls);
+  assert.equal(a.profiles()[0].handledIncomingId, missing.id);
 });
 
 test('a generated voice reply discloses synthesis and supplies one private audio source for native recording', async t => {

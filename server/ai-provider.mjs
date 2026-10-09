@@ -7,6 +7,7 @@ import { isIP } from 'node:net';
 import { AppError } from './files.mjs';
 import { compactModelInput, encodeModelRequest } from './ai-model-input.mjs';
 import { textField } from './ai-schema.mjs';
+import { readableMediaInput } from './ai-media-input.mjs';
 
 export function providerValue(value, previous = {}, { discovery = false } = {}) {
   let url;
@@ -318,7 +319,7 @@ export class AIProvider {
     const expanded = hasSpeakerTurns(input) ? { ...textInput, messages: input.messages, replySpeakerHistory: speakerHistory(input.messages).map(({ messages, ...group }) => ({ ...group, messageIds: messages.map(message => message.id) })), confirmedSpeakerHistory: confirmedSpeakerHistory(input.messages).filter(group => group.speaker.role === 'self'), replyRelations: replyRelations(input.messages), naturalTurnBrief: naturalTurnBrief(input.messages) } : textInput;
     const encoded = encodeModelRequest(roleSystem, compactModelInput(expanded));
     const text = JSON.stringify(encoded.input);
-    const requestContent = validImages.length ? [{type:'text',text}, ...validImages.flatMap(x => [{type:'text',text:'图片对应消息 '+encoded.id(x.messageId)}, anthropic ? {type:'image',source:{type:'base64',media_type:x.mime,data:x.data}} : {type:'image_url',image_url:{url:'data:'+x.mime+';base64,'+x.data}}])] : text;
+    const requestContent = validImages.length ? [{type:'text',text}, ...validImages.flatMap(x => [{type:'text',text:'图片对应消息 '+encoded.id(x.messageId)+(x.thumbnail ? '（微信缩略图；只描述可辨认的内容，不猜测模糊细节）' : '')}, anthropic ? {type:'image',source:{type:'base64',media_type:x.mime,data:x.data}} : {type:'image_url',image_url:{url:'data:'+x.mime+';base64,'+x.data}}])] : text;
     // Only Anthropic used to receive an output budget; elsewhere the server's
     // own default applied, and several hosts default to something small enough
     // to cut a real answer off mid-JSON. Ask for room explicitly instead.
@@ -355,7 +356,9 @@ export class AIProvider {
               code: modelErrorCode, type: modelErrorType, messagePresent: !!modelError }));
           if (validImages.length && [400,415,422].includes(response.status)) {
             if (requireImages) throw new AppError('当前模型不支持图片输入', 400, 'ai_model_vision_unsupported');
-            return textInput.onlyImages ? {action:'skip',mediaSkipped:true} : this.complete(config, system + ' 本次接口无法接受图片，图片已跳过；仅依据文字，不猜测图片内容。', {...textInput,capabilities:{...textInput.capabilities,receiveImages:false}},signal, { format, budget, retry, validate });
+            const readable = readableMediaInput(textInput, { dropImages: true });
+            return textInput.onlyImages || textInput.mode === 'reply' && !readable.conversation?.pendingIncomingIds.length ? {action:'skip',mediaSkipped:true}
+              : this.complete(config, system + ' 本次接口无法接受图片，图片已略过；只回复仍可读取的文字，不猜测图片，不要求重发或转文字。', readable, signal, { format, budget, retry, validate });
           }
           // A host that rejects the budget parameter (or the value we asked for)
           // must not fail the call: retry once the way it used to be sent.

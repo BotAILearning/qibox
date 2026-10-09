@@ -37,6 +37,7 @@ test('reply records wait, context, model, send and confirmed delivery stages', a
   assert.equal(profile.replyFlow.phase, 'sent');
   assert.ok(profile.replyFlow.steps.sent >= profile.replyFlow.steps.sending);
   assert.equal(f.bridge.sent.length, 1);
+  assert.equal(f.assistant.liveStates().some(row => row.id === profile.id), false);
 });
 
 test('unsubmitted reply is shown as failure while the incoming remains pending', async t => {
@@ -70,4 +71,19 @@ test('an unknown receipt stays visible without a false failure or resend, then c
   f.assistant.reconcileUnknownReplies(p, snapshot); f.assistant.reconcileUnknownReplies(p, snapshot);
   assert.equal(p.replyFlow.phase, 'sent'); assert.equal(p.rounds, 1); assert.match(f.assistant.notice, /已确认送达/);
   assert.equal(f.assistant.errorRecords().page.total, 0); assert.equal(dispatches, 1);
+  assert.equal(f.assistant.liveStates().some(row => row.id === p.id), false);
+});
+
+test('ended, disabled and paused waits disappear while real retry waits remain', async t => {
+  const f = await fixture(t), p = f.assistant.profiles()[0];
+  f.bridge.push(f.contact, 'other', '新问题'); await f.assistant.tick();
+  const cursor = f.assistant.cursors.get(p.id);
+  p.replyFlow = {phase:'sent'}; cursor.pending = false;
+  assert.equal(f.assistant.liveStates().some(row=>row.id===p.id),false);
+  cursor.pending = true; p.replyFlow = {phase:'failed'}; p.sendRetryAt=f.assistant.now()+20000;
+  assert.equal(f.assistant.liveStates().find(row=>row.id===p.id)?.canRetry,true);
+  f.assistant.data.settings.enabled=false;
+  assert.equal(f.assistant.liveStates().some(row=>row.id===p.id),false);
+  f.assistant.data.settings.enabled=true;p.paused=true;p.groupWait={dueAt:f.assistant.now()+50000};
+  assert.equal(f.assistant.liveStates().some(row=>row.id===p.id),false);
 });

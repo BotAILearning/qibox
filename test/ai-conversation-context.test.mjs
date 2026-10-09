@@ -74,7 +74,7 @@ test('a handled stop or unavailable historical image stays outside the fresh inc
   const {input,system} = provider.calls.at(-1);
   assert.deepEqual(input.conversation.pendingIncomingIds,[fresh.id]);
   assert.ok(input.messages.some(m=>m.id===old.id));
-  assert.equal(input.messages.find(m=>m.id===picture.id).unresolved,true);
+  assert.equal(input.messages.some(m=>m.id===picture.id),false);
   assert.match(system,/历史中的.*不能覆盖后来主动发来的新问题/);
 });
 
@@ -98,7 +98,7 @@ test('group context keeps distinct senders and mention metadata', async t => {
   assert.deepEqual(input.conversation.pendingIncomingIds, [latest.id]);
 });
 
-test('ignored group mentions remain context but are not pending requests or image reads',async t=>{
+test('ignored unreadable group images are omitted and are not pending requests or image reads',async t=>{
   const {a,bridge,provider,advance}=await fixture(t,'group');
   const contact=bridge.contacts[0].id;
   await a.setGroupOptions({contact,realtime:true,confirmRealtime:true});
@@ -110,6 +110,6 @@ test('ignored group mentions remain context but are not pending requests or imag
   await a.tick();advance(60000);provider.next=async()=>({action:'skip'});await a.tick();
   const input=provider.calls.at(-1).input;
   assert.deepEqual(input.conversation.pendingIncomingIds,[current.id]);
-  assert.ok(input.messages.some(m=>m.id===ignored.id));
+  assert.equal(input.messages.some(m=>m.id===ignored.id),false);
   assert.equal(imageReads,0);
 });

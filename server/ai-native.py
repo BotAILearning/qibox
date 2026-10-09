@@ -648,7 +648,7 @@ def main():
         prepared = '--prepare' in sys.argv[2:]
         request = json.loads(sys.stdin.buffer.readline(100000) if prepared else sys.stdin.buffer.read(100000))
         if prepared != (request.get('action') == 'prepare-send'): raise ValueError('invalid protocol')
-        seconds = 90 if request.get('action') in ('list', 'resolve-batch', 'read', 'read-guard', 'resolve', 'prepare-send', 'open-chat') else 28
+        seconds = 90 if request.get('action') in ('list', 'resolve-batch', 'read', 'read-guard', 'resolve', 'prepare-send', 'open-chat', 'transcribe') else 28
         adapter = ChatAdapter(int(sys.argv[1]), seconds=seconds)
         signal.signal(signal.SIGTERM, lambda *_: setattr(adapter.controls, 'cancelled', True))
         def commit(before):

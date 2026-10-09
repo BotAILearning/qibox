@@ -4,6 +4,7 @@ import importlib.util
 import pathlib
 import tempfile
 import unittest
+import sqlite3
 
 spec = importlib.util.spec_from_file_location('images', pathlib.Path(__file__).parents[1] / 'server/wechat-images.py')
 images = importlib.util.module_from_spec(spec)
@@ -80,5 +81,32 @@ class Images(unittest.TestCase):
             self.assertEqual(base64.b64decode(images.read_image(root,username,ref,0,lambda:None)['data']),png)
             self.assertIsNone(images.read_image(root,'another',ref,0,lambda:None))
             self.assertIsNone(images.read_image(root/'another-account',username,ref,0,lambda:None))
+
+    def test_resource_mapping_binds_contact_local_message_time_and_thumbnail(self):
+        db=sqlite3.connect(':memory:')
+        db.executescript('CREATE TABLE ChatName2Id(user_name TEXT); CREATE TABLE MessageResourceInfo(message_id INTEGER,chat_id INTEGER,message_local_id INTEGER,message_create_time INTEGER,message_local_type INTEGER,packed_info BLOB); CREATE TABLE MessageResourceDetail(message_id INTEGER,type INTEGER,size INTEGER,status INTEGER);')
+        key='c'*32;packed=b'\x12\x22\x0a\x20'+key.encode()
+        db.execute('INSERT INTO ChatName2Id VALUES (?)',('friend',))
+        db.execute('INSERT INTO MessageResourceInfo VALUES (1,1,42,1791537812,3,?)',(packed,))
+        db.execute('INSERT INTO MessageResourceDetail VALUES (1,262145,?,1)',(len(self.v2),))
+        class Reader:
+            def query(self,sql,args=()):return db.execute(sql,args).fetchall()
+        message={'type':'image','timestamp':1791537812,'_order':[1791537812,1791537812000,0,42]}
+        resource=images.image_resource(Reader(),'friend',message)
+        self.assertEqual(resource,{'key':key,'sizes':{'_t.dat':len(self.v2)}})
+        self.assertIsNone(images.image_resource(Reader(),'other',message))
+        self.assertIsNone(images.image_resource(Reader(),'friend',{**message,'timestamp':1791537813}))
+        self.assertIsNone(images.image_resource(Reader(),'friend',{**message,'_order':[1,1,0,43]}))
+        with tempfile.TemporaryDirectory() as directory:
+            home=pathlib.Path(directory).resolve();root=home/'xwechat_files/wxid_fixture_abcd';root.mkdir(parents=True)
+            cache=home/'.xwechat/net/kvcomm';cache.mkdir(parents=True);(cache/'key_123456789_sample.statistic').touch()
+            folder=root/'msg/attach'/hashlib.md5(b'friend').hexdigest()/'2026-10/Img';folder.mkdir(parents=True)
+            (folder/(key+'_t.dat')).write_bytes(self.v2)
+            result=images.read_image(root,'friend','b'*32,1791537812,lambda:None,resource)
+            self.assertEqual(base64.b64decode(result['data']),self.png);self.assertTrue(result['thumbnail'])
+            self.assertIsNone(images.read_image(root,'other','b'*32,1791537812,lambda:None,resource))
+            self.assertIsNone(images.read_image(root,'friend','b'*32,1791537812,lambda:None,{'key':key,'sizes':{'_t.dat':len(self.v2)+1}}))
+        for value in [packed[:-1],packed+b'1',b'\x12\x22\x0a\x20'+b'../'+b'a'*29]:self.assertIsNone(images.resource_key(value))
+        db.close()
 
 if __name__ == '__main__': unittest.main()

@@ -108,7 +108,38 @@ def decode_image(data):
     if data.startswith(b'RIFF') and data[8:12] == b'WEBP': return 'image/webp', data
     return None
 
-def read_image(account_root, username, reference, timestamp, check):
+def resource_key(packed):
+    # Current WeChat MessageResourceInfo: field 2 contains field 1, the local
+    # attachment key. Do not infer a filename from timestamps or arbitrary XML.
+    if not isinstance(packed, bytes) or len(packed) != 36 or packed[:4] != b'\x12\x22\x0a\x20': return None
+    value = packed[4:].decode('ascii', errors='ignore')
+    return value if re.fullmatch(r'[a-f0-9]{32}', value) else None
+
+
+def image_resource(db, username, message):
+    """Authenticate the resource to the exact contact, local row and time."""
+    if not isinstance(message, dict) or message.get('type') != 'image': return None
+    order = message.get('_order')
+    if not isinstance(order, (list, tuple)) or len(order) != 4: return None
+    try:
+        names = db.query('SELECT rowid FROM ChatName2Id WHERE user_name=?', (username,))
+        if len(names) != 1: return None
+        rows = db.query('SELECT message_id,packed_info FROM MessageResourceInfo WHERE chat_id=? AND message_local_id=? AND message_create_time=? AND message_local_type=3', (names[0][0], order[3], message['timestamp']))
+        if len(rows) != 1: return None
+        mid, packed = rows[0]; key = resource_key(packed)
+        if not key: return None
+        sizes = {}
+        for typ, size, status in db.query('SELECT type,size,status FROM MessageResourceDetail WHERE message_id=?', (mid,)):
+            suffix = {65537: '_h.dat', 131073: '.dat', 262145: '_t.dat'}.get(typ)
+            if suffix and status == 1 and type(size) is int and 12 <= size <= LIMIT:
+                if suffix in sizes and sizes[suffix] != size: return None
+                sizes[suffix] = size
+        return {'key': key, 'sizes': sizes} if sizes else None
+    except ValueError:
+        return None
+
+
+def read_image(account_root, username, reference, timestamp, check, resource=None):
     if not isinstance(reference, str) or not re.fullmatch(r'[a-f0-9]{32}', reference): return None
     # Only the authenticated contact's attachment tree. No XML URLs/paths,
     # remote downloads, other accounts, or arbitrary filesystem traversal.
@@ -135,6 +166,18 @@ def read_image(account_root, username, reference, timestamp, check):
             except (OSError, ValueError): return None
         def encoded(decoded):
             return {'mime': decoded[0], 'data': base64.b64encode(decoded[1]).decode('ascii')}
+        if isinstance(resource, dict) and re.fullmatch(r'[a-f0-9]{32}', str(resource.get('key', ''))) and isinstance(resource.get('sizes'), dict):
+            months = {datetime.datetime.fromtimestamp(timestamp + offset, datetime.timezone.utc).strftime('%Y-%m') for offset in (-86400, 0, 86400)} if isinstance(timestamp, (int, float)) and timestamp > 0 else set()
+            for suffix in ('_h.dat', '.dat', '_t.dat'):
+                size = resource['sizes'].get(suffix)
+                if type(size) is not int or not 12 <= size <= LIMIT: continue
+                for month in sorted(months, reverse=True):
+                    file = folder / month / 'Img' / (resource['key'] + suffix)
+                    try:
+                        if file.is_symlink() or file.stat().st_size != size: continue
+                    except OSError: continue
+                    decoded = read_candidate(file)
+                    if decoded: return {**encoded(decoded), **({'thumbnail': True} if suffix == '_t.dat' else {})}
         for file in candidates:
             decoded = read_candidate(file)
             if decoded: return encoded(decoded)
