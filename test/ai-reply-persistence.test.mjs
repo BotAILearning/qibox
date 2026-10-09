@@ -112,7 +112,7 @@ test('temporary data failure keeps the switch and pending reply while account ch
   await a.tick(); assert.equal(a.data.settings.enabled, false); assert.equal(a.available, false);
 });
 
-test('a failed read-only send preparation retries the pending reply without pausing the contact', async t => {
+for (const otherNotice of [null, '其他联系人：消息尚未发送']) test(`a failed read-only send preparation retries without pausing and preserves ${otherNotice ? 'unrelated notices' : 'the error history while recovering its notice'}`, async t => {
   const { a, bridge, incoming, advance } = await fixture(t);
   await a.settings({ enabled: true }); await a.tick(); incoming(); await a.tick(); advance(20000);
   const send = bridge.send.bind(bridge); bridge.send = async () => ({ status: 'not-sent' });
@@ -120,8 +120,14 @@ test('a failed read-only send preparation retries the pending reply without paus
   assert.equal(profile.paused, false); assert.equal(profile.delivery.status, 'cancelled');
   assert.equal(a.data.settings.enabled, true); assert.equal(a.publicState().waiting, false); assert.ok(profile.sendRetryAt > a.now());
   assert.equal(a.cursors.get(profile.id).pending, true); assert.equal(bridge.sent.length, 0);
+  const failedNotice = a.notice, errorId = a.data.errorLog[0].id;
+  assert.match(failedNotice, /消息尚未发送/);
+  if (otherNotice) a.notice = otherNotice;
   bridge.send = send; advance(30000); await a.tick(); await a.tick();
   assert.equal(bridge.sent.length, 1); assert.equal(profile.paused, false);
+  assert.equal(a.notice, otherNotice || `${profile.label}：自动回复已发送`);
+  assert.equal(profile.sendRetryAt, undefined);
+  assert.ok(a.data.errorLog.some(entry => entry.id === errorId && entry.message === failedNotice));
   await a.tick(); assert.equal(bridge.sent.length, 1);
 });
 

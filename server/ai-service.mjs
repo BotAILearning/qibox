@@ -3438,6 +3438,11 @@ export class AIAssistant {
       profile.generatedIds = [...(profile.generatedIds || []), delivery.messageId];
       profile.sentMessages = [...(profile.sentMessages || []), { id: delivery.messageId, operationId, at: this.now(), body: this.vault.seal({ text }), source: mode === 'reply' ? 'reply' : 'proactive', ...(mode === 'reply' ? { replyRoundVersion } : {}), ...(mediaFile ? { media: { type: mediaFile.mediaType, name: mediaFile.name }, ...(delivery.voiceReceipt ? { voiceReceipt: delivery.voiceReceipt } : {}) } : {}), ...(source !== mode ? { trigger: source } : {}), ...(item?.taskId ? { taskId: item.taskId } : {}), ...(groupBatch ? { replyTo: groupBatch.ids, recipient: groupBatch.sender } : {}) }];
       profile.delivery.status = 'sent'; profile.delivery.segmentsSent = sent;
+      delete profile.sendRetryAt;
+      const retryError = this.data.events.find(entry => entry.code === 'error' && entry.account === this.data.account && entry.target === profile.id && entry.source === mode);
+      if (retryError?.detail === this.notice && this.data.errorLog.some(entry => entry.id === retryError.id && entry.context?.stage === 'send')) {
+        this.notice = `${this.nameFields(profile).label}：${mode === 'reply' ? '自动回复' : '消息'}已发送`;
+      }
       // A confirmed prefix must never become a pending whole opening again.
       if (item) { item.status = 'done'; item.segmentsSent = sent; }
       if (sent === 1) {
