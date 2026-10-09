@@ -159,6 +159,21 @@ class DataTest(unittest.TestCase):
             self.assertTrue(result['available'])
             self.assertEqual([p['label'] for p in result['contacts']], ['A'])
 
+    def test_new_account_identity_is_independent_of_friend_and_deleted_filters(self):
+        for own_type in (0, 1, 3):
+            with self.subTest(own_type=own_type), tempfile.TemporaryDirectory() as directory:
+                root = pathlib.Path(directory, 'wxid_self_abcd/db_storage')
+                (root / 'contact').mkdir(parents=True)
+                make_database(root / 'contact/contact.db',
+                              "CREATE TABLE contact(username TEXT,nick_name TEXT,remark TEXT,alias TEXT,local_type INTEGER,delete_flag INTEGER);"
+                              f"INSERT INTO contact VALUES('wxid_self','本人','','',{own_type},1),"
+                              "('wxid_a','好友','','',1,0),('wxid_member','缓存群成员','','',3,0),('wxid_deleted','已删好友','','',1,1);")
+                with patch.object(data, 'active_root', return_value=root), patch.object(data, 'discover_keys', side_effect=lambda *_: {SALT: KEY}):
+                    scanned = data.execute({'action': 'contacts'}, 42, directory, lambda: None)
+                    identity = data.execute({'action': 'account'}, 42, directory, lambda: None)
+                self.assertEqual(scanned['account'], identity['account'])
+                self.assertEqual([p['label'] for p in scanned['contacts']], ['好友'])
+
     def test_contact_scan_keeps_valid_people_when_one_identity_or_label_is_bad(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory, 'xwechat_files/long262802_a36b/db_storage')

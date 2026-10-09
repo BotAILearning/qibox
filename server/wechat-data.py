@@ -1291,7 +1291,16 @@ def execute(request, pid, home, check, cache=None):
             return result
         avatar_columns = ", small_head_url, big_head_url" if {'small_head_url', 'big_head_url'} <= columns else ", '', ''"
         rows = db.query('SELECT username, nick_name, remark, alias, local_type' + avatar_columns + ' FROM contact WHERE (local_type = 1' + groups + ')' + active + ' ORDER BY ' + order)
-        self_name = self_username(root, rows)
+        # The current account is not necessarily a friend (new logins use
+        # local_type=0). Authenticate it independently of the picker filters;
+        # keep those filters so cached group members never become friends.
+        directory = root.parent.name
+        names = [name for name in {directory, re.sub(r'_[a-fA-F0-9]{4,}$', '', directory)} if CONTACT_UID.fullmatch(name)]
+        placeholders = ','.join('?' for _ in names)
+        own_rows = db.query('SELECT username, nick_name, remark, alias, local_type' + avatar_columns + ' FROM contact WHERE username IN (' + placeholders + ')', tuple(names)) if names else []
+        self_name = self_username(root, own_rows)
+        if not any(row[0] == self_name for row in rows):
+            rows = [row for row in own_rows if row[0] == self_name] + rows
         account, people, unreadable_count = contacts(rows, self_name)
         if request.get('account') and request['account'] != account:
             if cache is not None: cache.clear()

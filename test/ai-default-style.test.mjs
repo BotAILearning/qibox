@@ -17,6 +17,22 @@ async function fixture(t, count = 3) {
   return { a, bridge, provider, root, contacts: bridge.contacts.map(c => c.id) };
 }
 
+test('a new account can save a manual default style without inventing learning evidence', async t => {
+  const { a, provider, contacts } = await fixture(t, 2);
+  const calls = provider.calls.length;
+  const saved = await a.saveDefaultStyle({ summary: '日常口语，短句，少客套。' });
+  assert.equal(saved.learnedDefaultStyle.source, 'manual');
+  assert.equal(saved.learnedDefaultStyle.learnedAt, undefined);
+  assert.equal(provider.calls.length, calls);
+  await a.settings({ replyScope: 'all', enabled: true });
+  const committed = await a.commitDefaultStyle({ summary: '顺着话题自然接话。' });
+  assert.equal(committed.appliedDefaultStyle, contacts.length);
+  assert.ok(a.profiles().every(p => a.effectiveStyle(p).summary === '顺着话题自然接话。'));
+  assert.equal(committed.defaultStyleUndoable, false);
+  await assert.rejects(a.saveDefaultStyle({ summary: '   ' }), /请填写默认风格/);
+  assert.equal(a.data.learnedDefaultStyle.style.summary, '顺着话题自然接话。');
+});
+
 test('default style learns each selected chat then combines once without profiles', async t => {
   const { a, bridge, provider, contacts } = await fixture(t, 5);
   let reads = 0; const read = bridge.readRange.bind(bridge);
@@ -89,8 +105,9 @@ test('default style can be edited and cleared; ordinary learning leaves it untou
   // 清除
   await a.clearDefaultStyle();
   assert.equal(a.publicState().learnedDefaultStyle, null);
-  // 未学习时编辑报错；清除幂等安全
-  await assert.rejects(a.saveDefaultStyle({ summary: '无效' }), /还没有默认风格/);
+  // 未学习时可以手动设置；清除幂等安全
+  await a.saveDefaultStyle({ summary: '手动风格' });
+  assert.equal(a.publicState().learnedDefaultStyle.source, 'manual');
   await a.clearDefaultStyle();
 });
 

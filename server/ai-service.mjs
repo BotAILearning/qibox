@@ -1693,8 +1693,10 @@ export class AIAssistant {
   }
   async saveDefaultStyle({ summary } = {}) {
     return this.exclusive(async () => {
-      if (!this.data.learnedDefaultStyle) throw new AppError('还没有默认风格，请先学习');
-      this.data.learnedDefaultStyle.style = { ...this.data.learnedDefaultStyle.style, summary: textField(summary, 6000, true) };
+      const text = textField(summary, 6000);
+      if (!text) throw new AppError('请填写默认风格说明');
+      this.data.learnedDefaultStyle ||= { source: 'manual', style: structuredClone(defaultStyle) };
+      this.data.learnedDefaultStyle.style = { ...this.data.learnedDefaultStyle.style, summary: text };
       await this.save(); return this.publicState();
     });
   }
@@ -1745,8 +1747,10 @@ export class AIAssistant {
   // 同步给所有对象，并结束本次学习的可撤销状态（此后取消即等于清除默认风格）。
   async commitDefaultStyle({ summary } = {}) {
     return this.exclusive(async () => {
-      if (!this.data.learnedDefaultStyle) throw new AppError('还没有默认风格，请先学习');
-      this.data.learnedDefaultStyle.style = { ...this.data.learnedDefaultStyle.style, summary: textField(summary, 6000, true) };
+      const text = textField(summary, 6000);
+      if (!text) throw new AppError('请填写默认风格说明');
+      this.data.learnedDefaultStyle ||= { source: 'manual', style: structuredClone(defaultStyle) };
+      this.data.learnedDefaultStyle.style = { ...this.data.learnedDefaultStyle.style, summary: text };
       const count = this.syncDefaultStyle();
       this.data.defaultStyleSnapshot = null;
       await this.save();
