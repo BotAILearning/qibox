@@ -75,6 +75,11 @@ try{
  mode='pass';await page.context().setOffline(true);await page.context().setOffline(false);
  await page.waitForFunction(()=>document.querySelector('[data-mobile-ai-master]')?.checked===true&&!document.querySelector('[data-mobile-ai-master]')?.disabled);
  assert.equal(writes,4);report.checks.push('An actual offline-to-online browser transition resumes reading saved ON, without a write.');
+ await page.emulateMedia({reducedMotion:'reduce'});
+ report.observed.reducedMotion=await page.locator('[data-mobile-ai-master]').evaluate(el=>({matches:matchMedia('(prefers-reduced-motion:reduce)').matches,switchDuration:getComputedStyle(el).transitionDuration,thumbDuration:getComputedStyle(el,'::before').transitionDuration}));
+ assert.equal(report.observed.reducedMotion.matches,true);
+ for(const duration of [report.observed.reducedMotion.switchDuration,report.observed.reducedMotion.thumbDuration])assert.ok(duration.split(',').every(part=>parseFloat(part)===0),'Reduced motion disables both switch and thumb transitions');
+ report.checks.push('The real reduced-motion media preference disables both master-switch and thumb transitions.');
  entry.runtime.loginStatus='logged-out';await page.reload();await page.getByText('微信登录后可用',{exact:true}).waitFor({timeout:2500}).catch(()=>{});
  report.observed.loggedOutHasSwitch=await page.locator('[data-mobile-ai-master]').count()>0;
  report.observed.loggedOutText=await page.locator('#mobile-ai-list').innerText();

@@ -58,4 +58,5 @@ button,input,select,textarea{font:inherit}
 .secondary,.primary,.quiet{font-size:16px;line-height:1.5}
 
 .mobile-ai-card .mobile-ai-state{justify-self:end;color:#59647a;font-size:14px;line-height:1.5;text-align:right}
+@media(prefers-reduced-motion:reduce){.mobile-ai-card input[role=switch],.mobile-ai-card input[role=switch]::before{transition:none}}
 
