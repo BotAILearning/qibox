@@ -61,4 +61,6 @@ button,input,select,textarea{font:inherit}
 @media(prefers-reduced-motion:reduce){.mobile-ai-card input[role=switch],.mobile-ai-card input[role=switch]::before{transition:none}}
 /* Small informational text must remain readable on the application surfaces. */
 footer,.panel-heading>span{color:#59647a}
+#modal-pending{margin:12px 0;color:#59647a;font-size:16px;line-height:1.6}
+#modal .choice:has(input:checked) small{color:#59647a}
 

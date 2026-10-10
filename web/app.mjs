@@ -25,6 +25,7 @@ const syncLayout = () => document.documentElement.classList.toggle('mobile', mob
 syncLayout();
 window.addEventListener('resize', syncLayout);
 let session, state, toastTimer, modalSubmit, requiredModal = false, polling = false, rfb, ime, fileBridge, desktopId, remoteGeneration = 0, lastInstancesMarkup = '';
+let modalGeneration = 0, submittingModalGeneration = null;
 let desktopConnected = false, desktopBusy = false, desktopConnecting = false, pointer, connectionTimer, desktopOperation = 0;
 let sound, standaloneAI = false;
 let mobileLoginId = null;
@@ -161,22 +162,38 @@ async function downloadAnalysisReport(instanceId, value, signal) {
   setTimeout(() => URL.revokeObjectURL(url), 60000);
   return filename;
 }
-function closeModal() { if (requiredModal) return; modal.close(); modalSubmit = null; }
+function closeModal(generation = modalGeneration) { if (requiredModal || generation !== modalGeneration) return; modalGeneration++; modal.close(); modalSubmit = null; }
 function dialog(title, content, actions = '<button type="button" data-close class="secondary">取消</button><button type="submit" class="primary">确定</button>', submit, required = false) {
+  const generation = ++modalGeneration;
   requiredModal = required; modalSubmit = submit;
   $('#modal-title').textContent = title; $('#modal-body').innerHTML = content; $('#modal-actions').innerHTML = actions;
   $('#modal-error').hidden = true; $('#modal-close').hidden = required;
+  $('#modal-pending').hidden = true; $('#modal-form').setAttribute('aria-busy', 'false');
   if (!modal.open) modal.showModal();
-  setTimeout(() => $('#modal-body input[type=text]')?.focus(), 60);
+  setTimeout(() => { if (modal.open && generation === modalGeneration) $('#modal-body input[type=text]')?.focus(); }, 60);
 }
-modal.addEventListener('cancel', event => { if (requiredModal) event.preventDefault(); });
+modal.addEventListener('cancel', event => { if (requiredModal) event.preventDefault(); else { modalGeneration++; modalSubmit = null; } });
 $('#modal-close').onclick = closeModal;
 $('#modal-form').onsubmit = async event => {
-  event.preventDefault(); if (!modalSubmit) return;
+  event.preventDefault(); if (!modalSubmit || submittingModalGeneration === modalGeneration) return;
+  const generation = modalGeneration, submit = modalSubmit;
+  submittingModalGeneration = generation;
+  const dismissal = $('#modal-actions [data-close]'), dismissalLabel = dismissal?.textContent;
+  if (dismissal) dismissal.textContent = '关闭';
+  $('#modal-error').hidden = true;
+  $('#modal-pending').textContent = requiredModal ? '正在处理…' : '正在处理，关闭窗口后仍会继续。';
+  $('#modal-pending').hidden = false; $('#modal-form').setAttribute('aria-busy', 'true');
   const button = $('#modal-actions button[type=submit]'); if (button) button.disabled = true;
-  try { await modalSubmit(new FormData(event.target)); requiredModal = false; modal.close(); modalSubmit = null; }
-  catch (e) { $('#modal-error').textContent = e.message; $('#modal-error').hidden = false; }
-  finally { if (button) button.disabled = false; }
+  try { await submit(new FormData(event.target)); if (generation === modalGeneration && modal.open) { requiredModal = false; closeModal(generation); } }
+  catch (e) { if (generation === modalGeneration && modal.open) { $('#modal-error').textContent = e.message; $('#modal-error').hidden = false; } }
+  finally {
+    if (submittingModalGeneration === generation) submittingModalGeneration = null;
+    if (generation === modalGeneration) {
+      if (button) button.disabled = false;
+      if (dismissal) dismissal.textContent = dismissalLabel;
+      $('#modal-pending').hidden = true; $('#modal-form').setAttribute('aria-busy', 'false');
+    }
+  }
 };
 function pcHint() {
   dialog('请用电脑端操作', '<p>微信已安装在 NAS 上。请在电脑上打开栖盒，登录并使用微信。</p>', '<button type="button" data-close class="primary">知道了</button>');
@@ -502,13 +519,14 @@ async function restoreInstance(item, button) {
   if (!item) throw new Error('未找到保留的数据，请刷新页面');
   if (nameTaken(item.name, item.id)) return restoreNameDialog(item);
   button.disabled = true;
+  const generation = modalGeneration;
   try {
-    await api(`/instances/${item.id}/restore`, {}); closeModal(); await refresh(); notify('已恢复，请打开并登录原微信');
+    await api(`/instances/${item.id}/restore`, {}); closeModal(generation); await refresh(); notify('已恢复，请打开并登录原微信');
   } catch (error) {
     // Another page can reserve the name after the local check. Keep the data
     // retained and let the user resolve the server-confirmed conflict here.
     if (error.code !== 'NAME_CONFLICT') throw error;
-    await refresh(); restoreNameDialog(item);
+    await refresh(); if (generation === modalGeneration && modal.open) restoreNameDialog(item);
   } finally { button.disabled = false; }
 }
 function importDialog() {
@@ -706,8 +724,9 @@ document.addEventListener('click', async event => {
       return;
     }
     if (button.id === 'install-anyway') {
-      try { await api(`/apps/${marketAppId}/install/download`, { allowUnverified: true }); closeModal(); }
-      catch (error) { dialog('安装未完成', `<p>${esc(String(error?.message || error))}</p>`, '<button type="button" data-close class="secondary">关闭</button>'); }
+      const generation = modalGeneration;
+      try { await api(`/apps/${marketAppId}/install/download`, { allowUnverified: true }); closeModal(generation); }
+      catch (error) { if (generation === modalGeneration && modal.open) dialog('安装未完成', `<p>${esc(String(error?.message || error))}</p>`, '<button type="button" data-close class="secondary">关闭</button>'); }
       finally { await refresh(); }
     }
     if (button.id === 'import-local') $('#package-file').click();
