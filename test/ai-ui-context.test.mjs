@@ -114,6 +114,30 @@ test('reply contact search filters by name without requests and survives editing
   assert.match(dom.node('#ai-content').innerHTML, /其他联系人/);
 });
 
+test('blank or oversized object style edits retain the draft and saved style without a save request', async t => {
+  const originalDocument = globalThis.document, OriginalFormData = globalThis.FormData, dom = surface(), calls = [];
+  globalThis.document = dom.document;
+  globalThis.FormData = class extends OriginalFormData { constructor(form) { super(); for (const [key,value] of form?.entries || []) this.append(key,value); } };
+  const snapshot = { ...availableState(), profiles: [{ id:'profile', contact:'contact', kind:'person', styleId:'preset:natural', style:{summary:'原来已经保存的自然风格'}, replyStrategy:{replyGoal:'自然接话',boundaries:'不擅自承诺',maxRounds:50} }] };
+  const controller = aiAssistant({ api: async (url,payload) => { if(payload) calls.push(payload); return snapshot; } });
+  t.after(() => { controller.detach(); globalThis.document=originalDocument; globalThis.FormData=OriginalFormData; });
+  await controller.attach('instance-a'); calls.length=0;
+  const form=dom.form('#ai-object-form',[]); form.dataset={contact:'contact'};
+  form.querySelectorAll=()=>[];
+  form.elements={namedItem:key=>({checked:['enabled','inheritStrategy'].includes(key)})};
+  for(const [text,error] of [['   ',/请填写风格说明/],['长'.repeat(6001),/最多6000字/]]) {
+    form.entries=[['summary',text],['styleId','preset:natural'],['replyGoal','自然接话'],['boundaries','不擅自承诺'],['maxRounds','50'],['enabled','on'],['inheritStrategy','on']];
+    const renders=dom.node('#ai-content').writes;
+    await dom.submit(form);
+    assert.match(dom.node('#ai-feedback').textContent,error);
+    assert.equal(form.entries[0][1],text); assert.equal(dom.node('#ai-content').writes,renders);
+    assert.equal(snapshot.profiles[0].styleId,'preset:natural'); assert.deepEqual(calls,[]);
+  }
+  form.entries[0][1]='改'.repeat(6000); await dom.submit(form);
+  assert.equal(calls.length,1,dom.node('#ai-feedback').textContent); assert.equal(calls[0].action,'reply-profile');
+  assert.equal(calls[0].value.style.summary,'改'.repeat(6000)); assert.equal(calls[0].value.styleSet,true);
+});
+
 test('cancelled model edits never enter assignment saves and unfinished forms keep their input', async t => {
   const originalDocument = globalThis.document, OriginalFormData = globalThis.FormData, dom = surface(), calls = [];
   globalThis.document = dom.document;

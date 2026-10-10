@@ -1343,7 +1343,10 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       }
       if (form.id === 'ai-object-form') {
         const contact = form.dataset.contact, profile = state.profiles.find(p => p.contact === contact);
-        const summary = String(data.get('summary') || '').trim();
+        const rawSummary = String(data.get('summary') || '');
+        const summary = rawSummary.trim();
+        if (!summary) throw new Error('请填写风格说明，或选择默认风格后保存');
+        if (rawSummary.length > 6000) throw new Error('风格说明最多6000字，请缩短后保存');
         const styleId = data.get('styleId') || '';
         const strategy = { ...profile?.replyStrategy, replyGoal: data.get('replyGoal') || '', facts: profile?.replyStrategy?.facts || '', boundaries: data.get('boundaries') || '', maxRounds: parseReplyLimit(data.get('maxRounds') ?? 50) };
         // 以页面当前 styleId 对应的完整风格为基础，仅覆盖页面编辑的说明，避免丢失预设/学习风格的其余字段。
