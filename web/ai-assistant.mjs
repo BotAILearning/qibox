@@ -540,6 +540,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     node.innerHTML = html;
     for (const row of node.querySelectorAll('details[data-ai-optional]')) if (expanded.has(row.dataset.aiOptional)) row.open = expanded.get(row.dataset.aiOptional);
   }
+  const hasPendingAnalysis = () => analysisQueueAccount !== null && analysisResult?.reports?.some(row => ['waiting', 'analyzing'].includes(row.status));
   function controls() {
     if (!state) return;
     // 记忆合并在后台跑，轮询拿到新状态时重画对象页，让合并结果立刻可确认。
@@ -552,8 +553,8 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     const panelMaster = panel.querySelector('[data-ai-panel-master]'); if (panelMaster) panelMaster.checked = state.settings.enabled;
     const masterLabel = panel.querySelector('#ai-panel-master-label'); if (masterLabel) masterLabel.textContent = state.settings.enabled ? 'AI 已开启' : 'AI 已关闭';
     const pending = (state.activity || []).filter(p => p.needsHelp); reviewAlert.hidden = !pending.length; reviewAlert.textContent = `需处理 ${pending.length}`;
-    $('#ai-operation').hidden = !state.operation && !contactsLoading;
-    $('#ai-operation-text').textContent = operationText(state.operation) || (contactsLoading ? '正在获取联系人…' : '');
+    $('#ai-operation').hidden = !state.operation && !contactsLoading && !hasPendingAnalysis();
+    $('#ai-operation-text').textContent = operationText(state.operation) || (contactsLoading ? '正在获取联系人…' : hasPendingAnalysis() ? '正在分析聊天记录…' : '');
     const readiness = $('#ai-readiness');
     if (readiness) {
       const needs = [...new Set([state.requirements.proactive, state.requirements.reply].filter(Boolean))];
@@ -1309,7 +1310,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
             row.status = 'analyzing'; render();
             try {
               const result = await api(`/instances/${target}/ai`, { action: 'analyze', value: { ...value, contacts: [contact], mode: 'auto' } }, 30 * 60 * 1000);
-              if (!contextValid()) return;
+              if (!valid()) return;
               const completed = result?.reports?.[0];
               if (!completed || completed.contact !== contact || !['complete', 'empty', 'error'].includes(completed.status)) throw new Error('分析服务没有返回该联系人的有效结果');
               analysisResult.reports[index] = completed;
@@ -1632,6 +1633,11 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         logEpoch++; logLoading = logFilters.source === 'reply'; logRequestScope = ''; logSignature = ''; render();
         await Promise.all([loadActivity(), loadSkipContent()]); return;
       }
+      if ('aiShowAllProactiveRecords' in button.dataset) {
+        logFilters = { ...logFilters, taskId: '', page: 0 };
+        proactiveHistory = []; proactiveHistoryPage = null; proactiveRecordLoading = false; proactiveRecordEpoch++;
+        rememberRecords(); render(); await loadProactiveRecords(); return;
+      }
       if ('aiCopyReport' in button.dataset) {
         const report = analysisResult?.reports[Number(button.dataset.aiCopyReport)];
         if (!report || !['complete', 'empty'].includes(report.status)) throw new Error('报告已变化，请重新打开');
@@ -1905,7 +1911,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         contactsLoading = false;
         if (analysisQueueAccount !== null) {
           analysisQueueToken++; analysisQueueAccount = null;
-          for (const report of analysisResult?.reports || []) if (report.status === 'waiting') { report.status = 'cancelled'; report.error = ''; }
+          for (const report of analysisResult?.reports || []) if (['waiting', 'analyzing'].includes(report.status)) { report.status = 'cancelled'; report.error = ''; }
           render();
         }
         await execute('cancel', {}, '已取消未完成的操作');
@@ -1987,7 +1993,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         lastPollAt = Date.now();
         if (polling || current !== generation) return; polling = true;
         try {
-          if (busy) { const epoch = requestEpoch; const result = await api(`/instances/${id}/ai?view=live`).catch(() => null); if (current !== generation || epoch !== requestEpoch || !busy || !result) return; if (analysisQueueAccount !== null && result.account !== analysisQueueAccount) { analysisQueueToken++; analysisQueueAccount = null; for (const report of analysisResult?.reports || []) if (report.status === 'waiting' || report.status === 'analyzing') { report.status = 'cancelled'; report.error = ''; } render(); message('微信账号已变化，已停止剩余联系人分析', true); return; } $('#ai-operation').hidden = !result.operation && !contactsLoading; $('#ai-operation-text').textContent = operationText(result.operation) || (contactsLoading ? '正在获取联系人…' : ''); }
+          if (busy) { const epoch = requestEpoch; const result = await api(`/instances/${id}/ai?view=live`).catch(() => null); if (current !== generation || epoch !== requestEpoch || !busy || !result) return; if (analysisQueueAccount !== null && result.account !== analysisQueueAccount) { analysisQueueToken++; analysisQueueAccount = null; for (const report of analysisResult?.reports || []) if (report.status === 'waiting' || report.status === 'analyzing') { report.status = 'cancelled'; report.error = ''; } render(); message('微信账号已变化，已停止剩余联系人分析', true); return; } $('#ai-operation').hidden = !result.operation && !contactsLoading && !hasPendingAnalysis(); $('#ai-operation-text').textContent = operationText(result.operation) || (contactsLoading ? '正在获取联系人…' : hasPendingAnalysis() ? '正在分析聊天记录…' : ''); }
           else { const result = await call(undefined, {}, true); if (result) { controls(); if (tab === 'activity' && !panel.hidden && !logLoading && logSignature !== JSON.stringify([state.activity || [], state.activityHistory || []])) await loadActivity(); } }
         } catch (e) { if (current === generation && !panel.hidden) message(e.message, true); }
         finally { if (current === generation) polling = false; }

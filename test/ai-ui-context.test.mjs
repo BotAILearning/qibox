@@ -14,23 +14,25 @@ test.afterEach(() => { globalThis.window = originalWindow; });
 // Exercise the real controller's async click handler at its API boundary. The
 // minimal DOM surface only supplies elements used by attach/render; no browser,
 // model service or native desktop is involved in these context-switch tests.
-function surface() {
+function surface({ without = [] } = {}) {
   const nodes = new Map(), handlers = new Map(), forms = new Map(), panelClicks = [];
   const attribute = key => 'data-' + key.replace(/[A-Z]/g, letter => '-' + letter.toLowerCase());
   const buttonNode = dataset => ({ dataset, attributes: Object.keys(dataset).map(key => ({ name: attribute(key) })),
     closest: selector => selector === '[data-proactive-root]' && Object.keys(dataset).some(key => key.startsWith('proactive')) ? {} : null,
     hasAttribute: name => Object.keys(dataset).some(key => attribute(key) === name) });
   const node = selector => {
+    if (without.includes(selector)) return null;
     if (selector === '#ai-queue-live') return null;
     if (['#ai-proactive-form', '#ai-reply-form', '#ai-provider-form', '#ai-model-form', '#ai-profile-form', '#ai-paste-form', '#ai-manual-reply-form', '#ai-object-form', '#ai-analysis-form'].includes(selector)) return forms.get(selector) || null;
     if (!nodes.has(selector)) {
       let html = '', text = '', children = [];
       nodes.set(selector, {
       hidden: false, dataset: {}, options: [], classList: { toggle() {} },
+      ownerDocument: { createElement: tag => node(`created-${tag}`) },
       writes: 0, get innerHTML() { return html; }, set innerHTML(value) { html = value; this.writes++; },
       get textContent() { return children.length ? children.map(child => child.textContent || '').join('') : text; },
       set textContent(value) { text = value; children = []; },
-      setAttribute() {}, focus() {}, replaceChildren(...values) { children = values; }, append() {}, remove() {},
+      setAttribute() {}, focus() {}, contains() { return false; }, replaceChildren(...values) { children = values; }, append() {}, remove() {},
       close() { handlers.get(`${selector}:close`)?.(); }, showModal() {},
       querySelector: node, querySelectorAll: () => [],
       addEventListener(type, handler) { if (selector === '#ai-panel' && type === 'click') panelClicks.push(handler); handlers.set(`${selector}:${type}`, handler); },
@@ -112,6 +114,74 @@ test('reply contact search filters by name without requests and survives editing
   assert.doesNotMatch(dom.node('#ai-object-list').innerHTML, /刷新列表/);
   await controller.attach('instance-b');
   assert.match(dom.node('#ai-content').innerHTML, /其他联系人/);
+});
+
+test('analysis exposes cancellation immediately, blocks duplicate submit, and ignores a late completed response after cancellation', { timeout: 2000 }, async t => {
+  const originalDocument = globalThis.document, OriginalFormData = globalThis.FormData, dom = surface();
+  globalThis.document = dom.document;
+  globalThis.FormData = class extends OriginalFormData { constructor(form) { super(); for (const [key, value] of form?.entries || []) this.append(key, value); } };
+  const entered = Promise.withResolvers(), released = Promise.withResolvers(), actions = [];
+  const snapshot = { ...availableState(), account: 'account-a', analysis: { history: [] } };
+  const controller = aiAssistant({ api: async (_url, payload) => {
+    if (payload?.action) actions.push(payload.action);
+    if (payload?.action === 'analyze') {
+      entered.resolve(); await released.promise;
+      return { reports: [{ contact: 'contact', label: 'Fixture', status: 'complete', report: 'late cancelled body', historyId: 'late-report' }] };
+    }
+    return snapshot;
+  } });
+  let pending;
+  t.after(async () => { controller.detach(); released.resolve(); await pending; globalThis.document = originalDocument; globalThis.FormData = OriginalFormData; });
+  await controller.attach('instance-a'); await dom.navigate('analysis');
+  const form = dom.form('#ai-analysis-form', [['contacts', 'contact'], ['from', '2026-10-10'], ['to', '2026-10-10'], ['request', 'review original facts']]);
+  pending = dom.submit(form); await entered.promise;
+  assert.equal(dom.node('#ai-operation').hidden, false);
+  assert.match(dom.node('#ai-content').innerHTML, /aria-label="开始分析" disabled/);
+  await dom.submit(form); assert.deepEqual(actions, ['analyze']);
+  await dom.click('cancel');
+  const cancelledMessage = dom.node('#ai-feedback').textContent;
+  assert.match(cancelledMessage, /已取消/);
+  released.resolve(); await pending;
+  assert.doesNotMatch(dom.node('#ai-content').innerHTML, /late cancelled body|late-report/);
+  assert.match(dom.node('#ai-content').innerHTML, /已取消分析/);
+  assert.equal(dom.node('#ai-feedback').textContent, cancelledMessage);
+  assert.deepEqual(actions, ['analyze', 'cancel']);
+});
+
+test('task records expose their scope and can show all tasks without losing other filters', async t => {
+  const originalDocument = globalThis.document, OriginalFormData = globalThis.FormData, dom = surface({ without: ['#ai-recent-errors', '#ai-skip-records'] }), calls = [];
+  globalThis.document = dom.document;
+  globalThis.FormData = class extends OriginalFormData { constructor(form) { super(); for (const [key, value] of form?.entries || []) this.append(key, value); } };
+  const records = ['a', 'b'].map(key => ({ id: `record-${key}`, taskId: `task-${key}`, taskName: `Task ${key}`, contact: 'contact', label: 'Fixture', text: `message ${key}`, status: 'sent', at: '2026-10-10T09:35:00.000Z' }));
+  const snapshot = { ...availableState(), account: 'account-a', proactiveTasks: [{ id: 'task-a', name: 'Task a' }], proactiveRecords: records };
+  const controller = aiAssistant({ api: async (_url, payload) => {
+    if (payload?.action === 'proactive-records') {
+      calls.push(payload.value);
+      return { records: records.filter(row => !payload.value.taskId || row.taskId === payload.value.taskId), page: { hasMore: false } };
+    }
+    return snapshot;
+  } });
+  t.after(() => { controller.detach(); globalThis.document = originalDocument; globalThis.FormData = OriginalFormData; });
+  await controller.attach('instance-a');
+  dom.node('#ai-open').onclick();
+  await dom.button({ proactiveCommand: 'records', taskId: 'task-a' });
+  assert.match(dom.node('#ai-content').innerHTML, /当前任务：Task a/);
+  assert.match(dom.node('#ai-content').innerHTML, /data-ai-show-all-proactive-records/);
+  assert.ok(calls.length, dom.node('#ai-feedback').textContent);
+  assert.equal(calls.at(-1).taskId, 'task-a');
+  dom.input({ id: 'ai-log-search', value: 'Fixture' });
+  const form = dom.form('#ai-log-filter', [['from', '2026-10-10'], ['to', '2026-10-10'], ['kind', 'person'], ['code', 'sent']]);
+  await dom.submit(form);
+  await dom.button({ aiShowAllProactiveRecords: '' });
+  const html = dom.node('#ai-content').innerHTML;
+  assert.doesNotMatch(html, /当前任务：|data-ai-show-all-proactive-records/);
+  assert.match(html, /value="Fixture"/);
+  assert.match(html, /name="from"[^>]*value="2026-10-10"/);
+  assert.match(html, /value="person" selected/);
+  assert.match(html, /value="sent" selected/);
+  assert.equal(calls.at(-1).taskId, undefined);
+  assert.match(dom.node('#ai-proactive-records').innerHTML, /Task a/);
+  assert.match(dom.node('#ai-proactive-records').innerHTML, /Task b/);
 });
 
 test('blank or oversized object style edits retain the draft and saved style without a save request', async t => {

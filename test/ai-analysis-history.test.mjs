@@ -98,6 +98,26 @@ test('analysis supplies explicit Beijing times in chronological order without mo
   assert.equal(messages[2].timestamp, 1791621268);
 });
 
+test('analysis supplies the exact nine-second correction interval without rewriting the original exchange', async t => {
+  const { bridge, provider, a, contact } = await fixture(t);
+  const messages = [
+    { id: key('interval-original'), direction: 'other', text: '验收 Q10-02：我想听点摇滚放松一下。', timestamp: 1791596437 },
+    { id: key('interval-correction'), direction: 'other', text: '验收 Q10-02 更正：还是轻音乐吧，想安静一点，不听摇滚了。', timestamp: 1791596446 },
+  ];
+  bridge.readRange = async args => ({ account: args.account, contact: args.contact, messages });
+  let calls = 0;
+  provider.complete = async (_config, system, input) => {
+    calls++;
+    assert.deepEqual(input.messageIntervalsSeconds, [null, 9]);
+    assert.deepEqual(input.messages.map(row => row[1]), ['2026-10-10 09:40:37', '2026-10-10 09:40:46']);
+    assert.deepEqual(input.messages.map(row => row[2]), messages.map(row => row.text));
+    assert.match(system, /描述时间间隔只使用给定秒数/);
+    return { report: '九秒后更正了音乐选择。' };
+  };
+  const result = (await a.analyze({ contacts: [contact], from: '2026-10-10', to: '2026-10-10' })).reports[0];
+  assert.equal(result.status, 'complete'); assert.equal(calls, 1);
+});
+
 test('analysis identifies self, other and unknown with readable labels without rewriting quoted text or extra calls', async t => {
   const { bridge, provider, a, contact } = await fixture(t);
   const messages = ['self', 'other', 'unknown'].map((direction, index) => ({
