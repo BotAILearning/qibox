@@ -5,6 +5,19 @@ import { historySummary } from '../server/ai-report-history.mjs';
 import { analysisPage, analysisRangeLabel, reportSections, presetChips } from '../web/ai-analysis-view.mjs';
 import { activityPage } from '../web/ai-activity-view.mjs';
 
+test('analysis range stays unknown while loading or failed and only confirmed empty results claim no records', () => {
+ for(const status of ['waiting','analyzing','error','cancelled']) {
+  const label=analysisRangeLabel({reports:[{status}]});
+  assert.doesNotMatch(label,/暂无可分析记录/);
+  assert.match(label,/正在确认|尚未确认/);
+ }
+ assert.equal(analysisRangeLabel({reports:[{status:'empty'}]}),'所选范围内暂无可分析记录');
+ assert.doesNotMatch(analysisRangeLabel({reports:[]}),/暂无可分析记录/);
+ const mixed=analysisRangeLabel({reports:[{status:'complete',actualRange:{from:'2026-10-09',to:'2026-10-10'}},{status:'waiting'}]});
+ assert.match(mixed,/实际记录：2026-10-09 至 2026-10-10/);
+ assert.match(mixed,/其余范围正在确认/);
+});
+
 test('分析要求可以留空，仍保留用户自定义要求字段', () => {
   const value = analysisOptions({ request: '', contacts: ['contact'], from: '2026-09-01', to: '2026-09-02' });
   assert.equal(value.request, '');

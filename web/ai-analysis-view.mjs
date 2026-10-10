@@ -69,8 +69,12 @@ function reportBody(text) {
   return `<div class="ai-report-sections">${reportSections(text).map(section => `${section.title ? `<h4>${esc(section.title)}</h4>` : ''}<p>${esc(section.body)}</p>`).join('')}</div>`;
 }
 export function analysisRangeLabel(result) {
-  const ranges = [...new Set((result?.reports || []).map(report => report.actualRange?.from && report.actualRange?.to ? `${report.actualRange.from} 至 ${report.actualRange.to}` : '').filter(Boolean))];
-  return ranges.length ? `实际记录：${ranges.join('、')}` : '所选范围内暂无可分析记录';
+  const reports = result?.reports || [];
+  const ranges = [...new Set(reports.map(report => report.actualRange?.from && report.actualRange?.to ? `${report.actualRange.from} 至 ${report.actualRange.to}` : '').filter(Boolean))];
+  const pending = reports.some(report => ['waiting','analyzing'].includes(report.status));
+  if (ranges.length) return `实际记录：${ranges.join('、')}${pending ? '，其余范围正在确认' : ''}`;
+  if (pending) return '正在确认聊天记录范围';
+  return reports.length && reports.every(report => report.status === 'empty') ? '所选范围内暂无可分析记录' : '聊天记录范围尚未确认';
 }
 function metricsView(metrics = {}) {
   const cards = [['total', '消息'], ['self', '你发送'], ['other', '对方发送'], ['activeDays', '活跃天数']].filter(([key]) => Number.isFinite(metrics[key]));

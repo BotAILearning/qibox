@@ -41,7 +41,9 @@ export function objectPage(state, view) {
   const realtimeMode = ['normal', 'proactive'].includes(view.draft?.realtimeMode ?? profile?.groupOptions?.realtimeMode) ? (view.draft?.realtimeMode ?? profile?.groupOptions?.realtimeMode) : 'normal';
   const isGroup = contact?.kind === 'group';
   const styles = [...(profile?.learnedStyle ? [{ id: 'learned', label: '已学习的风格' }] : []), { id: '', label: '默认风格' }, ...objectStyleTabs(state, profile)];
-  const status = profile?.paused ? '已暂停' : isGroup ? group.realtime ? '实时回复已开启' : group.atMe || group.atAll ? '提及时回复' : '群聊回复已关闭' : opts.enabled ? '自动回复已开启' : '自动回复已关闭';
+  const savedGroup = profile?.groupOptions || {};
+  const savedReplyActive = isGroup ? savedGroup.realtime || savedGroup.atMe || savedGroup.atAll : personReplyEnabled(state, profile);
+  const status = profile?.paused ? '已暂停' : isGroup ? savedGroup.realtime ? '实时回复已开启' : savedGroup.atMe || savedGroup.atAll ? '提及时回复' : '群聊回复已关闭' : savedReplyActive ? '自动回复已开启' : '自动回复已关闭';
   const side = `<aside class="ai-object-sidebar">${contactPickerTabs(state.contacts, view.kind, 'data-ai-kind')}${contactPickerSearch({ id: 'ai-object-search', value: view.search, label: '搜索对象' })}<div id="ai-object-list">${objectList(state, view)}</div><div class="ai-contact-footer"><button type="button" class="quiet" data-ai-nav="learning">批量学习</button><button type="button" class="quiet" data-ai-action="scan">${icon('refresh')}刷新列表</button></div></aside>`;
   if (!contact) return `<div class="ai-object-workspace ai-object-reference">${side}<section class="ai-object-detail"><div class="ai-object-empty">${icon('chat')}<h3>选择联系人或群聊</h3></div></section></div>`;
 
@@ -57,8 +59,7 @@ export function objectPage(state, view) {
   const memoryCategory = memoryTypes.some(([id]) => id === view.memoryCategory) ? view.memoryCategory : memoryTypes[0][0];
   const memoryNav = `<nav class="ai-reference-memory-categories" aria-label="记忆字段">${memoryTypes.map(([id,label]) => `<button type="button" data-ai-memory-category="${id}" class="${memoryCategory === id ? 'active' : ''}" aria-current="${memoryCategory === id ? 'true' : 'false'}"><span>${label}</span></button>`).join('')}</nav>`;
   const memory = `<section class="ai-reference-panel ai-reference-memory" data-ai-object-panel="memory" ${section !== 'memory' ? 'hidden' : ''}><header class="ai-reference-memory-head"><h4>聊天记忆</h4>${memoryHistoryMarkup(profile)}</header>${memoryNav}<div class="ai-reference-memory-content">${memoryFields({ ...profile, kind: contact.kind, capabilities: state.capabilities }, value.memorySummary, { heading: false, history: false })}</div></section>`;
-  const replyActive = isGroup ? group.atMe || group.atAll || group.realtime : opts.enabled;
-  const statusTone = profile?.paused || replyActive && state.waiting === true ? 'warn' : replyActive ? 'active' : 'muted';
+  const statusTone = profile?.paused || savedReplyActive && state.waiting === true ? 'warn' : savedReplyActive ? 'active' : 'muted';
   const statuses = `<span class="ai-reference-statuses" aria-label="当前状态"><span class="ai-reference-status ${statusTone}">${status}</span>${!state.settings.enabled ? '<span class="ai-reference-status muted">AI 总开关已关闭</span>' : ''}</span>`;
   const header = `<section class="ai-reference-profile"><header class="ai-person-head">${avatar(contact)}<div><h3>${contactName(contact)}</h3></div>${statuses}</header><nav class="ai-reference-tabs" aria-label="当前聊天对象设置">${tab('reply','回复设置',section)}${tab('style','聊天风格',section)}${tab('memory','聊天记忆',section)}</nav></section>`;
   const actions = `<div class="ai-object-action-row"><div class="ai-object-secondary-actions"><button type="button" class="ai-soft-button" data-ai-learn-contact="${esc(contact.id)}">学习风格与记忆</button>${profile?.paused ? `<button type="button" class="quiet" data-ai-resume-profile="${esc(profile.id)}">开启自动回复</button>` : ''}</div><button type="submit" class="primary">保存设置</button></div>`;

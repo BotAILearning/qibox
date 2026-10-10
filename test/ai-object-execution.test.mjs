@@ -1,8 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { objectExecutionStatus } from '../web/ai-object-page-new.mjs';
+import { objectExecutionStatus, objectPage } from '../web/ai-object-page-new.mjs';
 
 const state = (live) => ({ profiles: [{ id: 'p1', contact: 'c1' }, { id: 'p2', contact: 'c2' }], settings: { enabled: true, reply: true }, live });
+
+test('unsaved person and group switch drafts never claim to have changed the current status', () => {
+ for (const kind of ['person','group']) for (const saved of [false,true]) {
+  const base={contacts:[{id:'c1',label:'Test',kind}],profiles:[{id:'p1',contact:'c1',kind,replyOptions:{enabled:saved},groupOptions:{atMe:saved}}],settings:{replyScope:'selected',enabled:true},schema:{defaultStyle:{}},replyStrategy:{},live:[]};
+  const html=objectPage(base,{selected:'c1',kind,section:'reply',draft:{enabled:!saved,atMe:!saved},search:''});
+  const badge=html.match(/aria-label="当前状态">(.*?)<\/span><\/span>/s)?.[1];
+  assert.ok(badge,'Saved status badge exists');
+  assert.match(badge,new RegExp(kind==='person' ? saved?'自动回复已开启':'自动回复已关闭' : saved?'提及时回复':'群聊回复已关闭'));
+  assert.doesNotMatch(badge,new RegExp(kind==='person' ? saved?'自动回复已关闭':'自动回复已开启' : saved?'群聊回复已关闭':'提及时回复'));
+  const checkbox=html.match(new RegExp(`<input[^>]+name="${kind==='person'?'enabled':'atMe'}"[^>]*>`))?.[0];
+  assert.equal(/\schecked(?:\s|>)/.test(checkbox),!saved,'Editor retains unsaved choice');
+ }
+});
 
 test('contact settings show only the selected contact live state and skip action', () => {
  const html = objectExecutionStatus(state([

@@ -1,6 +1,6 @@
 {
   "name": "qibox",
-  "version": "0.10.47",
+  "version": "0.10.48",
   "private": true,
   "type": "module",
   "description": "栖盒：在 NAS 上安装和运行 Linux 应用",
@@ -26,6 +26,6 @@
   },
   "devDependencies": {
     "esbuild": "0.28.2",
-    "sharp": "0.35.4"
+    "sharp": "0.35.5"
   }
 }

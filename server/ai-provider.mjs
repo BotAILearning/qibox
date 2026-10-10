@@ -334,12 +334,12 @@ export class AIProvider {
     for (let attempt = 0; ; attempt++) {
       try {
         const requestBody = { model: config.model, stream: false, ...(budget ? { max_tokens: budget } : {}),
-          // GLM 5.3 defaults to max reasoning, which routinely exhausts the
-          // saved 60-second deadline for chat/audit calls. Its official API
+          // GLM 5.3 defaults to max reasoning, which can exhaust the saved
+          // 60-second deadline for chat/audit and report calls. Its official API
           // supports low while retaining thinking; never send unsupported off.
           ...(!anthropic && ['open.bigmodel.cn', 'api.z.ai'].includes(new URL(config.baseUrl).hostname)
             && /^glm-5\.3(?:-flashx?)?$/i.test(config.model)
-            && ['reply', 'proactive', 'speaker-audit'].includes(input.mode)
+            && (['reply', 'proactive', 'speaker-audit'].includes(input.mode) || format === 'report')
             ? { thinking: { type: 'enabled' }, reasoning_effort: 'low' } : {}),
           ...(reasonAboutSpeakers ? { thinking: { type: 'adaptive' }, ...(!anthropic ? { reasoning_split: true } : {}) } : {}),
           ...(anthropic ? { system: currentSystem, messages: speakerTurns(input, requestContent) }

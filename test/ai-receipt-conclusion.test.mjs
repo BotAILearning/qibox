@@ -76,3 +76,12 @@ test('official GLM 5.3 chat and audit use supported low thinking; custom endpoin
     const low=!baseUrl.includes('custom')&&mode!=='analysis';assert.equal(body.reasoning_effort,low?'low':undefined);assert.equal(body.thinking?.type,low?'enabled':undefined);
   }
 });
+
+test('real report-format requests without a mode use supported low thinking only on official GLM 5.3 endpoints',async()=>{
+ for(const baseUrl of ['https://open.bigmodel.cn/api/paas/v4','https://api.z.ai/api/paas/v4','https://custom.example/v1'])for(const model of ['glm-5.3-flash','glm-4.5-air']){
+  let body,calls=0;const provider=new AIProvider({fetcher:async(_,args)=>{calls++;body=JSON.parse(args.body);return new Response(JSON.stringify({choices:[{message:{content:'报告正文'}}]}));}});
+  await provider.complete({...modelConfig,baseUrl,model},'报告',{userRequest:'回顾测试聊天'},undefined,{format:'report',retry:false});
+  const low=!baseUrl.includes('custom')&&model==='glm-5.3-flash';
+  assert.equal(body.reasoning_effort,low?'low':undefined);assert.equal(body.thinking?.type,low?'enabled':undefined);assert.equal(calls,1);
+ }
+});
