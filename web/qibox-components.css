@@ -1,8 +1,8 @@
 /* 栖盒 application components. QIAPP supplies primitives; this layer owns page density and composition. */
 .qiapp-product {
   --qbx-ink: #192744;
-  --qbx-muted: #65738b;
-  --qbx-accent: #4662e7;
+  --qbx-muted: #5d6980;
+  --qbx-accent: #4058d3;
   --qbx-line: #e2e8f3;
   --qbx-surface: #fff;
   --qbx-canvas: #f5f7fc;
@@ -110,7 +110,7 @@
   }
   #ai-panel .ai-main-tabs.qbx-bottom-nav button {
     flex: 1 1 0; min-width: 0; min-height: 56px; padding: 6px 2px;
-    gap: 2px; border-radius: 10px; background: transparent; color: #65738b;
+    gap: 2px; border-radius: 10px; background: transparent; color: #5d6980;
     box-shadow: none; font-size: 11px; font-weight: 550;
   }
   #ai-panel .ai-main-tabs.qbx-bottom-nav button[aria-current="page"] { background: #edf1ff; color: #344ec9; font-weight: 700; }

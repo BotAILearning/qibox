@@ -1,6 +1,6 @@
 /* QIAPP UI 0.1.0 product composition. Product state and events stay in qibox. */
 .qiapp-product {
-  --qi-primary: #4e62df;
+  --qi-primary: #4058d3;
   --qi-primary-hover: #4055d6;
   --qi-primary-active: #3548bc;
   --qi-on-primary: #fff;
