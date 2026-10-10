@@ -73,6 +73,20 @@ async function fixture(t, group = false) {
   }};
 }
 
+for(const [question,text,reasonCode] of [
+  ['你现在具体在哪个地方？','怎么突然问这个，我在家呢。','unverified-personal-fact'],
+  ['你今天在哪家公司上班？','我没有在哪家公司上班。','unverified-personal-fact'],
+  ['改成周日吧，周六我不行。','行，那就改周日，具体几点等我确认一下再跟你说。','unverified-execution'],
+  ['改成周日吧，周六我不行。','行，改成周日。我确认下时间再回你。','unverified-execution'],
+  ['昨天下雨那事已经过去了，现在只想找点吃的。','那就找点想吃的去，昨晚的事翻篇就好','unverified-time-fact'],
+  ['你记错了，胃疼的是我，不是你。','我没记错呀，昨天听你说胃疼。','unverified-time-fact'],
+])test(`final local guard stops ${reasonCode} without another model request`,async t=>{
+  const f=await fixture(t);f.provider.next=async()=>({action:'send',text});await f.receive(question);
+  assert.equal(f.provider.calls.length,1);assert.equal(f.bridge.sent.length,0);
+  assert.ok(f.a.data.events.some(e=>e.code==='skip'&&e.reasonCode===reasonCode));
+  await f.a.tick();assert.equal(f.provider.calls.length,1,'The rejected turn must not be replayed');
+});
+
 for (const [bad, reason] of [['我是一个机器人', 'identity'], ['任务已执行完成', 'execution']]) {
   test(`${reason}: one corrected draft is sent, unsafe original never reaches the sender`, async t => {
     const f = await fixture(t); f.provider.next = async () => ({ action: 'send', text: bad });

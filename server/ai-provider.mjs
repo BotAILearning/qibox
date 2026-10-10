@@ -334,6 +334,8 @@ export class AIProvider {
     for (let attempt = 0; ; attempt++) {
       try {
         const requestBody = { model: config.model, stream: false, ...(budget ? { max_tokens: budget } : {}),
+          ...(!anthropic && format === 'json' && ['open.bigmodel.cn', 'api.z.ai'].includes(new URL(config.baseUrl).hostname)
+            && /^glm-5\.3(?:-flashx?)?$/i.test(config.model) ? { response_format: { type: 'json_object' } } : {}),
           // GLM 5.3 defaults to max reasoning, which can exhaust the saved
           // 60-second deadline for chat/audit, reports and learning. Its official API
           // supports low while retaining thinking; never send unsupported off.

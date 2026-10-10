@@ -26,6 +26,7 @@ import { createHash, randomInt, randomUUID } from 'node:crypto';
 import { setTimeout as wait } from 'node:timers/promises';
 import { AppError, atomicJson, jsonFile } from './files.mjs';
 import { AIProvider, SecretStore, providerValue, providerFingerprint } from './ai-provider.mjs';
+import { unsupportedPersonalAnswer, unsupportedChatTime } from './ai-personal-answer.mjs';
 import { categories, styleOptions, avoidOptions, defaultStyle, styleSchema, styleValue, strategyValue, replyStrategyValue, replyLimitValue, strategyReady, textField } from './ai-schema.mjs';
 import { providerPresets, goalPresets, replyPresets } from './ai-presets.mjs';
 import { unsupportedTextAction, promisesMedia } from './ai-capabilities.mjs';
@@ -3246,6 +3247,10 @@ export class AIAssistant {
       if (violation) { result.action = 'skip'; result[violation === 'identity' ? 'identitySkipped' : 'executionSkipped'] = true; }
       const unsupported = segments.map(unsupportedTextAction).find(Boolean) || unsupportedTextAction(segments.join('\n')) || (segments.some(promisesMedia) ? 'media' : null);
       if (unsupported) { result.action = 'skip'; result.mediaSkipped = true; }
+      const finalTexts = [...segments, ...(nativeAudioAllowed && result.media?.[0]?.text ? [result.media[0].text] : [])];
+      const finalContext = { messages: modelMessages, facts: strategy.facts, now: this.now(), timezone: currentChatTime(this.now(), selfContext(this, profile.kind)).timezone };
+      const personalViolation = unsupportedPersonalAnswer(finalTexts, finalContext) || unsupportedChatTime(finalTexts, finalContext);
+      if (personalViolation) { result.action = 'skip'; result[personalViolation === 'future-notice' ? 'executionSkipped' : personalViolation === 'time-fact' ? 'timeSkipped' : 'factsSkipped'] = true; result.memoryUpdates = []; }
     }
     const fresh = await this.read(profile, signal);
     if (!this.canDeliver(profile, mode, revision, signal)) return;
@@ -3275,7 +3280,7 @@ export class AIAssistant {
       this.followUps.delete(profile.id);
       if (result.action !== 'skip') this.pauseProfile(profile, result.action);
       const skipMessage = (profile.kind === 'group' && trigger ? fresh.messages.find(m => m.id === burst?.messages.findLast(item => item.trigger === trigger)?.id) : null) || pendingMessages.findLast(m => m.direction === 'other') || fresh.messages.findLast(m => m.direction === 'other');
-      if (result.action === 'skip') this.event('skip', profile.id, result.mediaSkipped || result.identitySkipped || result.executionSkipped ? 'system-skip' : 'model-skip', result.mediaSkipped ? '系统拦截：当前内容无法安全处理' : result.identitySkipped ? '系统拦截：回复内容不符合身份规则' : result.executionSkipped ? '系统拦截：回复声称执行了未核实的操作' : '模型判断：本轮无需回复', { reasonCode: result.mediaSkipped ? 'unsupported-media' : result.identitySkipped ? 'identity-rule-block' : result.executionSkipped ? 'unverified-execution' : 'model-no-reply', ...(mode === 'reply' && skipMessage?.id ? { messageId: skipMessage.id } : {}), trigger: trigger || mode, ...(mode === 'reply' ? { incomingMessages: fresh.messages.filter(message => pendingMessages.some(pending => pending.id === message.id)) } : {}) });
+      if (result.action === 'skip') this.event('skip', profile.id, result.mediaSkipped || result.identitySkipped || result.executionSkipped || result.factsSkipped || result.timeSkipped ? 'system-skip' : 'model-skip', result.mediaSkipped ? '系统拦截：当前内容无法安全处理' : result.identitySkipped ? '系统拦截：回复内容不符合身份规则' : result.executionSkipped ? '系统拦截：回复声称执行了未核实的操作' : result.timeSkipped ? '系统拦截：回复包含缺少来源的时间信息' : result.factsSkipped ? '系统拦截：回复包含缺少来源的本人信息' : '模型判断：本轮无需回复', { reasonCode: result.mediaSkipped ? 'unsupported-media' : result.identitySkipped ? 'identity-rule-block' : result.executionSkipped ? 'unverified-execution' : result.timeSkipped ? 'unverified-time-fact' : result.factsSkipped ? 'unverified-personal-fact' : 'model-no-reply', ...(mode === 'reply' && skipMessage?.id ? { messageId: skipMessage.id } : {}), trigger: trigger || mode, ...(mode === 'reply' ? { incomingMessages: fresh.messages.filter(message => pendingMessages.some(pending => pending.id === message.id)) } : {}) });
       else this.event(result.action, profile.id, trigger);
       if (item) item.status = 'skipped';
       const cursor = this.cursors.get(profile.id); if (cursor) cursor.pending = groupBatch ? readGroupInbox(this.vault, profile).pending.length > 0 : false;
