@@ -173,7 +173,7 @@ function dialog(title, content, actions = '<button type="button" data-close clas
   setTimeout(() => { if (modal.open && generation === modalGeneration) $('#modal-body input[type=text]')?.focus(); }, 60);
 }
 modal.addEventListener('cancel', event => { if (requiredModal) event.preventDefault(); else { modalGeneration++; modalSubmit = null; } });
-$('#modal-close').onclick = closeModal;
+$('#modal-close').onclick = () => closeModal();
 $('#modal-form').onsubmit = async event => {
   event.preventDefault(); if (!modalSubmit || submittingModalGeneration === modalGeneration) return;
   const generation = modalGeneration, submit = modalSubmit;
