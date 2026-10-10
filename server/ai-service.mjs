@@ -26,7 +26,7 @@ import { createHash, randomInt, randomUUID } from 'node:crypto';
 import { setTimeout as wait } from 'node:timers/promises';
 import { AppError, atomicJson, jsonFile } from './files.mjs';
 import { AIProvider, SecretStore, providerValue, providerFingerprint } from './ai-provider.mjs';
-import { unsupportedPersonalAnswer, unsupportedChatTime } from './ai-personal-answer.mjs';
+import { unsupportedPersonalAnswer, unsupportedChatTime, personalQuestionClarification, knownDateCorrection } from './ai-personal-answer.mjs';
 import { categories, styleOptions, avoidOptions, defaultStyle, styleSchema, styleValue, strategyValue, replyStrategyValue, replyLimitValue, strategyReady, textField } from './ai-schema.mjs';
 import { providerPresets, goalPresets, replyPresets } from './ai-presets.mjs';
 import { unsupportedTextAction, promisesMedia } from './ai-capabilities.mjs';
@@ -3250,7 +3250,9 @@ export class AIAssistant {
       const finalTexts = [...segments, ...(nativeAudioAllowed && result.media?.[0]?.text ? [result.media[0].text] : [])];
       const finalContext = { messages: modelMessages, pendingMessages, facts: strategy.facts, boundaries: strategy.boundaries, identityAsked, now: this.now(), timezone: currentChatTime(this.now(), selfContext(this, profile.kind)).timezone };
       const personalViolation = unsupportedPersonalAnswer(finalTexts, finalContext) || unsupportedChatTime(finalTexts, finalContext);
-      if (personalViolation) { result.action = 'skip'; result[personalViolation === 'identity-rule' ? 'identitySkipped' : personalViolation === 'future-notice' ? 'executionSkipped' : personalViolation === 'time-fact' ? 'timeSkipped' : 'factsSkipped'] = true; result.memoryUpdates = []; }
+      const clarification = personalViolation === 'unknown-self' ? personalQuestionClarification(pendingMessages) : personalViolation === 'future-notice' ? knownDateCorrection(finalContext) : '';
+      if (clarification) { result = {action:'send', text:clarification, followUp:false, memoryUpdates:[]}; segments = [clarification]; }
+      else if (personalViolation) { result.action = 'skip'; result[personalViolation === 'identity-rule' ? 'identitySkipped' : personalViolation === 'future-notice' ? 'executionSkipped' : personalViolation === 'time-fact' ? 'timeSkipped' : 'factsSkipped'] = true; result.memoryUpdates = []; }
     }
     const fresh = await this.read(profile, signal);
     if (!this.canDeliver(profile, mode, revision, signal)) return;

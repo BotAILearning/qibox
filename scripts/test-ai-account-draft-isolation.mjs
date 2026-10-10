@@ -19,6 +19,7 @@ try{
  const calls=provider.calls.length;
  browser=await chromium.launch({channel:'msedge',headless:true});
  const page=await browser.newPage({viewport:{width:1280,height:900}});
+ proof.pageErrors=[];proof.accountReads=[];page.on('pageerror',error=>proof.pageErrors.push(error.message));page.on('response',async response=>{if(response.url().includes('/ai?view=live')){try{const state=await response.json();proof.accountReads.push({at:Date.now(),account:state.account,compact:state.compact});}catch{}}});
  await page.goto(fixture.url);await page.locator('[data-action=open]').click();await page.locator('#ai-open').click();
  await page.locator(`[data-ai-object="${contact}"]`).click();
   await page.locator('#ai-object-form details').filter({hasText:'回复策略'}).locator('summary').click();
@@ -45,7 +46,8 @@ try{
  await page.locator('#ai-analysis-request-text').fill('PRIVATE_ANALYSIS_DRAFT59');
  bridge.account=createHash('sha256').update('third-account-isolation59').digest('hex');
  await ai.scan();
- await page.waitForFunction(()=>document.querySelector('#ai-analysis-request-text')?.value==='',undefined,{timeout:7000});
+ try { await page.waitForFunction(()=>document.querySelector('#ai-analysis-request-text')?.value==='',undefined,{timeout:7000}); }
+ catch (error) { proof.analysisResetFailure={backendAccount:ai.publicState().account,visiblePage:await page.locator('#ai-panel').getAttribute('data-page'),input:await page.locator('#ai-analysis-request-text').evaluateAll(inputs=>inputs.map(input=>input.value)),errors:await page.locator('#ai-message').allTextContents(),browserState:await page.evaluate(()=>({visibility:document.visibilityState,panelHidden:document.querySelector('#ai-panel')?.hidden,busy:document.querySelector('#ai-panel')?.getAttribute('aria-busy')}))};await page.screenshot({path:fileURLToPath(new URL('analysis-failure.png',output))});throw error; }
  proof.analysisDraftCleared=true;
  await page.screenshot({path:fileURLToPath(new URL('analysis-reset.png',output))});
  assert.equal(provider.calls.length,calls);assert.equal(bridge.sent.length,0);proof.passed=true;

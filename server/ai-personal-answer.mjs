@@ -9,6 +9,8 @@ const futureNotice = /等我(?:确认|确定|定下来|有消息|有结果)(?:�
 const confirmThenNotice = /我(?:先|再)?(?:确认|确定)(?:一下|下)?[^。！？!?，,；;\n]{0,16}(?:再|就|后|然后)(?:回|回复|告诉|通知|联系)(?:你|您)|我(?:先|再)?(?:确认|确定)(?:一下|下)?[^。！？!?，,；;\n]{0,16}(?:再|就|后|然后)(?:跟|和)(?:你|您)(?:说|定(?:时间|下来|好)?)/;
 const futureCheck = /我(?:先|再|回头|稍后|到时候|到时|待会儿?)?(?:确认|确定)(?:一下|下)(?:具体)?(?:时间|几点|安排)?(?:再说)?$/;
 const deferredNotice = /^(?:那|好[的吧]?|嗯)?(?:我)?(?:回头|稍后|到时候|到时|待会儿?)(?:再|就|会)?(?:告诉|通知|联系|回复|(?:跟|和)(?:你|您)说|给(?:你|您)发(?:消息|信息))(?:你|您)?(?:一声|一下)?$/;
+const deferredPlanning = /^(?:(?:具体)?(?:几点|时间))?(?:到时候|到时|回头|以后|稍后)(?:再|就|会)?(?:定|确定|商量|约)(?:下|一下|具体时间|时间|好)?$/;
+const unknownSelf = /^(?:这个|这边|这事)?我(?:这边|自己|现在|暂时|还真|目前)?(?:的)?(?:具体情况|情况|位置|工作)?(?:还|也|真|暂时)?(?:说不(?:太)?上来|说不太上|说不上来|不知道|不清楚|不太清楚)/;
 const privacyReason = /^(?:我(?:这边|现在|目前)?(?:的)?(?:位置|地点)?|这个|这边|位置)[^。！？!?，,；;\n]{0,8}不(?:太)?方便(?:说|透露)/;
 const plannedDelivery = /^(?:那|好[的吧]?|嗯)?(?:我)?(下次|回头|明天|周[一二三四五六日天])(?:再|就|会)?(?:给|帮|替)(?:你|您)(带|拿|送|取)(?:点|些|一点|一些)?(.{1,24})$/;
 const plannedInvitation = /^(?:那|好[的吧]?|嗯)?(?:我)?(下次|回头|明天|周[一二三四五六日天])(.{0,24}?)(叫上|喊上|约|带上)(?:你|您)(.{0,12})$/;
@@ -23,10 +25,12 @@ export function unsupportedPersonalAnswer(texts, { messages = [], pendingMessage
   const pending = pendingMessages.filter(m => m.direction === 'other');
   const singleAIQuestion = identityAsked && pending.length === 1 && /AI|人工智能|机器人|自动回复|代回复|\bbot\b/i.test(clean(pending[0].text));
   const locationQuestion = pending.some(m => /(?:你|您).{0,6}(?:在哪|在哪里|在什么|位置|地点)/.test(clean(m.text)));
+  const employmentQuestion = pending.some(m => /(?:你|您).{0,6}(?:哪家|哪个|什么)(?:公司|单位).{0,3}(?:上班|工作)/.test(clean(m.text)));
   const privacyAllowed = /不(?:说|透露|分享)(?:我)?(?:位置|地点|行踪)|(?:位置|地点|行踪).{0,6}(?:保密|不说|不透露)/.test(clean(boundaries)) || evidence.some(p => privacyReason.test(p));
   const planNotDelegated = pending.some(m => /(?:不用|不必|别|不要|先别)(?:再)?(?:替|帮)(?:我|我们)(?:确定|决定|定|约|安排)/.test(clean(m.text)));
   for (const text of [...texts, texts.join('')]) for (const part of parts(text)) {
     if (attributed(part) || /(?:不是说|别说|不能说|没有说|不代表|未确认|说不准|不确定)/.test(part)) continue;
+    if ((locationQuestion || employmentQuestion) && unknownSelf.test(part)) return 'unknown-self';
     const place = livePlace.exec(part);
     if (place && !evidence.some(p => livePlace.exec(p)?.[1] === place[1])) return 'personal-fact';
     if (employmentDenial.test(part) && !evidence.some(p => employmentDenial.test(p))) return 'personal-fact';
@@ -39,9 +43,25 @@ export function unsupportedPersonalAnswer(texts, { messages = [], pendingMessage
     const invitation = plannedInvitation.exec(part);
     if (invitation && !evidence.some(p => { const known = plannedInvitation.exec(p); return known && known.slice(1).join('\0') === invitation.slice(1).join('\0'); })) return 'future-notice';
     if (planNotDelegated && /^(?:那|就|我们|咱们|我|先){0,3}(?:定|约|安排|确定)(?:好|下|了|在|为|成)?(?:下周|这周|周[一二三四五六日天]|明天|后天|计划|安排)/.test(part)) return 'future-notice';
-    if ((futureNotice.test(part) || confirmThenNotice.test(part) || futureCheck.test(part) || deferredNotice.test(part)) && !/^(?:不用|不必|别|不要)|不(?:会|承诺|保证)/.test(part)) return 'future-notice';
+    if ((futureNotice.test(part) || confirmThenNotice.test(part) || futureCheck.test(part) || deferredNotice.test(part) || deferredPlanning.test(part)) && !/^(?:不用|不必|别|不要)|不(?:会|承诺|保证)/.test(part)) return 'future-notice';
   }
   return '';
+}
+
+export function personalQuestionClarification(pendingMessages = []) {
+  const pending = pendingMessages.filter(m => m.direction === 'other');
+  return pending.length === 1 && /^(?:你|您)(?:今天|现在|这会儿|目前)?(?:具体)?(?:在哪(?:个)?(?:地方)?|在哪里|在哪(?:家|个)(?:公司|单位)(?:上班|工作)?)[？?。！!]?$/u.test(clean(pending[0].text).trim())
+    ? '怎么了，找我有事吗？' : '';
+}
+
+export function knownDateCorrection({pendingMessages = [], messages = [], now = Date.now()} = {}) {
+  const pending = pendingMessages.filter(m => m.direction === 'other');
+  if (pending.length !== 1) return '';
+  const correction = /^改(?:成|到)(周[一二三四五六日天])(?:吧)?(?:[，,]周[一二三四五六日天]我(?:不行|没空))?[。！？!?]?$/.exec(clean(pending[0].text).trim());
+  const agreed = messages.some(m => m.direction === 'self' && m.authorship === 'human' && !m.aiGenerated
+    && Number.isSafeInteger(m.timestamp) && m.timestamp * 1000 <= now && now - m.timestamp * 1000 <= 86400000
+    && !attributed(clean(m.text)) && /^(?:(?:先)?按周[一二三四五六日天]记(?:着|下)|(?:我们|我)?周[一二三四五六日天].{0,8}(?:见|碰面))/.test(clean(m.text)));
+  return correction && agreed ? `行，改成${correction[1]}。` : '';
 }
 
 // Check only explicit added precision and claims about when the counterpart

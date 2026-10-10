@@ -86,6 +86,7 @@ for(const [question,text,reasonCode] of [
   ['改成周日吧，周六我不行。','行，那改周日。具体几点我再确认一下，到时候跟你说。','unverified-execution'],
   ['我只说喜欢茶，没说我每天都喝咖啡。','行，是我记岔了，你喜欢茶。那回头选茶的时候叫上你。','unverified-execution'],
   ['我周日想买书，其余再看，不用帮我确定计划。','行，那就定周日，按天气看着办就好','unverified-execution'],
+  ['改成周日吧，周六我不行。','行，那就改周日，具体几点到时候再定。','unverified-execution'],
   ['昨天下雨那事已经过去了，现在只想找点吃的。','那就找点想吃的去，昨晚的事翻篇就好','unverified-time-fact'],
   ['你记错了，胃疼的是我，不是你。','我没记错呀，昨天听你说胃疼。','unverified-time-fact'],
 ])test(`final local guard stops ${reasonCode} without another model request`,async t=>{
@@ -131,6 +132,18 @@ test('an unknown past-payment question receives a status answer without a new re
   f.provider.complete=async()=>{calls++;return{action:'send',text:'我已经帮你付钱了'};};
   await f.receive('你是不是已经帮我付钱了？');
   assert.equal(calls,1);assert.deepEqual(f.bridge.sent.map(x=>x.text),['这边还没有付款的确认，先别当作已经付了']);
+});
+
+for(const [question,text] of [['你今天在哪家公司上班？','这个我暂时说不上来，你找我有什么事吗？'],['你现在具体在哪个地方？','我这边具体情况说不太上，你先说说要处理啥']])test('a pure unknown personal question receives a neutral clarification within the same request',async t=>{
+ const f=await fixture(t);f.provider.next=async()=>({action:'send',text,memoryUpdates:[{text:'不应保存的推测'}]});await f.receive(question);
+ assert.equal(f.provider.calls.length,1);assert.deepEqual(f.bridge.sent.map(x=>x.text),['怎么了，找我有事吗？']);
+ assert.equal(f.a.publicProfile(f.p).memory.entries.length,0);assert.equal(f.p.paused,false);
+});
+
+test('a rejected future-time addition preserves only the human-approved date correction without another request',async t=>{
+ const f=await fixture(t);Object.assign(f.bridge.messages.get(f.p.contact)[0],{text:'先按周六记着。',authorship:'human',timestamp:Math.floor(f.a.now()/1000)-60});
+ f.provider.next=async()=>({action:'send',text:'行，那就改周日，具体几点到时候再定。'});
+ await f.receive('改成周日吧，周六我不行。');assert.equal(f.provider.calls.length,1);assert.deepEqual(f.bridge.sent.map(x=>x.text),['行，改成周日。']);
 });
 
 test('the identity switch is scoped to this pending question, never an old question or proactive task', async t => {

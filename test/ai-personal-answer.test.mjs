@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {unsupportedPersonalAnswer, unsupportedChatTime} from '../server/ai-personal-answer.mjs';
+import {unsupportedPersonalAnswer, unsupportedChatTime, personalQuestionClarification, knownDateCorrection} from '../server/ai-personal-answer.mjs';
 
 test('unknown live presence and employment denials are not invented for natural chat',()=>{
   for(const text of ['怎么突然问这个，我在家呢。','我现在在办公室忙。','我没有在哪家公司上班。','我没在任何公司工作'])assert.equal(unsupportedPersonalAnswer([text]),'personal-fact',text);
@@ -64,6 +64,29 @@ test('a counterpart who declined planning assistance does not receive a newly fi
   assert.equal(unsupportedPersonalAnswer(['行，那就定周日，按天气看着办就好'], context), 'future-notice');
   for (const text of ['你想周日去，其他的看天气', '先看天气，书店想去就去', '他说“那就定周日”']) assert.equal(unsupportedPersonalAnswer([text], context), '');
   assert.equal(unsupportedPersonalAnswer(['行，那就定周日'], {pendingMessages: [{direction: 'other', text: '确定周日，就这样定吧。'}]}), '');
+});
+
+test('an implicit later agreement is still an added future action',()=>{
+  assert.equal(unsupportedPersonalAnswer(['行，那就改周日，具体几点到时候再定。']), 'future-notice');
+  for(const text of ['到时候看天气', '你到时候再定时间', '他说“到时候再定”'])assert.equal(unsupportedPersonalAnswer([text]), '',text);
+});
+
+test('unknown personal questions can be clarified without inventing ignorance or losing additional questions',()=>{
+  for(const [question,text] of [['你今天在哪家公司上班？','这个我暂时说不上来，你找我有什么事吗？'],['你现在具体在哪个地方？','你问我位置是想问什么事呀？我这边具体情况说不太上']]){
+    const pendingMessages=[{direction:'other',text:question}];
+    assert.equal(unsupportedPersonalAnswer([text],{pendingMessages}),'unknown-self');
+    assert.equal(personalQuestionClarification(pendingMessages),'怎么了，找我有事吗？');
+    assert.equal(personalQuestionClarification([...pendingMessages,{direction:'other',text:'你能解释一下这个问题吗'}]),'');
+  }
+  assert.equal(personalQuestionClarification([{direction:'other',text:'你现在具体在哪个地方？顺便回答今天几号'}]),'');
+  assert.equal(unsupportedPersonalAnswer(['这个我说不上来'],{pendingMessages:[{direction:'other',text:'你知道猫为什么这么睡吗？'}]}),'');
+});
+
+test('date corrections repeat only a recent human-approved plan and only the provided day',()=>{
+ const now=1700000000000, pendingMessages=[{direction:'other',text:'改成周日吧，周六我不行。'}],human={direction:'self',authorship:'human',text:'先按周六记着。',timestamp:Math.floor(now/1000)-60};
+ assert.equal(knownDateCorrection({pendingMessages,messages:[human],now}),'行，改成周日。');
+ for(const bad of [{...human,aiGenerated:true},{...human,direction:'other'},{...human,authorship:'unknown'},{...human,timestamp:human.timestamp-86400},{...human,text:'他说“我们周六见面”。'}])assert.equal(knownDateCorrection({pendingMessages,messages:[bad],now}),'');
+ assert.equal(knownDateCorrection({pendingMessages:[...pendingMessages,{direction:'other',text:'还要确认一下另外一件事'}],messages:[human],now}),'');
 });
 
 test('a vague yesterday event cannot be made a night event or an invented earlier message',()=>{

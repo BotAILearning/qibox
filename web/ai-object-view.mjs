@@ -35,7 +35,8 @@ export function objectList(state, view) {
   }).join('');
   const emptyHint = String(view.search || '').trim()
     ? '没有找到匹配对象，请尝试其他关键词或清空搜索。'
-    : '暂无联系人或群聊，请刷新列表。';
+    : state.available === false ? '暂时无法读取联系人，请确认微信已登录后刷新。'
+    : view.kind === 'group' ? '当前微信没有可读取的群聊。' : '当前微信没有可读取的联系人。';
   return rows ? `<div data-object-window="${start}:${end}" class="ai-object-spacer" style="height:${start * OBJECT_ROW_HEIGHT}px" aria-hidden="true"></div>${rows}<div class="ai-object-spacer" style="height:${(contacts.length - end) * OBJECT_ROW_HEIGHT}px" aria-hidden="true"></div>` : `<p class="ai-empty">${emptyHint}</p>`;
 }
 export { objectPage, objectExecutionStatus } from './ai-object-page-new.mjs';

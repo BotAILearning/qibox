@@ -531,11 +531,19 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       try { return await call(undefined, {}, true); }
       catch { return result; }
     }
+    return acceptState(result);
+  }
+  async function acceptState(result) {
+    const initialState = !state;
     const accountChanged = state && state.account !== result.account;
     if (accountChanged) {
       // Invalidate pending reads and discard local edits from the old account,
       // even when both accounts have the same contact ID.
       requestEpoch++;
+      workToken++; busy = false; contactsLoading = false; panel.setAttribute('aria-busy', 'false');
+      // Removing a focused input emits a change event synchronously. Detach
+      // the old account first so that event cannot remember its private text.
+      state = null; $('#ai-content').innerHTML = loadingContent;
       concealKey(true); providerRevision++; modelDraft = null; learningDraft = null; replyDraft = null;
       profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); objectDirtyContacts.clear();
       objectScrollKey = ''; objectScrollTop = 0; selectedObject = ''; objectSearch = ''; objectKind = 'person'; objectSection = 'reply'; objectMemoryCategory = 'name';
@@ -551,12 +559,17 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       recordCache.delete(id); logEpoch++; proactiveRecordEpoch++; errorEpoch++;
       logRecords = []; proactiveHistory = []; proactiveHistoryPage = null; errorHistory = []; errorPage = null; errorLoading = false; logLoading = false; proactiveRecordLoading = false; logSignature = '';
     }
+    if (accountChanged && result.compact) {
+      // The live read already establishes a new account. Conceal old private
+      // forms immediately, even if fetching its full configuration is slow.
+      return call();
+    }
     if (result.compact && (result.account !== state?.account || result.configurationRevision !== state?.configurationRevision)) return call();
     if (result.compact) { const updates = new Map(result.profiles.map(profile => [profile.id, profile])); result = { ...state, ...result, profiles: state.profiles.map(profile => updates.has(profile.id) ? { ...profile, ...updates.get(profile.id) } : profile) }; }
     state = result;
     // Repaint every page immediately so old private text cannot remain in the
     // form after its draft has been discarded.
-    if (accountChanged) render();
+    if (accountChanged || initialState) render();
     return result;
   }
   function selectProfiles(includePaste = true) { return (state?.profiles || []).filter(p => includePaste || p.contact && state.contacts.some(c => c.id === p.contact)); }
@@ -866,6 +879,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     return `<form id="ai-manual-reply-form" data-contact="${esc(contact.id)}"><div class="ai-page-heading"><button type="button" class="quiet" data-ai-action="back-reply-contacts">${icon('arrow-l')}返回联系人列表</button><h3>${contactName(contact)}的回复风格</h3></div><label class="ai-field">选择风格<select id="ai-reply-preset" name="replyPreset">${presets.map(p => option(p.id, p.label, v.replyPreset === p.id)).join('')}${option('custom', '自定义', v.replyPreset === 'custom')}${learnedProfiles().length ? '<optgroup label="已学习的风格">' + learnedProfiles().map(p => option('learned:' + p.id, p.label, v.replyPreset === 'learned:' + p.id)).join('') + '</optgroup>' : ''}</select></label>${field('summary', '风格说明（可修改）', v.summary || summaryText(v), 6000)}<details class="ai-paste"><summary>注意事项与策略（可选）</summary>${field('customAvoid', '注意事项', v.customAvoid, 1200)}${field('replyGoal', '回复目的与立场', v.replyGoal)}${field('boundaries', '不能擅自决定的事项', v.boundaries)}<label class="ai-field">回复次数上限${replyLimitControl(v.maxRounds, "ai-manual-round-limit")}</label></details><button type="submit" class="primary ai-wide">保存回复风格</button></form>`;
   }
   function rememberDraft() {
+    if (!state) return;
     const personal = $('#ai-personal-information-form');
     if (personal && personal.dataset.personalAccount === (state?.account || '')) {
       personalDraft = personalDraftFromForm(personal); personalDraftAccount = state.account;
@@ -1078,6 +1092,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   };
   rail.addEventListener('change', changeMaster);
   panel.addEventListener('change', async event => {
+    if (!state) return;
     try {
       const input = event.target;
       if (input.closest('#ai-object-form')) objectDirtyContacts.add(selectedObject);
@@ -1220,6 +1235,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     } catch (e) { controls(); message(e.message, true); }
   });
   panel.addEventListener('input', event => {
+    if (!state) return;
     if (event.target.closest('#ai-object-form')) objectDirtyContacts.add(selectedObject);
     if (event.target.closest('#ai-personal-information-form')) { updatePersonalInformationForm($('#ai-personal-information-form'), state); rememberDraft(); return; }
     if (event.target.name === 'facts' && event.target.closest('#ai-global-reply-form')) {
@@ -2024,7 +2040,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         lastPollAt = Date.now();
         if (polling || current !== generation) return; polling = true;
         try {
-          if (busy) { const epoch = requestEpoch; const result = await api(`/instances/${id}/ai?view=live`).catch(() => null); if (current !== generation || epoch !== requestEpoch || !busy || !result) return; if (analysisQueueAccount !== null && result.account !== analysisQueueAccount) { analysisQueueToken++; analysisQueueAccount = null; for (const report of analysisResult?.reports || []) if (report.status === 'waiting' || report.status === 'analyzing') { report.status = 'cancelled'; report.error = ''; } render(); message('微信账号已变化，已停止剩余联系人分析', true); return; } $('#ai-operation').hidden = !result.operation && !contactsLoading && !hasPendingAnalysis(); $('#ai-operation-text').textContent = operationText(result.operation) || (contactsLoading ? '正在获取联系人…' : hasPendingAnalysis() ? '正在分析聊天记录…' : ''); }
+          if (busy) { const epoch = requestEpoch; const result = await api(`/instances/${id}/ai?view=live`).catch(() => null); if (current !== generation || epoch !== requestEpoch || !busy || !result) return; if (state && result.account !== state.account) { await acceptState(result); if (current === generation) message('微信账号已变化，已停止旧账号操作', true); return; } if (analysisQueueAccount !== null && result.account !== analysisQueueAccount) { analysisQueueToken++; analysisQueueAccount = null; for (const report of analysisResult?.reports || []) if (report.status === 'waiting' || report.status === 'analyzing') { report.status = 'cancelled'; report.error = ''; } render(); message('微信账号已变化，已停止剩余联系人分析', true); return; } $('#ai-operation').hidden = !result.operation && !contactsLoading && !hasPendingAnalysis(); $('#ai-operation-text').textContent = operationText(result.operation) || (contactsLoading ? '正在获取联系人…' : hasPendingAnalysis() ? '正在分析聊天记录…' : ''); }
           else { const result = await call(undefined, {}, true); if (result) { controls(); if (tab === 'activity' && !panel.hidden && !logLoading && logSignature !== JSON.stringify([state.activity || [], state.activityHistory || []])) await loadActivity(); } }
         } catch (e) { if (current === generation && !panel.hidden) message(e.message, true); }
         finally { if (current === generation) polling = false; }
