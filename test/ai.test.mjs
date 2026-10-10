@@ -369,7 +369,7 @@ test('OpenAI endpoints keep provider-specific paths and complete URLs without in
 });
 
 test('connection failures distinguish address/protocol, authentication and service failures without exposing vendor responses', async () => {
-  for (const [status, expected] of [[400, /接口类型和模型名称/], [401, /认证失败/], [403, /认证失败/], [404, /服务地址、接口类型和模型名称/], [405, /服务地址和接口类型/], [429, /繁忙或额度不足/], [500, /暂时不可用/], [503, /暂时不可用/]]) {
+  for (const [status, expected] of [[400, /接口类型和模型名称/], [401, /认证失败/], [403, /权限不足/], [404, /服务地址、接口类型和模型名称/], [405, /服务地址和接口类型/], [429, /繁忙或额度不足/], [500, /暂时不可用/], [503, /暂时不可用/]]) {
     const provider = new AIProvider({ fetcher: async () => new Response('vendor-secret', { status }) });
     await assert.rejects(provider.test(modelConfig), error => expected.test(error.message) && !error.message.includes('vendor-secret'));
   }

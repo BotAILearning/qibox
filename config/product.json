@@ -7,6 +7,6 @@
   "gatewayPrefix": "/app/qibox",
   "publisher": "Bot",
   "email": "lbp240lbp@163.com",
-  "buildId": "0.10.47-stable.003",
+  "buildId": "0.10.47-stable.004",
   "channel": "stable"
 }

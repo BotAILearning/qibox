@@ -279,7 +279,13 @@ export class AIProvider {
       for (let page = 0; page < 20; page++) {
         const url = config.protocol === 'anthropic' ? `${endpoint}?limit=100${after ? `&after_id=${encodeURIComponent(after)}` : ''}` : endpoint;
         const response = await this.fetcher(url, { redirect: 'error', headers: this.headers(config), signal: requestSignal });
-        if (!response.ok) { await response.body?.cancel(); throw new AppError([401, 403].includes(response.status) ? '模型认证失败，请检查 API Key' : '无法拉取模型，请手动填写对话模型并测试连接'); }
+        if (!response.ok) {
+          await response.body?.cancel();
+          throw new AppError(response.status === 401 ? '模型认证失败，请检查 API Key'
+            : response.status === 403 ? '模型服务拒绝访问，权限不足；请检查账号、模型及接口访问权限'
+            : '无法拉取模型，请手动填写对话模型并测试连接', 400,
+            response.status === 401 ? 'ai_model_auth' : response.status === 403 ? 'ai_model_forbidden' : undefined);
+        }
         const reader = response.body.getReader(), parts = []; let size = 0;
         try { while (true) { const { done, value } = await reader.read(); if (done) break; size += value.length; if (size > 2 * 1024 * 1024) throw new AppError('模型列表过大，请手动填写对话模型'); parts.push(Buffer.from(value)); } }
         finally { await reader.cancel().catch(() => {}); }
@@ -364,13 +370,15 @@ export class AIProvider {
           // must not fail the call: retry once the way it used to be sent.
           if (budget && response.status === 400 && !droppedBudget && retry) { budget = 0; droppedBudget = true; continue; }
           throw new AppError(contextTooLarge ? '模型上下文容量不足，无法一次处理当前聊天范围；请缩小范围或更换长上下文模型'
-            : [401, 403].includes(response.status) ? '模型认证失败，请检查 API Key'
+            : response.status === 401 ? '模型认证失败，请检查 API Key'
+            : response.status === 403 ? '模型服务拒绝访问，权限不足；请检查账号、模型及接口访问权限'
             : response.status === 429 ? '模型服务繁忙或额度不足，请稍后重试'
             : response.status === 404 ? '未找到模型接口或模型，请检查服务地址、接口类型和模型名称'
             : response.status === 405 ? '模型接口不支持此请求，请检查服务地址和接口类型'
             : response.status >= 500 ? '模型服务暂时不可用，请稍后重试'
             : '模型请求失败，请检查接口类型和模型名称', response.status === 429 || response.status >= 500 ? 502 : 400,
-            response.status === 429 || response.status >= 500 ? 'ai_model_retry' : undefined);
+            response.status === 429 || response.status >= 500 ? 'ai_model_retry'
+              : response.status === 401 ? 'ai_model_auth' : response.status === 403 ? 'ai_model_forbidden' : undefined);
         }
         const reader = response.body.getReader(); let size = 0; const parts = [];
         try { while (true) { const { done, value } = await reader.read(); if (done) break; size += value.length; if (size > 128 * 1024) throw new AppError('模型返回内容过长'); parts.push(Buffer.from(value)); } }
