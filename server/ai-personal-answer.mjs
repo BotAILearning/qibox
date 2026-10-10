@@ -7,8 +7,11 @@ const livePlace = /^(?:嗯|哈哈|好|对|是的)?\s*我(?:现在|这会儿|目�
 const employmentDenial = /^我(?:现在|目前|今天)?(?:没有|没|不)(?:有)?(?:在)?(?:哪家|任何|什么|一家)?(?:公司|单位)(?:里)?(?:上班|工作)/;
 const futureNotice = /等我(?:确认|确定|定下来|有消息|有结果)(?:一下|下|时间)?(?:了|后|以后|之后)?[^。！？!?，,；;\n]{0,16}(?:再|就|会)?(?:告诉|通知|联系|回复|(?:跟|和)(?:你|您)(?:说|定(?:时间|下来|好)?)|给(?:你|您)发(?:消息|信息))(?:你|您)?(?:一声|一下)?$/;
 const confirmThenNotice = /我(?:先|再)?(?:确认|确定)(?:一下|下)?[^。！？!?，,；;\n]{0,16}(?:再|就|后|然后)(?:回|回复|告诉|通知|联系)(?:你|您)|我(?:先|再)?(?:确认|确定)(?:一下|下)?[^。！？!?，,；;\n]{0,16}(?:再|就|后|然后)(?:跟|和)(?:你|您)(?:说|定(?:时间|下来|好)?)/;
+const futureCheck = /我(?:先|再|回头|稍后|到时候|到时|待会儿?)?(?:确认|确定)(?:一下|下)(?:具体)?(?:时间|几点|安排)?(?:再说)?$/;
+const deferredNotice = /^(?:那|好[的吧]?|嗯)?(?:我)?(?:回头|稍后|到时候|到时|待会儿?)(?:再|就|会)?(?:告诉|通知|联系|回复|(?:跟|和)(?:你|您)说|给(?:你|您)发(?:消息|信息))(?:你|您)?(?:一声|一下)?$/;
 const privacyReason = /^(?:我(?:这边|现在|目前)?(?:的)?(?:位置|地点)?|这个|这边|位置)[^。！？!?，,；;\n]{0,8}不(?:太)?方便(?:说|透露)/;
 const plannedDelivery = /^(?:那|好[的吧]?|嗯)?(?:我)?(下次|回头|明天|周[一二三四五六日天])(?:再|就|会)?(?:给|帮|替)(?:你|您)(带|拿|送|取)(?:点|些|一点|一些)?(.{1,24})$/;
+const plannedInvitation = /^(?:那|好[的吧]?|嗯)?(?:我)?(下次|回头|明天|周[一二三四五六日天])(.{0,24}?)(叫上|喊上|约|带上)(?:你|您)(.{0,12})$/;
 
 export function unsupportedPersonalAnswer(texts, { messages = [], pendingMessages = [], facts = '', boundaries = '', now = Date.now(), identityAsked = false } = {}) {
   const human = messages.filter(m => m.direction === 'self' && m.authorship === 'human' && !m.aiGenerated
@@ -21,6 +24,7 @@ export function unsupportedPersonalAnswer(texts, { messages = [], pendingMessage
   const singleAIQuestion = identityAsked && pending.length === 1 && /AI|人工智能|机器人|自动回复|代回复|\bbot\b/i.test(clean(pending[0].text));
   const locationQuestion = pending.some(m => /(?:你|您).{0,6}(?:在哪|在哪里|在什么|位置|地点)/.test(clean(m.text)));
   const privacyAllowed = /不(?:说|透露|分享)(?:我)?(?:位置|地点|行踪)|(?:位置|地点|行踪).{0,6}(?:保密|不说|不透露)/.test(clean(boundaries)) || evidence.some(p => privacyReason.test(p));
+  const planNotDelegated = pending.some(m => /(?:不用|不必|别|不要|先别)(?:再)?(?:替|帮)(?:我|我们)(?:确定|决定|定|约|安排)/.test(clean(m.text)));
   for (const text of [...texts, texts.join('')]) for (const part of parts(text)) {
     if (attributed(part) || /(?:不是说|别说|不能说|没有说|不代表|未确认|说不准|不确定)/.test(part)) continue;
     const place = livePlace.exec(part);
@@ -32,7 +36,10 @@ export function unsupportedPersonalAnswer(texts, { messages = [], pendingMessage
     if (singleAIQuestion && /^(?:不是|并不是|没有)(?:的|啊|呀|啦|呢|哦)?$|^(?:我|这|现在的回复)(?:真的)?不是(?:AI|人工智能|机器人|自动回复)/i.test(part)) return 'identity-rule';
     const delivery = plannedDelivery.exec(part);
     if (delivery && !evidence.some(p => { const known = plannedDelivery.exec(p); return known && known.slice(1).join('\0') === delivery.slice(1).join('\0'); })) return 'future-notice';
-    if ((futureNotice.test(part) || confirmThenNotice.test(part)) && !/^(?:不用|不必|别|不要)|不(?:会|承诺|保证)/.test(part)) return 'future-notice';
+    const invitation = plannedInvitation.exec(part);
+    if (invitation && !evidence.some(p => { const known = plannedInvitation.exec(p); return known && known.slice(1).join('\0') === invitation.slice(1).join('\0'); })) return 'future-notice';
+    if (planNotDelegated && /^(?:那|就|我们|咱们|我|先){0,3}(?:定|约|安排|确定)(?:好|下|了|在|为|成)?(?:下周|这周|周[一二三四五六日天]|明天|后天|计划|安排)/.test(part)) return 'future-notice';
+    if ((futureNotice.test(part) || confirmThenNotice.test(part) || futureCheck.test(part) || deferredNotice.test(part)) && !/^(?:不用|不必|别|不要)|不(?:会|承诺|保证)/.test(part)) return 'future-notice';
   }
   return '';
 }

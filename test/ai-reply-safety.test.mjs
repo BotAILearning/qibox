@@ -83,6 +83,9 @@ for(const [question,text,reasonCode] of [
   ['你现在具体在哪个地方？','你问这个是要找我吗？我这边位置不太方便说。','unverified-personal-fact'],
   ['我去年旅行拍的照片今天才整理，别以为我现在在外地。','整理一年前的照片挺费劲的吧。','unverified-time-fact'],
   ['我只说喜欢茶，没说我每天都喝咖啡。','哦哦记错了，是喜欢茶，那下次给你带点茶。','unverified-execution'],
+  ['改成周日吧，周六我不行。','行，那改周日。具体几点我再确认一下，到时候跟你说。','unverified-execution'],
+  ['我只说喜欢茶，没说我每天都喝咖啡。','行，是我记岔了，你喜欢茶。那回头选茶的时候叫上你。','unverified-execution'],
+  ['我周日想买书，其余再看，不用帮我确定计划。','行，那就定周日，按天气看着办就好','unverified-execution'],
   ['昨天下雨那事已经过去了，现在只想找点吃的。','那就找点想吃的去，昨晚的事翻篇就好','unverified-time-fact'],
   ['你记错了，胃疼的是我，不是你。','我没记错呀，昨天听你说胃疼。','unverified-time-fact'],
 ])test(`final local guard stops ${reasonCode} without another model request`,async t=>{

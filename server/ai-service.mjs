@@ -3391,6 +3391,27 @@ export class AIAssistant {
       let delivery;
       try { delivery = await this.bridge.send({ account: this.data.account, contact: profile.contact, revision: fresh.revision, text, ...(mediaFile ? { mediaFile } : {}), operationId, signal, ...(groupBatch ? { allowIncoming: true } : {}) }); }
       catch (error) { if (error.code === 'ai_account_changed') throw error; delivery = { status: 'uncertain' }; }
+      if (['stale', 'not-sent'].includes(delivery.status) && delivery.diagnostic?.phase === 'native-prepare' && delivery.diagnostic.reason === 'existing-draft') {
+        // A protected user draft is not a new incoming message. Settle this
+        // turn instead of paying to regenerate it on every scheduler tick.
+        profile.delivery.status = sent ? 'sent' : 'cancelled';
+        profile.delivery.interrupted = sent > 0;
+        profile.delivery.diagnostic = delivery.diagnostic;
+        delete profile.sendRetryAt;
+        if (mode === 'reply') {
+          profile.handledIncomingId = fresh.messages.findLast(m => m.direction === 'other')?.id;
+          if (groupBatch) settleGroupBatch(this.vault, profile, groupBatch);
+          const cursor = this.cursors.get(profile.id);
+          if (cursor?.revision === fresh.revision) cursor.pending = groupBatch ? readGroupInbox(this.vault, profile).pending.length > 0 : false;
+          this.followUps.delete(profile.id);
+          this.replyStage(profile, sent ? 'partial' : 'skipped', '微信输入框有未发送内容，已保留草稿，本轮停止发送');
+        }
+        if (item) { item.status = sent ? 'done' : 'skipped'; item.reason = '微信输入框有未发送内容，已保留草稿，本轮停止发送'; }
+        this.settleQueue();
+        this.notice = `${this.nameFields(profile).label}：已保留微信草稿，本轮停止发送；新来信仍可继续处理`;
+        this.event('skip', profile.id, 'system-skip', this.notice, { reasonCode: 'native-draft-blocked', messageId: fresh.messages.findLast(m => m.direction === 'other')?.id, trigger: source, incomingMessages: fresh.messages.filter(m => groupBatch ? groupBatch.ids.includes(m.id) : m.direction === 'other'), evidenceScope: 'chat-context' });
+        await this.save(); return sent ? 'partial' : 'skipped';
+      }
       if (delivery.status === 'not-sent') {
         profile.delivery.status = sent ? 'sent' : 'cancelled'; profile.delivery.interrupted = sent > 0;
         if (delivery.diagnostic) profile.delivery.diagnostic = delivery.diagnostic;

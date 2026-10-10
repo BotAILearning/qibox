@@ -153,6 +153,27 @@ class DataGuard(unittest.TestCase):
         adapter.resolve.assert_called_once()
         adapter.controls.press.assert_called_once_with(5)
 
+    def test_whitespace_residue_is_empty_but_real_text_and_attachment_drafts_are_protected(self):
+        for draft in [' ' * 44, '\t\n\u00a0\u3000', '\u200b\u200d\u2060\ufeff']:
+            with self.subTest(draft=repr(draft)):
+                adapter = self.adapter()
+                adapter.editor_text = Mock(side_effect=[draft, '允许的文字', draft])
+                result = adapter.execute({'action': 'prepare-send'}, commit=lambda before:
+                    {'action': 'commit', 'revision': before['revision'], 'text': '允许的文字'})
+                self.assertEqual(result, {'status': 'submitted'})
+                adapter.write_text.assert_called_once_with(4, '允许的文字')
+                adapter.controls.press.assert_called_once_with(5)
+        for draft in ['用户未发草稿', ' \u200b真实内容 ', '\ufffc', '👨\u200d👩\u200d👧']:
+            with self.subTest(draft=draft):
+                adapter = self.adapter()
+                adapter.editor_text = Mock(return_value=draft)
+                result = adapter.execute({'action': 'prepare-send'}, commit=lambda before:
+                    {'action': 'commit', 'revision': before['revision'], 'text': '允许的文字'})
+                self.assertEqual(result, {'status': 'stale', 'diagnostic': {'phase': 'native-prepare',
+                    'code': 'controls-unavailable', 'reason': 'existing-draft'}})
+                adapter.write_text.assert_not_called()
+                adapter.controls.press.assert_not_called()
+
     def test_cancelled_commit_or_changed_native_chat_never_inserts_text(self):
         for change in ('cancel', 'guard', 'revision'):
             adapter = self.adapter()

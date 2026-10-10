@@ -3,7 +3,7 @@ import { stageNativeVoice } from './ai-voice-output.mjs';
 const safeDiagnostic = value => ({
   phase: ['native-start','native-session','native-navigation','native-prepare'].includes(value?.phase) ? value.phase : 'native-prepare',
   code: ['timeout','cancelled','controls-unavailable'].includes(value?.code) ? value.code : 'unavailable',
-  ...(['group-not-listed','conversation-outside-viewport','conversation-candidate-changed','popup-blocking-navigation','control-unavailable','inspection-interrupted','conversation-changed','target-changed','media-paste-unavailable','media-preview-unavailable','voice-unavailable','voice-too-long','voice-recording-changed','voice-audio-unavailable'].includes(value?.reason) ? { reason: value.reason } : {}),
+  ...(['group-not-listed','conversation-outside-viewport','conversation-candidate-changed','popup-blocking-navigation','control-unavailable','inspection-interrupted','conversation-changed','target-changed','existing-draft','media-paste-unavailable','media-preview-unavailable','voice-unavailable','voice-too-long','voice-recording-changed','voice-audio-unavailable'].includes(value?.reason) ? { reason: value.reason } : {}),
   ...(['entry','results','candidate-open','identity','cleanup'].includes(value?.navigationStep) ? { navigationStep: value.navigationStep } : {})
 });
 
@@ -96,7 +96,7 @@ export async function preparedSend(bridge, route, text, context, verify) {
       if (!complete || killed) return resolve({ status: context.delivery.started ? 'uncertain' : 'not-sent' });
       if (result.error === 'account-changed') return reject(Object.assign(new Error('微信账号已变化'), { code: 'ai_account_changed' }));
       if (result.error) return resolve({ status: context.delivery.started ? 'uncertain' : 'not-sent', diagnostic: safeDiagnostic(result.diagnostic) });
-      resolve(result);
+      resolve({ ...result, ...(result.diagnostic ? { diagnostic: safeDiagnostic(result.diagnostic) } : {}) });
     });
     if (context.signal?.aborted) abort();
     else child.stdin.write(JSON.stringify({ action: 'prepare-send', ...route }) + '\n');

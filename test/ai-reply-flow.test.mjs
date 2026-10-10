@@ -74,6 +74,26 @@ test('an unknown receipt stays visible without a false failure or resend, then c
   assert.equal(f.assistant.liveStates().some(row => row.id === p.id), false);
 });
 
+test('a protected native draft settles only this turn without regeneration and new incoming still replies', async t => {
+  const f = await fixture(t), incoming = f.bridge.push(f.contact, 'other', '请回复');
+  await f.assistant.tick();
+  let dispatches = 0;
+  f.bridge.delivery = async () => { dispatches++; return { status: 'stale', diagnostic: { phase: 'native-prepare', code: 'controls-unavailable', reason: 'existing-draft' } }; };
+  f.advance(20000); await f.assistant.tick();
+  const p = f.assistant.profiles()[0], calls = f.provider.calls.length;
+  assert.equal(calls, 1); assert.equal(dispatches, 1); assert.equal(f.bridge.sent.length, 0);
+  assert.equal(p.handledIncomingId, incoming.id); assert.equal(f.assistant.cursors.get(p.id).pending, false);
+  assert.equal(p.replyFlow.phase, 'skipped'); assert.match(p.replyFlow.detail, /已保留草稿/);
+  assert.equal(p.delivery.status, 'cancelled'); assert.equal(p.delivery.diagnostic.reason, 'existing-draft');
+  assert.equal(p.sendRetryAt, undefined); assert.equal(f.assistant.replyOptions(p).enabled, true); assert.equal(p.paused, false);
+  assert.ok(f.assistant.data.events.some(e => e.code === 'skip' && e.reasonCode === 'native-draft-blocked'));
+  for (let i = 0; i < 3; i++) { f.advance(30000); await f.assistant.tick(); }
+  assert.equal(f.provider.calls.length, calls); assert.equal(dispatches, 1);
+  f.bridge.delivery = null; f.bridge.push(f.contact, 'other', '现在草稿已经发完了');
+  await f.assistant.tick(); f.advance(20000); await f.assistant.tick();
+  assert.equal(f.provider.calls.length, calls + 1); assert.equal(f.bridge.sent.length, 1); assert.equal(p.replyFlow.phase, 'sent');
+});
+
 test('ended, disabled and paused waits disappear while real retry waits remain', async t => {
   const f = await fixture(t), p = f.assistant.profiles()[0];
   f.bridge.push(f.contact, 'other', '新问题'); await f.assistant.tick();

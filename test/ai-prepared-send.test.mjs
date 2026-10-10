@@ -74,6 +74,17 @@ test('a user file selection or export blocks preparation without touching native
   assert.equal(context.delivery.started,false);assert.equal(input.length,0);assert.equal(memory.closed,0);
  }
 });
+
+test('protected native draft diagnostics cross the prepare pipe without private draft contents', async () => {
+  const {bridge,context,memory} = controlledFixture({onCommit(value) {
+    queueMicrotask(() => { value.child.stdout.write(JSON.stringify({status:'stale',sendPressed:false,draftCleanup:'not-needed',
+      diagnostic:{phase:'native-prepare',code:'controls-unavailable',reason:'existing-draft',text:'PRIVATE_USER_DRAFT'}})+'\n'); value.child.emit('close',0); });
+  }});
+  const result = await preparedSend(bridge, {account:'a',contact:'b'}, '测试内容', context, async()=>true);
+  assert.equal(result.status,'stale');
+  assert.deepEqual(result.diagnostic,{phase:'native-prepare',code:'controls-unavailable',reason:'existing-draft'});
+  assert.equal(memory.closed,1); assert.equal(bridge._manualInputBlocked,false);
+});
 test('generated speech stages only an owned microphone source and removes it after helper exit',async t=>{
  const {bridge,context,input}=fixture(), root=await temp();t.after(()=>cleanupTemp(root));
  context.mediaFile={name:'AI合成-00000000-0000-4000-8000-000000000000.mp3',type:'audio/mpeg',data:'AA=='};

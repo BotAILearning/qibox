@@ -50,6 +50,22 @@ test('a conversational preference does not authorize a new physical delivery pro
   assert.equal(unsupportedPersonalAnswer(['他说“下次给你带点茶”。']), '');
 });
 
+test('split callback promises and new invitations stay blocked without changing quoted or already authorized plans',()=>{
+  for (const text of ['行，那改周日。具体几点我再确认一下，到时候跟你说。', '我确认下时间', '到时候跟你说', '那回头选茶的时候叫上你'])
+    assert.equal(unsupportedPersonalAnswer([text]), 'future-notice', text);
+  for (const text of ['我已经确认过时间了', '我不确认时间', '不用我再确认一下', '他说“到时候跟你说”', '你回头选茶的时候叫上他'])
+    assert.equal(unsupportedPersonalAnswer([text]), '', text);
+  assert.equal(unsupportedPersonalAnswer(['那回头选茶的时候叫上你'], { facts: '我回头选茶的时候叫上你' }), '');
+  assert.equal(unsupportedPersonalAnswer(['那回头选茶的时候叫上你'], { facts: '我明天选茶的时候叫上你' }), 'future-notice');
+});
+
+test('a counterpart who declined planning assistance does not receive a newly finalized arrangement',()=>{
+  const context = {pendingMessages: [{direction: 'other', text: '我周日想买书，其余再看，不用帮我确定计划。'}]};
+  assert.equal(unsupportedPersonalAnswer(['行，那就定周日，按天气看着办就好'], context), 'future-notice');
+  for (const text of ['你想周日去，其他的看天气', '先看天气，书店想去就去', '他说“那就定周日”']) assert.equal(unsupportedPersonalAnswer([text], context), '');
+  assert.equal(unsupportedPersonalAnswer(['行，那就定周日'], {pendingMessages: [{direction: 'other', text: '确定周日，就这样定吧。'}]}), '');
+});
+
 test('a vague yesterday event cannot be made a night event or an invented earlier message',()=>{
   const now=Date.parse('2026-10-10T13:00:00Z'),m={direction:'other',text:'昨天胃疼',timestamp:Math.floor(now/1000)-1200};
   assert.equal(unsupportedChatTime(['昨天听你说胃疼。'],{messages:[m],now}),'time-fact');

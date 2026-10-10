@@ -28,6 +28,12 @@ def digest(value):
     return hashlib.sha256(value.encode()).hexdigest()
 
 
+def draft_has_content(text):
+    # Native editors can retain whitespace after a send. A blank editor is
+    # safe to replace; text, emoji and attachment markers remain protected.
+    return bool(re.sub(r'[\s\u200b-\u200d\u2060\ufeff]', '', text))
+
+
 def contact_key(account, contact):
     return digest(account + '\0' + contact['id'])
 
@@ -402,8 +408,11 @@ class ChatAdapter:
         text = request.get('text')
         if not isinstance(text, str) or not text.strip() or len(text) > 3000:
             raise ValueError('invalid text')
-        if before['revision'] != request.get('revision') or self.editor_text(layout['editor']):
+        if before['revision'] != request.get('revision'):
             return {'status': 'stale'}
+        if draft_has_content(self.editor_text(layout['editor'])):
+            return {'status': 'stale', 'diagnostic': {'phase': 'native-prepare',
+                    'code': 'controls-unavailable', 'reason': 'existing-draft'}}
         if getattr(self, 'background_target', None) is not None and not self.send_pane_clear(layout):
             return {'status': 'stale'}
         if request.get('media') is not None:
@@ -440,7 +449,7 @@ class ChatAdapter:
                 # repeat this read; never repeat the input or native send click.
                 self.verify_session()
                 continue
-            if not self.editor_text(layout['editor']) and (guarded or confirmed_append(before['messages'], after['messages'], text)):
+            if not draft_has_content(self.editor_text(layout['editor'])) and (guarded or confirmed_append(before['messages'], after['messages'], text)):
                 self.send_confirmed = True
                 return {'status': 'submitted'} if guarded else {'status': 'sent', 'snapshot': after}
         return {'status': 'uncertain'}
@@ -454,8 +463,11 @@ class ChatAdapter:
         ins = self.controls
         self.phase = 'native-prepare'
         self.verify_session(); ins.require_foreground('微信')
-        if ins._visible_roots(layout['app'], layout['frame']) or self.editor_text(layout['editor']):
+        if ins._visible_roots(layout['app'], layout['frame']):
             return {'status': 'stale'}
+        if draft_has_content(self.editor_text(layout['editor'])):
+            return {'status': 'stale', 'diagnostic': {'phase': 'native-prepare',
+                    'code': 'controls-unavailable', 'reason': 'existing-draft'}}
         before_roots = set(ins._visible_roots(layout['app']))
         self.owned_media = {'app': layout['app'], 'frame': layout['frame'], 'label': layout['label'], 'media': media}
         if media['type'] == 'audio/mpeg':
