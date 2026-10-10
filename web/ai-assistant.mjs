@@ -531,7 +531,19 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       try { return await call(undefined, {}, true); }
       catch { return result; }
     }
-    if (state && state.account !== result.account) {
+    const accountChanged = state && state.account !== result.account;
+    if (accountChanged) {
+      // Invalidate pending reads and discard local edits from the old account,
+      // even when both accounts have the same contact ID.
+      requestEpoch++;
+      concealKey(true); providerRevision++; modelDraft = null; learningDraft = null; replyDraft = null;
+      profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); objectDirtyContacts.clear();
+      objectScrollKey = ''; objectScrollTop = 0; selectedObject = ''; objectSearch = ''; objectKind = 'person'; objectSection = 'reply'; objectMemoryCategory = 'name';
+      editingProfile = null; editingReplyContact = null; selectedContacts.clear(); replyProfiles.clear();
+      learnRange = { from: '', to: '' }; learnRangeMode = 'all'; learnScope = 'range'; learnTarget = 'both';
+      analysisQueueToken++; analysisQueueAccount = null;
+      analysisDraft = { request: '', from: '', to: '', contacts: [], includeVoice: false, includeVisual: false }; analysisRangeMode = 'all'; analysisContactsExpanded = false; analysisSearch = '';
+      proactiveUI.reset();
       personalDraft = null; personalDraftAccount = null;
       analysisHistoryEpoch++; analysisHistoryReport = null; analysisResult = null; resetAnalysisExport();
       summaryResults.clear();
@@ -541,7 +553,11 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     }
     if (result.compact && (result.account !== state?.account || result.configurationRevision !== state?.configurationRevision)) return call();
     if (result.compact) { const updates = new Map(result.profiles.map(profile => [profile.id, profile])); result = { ...state, ...result, profiles: state.profiles.map(profile => updates.has(profile.id) ? { ...profile, ...updates.get(profile.id) } : profile) }; }
-    state = result; return result;
+    state = result;
+    // Repaint every page immediately so old private text cannot remain in the
+    // form after its draft has been discarded.
+    if (accountChanged) render();
+    return result;
   }
   function selectProfiles(includePaste = true) { return (state?.profiles || []).filter(p => includePaste || p.contact && state.contacts.some(c => c.id === p.contact)); }
   function scopeOptions(selected = '') { return option('', '通用策略', !selected) + selectProfiles().map(p => option(p.id, p.label, p.id === selected)).join(''); }
