@@ -43,7 +43,7 @@ try {
   };
   await page.locator(`[data-ai-object="${person}"]`).click();
   await page.locator('[data-ai-object-section="memory"]').click();
-  assert.deepEqual(await page.locator('.ai-reference-memory-categories button span').allTextContents(), ['姓名','手机号码','日期','学校','地址','工作信息','其他记忆']);
+  assert.deepEqual(await page.locator('.ai-reference-memory-categories button span').allTextContents(), ['姓名','其他记忆','工作信息','日期','地址','手机号码','学校']);
   await add('name','name','王小明');
   await add('name','addressing','小王');
   await category('school');
@@ -56,7 +56,7 @@ try {
   assert.ok(Math.abs(schoolBoxes.text.top - schoolBoxes.degree.top) < 2);
   await category('date_info'); await add('date_info','birthday','农历正月初八'); await add('date_info','date','结婚纪念日');
   await category('address'); await add('address','household','漳州'); await add('address','residence','厦门'); await add('address','shipping','厦门软件园');
-  const output = path.join(root, 'reports/memory-redesign'); await mkdir(output, { recursive: true });
+  const output = path.join(root, process.argv[2] || 'reports/memory-redesign'); await mkdir(output, { recursive: true });
   await page.screenshot({ path: path.join(output, 'person-address.png') });
   await save();
   const personProfile = ai.profiles().find(profile => profile.contact === person);
@@ -64,7 +64,7 @@ try {
   assert.equal(readMemory(ai.vault, ai.data.profiles[personProfile.id]).entries.find(entry => entry.field === 'school')?.degree, '本科');
   await page.locator('[data-ai-kind="group"]').click(); await page.locator(`[data-ai-object="${group.id}"]`).click();
   await page.locator('[data-ai-object-section="memory"]').click();
-  assert.deepEqual(await page.locator('.ai-reference-memory-categories button span').allTextContents(), ['群概况','成员与分工','群内约定','话题与偏好','共同事项','重要活动','其他记忆']);
+  assert.deepEqual(await page.locator('.ai-reference-memory-categories button span').allTextContents(), ['群概况','群内约定','共同事项','成员与分工','话题与偏好','重要活动','其他记忆']);
   await category('group_member'); await add('group_member','group_member','小李负责对接场地');
   await category('group_plan'); await add('group_plan','group_plan','周六一起布置场地');
   await page.screenshot({ path: path.join(output, 'group-plan.png') });

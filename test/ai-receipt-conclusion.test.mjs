@@ -85,3 +85,14 @@ test('real report-format requests without a mode use supported low thinking only
   assert.equal(body.reasoning_effort,low?'low':undefined);assert.equal(body.thinking?.type,low?'enabled':undefined);assert.equal(calls,1);
  }
 });
+
+test('learning options use supported low GLM 5.3 thinking without changing input, budgets or call counts',async()=>{
+ for(const baseUrl of ['https://open.bigmodel.cn/api/paas/v4','https://api.z.ai/api/paas/v4','https://custom.example/v1'])for(const model of ['glm-5.3-flash','glm-4.5-air'])for(const purpose of ['learning',undefined]){
+  let body,calls=0;const input={material:[{direction:'self',text:'口语短句'}]};
+  const provider=new AIProvider({fetcher:async(_,args)=>{calls++;body=JSON.parse(args.body);return Response.json({choices:[{message:{content:'{"ok":true}'}}]});}});
+  await provider.complete({...modelConfig,baseUrl,model},'学习',input,undefined,{purpose,budget:16384,retry:false});
+  const low=purpose==='learning'&&!baseUrl.includes('custom')&&model==='glm-5.3-flash';
+  assert.equal(body.reasoning_effort,low?'low':undefined);assert.equal(body.thinking?.type,low?'enabled':undefined);
+  assert.equal(body.max_tokens,16384);assert.equal(calls,1);assert.deepEqual(input,{material:[{direction:'self',text:'口语短句'}]});
+ }
+});

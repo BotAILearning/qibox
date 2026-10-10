@@ -1523,7 +1523,7 @@ export class AIAssistant {
             const input = { styleOwner: perspective, styleOwnerText: styleOwnerText(perspective), contact: profile.contact,
               kind: profile.kind, material, defaultStyle: true };
             const learnedResult = await this.provider.complete(this.modelFor('learning'), learningPromptFor(perspective), input, signal,
-              { validate: result => validatedLearnedStyleFields(result?.style) });
+              { purpose: 'learning', validate: result => validatedLearnedStyleFields(result?.style) });
             const style = validatedLearnedStyleFields(learnedResult?.style ?? learnedResult);
             learned.push({ contact: profile.contact, kind: profile.kind, label: profile.label, source, style });
           } catch (error) {
@@ -1540,7 +1540,7 @@ export class AIAssistant {
           if (learned.length === 1) result = { style: validatedLearnedStyle(learned[0].style) };
           else {
             const summary = await this.provider.complete(this.modelFor('learning'), defaultLearningSummaryPrompt, { profiles: learned }, signal,
-              { validate: value => validatedLearnedStyleFields(value?.style) });
+              { purpose: 'learning', validate: value => validatedLearnedStyleFields(value?.style) });
             result = { style: validatedLearnedStyle(summary?.style ?? summary) };
           }
           if (learned.length > 1) this.operation.completed++;
@@ -1591,14 +1591,14 @@ export class AIAssistant {
             };
             const memoryPromptForKind = profile.kind === 'group' ? `${memoryLearningPrompt}\n${groupMemoryInstruction}` : memoryLearningPrompt;
             let parsed = await this.provider.complete(this.modelFor('learning'), memoryPromptForKind, memoryInputData,
-              signal, { budget: 16384, validate: validateMemoryResult });
+              signal, { purpose: 'learning', budget: 16384, validate: validateMemoryResult });
             if (revision !== this.revision) throw new AppError('学习已取消');
             let parsedMemory = validatedLearnedMemory(parsed?.memory, memoryInput);
             if (!parsedMemory) throw new AppError('模型未返回有效聊天记忆，未保存空结果');
             if (!parsedMemory.entries.length && memoryInput.some(message => message.text.trim())) {
               const recheckPrompt = `${memoryPromptForKind}\n这是对同一份材料的补充核查。上一轮没有返回任何条目，请重新检查材料前段和后段，留意有明确依据的稳定事实、重要经历、已确认约定与待办；有依据的事实分别列出，不要因为聊天很多或范围截断就整体留空。不得编造，也不要凑数；确实没有符合条件的事实时才返回空 entries。`;
               parsed = await this.provider.complete(this.modelFor('learning'), recheckPrompt, memoryInputData,
-                signal, { budget: 16384, validate: validateMemoryResult });
+                signal, { purpose: 'learning', budget: 16384, validate: validateMemoryResult });
               if (revision !== this.revision) throw new AppError('学习已取消');
               parsedMemory = validatedLearnedMemory(parsed?.memory, memoryInput);
               if (!parsedMemory) throw new AppError('模型未返回有效聊天记忆，未保存空结果');
@@ -1639,7 +1639,7 @@ export class AIAssistant {
           ...(target !== 'style' ? { memoryCoverage, previousMemory: readMemory(this.vault, profile) } : {}) };
         const prompt = target === 'style' ? learningPrompt : learningWithMemoryPrompt + memoryPrompt + (profile.kind === 'group' ? groupMemoryInstruction : '');
         const entry = await this.provider.complete(this.modelFor('learning'), prompt, input, signal,
-          target === 'style' ? { validate: result => ({ ...result, style: validatedLearnedStyleFields(result?.style) }) } : { budget: 16384, validate: result => {
+          target === 'style' ? { purpose: 'learning', validate: result => ({ ...result, style: validatedLearnedStyleFields(result?.style) }) } : { purpose: 'learning', budget: 16384, validate: result => {
             const style = validatedLearnedStyleFields(result?.style), memory = validatedLearnedMemory(result?.memory, material);
             return { ...result, style, memory };
           } });
@@ -1653,7 +1653,7 @@ export class AIAssistant {
           const checked = await this.provider.complete(this.modelFor('learning'),
             `${memoryLearningPrompt}\n这是对同一份材料的补充核查。上一轮没有返回任何记忆；请重新检查明确的稳定事实和有时间背景的经历，不编造也不凑数。`,
             { ...input, coverage: memoryCoverage }, signal,
-            { budget: 16384, validate: result => ({ ...result, memory: validatedLearnedMemory(result?.memory, material) }) });
+            { purpose: 'learning', budget: 16384, validate: result => ({ ...result, memory: validatedLearnedMemory(result?.memory, material) }) });
           signal.throwIfAborted();
           if (revision !== this.revision) throw new AppError('学习已取消');
           learnedEntries = validatedLearnedMemory(checked.memory, material);
@@ -2024,7 +2024,7 @@ export class AIAssistant {
         { kind: profile.kind, label: profile.label, timezone: 'Asia/Shanghai',
           current: { entries: current.entries.map(memoryMergeEntry) },
           incoming: { entries: incoming.entries.map(memoryMergeEntry) } },
-        signal, { budget: 16384 });
+        signal, { purpose: 'learning', budget: 16384 });
       const merged = memoryValue(result?.memory);
       if (!merged) throw new AppError('模型返回的记忆格式不正确');
       const metadataById = new Map([...current.entries, ...incoming.entries].map(entry => [entry.id, entry]));
@@ -2789,7 +2789,7 @@ export class AIAssistant {
       const result = await this.provider.complete(config, monitorMemoryPrompt + (profile.kind === 'group' ? groupMemoryInstruction : ''), {
         mode: 'memory-monitor', kind: profile.kind, contact: profile.contact, messages: annotateSourceDates(material.map(message => withSpeaker(message, profile))),
         newMessageIds: [...newIds], previousMemory: readMemory(this.vault, profile), ...currentChatTime(this.now(), [])
-      }, signal, { validate: validatedMonitorMemory, budget: 4096 });
+      }, signal, { purpose: 'learning', validate: validatedMonitorMemory, budget: 4096 });
       validatedMonitorMemory(result);
       if (!current()) return;
       this.mergeObservedMemory(profile, result.memoryUpdates, material, newIds);

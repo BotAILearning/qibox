@@ -310,7 +310,7 @@ export class AIProvider {
       throw new AppError('无法拉取模型，请检查配置或手动填写对话模型');
     }
   }
-  async complete(config, system, input, signal, { format = 'json', budget: requestedBudget, retry = true, validate, requireImages = false } = {}) {
+  async complete(config, system, input, signal, { format = 'json', purpose, budget: requestedBudget, retry = true, validate, requireImages = false } = {}) {
     assertReplyRoleInput(input);
     const roleSystem = ['reply', 'proactive'].includes(input?.mode) ? system + (input.roleAnchor ? replyRolePrompt + replyRoleEvidencePrompt : '') + replySelfCheckPrompt : system;
     const anthropic = config.protocol === 'anthropic', endpoint = providerEndpoints(config).complete;
@@ -335,11 +335,11 @@ export class AIProvider {
       try {
         const requestBody = { model: config.model, stream: false, ...(budget ? { max_tokens: budget } : {}),
           // GLM 5.3 defaults to max reasoning, which can exhaust the saved
-          // 60-second deadline for chat/audit and report calls. Its official API
+          // 60-second deadline for chat/audit, reports and learning. Its official API
           // supports low while retaining thinking; never send unsupported off.
           ...(!anthropic && ['open.bigmodel.cn', 'api.z.ai'].includes(new URL(config.baseUrl).hostname)
             && /^glm-5\.3(?:-flashx?)?$/i.test(config.model)
-            && (['reply', 'proactive', 'speaker-audit'].includes(input.mode) || format === 'report')
+            && (['reply', 'proactive', 'speaker-audit'].includes(input.mode) || format === 'report' || purpose === 'learning')
             ? { thinking: { type: 'enabled' }, reasoning_effort: 'low' } : {}),
           ...(reasonAboutSpeakers ? { thinking: { type: 'adaptive' }, ...(!anthropic ? { reasoning_split: true } : {}) } : {}),
           ...(anthropic ? { system: currentSystem, messages: speakerTurns(input, requestContent) }
@@ -364,7 +364,7 @@ export class AIProvider {
             if (requireImages) throw new AppError('当前模型不支持图片输入', 400, 'ai_model_vision_unsupported');
             const readable = readableMediaInput(textInput, { dropImages: true });
             return textInput.onlyImages || textInput.mode === 'reply' && !readable.conversation?.pendingIncomingIds.length ? {action:'skip',mediaSkipped:true}
-              : this.complete(config, system + ' 本次接口无法接受图片，图片已略过；只回复仍可读取的文字，不猜测图片，不要求重发或转文字。', readable, signal, { format, budget, retry, validate });
+              : this.complete(config, system + ' 本次接口无法接受图片，图片已略过；只回复仍可读取的文字，不猜测图片，不要求重发或转文字。', readable, signal, { format, purpose, budget, retry, validate });
           }
           // A host that rejects the budget parameter (or the value we asked for)
           // must not fail the call: retry once the way it used to be sent.

@@ -151,4 +151,5 @@
   #ai-panel .ai-analysis-history-detail .ai-sticky-back>.ai-actions { width: 100%; margin: 0; }
   #ai-panel #ai-content .ai-analysis-history-detail .ai-sticky-back .ai-actions button { display: inline-flex !important; min-height: 44px; }
   .qiapp-product #ai-panel #ai-content button.qi-btn:is(.primary,.secondary,.ai-soft-button):not(.qbx-return-button) { min-height: 44px; }
+  .qiapp-product #ai-panel #ai-content button.ai-record-contact-link { min-height: 44px; min-width: 44px; }
 }

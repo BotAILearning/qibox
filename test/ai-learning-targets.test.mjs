@@ -34,10 +34,12 @@ test('learning only style composes five layers and leaves the stored memory unto
   const f = await fixture(t);
   f.respond(() => ({ memory: { entries: [{ text: '手工维护的旧记忆' }] } }));
   await f.a.learn({ contacts: [f.contacts[0]], target: 'memory' });
+  assert.equal(f.provider.calls.at(-1).options.purpose, 'learning');
   await f.a.applyPendingMemory(f.profile().id);
   const seeded = f.profile(), memoryBefore = readMemory(f.a.vault, seeded).summary, learnedAtBefore = seeded.memoryLearnedAt;
   f.respond(() => ({ style: { ...layers }, ignoredRaw: 'CHAT_PRIVATE_MARKER' }));
   await f.a.learn({ contacts: [f.contacts[0]], target: 'style' });
+  assert.equal(f.provider.calls.at(-1).options.purpose, 'learning');
   const profile = f.profile();
   assert.equal(profile.style.summary, composedSummary);
   assert.equal(profile.styleId, 'learned');

@@ -805,12 +805,14 @@
     },
     {
       "name": "libde265-0",
-      "version": "1.0.11-1+deb12u2",
+      "version": "1.0.11-1+deb12u3",
       "architecture": "arm64",
-      "url": "https://deb.debian.org/debian/pool/main/libd/libde265/libde265-0_1.0.11-1+deb12u2_arm64.deb",
-      "debSha256": "8e714cdf70a0be495a902b21c0f0de44de250454e1c03ddf910ec7fff763da83",
-      "file": "libde265-0-data.tar.xz",
-      "sha256": "cf12a477900c0e1c77b2ecf69781098de37e646b17178f382a153252cdaf2bd8"
+      "url": "https://security.debian.org/debian-security/pool/updates/main/libd/libde265/libde265-0_1.0.11-1+deb12u3_arm64.deb",
+      "debSha256": "8b49a68b62db516ed18f5990e192e603706f51d994ceb7bfe30080a6871e0cab",
+      "file": "libde265-0-a0ee2781d36efded546abf7cc57268cf7bb0378ffb6882b92766c3476257f7c7-data.tar.xz",
+      "sha256": "a0ee2781d36efded546abf7cc57268cf7bb0378ffb6882b92766c3476257f7c7",
+      "sourcePackage": "libde265",
+      "sourceVersion": "1.0.11-1+deb12u3"
     },
     {
       "name": "libdecor-0-0",
@@ -958,21 +960,25 @@
     },
     {
       "name": "libevent-2.1-7",
-      "version": "2.1.12-stable-8",
+      "version": "2.1.12-stable-8+deb12u1",
       "architecture": "arm64",
-      "url": "https://deb.debian.org/debian/pool/main/libe/libevent/libevent-2.1-7_2.1.12-stable-8_arm64.deb",
-      "debSha256": "f8abaf5b501fbe8ab4bf0cd1d1be60b6980265f055d65e32fd90f54b4297d387",
-      "file": "libevent-2.1-7-data.tar.xz",
-      "sha256": "53e8f626cfbf9a5238ed0ffa868b290fa34e24aac778c3b580c083bd31882634"
+      "url": "https://security.debian.org/debian-security/pool/updates/main/libe/libevent/libevent-2.1-7_2.1.12-stable-8+deb12u1_arm64.deb",
+      "debSha256": "8f74fe1725164ff6baf861d352795fc166e5b4195356be6c2aeffc229bdc82c8",
+      "file": "libevent-2.1-7-78cc76e3c41a09d394ca7bf4024879bc9b49d69bd869239d85647eb0ef474afc-data.tar.xz",
+      "sha256": "78cc76e3c41a09d394ca7bf4024879bc9b49d69bd869239d85647eb0ef474afc",
+      "sourcePackage": "libevent",
+      "sourceVersion": "2.1.12-stable-8+deb12u1"
     },
     {
       "name": "libexpat1",
-      "version": "2.5.0-1+deb12u3",
+      "version": "2.5.0-1+deb12u4",
       "architecture": "arm64",
-      "url": "https://security.debian.org/debian-security/pool/updates/main/e/expat/libexpat1_2.5.0-1+deb12u3_arm64.deb",
-      "debSha256": "3caad0fb4382e206b005737de35b3193450589a10053f8415ded216649a233bc",
-      "file": "libexpat1-data.tar.xz",
-      "sha256": "670cf0aafa2291dff5f2c6446f42fea6e38dbca0e598ba5d380953b58349dd15"
+      "url": "https://security.debian.org/debian-security/pool/updates/main/e/expat/libexpat1_2.5.0-1+deb12u4_arm64.deb",
+      "debSha256": "5333bc2f751edadaceff1dd117d1e29be76b78a3a7bf139021bb9d07e6e2cae5",
+      "file": "libexpat1-b049e595012c142506022ad5f91c7b59a1632573492f8a78ae4b9307bfacf7a6-data.tar.xz",
+      "sha256": "b049e595012c142506022ad5f91c7b59a1632573492f8a78ae4b9307bfacf7a6",
+      "sourcePackage": "expat",
+      "sourceVersion": "2.5.0-1+deb12u4"
     },
     {
       "name": "libfcitx5-qt-data",
@@ -1183,12 +1189,14 @@
     },
     {
       "name": "libglib2.0-0",
-      "version": "2.74.6-2+deb12u2",
+      "version": "2.74.6-2+deb12u9",
       "architecture": "arm64",
-      "url": "https://security.debian.org/debian-security/pool/updates/main/g/glib2.0/libglib2.0-0_2.74.6-2+deb12u2_arm64.deb",
-      "debSha256": "e41f8e43b69934068ddcd552a7a397ea4c976503c3f950ec9820cdb6c15c5b97",
-      "file": "libglib2.0-0-data.tar.xz",
-      "sha256": "f3d9f58e8ddf5fafcbc233e7b8a4a167c9a2a5a5fc05d2679937b28d003ba6ea"
+      "url": "https://deb.debian.org/debian/pool/main/g/glib2.0/libglib2.0-0_2.74.6-2+deb12u9_arm64.deb",
+      "debSha256": "61d92fffada7e27fc0ed9d23e047b45bca3b2e3bfe1a918f4ec16559282859f4",
+      "file": "libglib2.0-0-9b02a80c70daa2fb53483839f4ffb7ffcb25672777ef5ac96d1528341e5f0667-data.tar.xz",
+      "sha256": "9b02a80c70daa2fb53483839f4ffb7ffcb25672777ef5ac96d1528341e5f0667",
+      "sourcePackage": "glib2.0",
+      "sourceVersion": "2.74.6-2+deb12u9"
     },
     {
       "name": "libglvnd0",
@@ -1318,12 +1326,14 @@
     },
     {
       "name": "libgstreamer-plugins-base1.0-0",
-      "version": "1.22.0-3+deb12u6",
+      "version": "1.22.0-3+deb12u7",
       "architecture": "arm64",
-      "url": "https://security.debian.org/debian-security/pool/updates/main/g/gst-plugins-base1.0/libgstreamer-plugins-base1.0-0_1.22.0-3+deb12u6_arm64.deb",
-      "debSha256": "f13ebb0f684bb788cdc232d8297e999bc1e316e600e02646c5036376d8734d36",
-      "file": "libgstreamer-plugins-base1.0-0-data.tar.xz",
-      "sha256": "8a68dc6a9764764d740e3f791bb21e376aeb8dedca66f6e922bff68deaca97ea"
+      "url": "https://security.debian.org/debian-security/pool/updates/main/g/gst-plugins-base1.0/libgstreamer-plugins-base1.0-0_1.22.0-3+deb12u7_arm64.deb",
+      "debSha256": "0a5add889e05ee5007a7bb6b5b49716301746e71e3671132655bd817a03c33b7",
+      "file": "libgstreamer-plugins-base1.0-0-6c0905646cd5e20c0a7a1ae4860e236adfe93685ad881430fd74f4b8c06febbb-data.tar.xz",
+      "sha256": "6c0905646cd5e20c0a7a1ae4860e236adfe93685ad881430fd74f4b8c06febbb",
+      "sourcePackage": "gst-plugins-base1.0",
+      "sourceVersion": "1.22.0-3+deb12u7"
     },
     {
       "name": "libgstreamer1.0-0",
@@ -1561,12 +1571,14 @@
     },
     {
       "name": "libjbig2dec0",
-      "version": "0.19-3",
+      "version": "0.19-3+deb12u1",
       "architecture": "arm64",
-      "url": "https://deb.debian.org/debian/pool/main/j/jbig2dec/libjbig2dec0_0.19-3_arm64.deb",
-      "debSha256": "58826efddcb7a481b2e09821ecf512cc9375a241917c7bfe7cb4acdc18d5dceb",
-      "file": "libjbig2dec0-data.tar.xz",
-      "sha256": "a94fe7907f1aae8aaef2905c7674f113f25b1eeab741dc593c4c0789ff5362b7"
+      "url": "https://security.debian.org/debian-security/pool/updates/main/j/jbig2dec/libjbig2dec0_0.19-3+deb12u1_arm64.deb",
+      "debSha256": "780ea5d4d9f5e89abd131f84bffca9d936225b14f4064b0237ee02aa287140dd",
+      "file": "libjbig2dec0-6e1314764c02fdc43b30904cd31dd950dc46c879954874e8642170acd898f5e8-data.tar.xz",
+      "sha256": "6e1314764c02fdc43b30904cd31dd950dc46c879954874e8642170acd898f5e8",
+      "sourcePackage": "jbig2dec",
+      "sourceVersion": "0.19-3+deb12u1"
     },
     {
       "name": "libjpeg62-turbo",
@@ -1966,12 +1978,14 @@
     },
     {
       "name": "libpam-systemd",
-      "version": "252.38-1~deb12u1",
+      "version": "252.39-1~deb12u2",
       "architecture": "arm64",
-      "url": "https://security.debian.org/debian-security/pool/updates/main/s/systemd/libpam-systemd_252.38-1~deb12u1_arm64.deb",
-      "debSha256": "b3f7438fa185749ec24473ed79f6bbca6c0556079f641035c1bf9b094b2a446b",
-      "file": "libpam-systemd-data.tar.xz",
-      "sha256": "c6a4acf1b9249b02bca4dda13bd974f43d1cf6d7016c9baa6921ea4c72d4d764"
+      "url": "https://deb.debian.org/debian/pool/main/s/systemd/libpam-systemd_252.39-1~deb12u2_arm64.deb",
+      "debSha256": "826e78c49e49507bf115f65256fc9673519fd073b77ca2611a565cca5ecb048e",
+      "file": "libpam-systemd-98316eb69afadf4602152fb02417a61a38132973e212a0580b426b60d649fed9-data.tar.xz",
+      "sha256": "98316eb69afadf4602152fb02417a61a38132973e212a0580b426b60d649fed9",
+      "sourcePackage": "systemd",
+      "sourceVersion": "252.39-1~deb12u2"
     },
     {
       "name": "libpam0g",
@@ -2038,21 +2052,25 @@
     },
     {
       "name": "libpcre2-16-0",
-      "version": "10.42-1+deb12u1",
+      "version": "10.42-1+deb12u2",
       "architecture": "arm64",
-      "url": "https://security.debian.org/debian-security/pool/updates/main/p/pcre2/libpcre2-16-0_10.42-1+deb12u1_arm64.deb",
-      "debSha256": "2a6df32da69198c139066a28b5c0ebf5fdfee2943a770dda9f9316629d44543f",
-      "file": "libpcre2-16-0-data.tar.xz",
-      "sha256": "c2d7068bd6c4fe0c6423d838378bccfe532bfbe5908a6d2df725a5da0515eb5b"
+      "url": "https://security.debian.org/debian-security/pool/updates/main/p/pcre2/libpcre2-16-0_10.42-1+deb12u2_arm64.deb",
+      "debSha256": "062da740176de14b90a18c6c4cc31d7684884518565065db2ba2398a49e57b65",
+      "file": "libpcre2-16-0-ec8a576f1ca42973cd459799904831aa21c3e8716d1e04a14fa3bdf3ca8ff852-data.tar.xz",
+      "sha256": "ec8a576f1ca42973cd459799904831aa21c3e8716d1e04a14fa3bdf3ca8ff852",
+      "sourcePackage": "pcre2",
+      "sourceVersion": "10.42-1+deb12u2"
     },
     {
       "name": "libpcre2-8-0",
-      "version": "10.42-1+deb12u1",
+      "version": "10.42-1+deb12u2",
       "architecture": "arm64",
-      "url": "https://security.debian.org/debian-security/pool/updates/main/p/pcre2/libpcre2-8-0_10.42-1+deb12u1_arm64.deb",
-      "debSha256": "d178d33697eef877c2c27733141b7f8520fee66a329ae5809e8c8eae3709efa3",
-      "file": "libpcre2-8-0-data.tar.xz",
-      "sha256": "909e97199008704b34cf8d5f58b1f6629c3f5c56cef3b037958ad555156ee2d7"
+      "url": "https://security.debian.org/debian-security/pool/updates/main/p/pcre2/libpcre2-8-0_10.42-1+deb12u2_arm64.deb",
+      "debSha256": "8498d2c0bd6747dfc2fc6eec62774a86967079555f7043d5a7b78ee4efbbc0fb",
+      "file": "libpcre2-8-0-5227554ac223c7066a457812a9cf87f4fc3389f76b205ba25357508c66221843-data.tar.xz",
+      "sha256": "5227554ac223c7066a457812a9cf87f4fc3389f76b205ba25357508c66221843",
+      "sourcePackage": "pcre2",
+      "sourceVersion": "10.42-1+deb12u2"
     },
     {
       "name": "libpgm-5.3-0",
@@ -2083,12 +2101,14 @@
     },
     {
       "name": "libpng16-16",
-      "version": "1.6.39-2+deb12u5",
+      "version": "1.6.39-2+deb12u6",
       "architecture": "arm64",
-      "url": "https://security.debian.org/debian-security/pool/updates/main/libp/libpng1.6/libpng16-16_1.6.39-2+deb12u5_arm64.deb",
-      "debSha256": "69aba3963ddfb11b98e5bf4b0d022f76b797436568884b10f2da32e0f4b8c2dd",
-      "file": "libpng16-16-data.tar.xz",
-      "sha256": "9ccc36cd3a6bb0531b479f9a0e21647510d2d437150622e5ee6ed667f2e44fec"
+      "url": "https://security.debian.org/debian-security/pool/updates/main/libp/libpng1.6/libpng16-16_1.6.39-2+deb12u6_arm64.deb",
+      "debSha256": "9fa66d01197efe73f44ed566a3bffbb476675826326e9c32ffa80b29495de482",
+      "file": "libpng16-16-083d3d92f565c23479b82e9efc898acf1b89bd50eec89101ee90d16649a259d8-data.tar.xz",
+      "sha256": "083d3d92f565c23479b82e9efc898acf1b89bd50eec89101ee90d16649a259d8",
+      "sourcePackage": "libpng1.6",
+      "sourceVersion": "1.6.39-2+deb12u6"
     },
     {
       "name": "libpocketsphinx3",
@@ -2137,21 +2157,25 @@
     },
     {
       "name": "libpython3.11-minimal",
-      "version": "3.11.2-6+deb12u3",
+      "version": "3.11.2-6+deb12u9",
       "architecture": "arm64",
-      "url": "https://security.debian.org/debian-security/pool/updates/main/p/python3.11/libpython3.11-minimal_3.11.2-6+deb12u3_arm64.deb",
-      "debSha256": "77b244e4ed2ce3ec3f23cb20ed1613c0cc0caa78bd6a5d305772b3a234cb227b",
-      "file": "libpython3.11-minimal-data.tar.xz",
-      "sha256": "9dbf9944379ea71ed4612e033eb2eedf9a714aa5446113ba9a6b8ff053881416"
+      "url": "https://security.debian.org/debian-security/pool/updates/main/p/python3.11/libpython3.11-minimal_3.11.2-6+deb12u9_arm64.deb",
+      "debSha256": "dd9847d2f77c5a924b1d3dd953b81f161db9374c94d03b9216191925350928c3",
+      "file": "libpython3.11-minimal-6ec6587dbf079961354a4c0ea97fda51e5f1584700611c1eafdb47dcdb3e1092-data.tar.xz",
+      "sha256": "6ec6587dbf079961354a4c0ea97fda51e5f1584700611c1eafdb47dcdb3e1092",
+      "sourcePackage": "python3.11",
+      "sourceVersion": "3.11.2-6+deb12u9"
     },
     {
       "name": "libpython3.11-stdlib",
-      "version": "3.11.2-6+deb12u3",
+      "version": "3.11.2-6+deb12u9",
       "architecture": "arm64",
-      "url": "https://security.debian.org/debian-security/pool/updates/main/p/python3.11/libpython3.11-stdlib_3.11.2-6+deb12u3_arm64.deb",
-      "debSha256": "f5adb88b46dcccdd1acfea3a5eb6ff26a665a7c41f4530e7e4af70e68f67d59c",
-      "file": "libpython3.11-stdlib-data.tar.xz",
-      "sha256": "eca472ce14ad2ff70c8006c374380da7ef31bc3a740289da64b208b3d137b825"
+      "url": "https://security.debian.org/debian-security/pool/updates/main/p/python3.11/libpython3.11-stdlib_3.11.2-6+deb12u9_arm64.deb",
+      "debSha256": "9937cbe3f647aa89a590fec647438ce02098c113d1c6f70e4cb1230c368d42a4",
+      "file": "libpython3.11-stdlib-11378dd2e79d3e8387b73315b4b4697ac9b950ee791a36be73b6c2c87bdf4dd5-data.tar.xz",
+      "sha256": "11378dd2e79d3e8387b73315b4b4697ac9b950ee791a36be73b6c2c87bdf4dd5",
+      "sourcePackage": "python3.11",
+      "sourceVersion": "3.11.2-6+deb12u9"
     },
     {
       "name": "libqt5core5a",
@@ -2578,21 +2602,25 @@
     },
     {
       "name": "libssh-gcrypt-4",
-      "version": "0.10.6-0+deb12u1",
+      "version": "0.10.6-0+deb12u2",
       "architecture": "arm64",
-      "url": "https://security.debian.org/debian-security/pool/updates/main/libs/libssh/libssh-gcrypt-4_0.10.6-0+deb12u1_arm64.deb",
-      "debSha256": "bd6bf5ad88a9cf8fb8e43667e27420ed68be6d6b03a2bdfdf111cff48a1d5b6d",
-      "file": "libssh-gcrypt-4-data.tar.xz",
-      "sha256": "40e2b21d495542ebb6518f50f7713e52598764cb5ece9b53a8be8c8eb84bd27a"
+      "url": "https://deb.debian.org/debian/pool/main/libs/libssh/libssh-gcrypt-4_0.10.6-0+deb12u2_arm64.deb",
+      "debSha256": "d7ace2bc8e26344a72ae370e8f884a52a5e44a25f3a77fc11d455251ba77f065",
+      "file": "libssh-gcrypt-4-6ce5a7e7f3205a96f2364708932cc44b434b9e924ccddfd027239dd8be4e3d61-data.tar.xz",
+      "sha256": "6ce5a7e7f3205a96f2364708932cc44b434b9e924ccddfd027239dd8be4e3d61",
+      "sourcePackage": "libssh",
+      "sourceVersion": "0.10.6-0+deb12u2"
     },
     {
       "name": "libssl3",
-      "version": "3.0.20-1~deb12u2",
+      "version": "3.0.22-1~deb12u1",
       "architecture": "arm64",
-      "url": "https://security.debian.org/debian-security/pool/updates/main/o/openssl/libssl3_3.0.20-1~deb12u2_arm64.deb",
-      "debSha256": "a256e03cc3abd7243ac5c6ee91a9deb56478221ef0d3c2b0748551e13140c0bf",
-      "file": "libssl3-data.tar.xz",
-      "sha256": "ffba20811fc0f60f85d932a3c2fdba7de17bb2ca2d99750edf81ba8fe14f5b44"
+      "url": "https://security.debian.org/debian-security/pool/updates/main/o/openssl/libssl3_3.0.22-1~deb12u1_arm64.deb",
+      "debSha256": "026105b99749b437b03d0de5b3a58c0cabefb9791bc6f9cf916d18691ee7519a",
+      "file": "libssl3-623bcc79073f0be55c7836a9a4193f1885780abe774b99340395c8fd7a028416-data.tar.xz",
+      "sha256": "623bcc79073f0be55c7836a9a4193f1885780abe774b99340395c8fd7a028416",
+      "sourcePackage": "openssl",
+      "sourceVersion": "3.0.22-1~deb12u1"
     },
     {
       "name": "libstartup-notification0",
@@ -2641,12 +2669,14 @@
     },
     {
       "name": "libsystemd0",
-      "version": "252.38-1~deb12u1",
+      "version": "252.39-1~deb12u2",
       "architecture": "arm64",
-      "url": "https://security.debian.org/debian-security/pool/updates/main/s/systemd/libsystemd0_252.38-1~deb12u1_arm64.deb",
-      "debSha256": "f9442b58d7824b4ee4a618619e4a88b1ac8567671ef403fc85c86071b29301c7",
-      "file": "libsystemd0-data.tar.xz",
-      "sha256": "8d538216fdd93f020ac704d13db39f7d2e719b7edc8b009f78e37fe4bea26afe"
+      "url": "https://deb.debian.org/debian/pool/main/s/systemd/libsystemd0_252.39-1~deb12u2_arm64.deb",
+      "debSha256": "293ab474b90276dae9ebc03ed01e622e0c1f2578e83ed3aa926ae1eaf84dda9c",
+      "file": "libsystemd0-91cd24950a41ab11858658dbc567ddfaca50f0e7848ce05cbe9a374179ba6204-data.tar.xz",
+      "sha256": "91cd24950a41ab11858658dbc567ddfaca50f0e7848ce05cbe9a374179ba6204",
+      "sourcePackage": "systemd",
+      "sourceVersion": "252.39-1~deb12u2"
     },
     {
       "name": "libtasn1-6",
@@ -2767,12 +2797,14 @@
     },
     {
       "name": "libudev1",
-      "version": "252.38-1~deb12u1",
+      "version": "252.39-1~deb12u2",
       "architecture": "arm64",
-      "url": "https://security.debian.org/debian-security/pool/updates/main/s/systemd/libudev1_252.38-1~deb12u1_arm64.deb",
-      "debSha256": "f30205e1dd15bbf7f5debc69e2a0d203e6bc1d5026c775b4503a8f4c5538f138",
-      "file": "libudev1-data.tar.xz",
-      "sha256": "7acd6912adb792e11833a742a77c2afe3d6b058d9cc9cf88510babc33d24917c"
+      "url": "https://deb.debian.org/debian/pool/main/s/systemd/libudev1_252.39-1~deb12u2_arm64.deb",
+      "debSha256": "b76444b0259abfa416f8c1d9a652d208a24770667a1181aa52317b74d12a7a72",
+      "file": "libudev1-08ef42f28217fa24c5d0e35b268a38ba75edd6b38abada43391152f63c889a13-data.tar.xz",
+      "sha256": "08ef42f28217fa24c5d0e35b268a38ba75edd6b38abada43391152f63c889a13",
+      "sourcePackage": "systemd",
+      "sourceVersion": "252.39-1~deb12u2"
     },
     {
       "name": "libudfread0",
@@ -3415,12 +3447,14 @@
     },
     {
       "name": "libxml2",
-      "version": "2.9.14+dfsg-1.3~deb12u4",
+      "version": "2.9.14+dfsg-1.3~deb12u6",
       "architecture": "arm64",
-      "url": "https://security.debian.org/debian-security/pool/updates/main/libx/libxml2/libxml2_2.9.14+dfsg-1.3~deb12u4_arm64.deb",
-      "debSha256": "e2f98689f3154d2a9c9c16dc20c1b69ca09bc4994e7c9a5353acd92f19ef20c6",
-      "file": "libxml2-data.tar.xz",
-      "sha256": "222d5971d9109865e36279992698fa494ecd3f32bf6defe66a0de746da7337de"
+      "url": "https://deb.debian.org/debian/pool/main/libx/libxml2/libxml2_2.9.14+dfsg-1.3~deb12u6_arm64.deb",
+      "debSha256": "0bc00975e459387535a4bbabe98a398f0e77c9ab82474face18d01ae8ed0dae4",
+      "file": "libxml2-65ea4e318b123eea71722c4216b5d3bf30c423e41d3a605708449ad5cd45c224-data.tar.xz",
+      "sha256": "65ea4e318b123eea71722c4216b5d3bf30c423e41d3a605708449ad5cd45c224",
+      "sourcePackage": "libxml2",
+      "sourceVersion": "2.9.14+dfsg-1.3~deb12u6"
     },
     {
       "name": "libxmu6",
@@ -3613,12 +3647,14 @@
     },
     {
       "name": "openssl",
-      "version": "3.0.20-1~deb12u2",
+      "version": "3.0.22-1~deb12u1",
       "architecture": "arm64",
-      "url": "https://security.debian.org/debian-security/pool/updates/main/o/openssl/openssl_3.0.20-1~deb12u2_arm64.deb",
-      "debSha256": "e7ba824de1e659c12e81f885bc0757a50c4d7a9f71de02687ad63d5a9e936e00",
-      "file": "openssl-data.tar.xz",
-      "sha256": "9fd9f2e52dddf850bcc9de88fc2a4d1c2376f122ba59394dcd92f3a2e47aa36d"
+      "url": "https://security.debian.org/debian-security/pool/updates/main/o/openssl/openssl_3.0.22-1~deb12u1_arm64.deb",
+      "debSha256": "d7d7fc0e2e9ba60b00679a8335b7a9bd9a63eb486254575a2243e8a2e9b9e762",
+      "file": "openssl-caf4f78c30e840968619e4fa0c433e4876b46522e19b104ff51f71f21171017a-data.tar.xz",
+      "sha256": "caf4f78c30e840968619e4fa0c433e4876b46522e19b104ff51f71f21171017a",
+      "sourcePackage": "openssl",
+      "sourceVersion": "3.0.22-1~deb12u1"
     },
     {
       "name": "poppler-data",
@@ -3667,21 +3703,25 @@
     },
     {
       "name": "python3.11",
-      "version": "3.11.2-6+deb12u3",
+      "version": "3.11.2-6+deb12u9",
       "architecture": "arm64",
-      "url": "https://security.debian.org/debian-security/pool/updates/main/p/python3.11/python3.11_3.11.2-6+deb12u3_arm64.deb",
-      "debSha256": "1544e9ea7babdf5f46a8d8f088c36e07f662ea195fc1e1466d6df2643e2d7be6",
-      "file": "python3.11-data.tar.xz",
-      "sha256": "4d3e47b3ad4e22875c201f846812fffe4bd7f2d3f804f56085fa053e4013c2ae"
+      "url": "https://security.debian.org/debian-security/pool/updates/main/p/python3.11/python3.11_3.11.2-6+deb12u9_arm64.deb",
+      "debSha256": "f8d1726c2f5c61b42dbf7652cd9c01da23e55029e3c384a9f1802334fd964091",
+      "file": "python3.11-782762c5026829cd5b9c6b64fc2428bd5591d645af75ac29ce801af85ac4f3d5-data.tar.xz",
+      "sha256": "782762c5026829cd5b9c6b64fc2428bd5591d645af75ac29ce801af85ac4f3d5",
+      "sourcePackage": "python3.11",
+      "sourceVersion": "3.11.2-6+deb12u9"
     },
     {
       "name": "python3.11-minimal",
-      "version": "3.11.2-6+deb12u3",
+      "version": "3.11.2-6+deb12u9",
       "architecture": "arm64",
-      "url": "https://security.debian.org/debian-security/pool/updates/main/p/python3.11/python3.11-minimal_3.11.2-6+deb12u3_arm64.deb",
-      "debSha256": "f0e014db594ef4cb9cdb64cbe1760d51cb4d8d9988defb305b38a31ab0e8e9ae",
-      "file": "python3.11-minimal-data.tar.xz",
-      "sha256": "71029495d7eab5bd98baee2b8e3239a2526bc413706d9402578f6b0f37a97d2d"
+      "url": "https://security.debian.org/debian-security/pool/updates/main/p/python3.11/python3.11-minimal_3.11.2-6+deb12u9_arm64.deb",
+      "debSha256": "617855dbf3299e03873926c75d61feaf3d36924586aecc1951a0b965a95bc694",
+      "file": "python3.11-minimal-018a1dae6bbdbcd0b5f86f40e4f54953472676f2a3c14ba4d3ea8909e7753676-data.tar.xz",
+      "sha256": "018a1dae6bbdbcd0b5f86f40e4f54953472676f2a3c14ba4d3ea8909e7753676",
+      "sourcePackage": "python3.11",
+      "sourceVersion": "3.11.2-6+deb12u9"
     },
     {
       "name": "readline-common",
@@ -3845,5 +3885,6 @@
       "file": "xvfb-data.tar.xz",
       "sha256": "0c6eb91a0863670fc2f9a7716aabec0725cf2a7292fdfaca78a295a13530e8c3"
     }
-  ]
+  ],
+  "securityUpdatedAt": "2026-10-10T11:05:00.863919+00:00"
 }

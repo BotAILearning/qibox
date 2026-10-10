@@ -147,11 +147,14 @@ try {
     const flow = await page.locator('#ai-analysis-form').evaluate(form => {
       const rect = selector => form.querySelector(selector).getBoundingClientRect();
       const options = [...form.querySelectorAll('.ai-reference-analysis-ranges button')].map(button => button.getBoundingClientRect().top);
-      return { requestBottom: rect('.ai-analysis-composer').bottom, timeTop: rect('.ai-analysis-time-entry').top,
-        timeBottom: rect('.ai-analysis-time-entry').bottom, mediaTop: rect('.ai-analysis-media').top,
+      return { contactsBottom: rect('.ai-analysis-contact-entry').bottom,
+        requestTop: rect('.ai-analysis-request-fields').top, requestBottom: rect('.ai-analysis-request-fields').bottom,
+        timeTop: rect('.ai-analysis-time-entry').top,
+        timeBottom: rect('.ai-analysis-time-entry').bottom, mediaTop: rect('.ai-analysis-media-options').top,
         optionRows: new Set(options.map(top => Math.round(top))).size, optionCount: options.length };
     });
-    assert.ok(flow.timeTop >= flow.requestBottom && flow.mediaTop >= flow.timeBottom, `${width}px: time range must sit between request and media: ${JSON.stringify(flow)}`);
+    assert.ok(flow.timeTop >= flow.contactsBottom - 1 && flow.requestTop >= flow.timeBottom - 1 && flow.mediaTop >= flow.requestBottom - 1,
+      `${width}px: contacts and time precede optional request and media: ${JSON.stringify(flow)}`);
     assert.equal(flow.optionCount, 4, `${width}px: four quick ranges must remain available`);
     assert.equal(flow.optionRows, 1, `${width}px: four quick ranges must share one row`);
     const action = await size('[data-ai-analysis-pick]', '.ai-analysis-request');
@@ -167,6 +170,7 @@ try {
     await noOverflow(`${width}px analysis`);
     if (width === 390 || width === 1440) await page.screenshot({ path: path.join(output, `analysis-empty-${width}.png`) });
   }
+  await page.locator('.ai-analysis-request-fields>summary').click();
   for (const width of desktopWidths) {
     await page.setViewportSize({ width, height: 900 });
     const presets = await textGeometry('.ai-analysis-presets button span', '.ai-analysis-presets button');
@@ -198,18 +202,21 @@ try {
   assert.equal(await page.locator('#ai-analysis-count').innerText(), '1');
   assert.ok((await size('[data-ai-analysis-pick]', '.ai-analysis-request')).ratio < .72);
   await page.screenshot({ path: path.join(output, 'analysis-selected-390.png') });
-  report.checks.push(`Analysis: contact entry below the creation heading and four quick ranges between request and media at ${report.widths.join('/')}px; eight readable direction labels, unclipped form and picker selection.`);
+  report.checks.push(`Analysis: contact entry and four quick ranges precede optional request and media at ${report.widths.join('/')}px; eight readable expanded direction labels, unclipped form and picker selection.`);
 
   await page.locator('.ai-main-tabs [data-ai-nav=settings]').click();
   for (const width of [320, 390, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     const settings = await page.evaluate(() => {
       const links = document.querySelector('.qbx-settings-links').getBoundingClientRect();
-      const group = document.querySelector('.qbx-settings-group').getBoundingClientRect();
-      return { linksTop: links.top, linksBottom: links.bottom, groupTop: group.top, groupGap: group.top - links.bottom };
+      const config = document.querySelector('.qbx-settings-config').getBoundingClientRect();
+      const groups = [...document.querySelectorAll('.qbx-settings-group')].map(node => node.getBoundingClientRect());
+      const gaps = groups.slice(1).map((group, i) => group.top - groups[i].bottom);
+      const groupGap = config.top - groups.at(-1).bottom;
+      return { linksTop: links.top, linksBottom: links.bottom, configTop: config.top, groupTop: groups[0].top, groupGap, gaps: [...gaps, groupGap] };
     });
-    assert.ok(settings.groupGap >= 0 && settings.groupGap <= 30, `${width}px: settings group gap is excessive: ${JSON.stringify(settings)}`);
-    if (width <= 390) assert.ok(settings.linksTop < 100, `${width}px: settings start too low: ${JSON.stringify(settings)}`);
+    assert.ok(settings.gaps.every(gap => gap >= 0 && gap <= 30), `${width}px: settings group gap is excessive: ${JSON.stringify(settings)}`);
+    if (width <= 390) assert.ok(settings.groupTop < 100, `${width}px: settings start too low: ${JSON.stringify(settings)}`);
     const switches = await page.locator('input[role=switch]:visible').evaluateAll(nodes => nodes.map(node => {
       const track = getComputedStyle(node), before = getComputedStyle(node, '::before'), thumb = getComputedStyle(node, '::after');
       return { width: parseFloat(track.width), height: parseFloat(track.height), before: before.content, thumb: thumb.content, left: parseFloat(thumb.left), top: parseFloat(thumb.top), thumbWidth: parseFloat(thumb.width), thumbHeight: parseFloat(thumb.height), transform: thumb.transform };
