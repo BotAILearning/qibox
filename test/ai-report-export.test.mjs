@@ -37,6 +37,29 @@ test('单份 Word 保留报告、范围、覆盖提示，排除原始聊天', as
   assert.doesNotMatch(body, /不允许导出的原始聊天/);
 });
 
+test('long export names preserve emoji and remain encodable in download headers', async () => {
+  const item = report('1', 'A'.repeat(47) + '💊额外字符');
+  const file = await exportAnalysisReports(assistant([item]), { ids: [item.id], format: 'docx' });
+  assert.match(file.filename, /A💊_/);
+  assert.doesNotThrow(() => encodeURIComponent(file.filename));
+  const malformed = report('2', 'A'.repeat(47) + '\ud83d');
+  const repaired = await exportAnalysisReports(assistant([malformed]), { ids: [malformed.id], format: 'docx' });
+  assert.doesNotThrow(() => encodeURIComponent(repaired.filename));
+});
+
+test('batch export retains distinct reports when labels, times and ID suffixes match', async () => {
+  const first = { ...report('1', '同名💊'), report: '第一份独立报告' };
+  const second = { ...first, id: first.id.replace(/^11111111/, '22222222'), report: '第二份独立报告' };
+  const file = await exportAnalysisReports(assistant([first, second]), { ids: [first.id, second.id], format: 'docx' });
+  const entries = unzipSync(file.bytes), names = Object.keys(entries);
+  assert.equal(names.length, 2);
+  assert.equal(new Set(names).size, 2);
+  assert.ok(names.every(name => !/[\\/]/.test(name) && name.endsWith('.docx')));
+  const texts = Object.values(entries).map(bytes => strFromU8(unzipSync(bytes)['word/document.xml']));
+  assert.ok(texts.some(text => text.includes('第一份独立报告')));
+  assert.ok(texts.some(text => text.includes('第二份独立报告')));
+});
+
 test('单份 PDF 可读取并有中文字体；批量 ZIP 每份快照独立', async () => {
   const first = report('1'), second = report('2', '同名/联系人');
   const ai = assistant([first, second]);

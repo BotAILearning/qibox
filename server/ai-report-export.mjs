@@ -34,7 +34,7 @@ const xml = value => clean(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<':
 const date = value => Number.isFinite(value) ? new Date(value + 8 * 3600000).toISOString().slice(0, 16).replace('T', ' ') : '未知时间';
 const stamp = value => date(value).replace(/[-: ]/g, '');
 const range = value => value?.from && value?.to ? `${value.from} 至 ${value.to}` : '全部';
-const safeName = value => clean(value).replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').replace(/[. ]+$/g, '').slice(0, 48) || '联系人';
+const safeName = value => Array.from(clean(value).toWellFormed().replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_')).slice(0, 48).join('').replace(/[. ]+$/g, '') || '联系人';
 
 function linesFor(report) {
   const lines = [
@@ -137,7 +137,9 @@ export async function exportAnalysisReports(ai, { ids, format }, { signal } = {}
     const bytes = format === 'pdf' ? await makePdf(report) : makeDocx(report);
     totalBytes += bytes.length;
     if (totalBytes > 64 * 1024 * 1024) throw new AppError('文件总量超过当前安全容量，请分批导出', 413);
-    const filename = `分析报告_${safeName(report.label)}_${stamp(report.createdAt)}_${report.id.slice(-8)}.${ext}`;
+    const baseName = `分析报告_${safeName(report.label)}_${stamp(report.createdAt)}_${report.id.slice(-8)}`;
+    let filename = `${baseName}.${ext}`, suffix = 2;
+    while (Object.hasOwn(files, filename)) filename = `${baseName}_${suffix++}.${ext}`;
     files[filename] = new Uint8Array(bytes);
   }
   if (signal?.aborted) throw new AppError('导出已取消', 499);

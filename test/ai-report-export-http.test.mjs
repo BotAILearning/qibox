@@ -41,6 +41,11 @@ test('报告下载接口要求当前用户和 CSRF，并只导出当前账号快
     assert.equal((await call(route, '1002', request, other)).status, 404);
     const downloaded = await call(route, '1001', request, token);
     assert.equal(downloaded.status, 200);
+    ai.data.analysisReports[0].label = 'A'.repeat(47) + '💊额外字符';
+    await ai.save();
+    const emojiName = await call(route, '1001', request, token);
+    assert.equal(emojiName.status, 200);
+    assert.match(emojiName.headers['content-disposition'], /%F0%9F%92%8A/);
     assert.match(downloaded.headers['content-type'], /wordprocessingml/);
     assert.equal(downloaded.headers['cache-control'], 'no-store');
     const xml = strFromU8(unzipSync(downloaded.bytes)['word/document.xml']);
