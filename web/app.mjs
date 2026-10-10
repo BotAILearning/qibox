@@ -45,7 +45,16 @@ function showInputRecovery(id, text) {
   $('#input-recovery-text').value = text; $('#input-recovery').hidden = false;
 }
 const modal = $('#modal');
-const assistant = aiAssistant({ api, downloadAnalysisReport, guard: aiRailGuard, onClose: () => { if (standaloneAI) disconnect(); },
+function syncDesktopInteraction() {
+  const desktopVisible = !$('#desktop-view').hidden;
+  const aiVisible = !$('#ai-panel').hidden;
+  // Covered controls must leave both the keyboard order and accessibility tree.
+  // viewOnly also stops an already queued noVNC key from reaching WeChat.
+  for (const element of document.querySelectorAll('.topbar, main.content')) element.inert = desktopVisible;
+  for (const element of document.querySelectorAll('#desktop-screen, .desktop-bar, #ai-rail')) element.inert = aiVisible;
+  if (rfb) rfb.viewOnly = aiVisible;
+}
+const assistant = aiAssistant({ api, downloadAnalysisReport, guard: aiRailGuard, onVisibilityChange: syncDesktopInteraction, onClose: () => { if (standaloneAI) disconnect(); },
   // 入口常驻后，入口可能先于实例挂载出现：操作开关 / 打开面板前补一次挂载，避免用空实例 id 请求。
   ensure: async () => {
     const target = desktopId || state?.instances.find(item => (item.appId || 'wechat') === 'wechat')?.id || null;
@@ -372,6 +381,7 @@ function render() {
   renderMobileAI();
 }
 function renderDesktop() {
+  syncDesktopInteraction();
   if ($('#desktop-view').hidden) return;
   const entry = state?.instances.find(item => item.id === desktopId);
   const runtime = entry?.runtime;
@@ -533,6 +543,7 @@ function disconnect(invalidate = true, keepAssistant = false, recovering = false
   desktopConnected = false; desktopConnecting = false; clearTimeout(connectionTimer);
   remoteGeneration++; pointer?.dispose(); pointer = null; fileBridge?.dispose(); fileBridge = null; ime?.dispose(); ime = null; rfb?.disconnect(); rfb = null;
   $('#remote-canvas').replaceChildren(); $('#desktop-view').hidden = true;
+  syncDesktopInteraction();
   if (document.fullscreenElement === $('#desktop-view')) void document.exitFullscreen().catch(() => {});
 }
 async function openDesktop(id, start = true, login = false, allowMobile = false, recovering = false) {
@@ -568,6 +579,7 @@ async function openDesktop(id, start = true, login = false, allowMobile = false,
     desktopConnecting = true; renderDesktop();
     const url = new URL(connection.path, location.href); url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const client = rfb = new RFB($('#remote-canvas'), url.href, { credentials: { password: connection.password } });
+    syncDesktopInteraction();
     const mobileLoginView = mobile() && mobileLoginId === id;
     client.scaleViewport = !mobileLoginView; client.clipViewport = mobileLoginView;
     client.resizeSession = false; client.background = '#eaf0ec';
@@ -581,7 +593,7 @@ async function openDesktop(id, start = true, login = false, allowMobile = false,
       reconnect.connected();
       pointer = desktopPointer($('#remote-canvas canvas'));
       ime = nativeInput({ input: $('#native-input'), screen: $('#desktop-screen'), client, mac: /Mac/.test(navigator.platform), paste: text => api(`/instances/${id}/clipboard`, { text, paste: true }, 15000), pasteFiles: async files => api(`/instances/${id}/clipboard`, { files: await clipboardFiles(files) }, 30000), notify,
-        connected: () => generation === remoteGeneration && desktopConnected, recover: text => showInputRecovery(id, text) });
+        connected: () => generation === remoteGeneration && desktopConnected && $('#ai-panel').hidden, recover: text => showInputRecovery(id, text) });
       $('#input-recovery').hidden = !inputDrafts.has(id);
       if (inputDrafts.has(id)) { ime.pause(); showInputRecovery(id, inputDrafts.get(id)); }
       if (isWechat) fileBridge = localFiles({ screen: $('#desktop-screen'), input: $('#chat-file'), panel: $('#file-transfer'),

@@ -20,6 +20,25 @@ function setup(options = {}) {
   return { input, screen, keys, pasted, errors, client, bridge };
 }
 
+test('covered desktop discards queued input and Enter while retaining text for recovery', async () => {
+  let interactive = true;
+  const recovered = [];
+  const { input, keys, pasted, bridge } = setup({ connected: () => interactive, recover: text => recovered.push(text) });
+  fire(input, 'compositionend', { data: '尚未发送的文字' });
+  fire(input, 'keydown', { key: 'Enter' });
+  interactive = false;
+  await bridge.flush();
+  assert.deepEqual(keys, []);
+  assert.deepEqual(pasted, []);
+  assert.deepEqual(recovered, ['尚未发送的文字']);
+  interactive = true;
+  bridge.resume();
+  fire(input, 'input', { data: 'fresh' });
+  await bridge.flush();
+  assert.deepEqual(keys, [[102], [114], [101], [115], [104]]);
+  bridge.dispose();
+});
+
 test('failed Unicode paste retains queued text and blocks Enter until explicit recovery', async () => {
   const recovered = [], fixture = setup({ paste: async () => { throw new Error('offline'); }, recover: text => recovered.push(text) });
   fire(fixture.input, 'compositionend', { data: '中文🙂' });

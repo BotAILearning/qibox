@@ -27,7 +27,7 @@ export async function proactiveFixture() {
   clearInterval(ai.timer); await ai.verifyProvider(modelConfig); await ai.scan();
   await ai.settings({ enabled: false, reply: false });
   ai.interval = () => 0;
-  return { app, ai, bridge, provider, instance, opened, dataRoot,
+  return { app, ai, bridge, provider, instance, opened, dataRoot, peer,
     url: `http://127.0.0.1:${app.server.address().port}${app.prefix}/?dev=${app.devKey}`,
     async close() { await app.close(); await peer.close(); await cleanup(dataRoot); }
   };
