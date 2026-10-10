@@ -41,6 +41,8 @@ export function historySummary(report) {
     id: report.id,
     contact: report.contact,
     label: report.label,
+    title: typeof report.title === 'string' ? report.title.slice(0, 1000) : typeof report.report === 'string' ? (/^\s*#{1,6}[ \t]+([^\r\n]{1,1000})/.exec(report.report)?.[1] || '') : '',
+    request: typeof report.request === 'string' ? report.request : '',
     nickname: report.nickname,
     createdAt: report.createdAt,
     requestedRange: report.requestedRange,

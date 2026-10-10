@@ -2,6 +2,7 @@ import { createRequire } from 'node:module';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { createApplication } from '../server/index.mjs';
 import { root, playwrightPath } from './tooling.mjs';
 import { temp, cleanup, runtimeFactory, extractor, fetcher, packageSha256 } from '../test/fixtures.mjs';
@@ -271,6 +272,85 @@ try {
   assert.equal(provider.calls.length - modelCallsBeforeCancel, 1, 'in-flight contact was the only model request');
   assert.equal(await page.locator('[data-analysis-status=cancelled]').count(), 2);
   report.checks.push('Cancel aborts the in-flight contact and prevents later contacts from being posted');
+
+  // This is disposable fixture data: exercise long histories without calling
+  // the provider, deleting real reports or borrowing a real second account.
+  const callsBeforeHistory = provider.calls.length;
+  const savedSnapshot = structuredClone(ai.data.analysisReports[0]);
+  ai.data.analysisReports = Array.from({length:31},(_,index)=>({
+    ...structuredClone(savedSnapshot), id:randomUUID(), account:ai.data.account,
+    label:index < 21 ? `咖啡组 ${index + 1}` : `其他组 ${index + 1}`,
+    createdAt:Date.now()-index*1000,
+    actualRange:index < 21 ? {from:'2026-10-01',to:'2026-10-10'} : {from:'2026-09-01',to:'2026-09-02'},
+    report:`# ${index === 30 ? '长'.repeat(180)+'尾部标题💊' : '日常聊天报告'}\n这是第 ${index + 1} 份合成报告。`,
+  }));
+  await ai.save(); await openAnalysis();
+  assert.equal(await page.locator('[data-ai-history-item]').count(),10);
+  await page.locator('[data-ai-optional=analysis] summary').click();
+  await page.locator('#ai-analysis-form [name=request]').fill('分页时不应丢失的私人草稿');
+  await page.locator('#ai-history-search').fill('咖啡组 2026-10-01');
+  assert.match(await page.locator('#ai-history-count').textContent(),/找到 21 份，共 31 份/);
+  assert.equal(await page.locator('#ai-analysis-form [name=request]').inputValue(),'分页时不应丢失的私人草稿');
+  await page.locator('[data-ai-history-page="1"]').click();
+  assert.match(await page.locator('.ai-history-pagination').textContent(),/第 2 \/ 3 页/);
+  const returnId = await page.locator('[data-ai-history-open]').first().getAttribute('data-ai-history-open');
+  const returnButton = page.locator(`[data-ai-history-open="${returnId}"]`);
+  await returnButton.scrollIntoViewIfNeeded();
+  const returnScroll = await page.locator('#ai-content').evaluate(node=>node.scrollTop);
+  await returnButton.click(); await page.locator('[data-ai-history-back]').waitFor();
+  await page.locator('[data-ai-history-back]').click();
+  assert.equal(await page.locator('#ai-history-search').inputValue(),'咖啡组 2026-10-01');
+  assert.match(await page.locator('.ai-history-pagination').textContent(),/第 2 \/ 3 页/);
+  assert.ok(Math.abs(await page.locator('#ai-content').evaluate(node=>node.scrollTop)-returnScroll)<3,'detail back restores list position');
+  assert.equal(await page.evaluate(()=>document.activeElement?.dataset.aiHistoryOpen),returnId);
+  assert.equal(await page.locator('#ai-analysis-form [name=request]').inputValue(),'分页时不应丢失的私人草稿');
+  await page.locator('[data-ai-history-export-mode]').click();
+  await page.locator('[data-ai-history-export-all]').click();
+  assert.match(await page.locator('.ai-history-export-bar').textContent(),/已选 21 份/);
+  assert.equal(await page.locator('[data-ai-history-export-check]:checked').count(),10,'page two has ten selected cards');
+  await page.locator('[data-ai-history-page="2"]').click();
+  assert.equal(await page.locator('[data-ai-history-export-check]:checked').count(),1,'selection persists on the last page');
+  await page.locator('#ai-history-search').fill('其他组');
+  assert.match(await page.locator('.ai-history-export-bar').textContent(),/已选 0 份/);
+  assert.equal(await page.locator('[data-ai-history-export-next]').isDisabled(),true);
+  await page.locator('[data-ai-history-export-cancel]').click();
+  await page.locator('#ai-history-search').fill('尾部标题💊 2026-09-01');
+  assert.equal(await page.locator('[data-ai-history-item]').count(),1,'title search includes text beyond the 140-character summary');
+  await page.locator('#ai-history-search').fill('<script>" & 不存在');
+  assert.equal(await page.locator('[data-ai-history-item]').count(),0);
+  assert.match(await page.locator('.ai-analysis-history').textContent(),/没有匹配的报告/);
+  assert.equal(await page.locator('#ai-history-search').inputValue(),'<script>" & 不存在');
+  await screenshot('history-empty-search');
+  await page.locator('[data-ai-history-search-clear]').click();
+  assert.equal(await page.locator('[data-ai-history-item]').count(),10);
+  await page.locator('[data-ai-history-page="1"]').click();
+  await page.locator('[data-ai-history-page="2"]').click();
+  await page.locator('[data-ai-history-page="3"]').click();
+  assert.equal(await page.locator('[data-ai-history-item]').count(),1);
+  await page.locator('[data-ai-history-delete]').click(); await page.locator('dialog[open] [data-confirm]').click();
+  await page.locator('#ai-feedback').filter({hasText:'分析报告已删除'}).waitFor();
+  assert.match(await page.locator('.ai-history-pagination').textContent(),/第 3 \/ 3 页/);
+  assert.equal(await page.locator('[data-ai-history-item]').count(),10,'deleting last page clamps to a populated page');
+  assert.equal(provider.calls.length,callsBeforeHistory,'history filtering, paging, viewing, selection and fixture deletion add no model calls');
+  await screenshot('history-filter-page');
+  await page.locator('.ai-history-pagination').scrollIntoViewIfNeeded();
+  await screenshot('history-pagination-bottom');
+  report.checks.push('31 reports: title/object/date search, paging, filtered export selection, empty recovery, draft preservation, detail return focus/scroll and deletion clamp; no additional model calls');
+
+  const historyAccount = bridge.account;
+  await page.locator('#ai-history-search').fill('其他组');
+  bridge.account = key('history-search-second-account'); await ai.scan();
+  ai.data.analysisReports.push({...structuredClone(savedSnapshot),id:randomUUID(),account:bridge.account,label:'新账号独立报告',createdAt:Date.now(),report:'# 新账号报告\n不包含原账号的数据。'});
+  await ai.save();
+  await page.locator('[data-ai-history-item]').filter({hasText:'新账号独立报告'}).waitFor();
+  assert.equal(await page.locator('#ai-history-search').inputValue(),'','private search terms are cleared on account change');
+  assert.equal(await page.locator('[data-ai-history-item]').count(),1);
+  assert.equal(await page.locator('#ai-analysis-form [name=request]').inputValue(),'','private analysis draft is cleared on account change');
+  bridge.account=historyAccount; await ai.scan();
+  await page.locator('#ai-history-count').filter({hasText:'找到 30 份，共 30 份'}).waitFor();
+  assert.equal(await page.locator('#ai-history-search').inputValue(),'');
+  assert.equal(provider.calls.length,callsBeforeHistory);
+  report.checks.push('Switching disposable accounts clears private history search, page and analysis draft; only current-account reports are visible, no model calls');
 
   await page.setViewportSize({ width: 390, height: 844 });
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), '390px page must not overflow horizontally');

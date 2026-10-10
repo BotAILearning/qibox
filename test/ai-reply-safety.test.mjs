@@ -87,6 +87,8 @@ for(const [question,text,reasonCode] of [
   ['我只说喜欢茶，没说我每天都喝咖啡。','行，是我记岔了，你喜欢茶。那回头选茶的时候叫上你。','unverified-execution'],
   ['我周日想买书，其余再看，不用帮我确定计划。','行，那就定周日，按天气看着办就好','unverified-execution'],
   ['改成周日吧，周六我不行。','行，那就改周日，具体几点到时候再定。','unverified-execution'],
+  ['改成周日吧，周六我不行。','行，那就改周日，具体时间到时候再对一下。','unverified-execution'],
+  ['我哥哥要搬家，这不是我本人要搬。','原来是你哥要搬，辛苦你帮忙整理啦','unverified-recipient-fact'],
   ['昨天下雨那事已经过去了，现在只想找点吃的。','那就找点想吃的去，昨晚的事翻篇就好','unverified-time-fact'],
   ['你记错了，胃疼的是我，不是你。','我没记错呀，昨天听你说胃疼。','unverified-time-fact'],
 ])test(`final local guard stops ${reasonCode} without another model request`,async t=>{
@@ -140,9 +142,9 @@ for(const [question,text] of [['你今天在哪家公司上班？','这个我暂
  assert.equal(f.a.publicProfile(f.p).memory.entries.length,0);assert.equal(f.p.paused,false);
 });
 
-test('a rejected future-time addition preserves only the human-approved date correction without another request',async t=>{
+for (const text of ['行，那就改周日，具体几点到时候再定。', '行，那就改周日，具体时间到时候再对一下。']) test('a rejected future-time addition preserves only the human-approved date correction without another request',async t=>{
  const f=await fixture(t);Object.assign(f.bridge.messages.get(f.p.contact)[0],{text:'先按周六记着。',authorship:'human',timestamp:Math.floor(f.a.now()/1000)-60});
- f.provider.next=async()=>({action:'send',text:'行，那就改周日，具体几点到时候再定。'});
+ f.provider.next=async()=>({action:'send',text});
  await f.receive('改成周日吧，周六我不行。');assert.equal(f.provider.calls.length,1);assert.deepEqual(f.bridge.sent.map(x=>x.text),['行，改成周日。']);
 });
 

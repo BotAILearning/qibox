@@ -9,13 +9,14 @@ const futureNotice = /等我(?:确认|确定|定下来|有消息|有结果)(?:�
 const confirmThenNotice = /我(?:先|再)?(?:确认|确定)(?:一下|下)?[^。！？!?，,；;\n]{0,16}(?:再|就|后|然后)(?:回|回复|告诉|通知|联系)(?:你|您)|我(?:先|再)?(?:确认|确定)(?:一下|下)?[^。！？!?，,；;\n]{0,16}(?:再|就|后|然后)(?:跟|和)(?:你|您)(?:说|定(?:时间|下来|好)?)/;
 const futureCheck = /我(?:先|再|回头|稍后|到时候|到时|待会儿?)?(?:确认|确定)(?:一下|下)(?:具体)?(?:时间|几点|安排)?(?:再说)?$/;
 const deferredNotice = /^(?:那|好[的吧]?|嗯)?(?:我)?(?:回头|稍后|到时候|到时|待会儿?)(?:再|就|会)?(?:告诉|通知|联系|回复|(?:跟|和)(?:你|您)说|给(?:你|您)发(?:消息|信息))(?:你|您)?(?:一声|一下)?$/;
-const deferredPlanning = /^(?:(?:具体)?(?:几点|时间))?(?:到时候|到时|回头|以后|稍后)(?:再|就|会)?(?:定|确定|商量|约)(?:下|一下|具体时间|时间|好)?$/;
+const deferredPlanning = /^(?:(?:具体)?(?:几点|时间))?(?:到时候|到时|回头|以后|稍后)(?:再|就|会)?(?:定|确定|确认|商量|约|对|核对)(?:下|一下|具体时间|时间|好)?$/;
 const unknownSelf = /^(?:这个|这边|这事)?我(?:这边|自己|现在|暂时|还真|目前)?(?:的)?(?:具体情况|情况|位置|工作)?(?:还|也|真|暂时)?(?:说不(?:太)?上来|说不太上|说不上来|不知道|不清楚|不太清楚)/;
 const privacyReason = /^(?:我(?:这边|现在|目前)?(?:的)?(?:位置|地点)?|这个|这边|位置)[^。！？!?，,；;\n]{0,8}不(?:太)?方便(?:说|透露)/;
 const plannedDelivery = /^(?:那|好[的吧]?|嗯)?(?:我)?(下次|回头|明天|周[一二三四五六日天])(?:再|就|会)?(?:给|帮|替)(?:你|您)(带|拿|送|取)(?:点|些|一点|一些)?(.{1,24})$/;
 const plannedInvitation = /^(?:那|好[的吧]?|嗯)?(?:我)?(下次|回头|明天|周[一二三四五六日天])(.{0,24}?)(叫上|喊上|约|带上)(?:你|您)(.{0,12})$/;
 
 export function unsupportedPersonalAnswer(texts, { messages = [], pendingMessages = [], facts = '', boundaries = '', now = Date.now(), identityAsked = false } = {}) {
+  if (unsupportedRecipientHelp(texts, { messages, facts })) return 'recipient-fact';
   const human = messages.filter(m => m.direction === 'self' && m.authorship === 'human' && !m.aiGenerated
     && Number.isSafeInteger(m.timestamp) && m.timestamp * 1000 <= now && now - m.timestamp * 1000 <= 86400000).map(m => clean(m.text));
   // Strategy facts are user supplied. Require a first-person statement; facts
@@ -46,6 +47,26 @@ export function unsupportedPersonalAnswer(texts, { messages = [], pendingMessage
     if ((futureNotice.test(part) || confirmThenNotice.test(part) || futureCheck.test(part) || deferredNotice.test(part) || deferredPlanning.test(part)) && !/^(?:不用|不必|别|不要)|不(?:会|承诺|保证)/.test(part)) return 'future-notice';
   }
   return '';
+}
+
+// Thanking somebody for helping asserts that they participated. A relative's
+// activity does not establish that participation, and generated/quoted or
+// merely planned help cannot establish it either.
+function unsupportedRecipientHelp(texts, { messages, facts }) {
+  const evidence = messages.filter(m => !m.aiGenerated && (m.direction === 'other' || m.direction === 'self' && m.authorship === 'human'))
+    .flatMap(m => parts(m.text).map(text => ({ text, subject: m.direction === 'other' ? '我' : '你' })));
+  for (const text of [...texts, texts.join('')]) for (const part of parts(text)) {
+    if (attributed(part) || /不是|别说|不代表/.test(part)) continue;
+    const claim = /^(?:辛苦|谢谢|多谢)(?:你|您)([^。！？!?，,；;]{0,20}?)(整理|搬东西|搬家|收拾|打包)(?:了|啦|呀|啊|哦|呢)?$/.exec(part);
+    if (!claim || !/(?:帮|替)/.test(claim[1])) continue;
+    const action = claim[2];
+    const supported = evidence.some(({text, subject}) => new RegExp(`^${subject}(?:已经|刚刚|刚|正在|正|在)?(?:帮|替)[^。！？!?，,；;]{0,20}${action}`).test(text)
+      && !/[“”"「」]|(?:没|不)(?:有|再)?(?:帮|替)|(?:准备|打算|计划|明天|以后|如果|假如|可能|要是)/.test(text))
+      || parts(facts).some(text => new RegExp(`^对方(?:已经|刚刚|刚|正在|正|在)?(?:帮|替)[^。！？!?，,；;]{0,20}${action}`).test(text)
+        && !/[“”"「」]|(?:没|不)(?:有|再)?(?:帮|替)|(?:准备|打算|计划|明天|以后|如果|假如|可能|要是)/.test(text));
+    if (!supported) return true;
+  }
+  return false;
 }
 
 export function personalQuestionClarification(pendingMessages = []) {

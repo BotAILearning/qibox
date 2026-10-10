@@ -11,7 +11,7 @@ import { objectPage, objectList, objectExecutionStatus, objectWindow, OBJECT_ROW
 import { replyLimitControl, syncReplyLimitControl, parseReplyLimit, replyLimitManualMax } from './ai-reply-limit.mjs';
 import { styleChoice, styleSummary as styleSummaryText } from './ai-style-view.mjs';
 import { learnedObjectDraft } from './ai-learning-draft.mjs';
-import { analysisPage, analysisContactList, copyReport, presetRequest, analysisRequestState, presetChips } from './ai-analysis-view.mjs';
+import { analysisPage, analysisContactList, copyReport, presetRequest, analysisRequestState, presetChips, historyList, analysisHistoryWindow, analysisHistorySelectionLabel } from './ai-analysis-view.mjs';
 import { activityPage, activityEntries, activityRows, activityPagination, proactiveRecordRows, liveActivityBox, recentErrorsBox, skipRecordsView, updateActivityCounts } from './ai-activity-view.mjs';
 import { beijingTime, createProactiveUI } from './ai-proactive-view.mjs';
 import { RecordCache, mergeRecordResults } from './ai-record-cache.mjs';
@@ -76,6 +76,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   let contactDialog = null;
   let analysisDraft = { request: '', from: '', to: '', contacts: [], includeVoice: false, includeVisual: false }, analysisRangeMode = 'all', analysisRangeBeforeCustom = null, analysisContactsExpanded = false, analysisResult = null, analysisSearch = '', analysisHistoryReport = null, analysisHistoryEpoch = 0;
   let analysisExportSelecting = false, analysisExportSelected = new Set(), analysisExportDialog = null, analysisExportController = null;
+  let analysisHistoryQuery = '', analysisHistoryPage = 0, analysisHistoryReturn = null;
   let objectKind = 'person', selectedObject = '', objectSection = 'reply', objectMemoryCategory = 'name', objectSearch = '', logFilters = { source: 'reply' };
   let objectScrollKey = '', objectScrollTop = 0;
   function rememberedObjectScroll() {
@@ -485,6 +486,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     });
   }
   async function deleteAnalysisReport(reportId) {
+    rememberDraft();
     const current = generation, target = id, account = state?.account, epoch = analysisHistoryEpoch;
     if (!await confirmAnalysisDelete()) return false;
     if (current !== generation || target !== id || account !== state?.account || epoch !== analysisHistoryEpoch) { message('账号或页面已变化，请重新打开历史报告', true); return false; }
@@ -492,12 +494,41 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     if (current !== generation || target !== id || account !== state?.account || epoch !== analysisHistoryEpoch) return false;
     state.analysis = { ...(state.analysis || {}), history: result.history || [] };
     if (analysisResult?.reports?.some(report => report.historyId === reportId)) analysisResult = null;
-    if (analysisHistoryReport?.id === reportId) analysisHistoryReport = null;
-    render(); message('分析报告已删除'); return true;
+    if (analysisHistoryReport?.id === reportId) restoreAnalysisHistory(); else render();
+    message('分析报告已删除'); return true;
   }
   function resetAnalysisExport() {
     analysisExportController?.abort(); analysisExportController = null;
     analysisExportSelecting = false; analysisExportSelected.clear(); analysisExportDialog = null;
+  }
+  function analysisHistoryState() {
+    const window = analysisHistoryWindow(state?.analysis?.history || [], analysisHistoryQuery, analysisHistoryPage);
+    analysisHistoryPage = window.page;
+    const valid = new Set(window.matched.map(item => item.id));
+    for (const reportId of analysisExportSelected) if (!valid.has(reportId)) analysisExportSelected.delete(reportId);
+    return { selecting: analysisExportSelecting, selected: analysisExportSelected, dialog: analysisExportDialog, historyQuery: analysisHistoryQuery, historyPage: analysisHistoryPage };
+  }
+  function drawAnalysisHistory() {
+    const section = $('.ai-analysis-history');
+    if (!section || !state || analysisHistoryReport) return;
+    const input = $('#ai-history-search'), focused = document.activeElement === input;
+    const selection = focused ? [input.selectionStart, input.selectionEnd] : null;
+    const scrollTop = $('#ai-content').scrollTop;
+    section.outerHTML = historyList(state, analysisHistoryState());
+    $('#ai-content').scrollTop = scrollTop;
+    if (focused) { const next = $('#ai-history-search'); next?.focus({ preventScroll: true }); if (selection) next?.setSelectionRange(...selection); }
+  }
+  function searchAnalysisHistory(query) {
+    if (query !== analysisHistoryQuery) { analysisHistoryQuery = query; analysisHistoryPage = 0; analysisExportSelected.clear(); analysisHistoryEpoch++; }
+    drawAnalysisHistory();
+  }
+  function restoreAnalysisHistory() {
+    analysisHistoryReport = null; analysisHistoryEpoch++; render();
+    if (analysisHistoryReturn) {
+      $('#ai-content').scrollTop = analysisHistoryReturn.scrollTop;
+      const button = [...panel.querySelectorAll('[data-ai-history-open]')].find(item => item.dataset.aiHistoryOpen === analysisHistoryReturn.reportId);
+      (button || $('#ai-history-search'))?.focus({ preventScroll: true });
+    }
   }
   function closeAnalysisExport() {
     analysisExportController?.abort(); analysisExportController = null;
@@ -570,6 +601,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       proactiveUI.reset();
       personalDraft = null; personalDraftAccount = null;
       analysisHistoryEpoch++; analysisHistoryReport = null; analysisResult = null; resetAnalysisExport();
+      analysisHistoryQuery = ''; analysisHistoryPage = 0; analysisHistoryReturn = null;
       summaryResults.clear();
       skipContent.clear(); markReplyStatus.clear(); skipEpoch++; skipLoading = false; skipHistory = []; skipHistoryPage = null; skipPageLoading = false;
       recordCache.delete(id); logEpoch++; proactiveRecordEpoch++; errorEpoch++;
@@ -965,7 +997,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     const pageTitle = ({ overview: '自动回复', proactive: '主动聊天', activity: '执行记录', provider: '模型设置', settings: '系统设置', 'personal-info': '我的信息', 'global-reply': '全局回复策略', analysis: '分析报告', learning: '批量学习风格与记忆', 'default-style': '学习默认风格', results: '学习结果', profile: '编辑学习结果', 'manual-reply': '手动回复' })[tab] || 'AI 辅助';
     $('#ai-title').textContent = pageTitle;
     $('#ai-mobile-title').textContent = pageTitle;
-    const content = tab === 'profile' && editingProfile ? profileEditor(state.profiles.find(p => p.id === editingProfile)) : ({ overview: objects, analysis: () => analysisPage(state, analysisDraft, analysisResult, analysisSearch, analysisHistoryReport, analysisRangeMode, analysisContactsExpanded, { selecting: analysisExportSelecting, selected: analysisExportSelected, dialog: analysisExportDialog }), activity, provider, settings: advancedSettings, 'personal-info': () => personalInformationPage(state, personalDraft || {}), 'global-reply': () => globalReplyStrategyPage(state), learning, 'default-style': defaultStyleLearning, results, proactive, 'manual-reply': manualReplyEditor }[tab] || objects)();
+    const content = tab === 'profile' && editingProfile ? profileEditor(state.profiles.find(p => p.id === editingProfile)) : ({ overview: objects, analysis: () => analysisPage(state, analysisDraft, analysisResult, analysisSearch, analysisHistoryReport, analysisRangeMode, analysisContactsExpanded, analysisHistoryState()), activity, provider, settings: advancedSettings, 'personal-info': () => personalInformationPage(state, personalDraft || {}), 'global-reply': () => globalReplyStrategyPage(state), learning, 'default-style': defaultStyleLearning, results, proactive, 'manual-reply': manualReplyEditor }[tab] || objects)();
     const nav = `<nav class="ai-main-tabs qbx-bottom-nav" aria-label="AI 页面"><div class="ai-nav-brand"><span>${logoIcon}</span><div>AI 辅助<small>栖盒 · QIBOX</small></div></div><p class="ai-nav-caption">工作台</p>${[['overview', '自动回复', 'chat'], ['proactive', '主动聊天', 'send'], ['activity','执行记录','clock'],['analysis','分析报告','file'], ['settings', '系统设置', 'sliders']].map(([key, name, symbol]) => `<button type="button" data-ai-nav="${key}" title="${name}" aria-label="${name}" aria-current="${tab === key || key === 'overview' && ['learning','results','profile','manual-reply'].includes(tab) || key === 'settings' && ['default-style','provider','personal-info','global-reply'].includes(tab) ? 'page' : 'false'}">${icon(symbol)}<span>${name}</span></button>`).join('')}</nav>`;
     panel.querySelector(':scope > .ai-main-tabs')?.remove();
     $('#ai-content').innerHTML = iconSprite + nav + (tab === 'overview' ? content : `<div class="ai-page-body">${content}</div>`);
@@ -1123,7 +1155,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         const bar = $('.ai-history-export-bar');
         if (bar) { bar.querySelector('strong').textContent = `已选 ${analysisExportSelected.size} 份`; bar.querySelector('[data-ai-history-export-next]').disabled = !analysisExportSelected.size; }
         const all = $('[data-ai-history-export-all]');
-        if (all) all.textContent = analysisExportSelected.size === (state.analysis?.history || []).length ? '取消全选' : '全选当前列表';
+        if (all) all.textContent = analysisHistorySelectionLabel(analysisExportSelected, analysisHistoryWindow(state.analysis?.history || [], analysisHistoryQuery, analysisHistoryPage).matched);
         return;
       }
       const wikiRow = input.closest('.ai-wiki-bubble');
@@ -1288,6 +1320,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       drawProactiveRecords();
       return;
     }
+    if (event.target.id === 'ai-history-search') { searchAnalysisHistory(event.target.value); return; }
     if (event.target.id === 'ai-analysis-search') {
       analysisSearch = event.target.value;
       const checked = new Set([...panel.querySelectorAll('#ai-analysis-form [name=contacts]:checked')].map(x => x.value));
@@ -1731,24 +1764,33 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         if (!report) throw new Error('报告已变化，请重新打开');
         openAnalysisExport([report.id], report); return;
       }
-      if ('aiHistoryExportMode' in button.dataset) { analysisExportSelecting = true; analysisExportSelected.clear(); render(); return; }
-      if ('aiHistoryExportCancel' in button.dataset) { analysisExportSelecting = false; analysisExportSelected.clear(); render(); return; }
+      if ('aiHistoryExportMode' in button.dataset) { analysisExportSelecting = true; analysisExportSelected.clear(); drawAnalysisHistory(); return; }
+      if ('aiHistoryExportCancel' in button.dataset) { analysisExportSelecting = false; analysisExportSelected.clear(); drawAnalysisHistory(); return; }
+      if ('aiHistorySearchClear' in button.dataset) { searchAnalysisHistory(''); $('#ai-history-search')?.focus({ preventScroll: true }); return; }
+      if ('aiHistoryPage' in button.dataset) {
+        analysisHistoryPage = Number(button.dataset.aiHistoryPage); analysisHistoryEpoch++; drawAnalysisHistory();
+        const section = $('.ai-analysis-history'), content = $('#ai-content');
+        content.scrollTop += section.getBoundingClientRect().top - content.getBoundingClientRect().top - 12;
+        $('#ai-history-search')?.focus({ preventScroll: true }); return;
+      }
       if ('aiHistoryExportAll' in button.dataset) {
-        const ids = (state.analysis?.history || []).map(item => item.id);
-        if (analysisExportSelected.size === ids.length) analysisExportSelected.clear(); else analysisExportSelected = new Set(ids);
-        render(); return;
+        const ids = analysisHistoryWindow(state.analysis?.history || [], analysisHistoryQuery, analysisHistoryPage).matched.map(item => item.id);
+        if (ids.every(reportId => analysisExportSelected.has(reportId))) analysisExportSelected.clear(); else analysisExportSelected = new Set(ids);
+        drawAnalysisHistory(); return;
       }
       if ('aiHistoryExportNext' in button.dataset) {
         const ids = (state.analysis?.history || []).map(item => item.id).filter(reportId => analysisExportSelected.has(reportId));
         openAnalysisExport(ids); return;
       }
       if ('aiHistoryOpen' in button.dataset) {
+        rememberDraft();
         const current = generation, target = id, account = state?.account, epoch = ++analysisHistoryEpoch;
+        const returning = { reportId: button.dataset.aiHistoryOpen, scrollTop: $('#ai-content').scrollTop };
         const report = await api(`/instances/${target}/ai/reports/${button.dataset.aiHistoryOpen}`, undefined, 30000);
         if (current !== generation || target !== id || account !== state?.account || epoch !== analysisHistoryEpoch) return;
-        analysisHistoryReport = report; render(); return;
+        analysisHistoryReturn = returning; analysisHistoryReport = report; render(); $('#ai-content').scrollTop = 0; return;
       }
-      if ('aiHistoryBack' in button.dataset) { analysisHistoryReport = null; analysisHistoryEpoch++; render(); return; }
+      if ('aiHistoryBack' in button.dataset) { restoreAnalysisHistory(); return; }
       if ('aiHistoryCopy' in button.dataset) { if (!analysisHistoryReport) throw new Error('报告已变化，请重新打开'); await copyReport(analysisHistoryReport.report); message('已复制这份报告的全文'); return; }
       if ('aiHistoryDelete' in button.dataset) { await deleteAnalysisReport(button.dataset.aiHistoryDelete); return; }
       if ('aiAnalysisPreset' in button.dataset) {
@@ -2039,6 +2081,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     show,
     attached: () => !!id,
     async attach(instanceId) {
+      analysisHistoryQuery = ''; analysisHistoryPage = 0; analysisHistoryReturn = null;
       for (const controller of confirmationControllers) controller.abort();
       replyLimitConfirmController?.abort(); replyLimitConfirmController = null;
       contactDialog?.close();

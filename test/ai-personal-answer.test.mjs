@@ -68,7 +68,22 @@ test('a counterpart who declined planning assistance does not receive a newly fi
 
 test('an implicit later agreement is still an added future action',()=>{
   assert.equal(unsupportedPersonalAnswer(['行，那就改周日，具体几点到时候再定。']), 'future-notice');
+  for (const text of ['行，那就改周日，具体时间到时候再对一下。', '具体时间回头再核对', '到时再确认一下']) assert.equal(unsupportedPersonalAnswer([text]), 'future-notice', text);
   for(const text of ['到时候看天气', '你到时候再定时间', '他说“到时候再定”'])assert.equal(unsupportedPersonalAnswer([text]), '',text);
+  for(const text of ['具体时间不用到时候再对一下', '你到时候再核对时间', '他说“具体时间到时候再对一下”'])assert.equal(unsupportedPersonalAnswer([text]), '',text);
+});
+
+test('a relative moving does not establish that the counterpart helped',()=>{
+  const text='原来是你哥要搬，辛苦你帮忙整理啦';
+  const context={messages:[{direction:'other',text:'哥哥在整理东西。'},{direction:'other',text:'我哥哥要搬家，这不是我本人要搬。'}]};
+  assert.equal(unsupportedPersonalAnswer([text],context),'recipient-fact');
+  assert.equal(unsupportedPersonalAnswer(['辛苦你帮忙','整理啦'],context),'recipient-fact');
+  for(const source of ['我帮哥哥整理了', '我正在帮忙整理']) assert.equal(unsupportedPersonalAnswer([text],{messages:[{direction:'other',text:source}]}),'');
+  for(const source of ['我没有帮忙整理','我准备帮忙整理','我明天帮哥哥整理','我可能帮忙整理','我哥帮忙整理','我说“我帮忙整理”']) assert.equal(unsupportedPersonalAnswer([text],{messages:[{direction:'other',text:source}]}),'recipient-fact',source);
+  assert.equal(unsupportedPersonalAnswer([text],{messages:[{direction:'other',text:'我帮忙整理',aiGenerated:true}]}),'recipient-fact');
+  assert.equal(unsupportedPersonalAnswer([text],{messages:[{direction:'self',authorship:'human',text:'你帮忙整理了'}]}),'');
+  assert.equal(unsupportedPersonalAnswer([text],{facts:'对方帮哥哥整理了'}),'');
+  for(const allowed of ['辛苦你了','辛苦你等了','如果你帮忙整理就辛苦你了','他说“辛苦你帮忙整理啦”','你帮得上忙吗？','麻烦你帮忙整理一下']) assert.equal(unsupportedPersonalAnswer([allowed],context),'',allowed);
 });
 
 test('unknown personal questions can be clarified without inventing ignorance or losing additional questions',()=>{
