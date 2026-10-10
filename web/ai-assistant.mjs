@@ -69,6 +69,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   const profileDrafts = new Map();
   const manualReplyDrafts = new Map();
   const objectDrafts = new Map();
+  const objectDirtyContacts = new Set();
   let learnRange = { from: '', to: '' }, learnScope = 'range', learnRangeMode = 'all', learnTarget = 'both', memoryPendingSignature = '';
   let defaultStylePerspective = 'self', defaultStyleMode = 'contacts';
   let defaultStyleReturn = 'settings';
@@ -86,7 +87,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   }
   const acknowledgedReplyLimitOverflow = new WeakMap();
   let replyLimitOverflowDialogOpen = false;
-  const objectView = () => ({ kind: objectKind, selected: selectedObject, section: objectSection, memoryCategory: objectMemoryCategory, search: objectSearch, draft: objectDrafts.get(selectedObject), scrollTop: rememberedObjectScroll(), height: $('#ai-object-list')?.clientHeight || 600 });
+  const objectView = () => ({ kind: objectKind, selected: selectedObject, section: objectSection, memoryCategory: objectMemoryCategory, search: objectSearch, draft: objectDrafts.get(selectedObject), dirty: objectDirtyContacts.has(selectedObject), scrollTop: rememberedObjectScroll(), height: $('#ai-object-list')?.clientHeight || 600 });
   function objects() { return objectPage(state, objectView()); }
   function drawObjectList() {
     const list = $('#ai-object-list');
@@ -857,6 +858,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     if (analysis) { const data = new FormData(analysis); analysisDraft = { request: data.get('request'), from: data.get('from'), to: data.get('to'), contacts: data.getAll('contacts'), includeVoice: data.has('includeVoice'), includeVisual: data.has('includeVisual') }; }
     const object = $('#ai-object-form');
     if (object) {
+      if (object.querySelector('[data-ai-dirty]')?.hidden === false) objectDirtyContacts.add(selectedObject);
       const draft = { ...Object.fromEntries(new FormData(object)) };
       if (object.querySelector('[data-ai-wiki-entities]')) draft.memorySummary = JSON.stringify(wikiEntries(object));
       for (const input of object.querySelectorAll('[data-object-option]')) draft[input.dataset.objectOption] = input.checked;
@@ -1010,7 +1012,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         rememberDraft();
         // 学到的记忆先放在对象页的待确认区，跳过去让用户马上能替换或合并。
         const first = updated.find(p => state.contacts.some(c => c.id === p.contact));
-        if (first) { objectDrafts.delete(first.contact); selectedObject = first.contact; objectKind = first.kind === 'group' ? 'group' : 'person'; tab = 'overview'; }
+        if (first) { objectDrafts.delete(first.contact); objectDirtyContacts.delete(first.contact); selectedObject = first.contact; objectKind = first.kind === 'group' ? 'group' : 'person'; tab = 'overview'; }
         return;
       }
       const learned = selectProfiles().filter(p => (p.learnedAt && p.learnedStyle) || p.pendingStyle).filter(p => value.contacts?.includes(p.contact) || (value.contact && p.contact === value.contact) || (!value.contacts && !value.contact && !previous.has(p.id)));
@@ -1062,6 +1064,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   panel.addEventListener('change', async event => {
     try {
       const input = event.target;
+      if (input.closest('#ai-object-form')) objectDirtyContacts.add(selectedObject);
       if (input.closest('#ai-personal-information-form')) {
         if (input.matches('[data-personal-share]')) input.closest('[data-personal-field]').dataset.personalShareChanged = 'true';
         updatePersonalInformationForm($('#ai-personal-information-form'), state); rememberDraft(); return;
@@ -1201,6 +1204,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     } catch (e) { controls(); message(e.message, true); }
   });
   panel.addEventListener('input', event => {
+    if (event.target.closest('#ai-object-form')) objectDirtyContacts.add(selectedObject);
     if (event.target.closest('#ai-personal-information-form')) { updatePersonalInformationForm($('#ai-personal-information-form'), state); rememberDraft(); return; }
     if (event.target.name === 'facts' && event.target.closest('#ai-global-reply-form')) {
       const status = $('[data-ai-optional="global-facts"] .ai-optional-status');
@@ -1392,7 +1396,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
             : { replyEnabled: data.has('enabled'), options: { multiTurn: optionChecked('multiTurn'), judgeReply: optionChecked('judgeReply'), sendImages: optionChecked('sendImages'), sendAudio: optionChecked('sendAudio') } }),
           ...(!sameWikiEntries(memoryEntries, profile?.memory?.entries || []) && !profile?.memory?.unavailable ? { memory: { entries: memoryEntries } } : {})
         } }, '设置已保存');
-        objectDrafts.delete(contact); render(); return;
+        objectDrafts.delete(contact); objectDirtyContacts.delete(contact); render(); return;
       }
       if (form.id === 'ai-personal-information-form') {
         if (form.dataset.personalAccount !== state.account) throw new Error('微信账号已变化，请重新打开我的信息');
@@ -1816,11 +1820,11 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       if (button.dataset.aiObject) { rememberDraft(); selectedObject = button.dataset.aiObject; objectSection = 'reply'; objectMemoryCategory = objectKind === 'group' ? 'group_info' : 'name'; render(); return; }
       if ('aiObjectBack' in button.dataset) { rememberDraft(); selectedObject = ''; render(); return; }
       if ('aiLogPage' in button.dataset) { logFilters.page = Number(button.dataset.aiLogPage); logLoading = true; logRequestScope = ''; render(); await loadActivity(); return; }
-      if (button.dataset.aiMemoryRestore) { const current=generation;const result=await execute('memory', {id:button.dataset.profile,value:{restoreId:button.dataset.aiMemoryRestore}}, '已恢复记忆'); if(!result || current!==generation)return;objectDrafts.delete(selectedObject); render(); return; }
+      if (button.dataset.aiMemoryRestore) { const current=generation;const result=await execute('memory', {id:button.dataset.profile,value:{restoreId:button.dataset.aiMemoryRestore}}, '已恢复记忆'); if(!result || current!==generation)return;objectDrafts.delete(selectedObject); objectDirtyContacts.delete(selectedObject); render(); return; }
       // 记忆学习的结果先放在待确认区，由用户决定替换、合并还是放弃。
-      if (button.dataset.aiMemoryApply) { const current=generation;const result=await execute('memory-apply', {id:button.dataset.aiMemoryApply}, '已用本次学习的记忆替换'); if(!result || current!==generation)return;objectDrafts.delete(selectedObject); render(); return; }
-      if (button.dataset.aiMemoryDiscard) { if (!await confirmDialog('确认放弃本次学习到的记忆？')) return; const current=generation;const result=await execute('memory-discard', {id:button.dataset.aiMemoryDiscard}, '已放弃本次学习到的记忆'); if(!result || current!==generation)return;objectDrafts.delete(selectedObject); render(); return; }
-      if (button.dataset.aiMemoryMerge) { const current=generation;const result=await execute('memory-merge', {id:button.dataset.aiMemoryMerge}, '正在与原有记忆合并，完成后请再确认一次'); if(!result || current!==generation)return;objectDrafts.delete(selectedObject); render(); return; }
+      if (button.dataset.aiMemoryApply) { const current=generation;const result=await execute('memory-apply', {id:button.dataset.aiMemoryApply}, '已用本次学习的记忆替换'); if(!result || current!==generation)return;objectDrafts.delete(selectedObject); objectDirtyContacts.delete(selectedObject); render(); return; }
+      if (button.dataset.aiMemoryDiscard) { if (!await confirmDialog('确认放弃本次学习到的记忆？')) return; const current=generation;const result=await execute('memory-discard', {id:button.dataset.aiMemoryDiscard}, '已放弃本次学习到的记忆'); if(!result || current!==generation)return;objectDrafts.delete(selectedObject); objectDirtyContacts.delete(selectedObject); render(); return; }
+      if (button.dataset.aiMemoryMerge) { const current=generation;const result=await execute('memory-merge', {id:button.dataset.aiMemoryMerge}, '正在与原有记忆合并，完成后请再确认一次'); if(!result || current!==generation)return;objectDrafts.delete(selectedObject); objectDirtyContacts.delete(selectedObject); render(); return; }
       if (button.dataset.aiAdoptMemory) {
         const profile = state.profiles.find(p => p.id === button.dataset.aiAdoptMemory);
         const form = button.closest('form'), entries = wikiEntries(form);
@@ -1895,7 +1899,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         const combined = profile.pendingMemorySource === 'combined';
         const applied = await execute('reply-profile', {value:{contact:profile.contact,preserveSwitches:true,styleSet:true,styleId:'learned',style:profile.pendingStyle || profile.learnedStyle || profile.style,strategy:profile.replyStrategy || replyStrategy(),...(combined ? {applyCombinedLearning:true,combinedLearningId:profile.pendingMemoryId} : {})}}, combined ? '风格和记忆已一起应用到 '+profile.label : '已应用到 '+profile.label+' 聊天');
         if (!applied || current !== generation) return;
-        selectedObject=profile.contact; objectKind=profile.kind || 'person'; objectDrafts.delete(profile.contact); await navigate('overview');
+        selectedObject=profile.contact; objectKind=profile.kind || 'person'; objectDrafts.delete(profile.contact); objectDirtyContacts.delete(profile.contact); await navigate('overview');
         return;
       }
       if (action === 'toggle-key') await toggleKey();
@@ -1986,7 +1990,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       rememberRecords();
       analysisDraft = { request: '', from: '', to: '', contacts: [], includeVoice: false, includeVisual: false }; analysisRangeMode = 'all'; analysisRangeBeforeCustom = null; analysisContactsExpanded = false; analysisSearch = ''; analysisHistoryReport = null; analysisHistoryEpoch++; resetAnalysisExport(); learnRange = {from:'',to:''}; learnRangeMode = 'all'; learnScope='range'; learnTarget='both'; defaultStylePerspective = 'self'; analysisResult = null; proactiveUI.reset();
       reviewAlert.hidden = true;
-      concealKey(true); modelDraft = null; learningDraft = null; renderedView = ''; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); objectScrollKey = ''; objectScrollTop = 0; personalDraft = null; personalDraftAccount = null; summaryResults.clear(); selectedObject = ''; objectSearch = ''; objectKind = 'person'; learnContactKind = 'person'; editingReplyContact = null; contactSearch = ''; providerRevision++;
+      concealKey(true); modelDraft = null; learningDraft = null; renderedView = ''; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); objectDirtyContacts.clear(); objectScrollKey = ''; objectScrollTop = 0; personalDraft = null; personalDraftAccount = null; summaryResults.clear(); selectedObject = ''; objectSearch = ''; objectKind = 'person'; learnContactKind = 'person'; editingReplyContact = null; contactSearch = ''; providerRevision++;
       generation++; skipEpoch++; skipLoading = false; skipHistory = []; skipHistoryPage = null; skipPageLoading = false; skipContent.clear(); markReplyStatus.clear(); clearInterval(timer); lastPollAt = 0; id = instanceId; setContactAvatarInstance(instanceId); state = null; busy = false; polling = false; attaching = true; tab = 'overview'; replyDraft = null; editingProfile = null; contactsLoaded = false; contactsLoading = false; resultProfileIds = null;
       const attachedGeneration = generation;
       selectedContacts.clear(); replyProfiles.clear(); setPanelVisible(false); rail.hidden = false; panel.setAttribute('aria-busy', 'false');
@@ -2010,6 +2014,6 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         finally { if (current === generation) polling = false; }
       }, 1000);
     },
-    detach() { contactDialog?.close(); analysisQueueToken++; analysisQueueAccount = null; rememberRecords(); proactiveRecordEpoch++; proactiveRecordLoading = false; proactiveHistory = []; proactiveHistoryPage = null; errorEpoch++; errorLoading = false; errorHistory = []; errorPage = null; logEpoch++; analysisDraft = { request: '', from: '', to: '', contacts: [] }; analysisSearch = ''; analysisHistoryReport = null; analysisHistoryEpoch++; resetAnalysisExport(); analysisResult = null; reviewAlert.hidden = true; concealKey(true); modelDraft = null; learningDraft = null; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); objectScrollKey = ''; objectScrollTop = 0; personalDraft = null; personalDraftAccount = null; selectedObject = ''; objectSearch = ''; objectKind = 'person'; editingReplyContact = null; providerRevision++; generation++; skipEpoch++; skipLoading = false; skipHistory = []; skipHistoryPage = null; skipPageLoading = false; skipContent.clear(); markReplyStatus.clear(); clearInterval(timer); id = null; setContactAvatarInstance(null); state = null; attaching = false; rail.hidden = true; setPanelVisible(false); panel.querySelector(':scope > .ai-main-tabs')?.remove(); $('#ai-content').replaceChildren(); selectedContacts.clear(); replyProfiles.clear(); proactiveUI.reset(); replyDraft = null; },
+    detach() { contactDialog?.close(); analysisQueueToken++; analysisQueueAccount = null; rememberRecords(); proactiveRecordEpoch++; proactiveRecordLoading = false; proactiveHistory = []; proactiveHistoryPage = null; errorEpoch++; errorLoading = false; errorHistory = []; errorPage = null; logEpoch++; analysisDraft = { request: '', from: '', to: '', contacts: [] }; analysisSearch = ''; analysisHistoryReport = null; analysisHistoryEpoch++; resetAnalysisExport(); analysisResult = null; reviewAlert.hidden = true; concealKey(true); modelDraft = null; learningDraft = null; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); objectDirtyContacts.clear(); objectScrollKey = ''; objectScrollTop = 0; personalDraft = null; personalDraftAccount = null; selectedObject = ''; objectSearch = ''; objectKind = 'person'; editingReplyContact = null; providerRevision++; generation++; skipEpoch++; skipLoading = false; skipHistory = []; skipHistoryPage = null; skipPageLoading = false; skipContent.clear(); markReplyStatus.clear(); clearInterval(timer); id = null; setContactAvatarInstance(null); state = null; attaching = false; rail.hidden = true; setPanelVisible(false); panel.querySelector(':scope > .ai-main-tabs')?.remove(); $('#ai-content').replaceChildren(); selectedContacts.clear(); replyProfiles.clear(); proactiveUI.reset(); replyDraft = null; },
   };
 }

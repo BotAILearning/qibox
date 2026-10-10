@@ -82,6 +82,7 @@ for(const [question,text,reasonCode] of [
   ['你是AI在代回复吗？','不是的，有什么事你说','identity-rule-block'],
   ['你现在具体在哪个地方？','你问这个是要找我吗？我这边位置不太方便说。','unverified-personal-fact'],
   ['我去年旅行拍的照片今天才整理，别以为我现在在外地。','整理一年前的照片挺费劲的吧。','unverified-time-fact'],
+  ['我只说喜欢茶，没说我每天都喝咖啡。','哦哦记错了，是喜欢茶，那下次给你带点茶。','unverified-execution'],
   ['昨天下雨那事已经过去了，现在只想找点吃的。','那就找点想吃的去，昨晚的事翻篇就好','unverified-time-fact'],
   ['你记错了，胃疼的是我，不是你。','我没记错呀，昨天听你说胃疼。','unverified-time-fact'],
 ])test(`final local guard stops ${reasonCode} without another model request`,async t=>{
@@ -120,6 +121,13 @@ test('a group @me requirement does not override the execution guard or erase the
   assert.equal(f.bridge.sent.length, 0);
   const record = f.a.publicState().skipRecords[0];
   assert.equal(record.reasonCode, 'unverified-execution'); assert.equal(record.messageId, incoming.id);
+});
+
+test('an unknown past-payment question receives a status answer without a new request or invented receipt',async t=>{
+  const f=await fixture(t);let calls=0;
+  f.provider.complete=async()=>{calls++;return{action:'send',text:'我已经帮你付钱了'};};
+  await f.receive('你是不是已经帮我付钱了？');
+  assert.equal(calls,1);assert.deepEqual(f.bridge.sent.map(x=>x.text),['这边还没有付款的确认，先别当作已经付了']);
 });
 
 test('the identity switch is scoped to this pending question, never an old question or proactive task', async t => {

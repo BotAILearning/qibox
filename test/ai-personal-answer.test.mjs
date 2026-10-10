@@ -41,6 +41,15 @@ test('an unknown location cannot invent privacy as the reason for withholding it
   assert.equal(unsupportedPersonalAnswer(['这个不方便说'],{pendingMessages:[{direction:'other',text:'你银行卡密码多少？'}]}),'');
 });
 
+test('a conversational preference does not authorize a new physical delivery promise',()=>{
+  const text='哦哦记错了，是喜欢茶，那下次给你带点茶。';
+  assert.equal(unsupportedPersonalAnswer([text],{messages:[{direction:'other',text:'我只说喜欢茶'}]}),'future-notice');
+  assert.equal(unsupportedPersonalAnswer(['那下次给你带点茶'],{facts:'我下次给你带点茶'}),'');
+  assert.equal(unsupportedPersonalAnswer(['那下次给你带点茶'],{facts:'他说“我下次给你带点茶”'}),'future-notice');
+  assert.equal(unsupportedPersonalAnswer(['那下次给你带点茶'],{facts:'我明天给你带点茶'}),'future-notice');
+  assert.equal(unsupportedPersonalAnswer(['他说“下次给你带点茶”。']), '');
+});
+
 test('a vague yesterday event cannot be made a night event or an invented earlier message',()=>{
   const now=Date.parse('2026-10-10T13:00:00Z'),m={direction:'other',text:'昨天胃疼',timestamp:Math.floor(now/1000)-1200};
   assert.equal(unsupportedChatTime(['昨天听你说胃疼。'],{messages:[m],now}),'time-fact');

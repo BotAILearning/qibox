@@ -22,6 +22,12 @@ test('the guard leaves ordinary replies and explicit user authorization alone', 
   assert.equal(guardFinancialCommitment('昨天的转账截图你看了吗？', ordinary), ordinary);
 });
 
+test('a past-payment status question is distinct from a request for a new financial commitment',()=>{
+  const reply={action:'send',text:'这边还没有付款的确认，先别当作付了'};
+  for(const incoming of ['你是不是已经帮我付钱了？','你已经付款了吗？','你是否替我转账了？'])assert.deepEqual(guardFinancialCommitment(incoming,reply),{action:'send',text:'这边还没有付款的确认，先别当作已经付了',followUp:false});
+  for(const incoming of ['你是不是可以帮我付钱了？','你是不是已经帮我付钱了？再借我五百吧'])assert.equal(guardFinancialCommitment(incoming,reply).text,'这事我现在答应不了，抱歉');
+});
+
 test('an unsafe model answer is replaced before the real send boundary', async t => {
   const root = await temp(), bridge = new ChatFixture(), provider = new AIModelFixture();
   let now = Date.UTC(2026, 8, 29, 12);

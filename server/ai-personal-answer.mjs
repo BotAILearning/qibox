@@ -8,6 +8,7 @@ const employmentDenial = /^我(?:现在|目前|今天)?(?:没有|没|不)(?:有)
 const futureNotice = /等我(?:确认|确定|定下来|有消息|有结果)(?:一下|下|时间)?(?:了|后|以后|之后)?[^。！？!?，,；;\n]{0,16}(?:再|就|会)?(?:告诉|通知|联系|回复|(?:跟|和)(?:你|您)(?:说|定(?:时间|下来|好)?)|给(?:你|您)发(?:消息|信息))(?:你|您)?(?:一声|一下)?$/;
 const confirmThenNotice = /我(?:先|再)?(?:确认|确定)(?:一下|下)?[^。！？!?，,；;\n]{0,16}(?:再|就|后|然后)(?:回|回复|告诉|通知|联系)(?:你|您)|我(?:先|再)?(?:确认|确定)(?:一下|下)?[^。！？!?，,；;\n]{0,16}(?:再|就|后|然后)(?:跟|和)(?:你|您)(?:说|定(?:时间|下来|好)?)/;
 const privacyReason = /^(?:我(?:这边|现在|目前)?(?:的)?(?:位置|地点)?|这个|这边|位置)[^。！？!?，,；;\n]{0,8}不(?:太)?方便(?:说|透露)/;
+const plannedDelivery = /^(?:那|好[的吧]?|嗯)?(?:我)?(下次|回头|明天|周[一二三四五六日天])(?:再|就|会)?(?:给|帮|替)(?:你|您)(带|拿|送|取)(?:点|些|一点|一些)?(.{1,24})$/;
 
 export function unsupportedPersonalAnswer(texts, { messages = [], pendingMessages = [], facts = '', boundaries = '', now = Date.now(), identityAsked = false } = {}) {
   const human = messages.filter(m => m.direction === 'self' && m.authorship === 'human' && !m.aiGenerated
@@ -29,6 +30,8 @@ export function unsupportedPersonalAnswer(texts, { messages = [], pendingMessage
     // A contextual bare denial must not become a false guarantee about who
     // typed the message. This check runs only at the final local boundary.
     if (singleAIQuestion && /^(?:不是|并不是|没有)(?:的|啊|呀|啦|呢|哦)?$|^(?:我|这|现在的回复)(?:真的)?不是(?:AI|人工智能|机器人|自动回复)/i.test(part)) return 'identity-rule';
+    const delivery = plannedDelivery.exec(part);
+    if (delivery && !evidence.some(p => { const known = plannedDelivery.exec(p); return known && known.slice(1).join('\0') === delivery.slice(1).join('\0'); })) return 'future-notice';
     if ((futureNotice.test(part) || confirmThenNotice.test(part)) && !/^(?:不用|不必|别|不要)|不(?:会|承诺|保证)/.test(part)) return 'future-notice';
   }
   return '';

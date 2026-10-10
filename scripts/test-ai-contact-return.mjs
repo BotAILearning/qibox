@@ -40,6 +40,7 @@ try {
   proof.after = await list.evaluate(e => e.scrollTop);
   assert.equal(proof.after, proof.before, 'Returning from another page must preserve a nonzero contact-list position');
   assert.equal(await page.getByRole('switch', { name: '自动回复', exact: true }).isChecked(), false, 'The unsaved draft must remain a draft');
+  assert.equal(await page.locator('[data-ai-dirty]').isVisible(), true, 'Returning must also preserve the unsaved-change notice');
   assert.equal(ai.profiles().find(p => p.contact === contact).replyOptions.enabled, true, 'Navigation cannot save the draft');
   await page.locator('#ai-object-search').fill('合成对象 49');
   assert.equal(await list.evaluate(e => e.scrollTop), 0, 'A new search starts at the top');
@@ -53,6 +54,9 @@ try {
   await page.locator('#ai-open').click();
   assert.equal(await page.locator('#ai-object-search').inputValue(), '', 'Reattaching an instance must not retain old local search context');
   assert.equal(await page.locator('#ai-object-list').evaluate(e => e.scrollTop), 0, 'Reattaching must clear the old cursor');
+  await page.locator(`[data-ai-object="${contact}"]`).click();
+  assert.equal(await page.locator('[data-ai-dirty]').isVisible(),false,'Reattaching must clear the old local dirty marker');
+  assert.equal(await page.getByRole('switch',{name:'自动回复',exact:true}).isChecked(),true);
   assert.equal(provider.calls.length, callsBefore);
   assert.equal(bridge.sent.length, 0);
   await page.screenshot({ path: path.join(output, 'returned-search.png') });
