@@ -30,6 +30,8 @@ let sound, standaloneAI = false;
 let mobileLoginId = null;
 let mobileLoginCheckTimer = null, mobileLoginChecking = false;
 const mobileAISettings = new Map(), mobileAISettingsLoading = new Set(), mobileAIGeneration = new Map(), mobileAIRequests = new Map();
+// Rendering a failed read must not immediately launch another request.
+const mobileAIReadErrors = new Set();
 let lastMobileAIMarkup = '', lastMobileInstancesMarkup = '';
 const busyIds = new Set();
 const inputDrafts = new Map();
@@ -244,32 +246,37 @@ const retainedFor = id => state.retained.filter(item => (item.appId || 'wechat')
 function renderMobileAI() {
   const entries = (state?.instances || []).filter(item => (item.appId || 'wechat') === 'wechat');
   const ids = new Set(entries.map(item => item.id));
-  for (const id of new Set([...mobileAISettings.keys(), ...mobileAIGeneration.keys(), ...mobileAIRequests.keys()])) if (!ids.has(id)) {
-    mobileAISettings.delete(id); mobileAISettingsLoading.delete(id); mobileAIRequests.delete(id); mobileAIGeneration.delete(id);
+  for (const id of new Set([...mobileAISettings.keys(), ...mobileAIGeneration.keys(), ...mobileAIRequests.keys(), ...mobileAIReadErrors])) if (!ids.has(id)) {
+    mobileAISettings.delete(id); mobileAISettingsLoading.delete(id); mobileAIRequests.delete(id); mobileAIGeneration.delete(id); mobileAIReadErrors.delete(id);
   }
   const markup = entries.map(item => {
     const runtimeAvailable = aiAvailable(item.runtime, true), settings = mobileAISettings.get(item.id);
+    if (!runtimeAvailable) mobileAIReadErrors.delete(item.id);
+    const loading = mobileAISettingsLoading.has(item.id);
+    const known = runtimeAvailable && settings?.available === true && typeof settings.enabled === 'boolean';
     const checked = settings?.enabled === true;
-    const disabled = !runtimeAvailable || !settings?.available || mobileAISettingsLoading.has(item.id);
-    const hint = runtimeAvailable && !mobileAISettingsLoading.has(item.id) && !settings ? `<button type="button" class="quiet" data-mobile-ai-retry="${esc(item.id)}">重试读取开关</button>` : '';
-    return `<article class="mobile-ai-card"><button type="button" class="mobile-ai-open" data-mobile-ai-open="${esc(item.id)}" aria-label="打开${esc(item.name)}的 AI 辅助设置" ${runtimeAvailable ? '' : 'disabled'}>${esc(item.name)}</button><input type="checkbox" role="switch" data-mobile-ai-master="${esc(item.id)}" aria-label="${esc(item.name)} AI 总开关" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}>${hint ? `<div class="mobile-ai-status">${hint}</div>` : ''}</article>`;
+    const hint = runtimeAvailable && !loading && !known ? `<button type="button" class="quiet" data-mobile-ai-retry="${esc(item.id)}">重试读取开关</button>` : '';
+    const message = !runtimeAvailable ? '微信登录后可用' : loading ? '正在读取开关…' : '暂时无法读取开关';
+    const control = known ? `<input type="checkbox" role="switch" data-mobile-ai-master="${esc(item.id)}" aria-label="${esc(item.name)} AI 总开关" ${checked ? 'checked' : ''} ${loading ? 'disabled aria-busy="true"' : ''}>` : `<span class="mobile-ai-state" role="status">${message}</span>`;
+    return `<article class="mobile-ai-card"><button type="button" class="mobile-ai-open" data-mobile-ai-open="${esc(item.id)}" aria-label="打开${esc(item.name)}的 AI 辅助设置" ${runtimeAvailable ? '' : 'disabled'}>${esc(item.name)}</button>${control}${hint ? `<div class="mobile-ai-status">${hint}</div>` : ''}</article>`;
   }).join('');
   if (markup !== lastMobileAIMarkup) { $('#mobile-ai-list').innerHTML = markup; lastMobileAIMarkup = markup; }
   $('#mobile-ai').hidden = !entries.length;
   if (mobile()) for (const item of entries) {
     const settings = mobileAISettings.get(item.id);
-    if (aiAvailable(item.runtime, true) && !mobileAISettingsLoading.has(item.id) && (!settings || document.visibilityState === 'visible' && Date.now() - settings.lastReadAt >= 5000)) void loadMobileAISettings(item.id);
+    if (aiAvailable(item.runtime, true) && !mobileAIReadErrors.has(item.id) && !mobileAISettingsLoading.has(item.id) && (!settings || document.visibilityState === 'visible' && Date.now() - settings.lastReadAt >= 5000)) void loadMobileAISettings(item.id);
   }
 }
 async function loadMobileAISettings(id) {
   if (!state?.instances.some(item => item.id === id) || document.visibilityState !== 'visible' || mobileAISettingsLoading.has(id)) return;
+  mobileAIReadErrors.delete(id);
   mobileAISettingsLoading.add(id); const generation = mobileAIGeneration.get(id) || 0, requestId = Symbol(); mobileAIGeneration.set(id, generation); renderMobileAI();
   mobileAIRequests.set(id, requestId);
   try {
     const settings = await api(`/instances/${id}/ai/master`);
     if (mobileAIGeneration.get(id) === generation && mobileAIRequests.get(id) === requestId && state?.instances.some(item => item.id === id)) mobileAISettings.set(id, { ...settings, lastReadAt: Date.now() });
   } catch (error) {
-    if (mobileAIGeneration.get(id) === generation && mobileAIRequests.get(id) === requestId && state?.instances.some(item => item.id === id)) { mobileAISettings.delete(id); if (!['AI_SCOPE_CHANGED', 'AI_ACCOUNT_UNVERIFIED'].includes(error.code)) notify(`无法读取 AI 开关：${error.message}`); }
+    if (mobileAIGeneration.get(id) === generation && mobileAIRequests.get(id) === requestId && state?.instances.some(item => item.id === id)) { mobileAISettings.delete(id); mobileAIReadErrors.add(id); if (!['AI_SCOPE_CHANGED', 'AI_ACCOUNT_UNVERIFIED'].includes(error.code)) notify(`无法读取 AI 开关：${error.message}`); }
   } finally { if (mobileAIRequests.get(id) === requestId) { mobileAIRequests.delete(id); mobileAISettingsLoading.delete(id); renderMobileAI(); } }
 }
 async function changeMobileAIMaster(input) {
@@ -287,7 +294,7 @@ async function changeMobileAIMaster(input) {
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') renderMobileAI(); });
 window.addEventListener('focus', () => renderMobileAI());
-window.addEventListener('online', () => { for (const id of mobileAISettings.keys()) mobileAISettings.delete(id); renderMobileAI(); });
+window.addEventListener('online', () => { for (const id of mobileAISettings.keys()) mobileAISettings.delete(id); mobileAIReadErrors.clear(); renderMobileAI(); });
 let marketAppId = 'wechat', lastCatalogMarkup = '';
 function renderMarket(app) {
   const card = document.querySelector(`[data-market-app="${app.id}"]`);

@@ -57,3 +57,5 @@ button,input,select,textarea{font:inherit}
 .status,.app-description,.install-format,.install-progress,.field-help,.choice small,.time-fields small,.import-options span,footer,.desktop-bar strong{font-size:14px;line-height:1.5}
 .secondary,.primary,.quiet{font-size:16px;line-height:1.5}
 
+.mobile-ai-card .mobile-ai-state{justify-self:end;color:#59647a;font-size:14px;line-height:1.5;text-align:right}
+
