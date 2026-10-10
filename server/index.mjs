@@ -5,7 +5,7 @@ import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { randomBytes, createHmac, timingSafeEqual } from 'node:crypto';
-import { mkdir, chmod, rm, lstat } from 'node:fs/promises';
+import { mkdir, rm, lstat } from 'node:fs/promises';
 import { WebSocketServer } from 'ws';
 import { AppError, jsonFile } from './files.mjs';
 import { PackageLibrary } from './packages.mjs';
@@ -21,6 +21,8 @@ import { proxyWebApp } from './web-app.mjs';
 import { exportAnalysisReports } from './ai-report-export.mjs';
 import { readWechatAvatar } from './ai-avatar.mjs';
 import { StaticAssets } from './static-assets.mjs';
+import { protectGatewaySocket } from './gateway-socket.mjs';
+import { gatewayPeerVerifier } from './gateway-peer.mjs';
 
 const moduleRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const equal = (a, b) => typeof a === 'string' && typeof b === 'string' && Buffer.byteLength(a) === Buffer.byteLength(b) && timingSafeEqual(Buffer.from(a), Buffer.from(b));
@@ -39,12 +41,14 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
   const token = uid => createHmac('sha256', secret).update(uid).digest('hex');
   const tickets = new Map();
   const ticketTimer = setInterval(() => { for (const [key, value] of tickets) if (value.expires < Date.now()) tickets.delete(key); }, 30000); ticketTimer.unref();
-  function identity(req) {
+  const verifyGatewayPeer=gatewayPeerVerifier();
+  async function identity(req) {
     if (dev) {
       const cookie = req.headers.cookie?.split(';').map(x => x.trim()).find(x => x.startsWith('qibox_dev='))?.slice(10);
       if (!equal(cookie, devKey)) throw new AppError('请从预览链接打开栖盒', 401);
       return { uid: 'development', username: '本地预览', isAdmin: true };
     }
+    await verifyGatewayPeer(req.socket);
     return gatewayIdentity(req, host);
   }
   function check(req, user) { if (req.headers['sec-fetch-site'] === 'cross-site' || !equal(req.headers['x-csrf-token'], token(user.uid))) throw new AppError('页面已过期，请刷新后重试', 403); }
@@ -65,7 +69,7 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
         res.writeHead(303, { Location: `${prefix}/`, 'Set-Cookie': `qibox_dev=${devKey}; HttpOnly; SameSite=Strict; Path=${prefix}/`, 'Cache-Control': 'no-store' }); res.end(); return;
       }
       const route = url.pathname.slice(prefix.length);
-      const user = identity(req);
+      const user = await identity(req);
       const webApp = /^\/applications\/([a-f0-9-]{36})(\/.*)$/.exec(route);
       if (webApp) { const space = await users.get(user.uid); space.requireConsent(); return await proxyWebApp(space.get(webApp[1]).runtime, req, res, webApp[2] + url.search); }
       if (route.startsWith('/api/')) {
@@ -260,7 +264,7 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
     try {
       const url = new URL(req.url, 'http://localhost');
       if (url.pathname !== `${prefix}/desktop` || req.headers['sec-fetch-site'] === 'cross-site') throw new Error();
-      const user = identity(req), key = url.searchParams.get('ticket'), ticket = tickets.get(key);
+      const user = await identity(req), key = url.searchParams.get('ticket'), ticket = tickets.get(key);
       if (!ticket || ticket.uid !== user.uid || ticket.expires < Date.now()) throw new Error();
       tickets.delete(key);
       const space = await users.get(user.uid); space.requireConsent();
@@ -327,7 +331,12 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   } else {
     const socket = path.join(appRoot, 'app.sock');
     try { const file = await lstat(socket); if (!file.isSocket()) throw new Error('Refusing to replace a non-socket file'); await rm(socket); } catch (e) { if (e.code !== 'ENOENT') throw e; }
-    await new Promise(resolve => app.server.listen(socket, resolve)); await chmod(socket, 0o666);
+    const previousUmask=process.umask(0o077);
+    try {
+      await new Promise((resolve,reject)=>{app.server.once('error',reject);app.server.listen(socket,()=>{app.server.off('error',reject);resolve();});});
+      await protectGatewaySocket(socket);
+    } catch(error) { await app.close(); throw error; }
+    finally { process.umask(previousUmask); }
   }
   let closing = false;
   const close = async () => { if (closing) return; closing = true; try { await app.close(); process.exit(0); } catch (error) { console.error(error); process.exit(1); } };
