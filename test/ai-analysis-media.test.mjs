@@ -46,7 +46,7 @@ test('selected media is tied to message ids, failures are skipped, and history s
   assert.equal(report.mediaCoverage.video.skipped, 1);
   assert.equal(report.contentParsedCount, 3);
   assert.equal(calls.length, 2);
-  assert.deepEqual(calls.at(-1).messages.map(row => row[2]), ['下午三点见', '[图片识别] 一张车站照片', '[视频]', '明天见']);
+  assert.deepEqual(calls.at(-1).messages.map(row => row.text), ['下午三点见', '[图片识别] 一张车站照片', '[视频]', '明天见']);
   const saved = a.analysisReport(report.historyId);
   assert.deepEqual(saved.mediaCoverage, report.mediaCoverage);
   assert.equal(saved.contentParsedCount, 3);
@@ -73,7 +73,7 @@ test('video frames reach the vision model with source ids and join the report in
   const result = (await a.analyze({ contacts: [contact], includeVisual: true })).reports[0];
   assert.equal(result.status, 'complete');
   assert.equal(result.mediaCoverage.video.analyzed, 1);
-  assert.deepEqual(finalInput.messages.map(item => item[2]), ['[视频画面识别] 第1秒画面；第2秒画面；第3秒画面', '看到了']);
+  assert.deepEqual(finalInput.messages.map(item => item.text), ['[视频画面识别] 第1秒画面；第2秒画面；第3秒画面', '看到了']);
 });
 
 test('unsupported vision model skips media and still produces a text report', async t => {
@@ -90,7 +90,7 @@ test('unsupported vision model skips media and still produces a text report', as
   let visionCalls = 0;
   provider.complete = async (_config, _prompt, input) => {
     if (input.images) { visionCalls++; throw Object.assign(new Error('不支持图片'), { code: 'ai_model_vision_unsupported' }); }
-    assert.deepEqual(input.messages.map(row => row[2]), ['[图片]', '这张图片说明什么？']);
+    assert.deepEqual(input.messages.map(row => row.text), ['[图片]', '这张图片说明什么？']);
     return { report: '图片未能解析，只能依据文字说明。' };
   };
   const result = (await a.analyze({ contacts: [contact], includeVisual: true })).reports[0];

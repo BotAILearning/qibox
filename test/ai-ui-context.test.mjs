@@ -32,7 +32,7 @@ function surface({ without = [] } = {}) {
       writes: 0, get innerHTML() { return html; }, set innerHTML(value) { html = value; this.writes++; },
       get textContent() { return children.length ? children.map(child => child.textContent || '').join('') : text; },
       set textContent(value) { text = value; children = []; },
-      setAttribute() {}, focus() {}, contains() { return false; }, replaceChildren(...values) { children = values; }, append() {}, remove() {},
+      setAttribute() {}, focus() { this.focused = true; }, contains() { return false; }, replaceChildren(...values) { children = values; }, append() {}, remove() {},
       close() { handlers.get(`${selector}:close`)?.(); }, showModal() {},
       querySelector: node, querySelectorAll: () => [],
       addEventListener(type, handler) { if (selector === '#ai-panel' && type === 'click') panelClicks.push(handler); handlers.set(`${selector}:${type}`, handler); },
@@ -180,6 +180,7 @@ test('task records expose their scope and can show all tasks without losing othe
   assert.match(html, /value="person" selected/);
   assert.match(html, /value="sent" selected/);
   assert.equal(calls.at(-1).taskId, undefined);
+  assert.equal(dom.node('[data-ai-record-source="proactive"]').focused, true);
   assert.match(dom.node('#ai-proactive-records').innerHTML, /Task a/);
   assert.match(dom.node('#ai-proactive-records').innerHTML, /Task b/);
 });

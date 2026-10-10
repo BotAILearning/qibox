@@ -1636,7 +1636,9 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       if ('aiShowAllProactiveRecords' in button.dataset) {
         logFilters = { ...logFilters, taskId: '', page: 0 };
         proactiveHistory = []; proactiveHistoryPage = null; proactiveRecordLoading = false; proactiveRecordEpoch++;
-        rememberRecords(); render(); await loadProactiveRecords(); return;
+        rememberRecords(); render();
+        panel.querySelector('[data-ai-record-source="proactive"]')?.focus({ preventScroll: true });
+        await loadProactiveRecords(); return;
       }
       if ('aiCopyReport' in button.dataset) {
         const report = analysisResult?.reports[Number(button.dataset.aiCopyReport)];

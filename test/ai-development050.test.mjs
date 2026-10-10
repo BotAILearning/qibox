@@ -54,7 +54,7 @@ test('逐人分析读取精确日期、独立保存报告且不发送聊天消�
   const options = analysisOptions({ request: '总结约定', contacts: [ids[0]], from: '2026-09-01', to: '2026-09-02' });
   bridge.readRange = async args => { calls.push(args); return { account: args.account, contact: args.contact, rangeRevision: key(args.contact), messages: [{ id: key(args.contact), timestamp: options.from, direction: 'self', text: args.contact }] }; };
   let modelCalls = 0;
-  provider.complete = async (_config, _system, input) => { modelCalls++; return { report: '报告：' + input.messages[0][2] }; };
+  provider.complete = async (_config, _system, input) => { modelCalls++; return { report: '报告：' + input.messages[0].text }; };
   const results = [];
   for (const id of ids) results.push(...(await a.analyze({ request: '总结约定', contacts: [id], from: '2026-09-01', to: '2026-09-02' })).reports);
   assert.deepEqual(results.map(r => r.report), ids.map(id => '报告：' + id));
