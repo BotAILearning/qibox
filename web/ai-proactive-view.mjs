@@ -108,6 +108,7 @@ function replyOffContacts(state, contacts) {
   });
 }
 function editorScheduleLabel(schedule) {
+  if (schedule.cycle === 'once' && schedule.onceTiming === 'at' && !schedule.at) return '执行一次 · 待指定时间';
   return schedule.cycle === 'once' && schedule.onceTiming !== 'at' ? '执行一次 · 立即执行' : scheduleLabel(schedule);
 }
 function scheduleEditor(s) {

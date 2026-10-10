@@ -121,6 +121,19 @@ try {
   assert.equal(await page.locator('[name=apiKey]').inputValue(), savedKeyMask);
   assert.equal(await page.locator('[name=apiKey]').getAttribute('type'), 'password');
   await page.locator('[data-ai-action=model-cancel]').click();
+  // 未提交的编辑不能进入列表或被功能分配保存顺带提交。
+  await page.locator(`[data-ai-model-edit=${firstId}]`).click();
+  await page.locator('[name=model]').fill('discarded-model-edit');
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  await page.getByText('请先保存当前模型，或返回模型列表放弃编辑', { exact: true }).waitFor();
+  assert.equal(ai.publicState().models[0].model, 'MiniMax-M3');
+  assert.equal(await page.locator('[name=model]').inputValue(), 'discarded-model-edit');
+  await page.locator('[data-ai-action=model-cancel]').click();
+  assert.equal(await firstItem.locator('.ai-model-item-title strong').innerText(), 'MiniMax-M3');
+  assert.match(await firstItem.locator('.ai-model-item-title').innerText(), /已验证/);
+  assert.equal(await page.locator('[data-ai-assignment=chat] option:checked').innerText(), 'MiniMax-M3');
+  assert.equal(ai.publicState().models[0].model, 'MiniMax-M3');
+  report.checks.push('Unsubmitted model edits stay inside their form; assignment save is blocked without dropping input; returning to the list discards edits and retains saved verification/assignment');
   // 添加第二个模型：自定义服务，只分配给“聊天分析”，编辑不清空已存密钥以外的字段
   await page.locator('.ai-model-sidebar .ai-model-add').click();
   await page.locator('#ai-model-preset').selectOption('deepseek');

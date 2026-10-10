@@ -1,6 +1,6 @@
 /* QIAPP UI 0.1.0 product composition. Product state and events stay in qibox. */
 .qiapp-product {
-  --qi-primary: #5266e8;
+  --qi-primary: #4e62df;
   --qi-primary-hover: #4055d6;
   --qi-primary-active: #3548bc;
   --qi-on-primary: #fff;
@@ -16,7 +16,7 @@
   --qi-border-strong: #aab4cb;
   --qi-text: #202d47;
   --qi-text-secondary: #54627b;
-  --qi-text-tertiary: #6e7b92;
+  --qi-text-tertiary: #576680;
   --qi-radius-md: 8px;
   --qi-radius-lg: 16px;
   --qi-shadow-subtle: none;
@@ -126,6 +126,7 @@ html.mobile .qiapp-product button.qi-btn.mobile-only { display: inline-flex; }
 #ai-panel .ai-page-heading h3 { font-size: var(--qi-font-h3); }
 #ai-panel h4 { font-size: var(--qi-font-h4); }
 #ai-panel :is(.ai-help,small) { color: var(--qi-text-secondary); font-size: var(--qi-font-caption); }
+#ai-panel .ai-empty { color: var(--qi-text-tertiary); }
 #ai-panel .ai-contact-footer button.qi-btn { padding-inline: var(--qi-space-2); }
 #ai-panel .ai-analysis-selection { background: var(--qi-surface); }
 #ai-panel .ai-analysis-time-entry { background: var(--qi-surface-muted); }

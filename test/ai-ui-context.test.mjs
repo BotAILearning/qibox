@@ -108,9 +108,42 @@ test('reply contact search filters by name without requests and survives editing
   assert.doesNotMatch(dom.node('#ai-content').innerHTML, /其他联系人/);
   assert.equal(dom.node('[data-ai-panel-master]').checked, true);
   dom.input({ id: 'ai-object-search', value: '不存在' });
-  assert.match(dom.node('#ai-object-list').innerHTML, /暂无匹配/);
+  assert.match(dom.node('#ai-object-list').innerHTML, /其他关键词或清空搜索/);
+  assert.doesNotMatch(dom.node('#ai-object-list').innerHTML, /刷新列表/);
   await controller.attach('instance-b');
   assert.match(dom.node('#ai-content').innerHTML, /其他联系人/);
+});
+
+test('cancelled model edits never enter assignment saves and unfinished forms keep their input', async t => {
+  const originalDocument = globalThis.document, OriginalFormData = globalThis.FormData, dom = surface(), calls = [];
+  globalThis.document = dom.document;
+  globalThis.FormData = class extends OriginalFormData { constructor(form) { super(); for (const [key, value] of form?.entries || []) this.append(key, value); } };
+  const model = { id: 'model-a', model: 'saved-model', baseUrl: 'https://models.example.test/v1', protocol: 'openai', timeout: 60, consent: true, hasKey: true, tested: true };
+  const snapshot = { ...availableState(), models: [model], assignments: { chat: model.id, learningAnalysis: model.id }, schema: { providerPresets: [] } };
+  const controller = aiAssistant({ api: async (_url, payload) => { if (payload) calls.push(payload); return snapshot; } });
+  t.after(() => { controller.detach(); globalThis.document = originalDocument; globalThis.FormData = OriginalFormData; });
+  await controller.attach('instance-a');
+  await dom.navigate('provider');
+  await dom.button({ aiModelEdit: model.id });
+  const form = dom.form('#ai-model-form', [['baseUrl', model.baseUrl], ['model', 'discarded-model-edit'], ['protocol', 'openai'], ['timeout', '60'], ['consent', 'on']]);
+  form.elements = { apiKey: { dataset: { keyStored: 'true' }, value: '********' } };
+  dom.node('#ai-model-preset').value = 'custom';
+  dom.input({ name: 'model', closest: selector => selector === '#ai-model-form' ? form : null });
+  await dom.click('models-save');
+  assert.match(dom.node('#ai-feedback').textContent, /请先保存当前模型/);
+  assert.deepEqual(calls, []);
+  assert.equal(form.entries.find(([key]) => key === 'model')[1], 'discarded-model-edit');
+  await dom.click('model-cancel');
+  assert.equal(dom.node('#ai-feedback').hidden, true);
+  dom.unmount('#ai-model-form');
+  assert.match(dom.node('#ai-content').innerHTML, /saved-model/);
+  assert.doesNotMatch(dom.node('#ai-content').innerHTML, /discarded-model-edit/);
+  await dom.click('models-save');
+  const saved = calls.find(call => call.action === 'models-save');
+  assert.deepEqual(saved.value.assignments, snapshot.assignments);
+  assert.equal(saved.value.models[0].model, 'saved-model');
+  assert.equal(saved.value.models[0].baseUrl, model.baseUrl);
+  assert.equal(Object.hasOwn(saved.value.models[0], 'apiKey'), false);
 });
 
 for (const action of ['scan', 'learn-selected']) for (const destination of ['instance-b', 'instance-a']) {

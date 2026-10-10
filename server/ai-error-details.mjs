@@ -98,7 +98,10 @@ export function publicErrorRecord(ai, record) {
         ...(row.senderName ? { senderName: safeErrorText(row.senderName, secrets, 120) } : {}), ...(typeof row.type === 'string' && /^[a-z-]{1,24}$/.test(row.type) ? { type: row.type } : {}),
         ...(/^[a-f0-9]{64}$/.test(row.senderId || '') ? { senderId: row.senderId } : {}),
         ...(Number.isSafeInteger(row.timestamp) && row.timestamp > 0 ? { timestamp: row.timestamp } : {}), ...(row.truncated ? { truncated: true } : {}) }));
-      context.evidenceNote = saved.evidenceScope === 'chat-context' ? '以下是本次任务读取的聊天片段，用于核对上下文；不代表这些消息触发了主动任务。' : '以下是发生异常时待处理的来信摘要。';
+      context.evidenceNote = saved.evidenceScope === 'chat-context'
+        ? saved.source === 'proactive' ? '以下是本次任务读取的聊天片段，用于核对上下文；不代表这些消息触发了主动任务。'
+          : '以下是本次操作读取的聊天片段，用于核对上下文；仅凭这些片段不能确定具体触发来信。'
+        : '以下是发生异常时待处理的来信摘要。';
       if (snapshot.truncated) context.evidenceNote += ' 消息较多或较长，仅保留有限摘要。';
     } catch { context.evidenceNote = '当时保存的消息摘要暂时无法读取，未使用当前聊天补齐。'; }
   }

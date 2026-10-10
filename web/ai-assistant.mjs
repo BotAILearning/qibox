@@ -595,8 +595,6 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     if (!form || !modelDraft?.editing) return;
     const value = providerDraft();
     modelDraft.form = { ...modelDraft.form, ...value, preset: $('#ai-model-preset')?.value || '', status: modelDraft.status };
-    const id = modelDraft.editing;
-    modelDraft.models = modelDraft.models.map(m => m.id === id ? { ...m, label: value.label || value.model, baseUrl: value.baseUrl, model: value.model, protocol: value.protocol, timeout: value.timeout, consent: value.consent, apiKey: value.keyStored ? m.apiKey : (value.apiKey || ''), hasKey: value.keyStored || !!value.apiKey, tested: m.tested && value.keyStored && m.baseUrl === value.baseUrl && m.model === value.model && m.protocol === value.protocol && m.timeout === value.timeout && m.consent === value.consent ? m.tested : false } : m);
   }
   function concealKey(clearTyped = false) {
     revealRevision++;
@@ -650,6 +648,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     render(); message('已添加模型，请在功能分配中确认后点击“保存”');
   }
   async function saveModelsAction() {
+    if (modelDraft?.editing) throw new Error('请先保存当前模型，或返回模型列表放弃编辑');
     const current = generation, target = id;
     const list = modelDraft?.models || state.models || [];
     const models = list.map(({ id, label, baseUrl, model, protocol, timeout, consent, apiKey }) => ({ id, label, baseUrl, model, protocol, timeout, consent, ...(apiKey ? { apiKey } : {}) }));
@@ -1741,6 +1740,9 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         const preview = await execute('configuration', { value }, ''); const confirmation = preview?.confirmation;
         if (!confirmation || !unchanged()) return;
         if (!confirmation.count) { message(taskCleanup ? '所选范围内没有可清理的任务' : '当前没有可清空的记录'); return; }
+        // The preview refresh replaces the original trigger. Give the dialog
+        // its current equivalent so cancellation restores the user's place.
+        panel.querySelector(taskCleanup ? `[data-ai-clear-tasks="${scope}"]` : `[data-ai-clear-records="${value.source}"]`)?.focus({ preventScroll: true });
         if (!await productDialog({ title: taskCleanup ? `清理${scopeLabel}任务？` : '删除全部记录？', message: taskCleanup ? `将清理当前账号 ${confirmation.count} 个${scopeLabel}任务。执行中、已暂停的任务和执行记录保留。` : `将删除当前账号的 ${confirmation.count} 条该类记录，包含尚未加载的记录。微信中的聊天消息不受影响。`, confirm: taskCleanup ? '确认清理' : '确认删除', danger: true }) || !unchanged()) return;
         const result = await execute('configuration', { value: { ...value, token: confirmation.token } }, '');
         if (!result || !unchanged()) return;
@@ -1844,7 +1846,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       if (button.dataset.aiModelDelete) { if (!await confirmDialog('确认删除这个模型？点击保存后生效，使用该模型的功能将切换到剩余模型。')) return; rememberDraft(); deleteModel(button.dataset.aiModelDelete); return; }
       if (button.dataset.aiModelApply) { rememberDraft(); applyModelToAll(button.dataset.aiModelApply); return; }
       if (button.dataset.aiModelTest) { await testListModel(button.dataset.aiModelTest); return; }
-      if (action === 'model-cancel') { modelDraft = { ...(modelDraft || {}), editing: null, draftId: undefined, form: null, status: '' }; render(); return; }
+      if (action === 'model-cancel') { modelDraft = { ...(modelDraft || {}), editing: null, draftId: undefined, form: null, status: '' }; render(); message(''); return; }
       if (action === 'models-save') { await saveModelsAction(); return; }
       if (action === 'test' || action === 'models') await probeProvider(action);
       if (button.dataset.aiDateRange) {
@@ -1857,11 +1859,14 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         if (current !== generation || target !== id) return;
         if (!result) {
           if (scope === 'analysis' && analysisRangeBeforeCustom !== null) { analysisRangeMode = analysisRangeBeforeCustom; analysisRangeBeforeCustom = null; render(); }
+          (scope === 'analysis' ? $('#ai-analysis-form [data-ai-analysis-range="custom"]') : ($('[data-ai-date-range="learning"]') || $('[data-ai-default-range="all"]')))?.focus({ preventScroll: true });
           return;
         }
         analysisRangeBeforeCustom = null;
         if (scope === 'analysis') { Object.assign(analysisDraft,result); analysisRangeMode = result.from || result.to ? 'custom' : 'all'; } else { learnRange=result; learnRangeMode = result.from || result.to ? 'custom' : 'all'; }
-        render(); return;
+        render();
+        (scope === 'analysis' ? $('#ai-analysis-form [data-ai-analysis-range="custom"]') : ($('[data-ai-date-range="learning"]') || $('[data-ai-default-range="all"]')))?.focus({ preventScroll: true });
+        return;
       }
       if (button.dataset.aiApplyResult) {
         const profile = state.profiles.find(p => p.id === button.dataset.aiApplyResult);

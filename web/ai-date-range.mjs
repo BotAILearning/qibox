@@ -22,10 +22,20 @@ export function chooseDateRange(dates, value = {}, { analysis = false } = {}) {
     }
     dialog.innerHTML=`<h3>选择聊天时间</h3><div class="ai-actions"><button type="button" data-mode="all" aria-pressed="${all}">全部</button><button type="button" data-mode="custom" aria-pressed="${!all}" ${dates.length?'':'disabled'}>自定义</button></div>${all?'<p>使用所选对象的全部可用聊天记录。</p>':`<p class="ai-help">起始日期只可选择有聊天记录的日期。</p><div class="ai-actions"><button data-pick="from" aria-pressed="${picking==='from'}">开始：${from}</button><button data-pick="to" aria-pressed="${picking==='to'}">结束：${to}</button></div><div class="ai-calendar-nav"><button data-shift="-1" aria-label="上个月" ${month<=dates[0].slice(0,7)?'disabled':''}>‹</button><select data-year aria-label="年份">${Array.from({length:latest-earliest+1},(_,i)=>`<option ${earliest+i===Number(month.slice(0,4))?'selected':''}>${earliest+i}</option>`).join('')}</select><select data-month aria-label="月份">${Array.from({length:12},(_,i)=>`<option value="${String(i+1).padStart(2,'0')}" ${i+1===Number(month.slice(5))?'selected':''}>${i+1} 月</option>`).join('')}</select><button data-shift="1" aria-label="下个月" ${month>=today.slice(0,7)?'disabled':''}>›</button><button data-earliest>最早记录</button></div><div class="ai-calendar-months">${calendar(month)}${calendar(shift(1))}</div>`}<p role="status">${dates.length?'': '所选对象暂无可用聊天日期。'}</p><footer class="ai-actions"><button data-cancel class="secondary">取消</button><button data-apply class="primary" ${!all&&(!available.has(from)||!to||to<from)?'disabled':''}>应用</button></footer>`;
   }
+  function renderWithFocus() {
+    const active = document.activeElement;
+    const key = dialog.contains(active) && ['data-year', 'data-month', 'data-day', 'data-shift', 'data-pick', 'data-earliest', 'data-mode'].find(name => active.hasAttribute(name));
+    const value = key ? active.getAttribute(key) : null;
+    render();
+    if (key) {
+      const replacement = [...dialog.querySelectorAll(`[${key}]`)].find(node => node.getAttribute(key) === value && !node.disabled);
+      (replacement || dialog.querySelector('[data-month]') || dialog.querySelector('[data-cancel]'))?.focus({ preventScroll: true });
+    }
+  }
   return new Promise(resolve=>{
     let result=null;
     dialog.addEventListener('close',()=>{dialog.remove();resolve(result);},{once:true});
-    dialog.addEventListener('change',e=>{if(e.target.matches('[data-year],[data-month]')) {month=dialog.querySelector('[data-year]').value+'-'+dialog.querySelector('[data-month]').value;render();}});
+    dialog.addEventListener('change',e=>{if(e.target.matches('[data-year],[data-month]')) {month=dialog.querySelector('[data-year]').value+'-'+dialog.querySelector('[data-month]').value;renderWithFocus();}});
     dialog.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
       if(b.hasAttribute('data-cancel'))return dialog.close();
       if(b.hasAttribute('data-apply')){result=all?{from:'',to:''}:{from,to};return dialog.close();}
@@ -35,7 +45,7 @@ export function chooseDateRange(dates, value = {}, { analysis = false } = {}) {
       if(b.dataset.shift)month=shift(Number(b.dataset.shift));
       if(b.hasAttribute('data-earliest')){month=dates[0].slice(0,7);from=dates[0];picking='to';}
       if(b.dataset.day){if(picking==='from'){from=b.dataset.day;if(to<from)to=from;picking='to';}else to=b.dataset.day;}
-      render();
+      renderWithFocus();
     });
     render();document.body.append(dialog);dialog.showModal();
   });

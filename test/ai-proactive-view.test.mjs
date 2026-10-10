@@ -49,7 +49,10 @@ test('one-time editor switches between immediate and scheduled execution', () =>
   assert.match(immediate, /name="onceTiming" value="now" checked/);
   assert.doesNotMatch(immediate, /name="at"/);
   assert.deepEqual(taskPayload(d).schedule, { cycle: 'once' });
-  d.schedule.onceTiming = 'at'; d.schedule.at = '2026-09-18T20:00';
+  d.schedule.onceTiming = 'at';
+  assert.match(proactivePage(state(), { editing: true, draft: d }), /执行一次 · 待指定时间/);
+  assert.throws(() => taskPayload(d), /有效的执行日期和时间/);
+  d.schedule.at = '2026-09-18T20:00';
   const scheduled = proactivePage(state(), { editing: true, draft: d });
   assert.match(scheduled, /name="at" required value="2026-09-18T20:00"/);
   assert.deepEqual(taskPayload(d).schedule, { cycle: 'once', at: '2026-09-18T20:00' });

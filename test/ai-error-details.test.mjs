@@ -108,6 +108,13 @@ test('proactive failures link to the exact failed record and label context inste
   f.ai.data.deletedActivityRecords.push({ account: f.ai.data.account, source: 'proactive', id: rawRecord.id });
   assert.equal(f.ai.errorRecords().records[0].relatedRecord, undefined);
   assert.equal(rawError.context.proactiveRecordId, linked.record.id);
+  f.ai.event('error', f.profile.id, 'reply', '发送未提交', { stage: 'send', source: 'reply', evidenceScope: 'chat-context', incomingMessages: [{ id: 'reply-context', direction: 'other', text: 'REPLY_CONTEXT_EXCERPT' }] });
+  const replyError = f.ai.errorRecords().records[0];
+  assert.equal(replyError.context.sourceLabel, '自动回复');
+  assert.match(replyError.context.evidenceNote, /本次操作读取的聊天片段/);
+  assert.doesNotMatch(replyError.context.evidenceNote, /主动任务/);
+  assert.deepEqual(replyError.context.incomingIds, ['reply-context']);
+  assert.equal(replyError.context.messages[0].text, 'REPLY_CONTEXT_EXCERPT');
 });
 
 test('legacy migration uses saved exact event ID only; account switch never returns encrypted previous-account evidence', async t => {
