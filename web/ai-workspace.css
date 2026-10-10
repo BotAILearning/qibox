@@ -913,7 +913,7 @@
 #ai-panel .ai-default-current textarea{min-height:240px}
 #ai-panel .ai-default-empty{min-height:200px;display:grid;align-content:center}
 #ai-panel .ai-default-empty h4{margin:12px 0 5px}
-#ai-panel .ai-default-empty p{color:#777b91;line-height:1.7}
+#ai-panel .ai-default-empty p{color:#59647a;line-height:1.7}
 @media(max-width:1000px){#ai-panel .ai-default-style-layout{grid-template-columns:1fr}#ai-panel .ai-default-current{position:static;grid-row:1}}
 @media(max-width:860px){#ai-panel .ai-panel-heading{padding:0 18px}#ai-panel .ai-page-body{padding:20px 22px 36px}}
 @media(max-width:560px){#ai-panel .ai-page-body{padding:16px 14px 30px}#ai-panel .ai-default-material-head{align-items:flex-start;flex-direction:column;padding:16px}#ai-panel .ai-default-source-tabs{width:100%}#ai-panel .ai-default-source-tabs button{flex:1}#ai-panel .ai-default-source>.ai-learning-contacts,#ai-panel .ai-default-source>.ai-paste{padding:14px}#ai-panel .ai-default-current textarea{min-height:180px}}

@@ -13,7 +13,7 @@ const down = Buffer.from([4, 1, 0, 0, 0, 0, 0, 97]);
 const up = Buffer.from([4, 0, 0, 0, 0, 0, 0, 97]);
 const heldPointer = Buffer.from([5, 1, 0, 0, 0, 0]);
 
-for (const host of ['fnos']) test(`${host} desktop proxy waits for AI handover before native input and releases held state on close`, { timeout: 15000 }, async () => {
+for (const host of ['fnos']) for (const pausedByIdentity of [false, true]) test(`${host} desktop proxy${pausedByIdentity ? ' after identity pauses the accepted stream' : ''} waits for AI handover before native input and releases held state on close`, { timeout: 15000 }, async () => {
   const dataRoot = await temp(), sockets = new Set(), received = [], waiters = [];
   let count = 0, app, ws, stream, release;
   const seen = length => count >= length ? Promise.resolve() : new Promise(resolve => waiters.push({ length, resolve }));
@@ -27,6 +27,9 @@ for (const host of ['fnos']) test(`${host} desktop proxy waits for AI handover b
   await new Promise(resolve => peer.listen(0, '127.0.0.1', resolve));
   try {
     app = await createApplication({ appRoot: root, dataRoot, dev: true, host, runtimeFactory, extract: extractor, fetcher, trustedHashes: [packageSha256] });
+    // Native SO_PEERCRED lookup passes the accepted connection to a child,
+    // which pauses the Node stream. Exercise the same boundary on every OS.
+    if (pausedByIdentity) app.server.on('upgrade', (_req, socket) => socket.pause());
     await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve));
     const origin = `http://127.0.0.1:${app.server.address().port}`, cookie = `qibox_dev=${app.devKey}`;
     let csrf;
@@ -58,7 +61,10 @@ for (const host of ['fnos']) test(`${host} desktop proxy waits for AI handover b
       send = bytes => new Promise((resolve, reject) => ws.send(bytes, error => error ? reject(error) : resolve()));
       close = async () => { const closed = once(ws, 'close'); ws.close(); await closed; };
     }
-    await send(Buffer.concat([version, refresh])); await seen(version.length + refresh.length);
+    await send(Buffer.concat([version, refresh]));
+    await Promise.race([seen(version.length + refresh.length), new Promise((_, reject) => {
+      const timer = setTimeout(() => reject(new Error('Desktop negotiation did not reach the native peer')), 3000); timer.unref();
+    })]);
     assert.deepEqual(events, []);
     const baseline = count, input = Buffer.concat([down, up, refresh]);
     const pending = send(input); await entered.promise;

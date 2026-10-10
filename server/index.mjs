@@ -284,6 +284,10 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
         upstream.on('error', () => ws.close()); upstream.on('close', () => ws.close());
         ws.on('error', () => { void gate.close().catch(() => {}); upstream.destroy(); });
         ws.on('close', () => { void gate.close().catch(() => {}); upstream.destroy(); });
+        // Native peer lookup pauses the accepted Node stream when it is
+        // inherited by the credential helper. Resume only after authentication
+        // and all proxy/input listeners are installed, respecting ws backpressure.
+        ws.resume();
       });
     } catch { socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n'); }
   });
