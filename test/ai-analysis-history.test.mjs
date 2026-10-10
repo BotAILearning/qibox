@@ -49,7 +49,7 @@ test('单联系人一次请求覆盖全部消息并保存完整统计，不保�
   assert.match(provider.calls[0].system, /用户明确指定格式时优先按其格式/); assert.equal(captured.userRequest, '提取关键事件');
   assert.ok(captured.messages.every(message => Array.isArray(message) && Number.isSafeInteger(message[1]) && message.length === 3));
   assert.deepEqual(captured.messages.map(row => row[2]), messages.map(row => row.text));
-  assert.deepEqual(captured.messages[0].slice(0, 2), ['s', messages[0].timestamp]);
+  assert.deepEqual(captured.messages[0].slice(0, 2), ['本人', messages[0].timestamp]);
   assert.equal(captured.coverage.truncated, false);
   assert.equal(captured.coverage.analyzedChars, messages.reduce((sum, row) => sum + Array.from(row.text).length, 0));
   assert.equal(Object.hasOwn(result, 'sampledCount'), false);
@@ -69,6 +69,27 @@ test('多人单请求被拒绝，必须由前端逐人排队', async t => {
   provider.complete = async () => { calls++; return { report: '不应发生' }; };
   await assert.rejects(a.analyze({ request: '总结', contacts: ids }), /每次请求只能分析一位联系人/);
   assert.equal(calls, 0);
+});
+
+test('analysis identifies self, other and unknown with readable labels without rewriting quoted text or extra calls', async t => {
+  const { bridge, provider, a, contact } = await fixture(t);
+  const messages = ['self', 'other', 'unknown'].map((direction, index) => ({
+    id: key(`readable-speaker-${index}`), direction,
+    text: index === 1 ? '原话包含 s：示例 和 o：示例' : `原话 ${index}`,
+    timestamp: stamp('2026-09-02T10:00:00+08:00') + index,
+  }));
+  bridge.readRange = async args => ({ account: args.account, contact: args.contact, messages });
+  let calls = 0;
+  provider.complete = async (_config, system, input) => {
+    calls++;
+    assert.deepEqual(input.messages, messages.map((message, index) => [['本人', '对方', '未知'][index], message.timestamp, message.text]));
+    assert.match(system, /清楚的中文称呼/);
+    assert.match(system, /不改变聊天原文中的正常字词/);
+    return { report: '本人和对方的原话均保留，第三条发言方未知。' };
+  };
+  const result = await a.analyze({ request: '保留发言方向', contacts: [contact] });
+  assert.equal(result.reports[0].status, 'complete');
+  assert.equal(calls, 1);
 });
 
 test('默认报告把模型的 Markdown 标题整理为短章节，用户指定格式时保留原文', async t => {

@@ -9,6 +9,13 @@
       "bytes": 10673480
     },
     {
+      "family": "Noto Emoji",
+      "file": "fonts/NotoEmoji-Regular.ttf",
+      "url": "https://raw.githubusercontent.com/google/fonts/8b0a1d0f5983c89bc2b93f1b5fb55f9e252744b5/ofl/notoemoji/NotoEmoji%5Bwght%5D.ttf",
+      "sha256": "de6c18832938afc99caf132b39d6a30a19bac7f2e812e28db2535b4608d27551",
+      "bytes": 1982596
+    },
+    {
       "family": "Noto Sans Symbols",
       "file": "fonts/NotoSansSymbols-Regular.ttf",
       "url": "https://raw.githubusercontent.com/notofonts/notofonts.github.io/92d2ea744479d3379927f1fb5f8b0945dd0349b7/fonts/NotoSansSymbols/unhinted/ttf/NotoSansSymbols-Regular.ttf",
@@ -43,6 +50,12 @@
       "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/8998f5dd683424a73e2314a8c1f1e359c19e8742/fonts/LICENSE",
       "sha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2",
       "bytes": 4301
+    },
+    {
+      "file": "licenses/fonts/NotoEmoji-OFL.txt",
+      "url": "https://raw.githubusercontent.com/google/fonts/8b0a1d0f5983c89bc2b93f1b5fb55f9e252744b5/ofl/notoemoji/OFL.txt",
+      "sha256": "500bb1ccf43df7bbb522112f9133a52b16e1c35e809632f5d8609b179152de5b",
+      "bytes": 4330
     },
     {
       "file": "licenses/fonts/NotoSymbols-OFL.txt",

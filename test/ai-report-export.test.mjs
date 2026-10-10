@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { unzipSync, strFromU8 } from 'fflate';
 import { exportAnalysisReports } from '../server/ai-report-export.mjs';
+import { inflateSync } from 'node:zlib';
 
 const id = suffix => `11111111-1111-4111-8111-${suffix.padStart(12, '0')}`;
 const report = (suffix, label = '林宝平_Bot') => ({
@@ -65,4 +66,28 @@ test('导出拒绝重复、缺失、越权快照，账号变化不会返回文�
   const original = switching.analysisReport.bind(switching);
   switching.analysisReport = value => { const result = original(value); switching.data.account = 'account-b'; return result; };
   await assert.rejects(exportAnalysisReports(switching, { ids: [first.id], format: 'docx' }), /账号已变化/);
+});
+
+test('PDF embeds fallback glyphs and Unicode mappings for emoji, joined families, flags and math', async () => {
+  const item = { ...report('3', 'Bot💊'), report: '中文前🙂后，家庭👨‍👩‍👧‍👦，爱心❤️，旗帜🇨🇳，数学𝕏。\n'.repeat(90) + '末尾内容保留' };
+  const file = await exportAnalysisReports(assistant([item]), { ids: [item.id], format: 'pdf' });
+  const binary = file.bytes.toString('latin1');
+  assert.match(binary, /NotoEmoji-Regular/);
+  assert.match(binary, /NotoSansMath-Regular/);
+  const maps = [];
+  for (const match of binary.matchAll(/\d+ \d+ obj\s*(<<[\s\S]*?>>)\s*stream\r?\n([\s\S]*?)\r?\nendstream/g)) {
+    if (!match[1].includes('/FlateDecode')) continue;
+    const decoded = inflateSync(Buffer.from(match[2], 'latin1')).toString();
+    if (decoded.includes('begincmap')) maps.push(decoded);
+  }
+  const unicode = maps.join('\n');
+  for (const value of ['<d83d de42>', '<d83d dc8a>', '<d83d dc68 200d d83d dc69 200d d83d dc67 200d d83d dc66>', '<2764 fe0f>', '<d83c dde8 d83c ddf3>', '<d835 dd4f>']) assert.ok(unicode.includes(value), `Missing PDF Unicode mapping: ${value}`);
+  assert.ok(file.bytes.length < 1024 * 1024, 'fallback fonts should also be embedded as subsets');
+});
+
+test('unsupported PDF characters fail explicitly rather than download silent missing-glyph squares', async () => {
+  const item = { ...report('4'), report: '不能静默丢字\u{10ffff}' };
+  await assert.rejects(exportAnalysisReports(assistant([item]), { ids: [item.id], format: 'pdf' }), error => error.status === 422 && /Word/.test(error.message));
+  const word = await exportAnalysisReports(assistant([item]), { ids: [item.id], format: 'docx' });
+  assert.ok(strFromU8(unzipSync(word.bytes)['word/document.xml']).includes('\u{10ffff}'));
 });

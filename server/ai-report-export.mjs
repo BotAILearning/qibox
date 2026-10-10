@@ -1,11 +1,34 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import PDFDocument from 'pdfkit';
+import { openSync } from 'fontkit';
 import { zipSync, strToU8 } from 'fflate';
 import { AppError } from './files.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const fontPath = path.join(root, 'fonts/NotoSansCJKsc-Regular.otf');
+const pdfFontPaths = [fontPath, ...['NotoEmoji-Regular.ttf', 'NotoSansSymbols-Regular.ttf', 'NotoSansSymbols2-Regular.ttf', 'NotoSansMath-Regular.ttf'].map(name => path.join(root, 'fonts', name))];
+const graphemes = new Intl.Segmenter('zh', { granularity: 'grapheme' });
+let pdfFonts;
+
+function textRuns(text, selections) {
+  pdfFonts ||= pdfFontPaths.map(file => ({ file, font: openSync(file) }));
+  const runs = [];
+  for (const { segment } of graphemes.segment(text)) {
+    let selected = selections.get(segment);
+    if (!selected) {
+      const emoji = /\p{Extended_Pictographic}|\p{Regional_Indicator}|\u20e3/u.test(segment);
+      const candidates = emoji ? [pdfFonts[1], ...pdfFonts.filter((_, i) => i !== 1)] : pdfFonts;
+      selected = /^\s+$/u.test(segment) ? pdfFonts[0] : candidates.find(({ font }) => font.layout(segment).glyphs.every(glyph => glyph.id !== 0));
+      if (selected) selections.set(segment, selected);
+    }
+    if (!selected) throw new AppError('报告包含当前 PDF 字库不支持的字符，请使用 Word 格式导出', 422);
+    const previous = runs.at(-1);
+    if (previous?.file === selected.file) previous.text += segment;
+    else runs.push({ file: selected.file, text: segment });
+  }
+  return runs;
+}
 const clean = value => String(value ?? '').toWellFormed().replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\ufffe\uffff]/g, '');
 const xml = value => clean(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]));
 const date = value => Number.isFinite(value) ? new Date(value + 8 * 3600000).toISOString().slice(0, 16).replace('T', ' ') : '未知时间';
@@ -76,21 +99,28 @@ export async function makePdf(report) {
     doc.once('error', reject);
     doc.once('end', () => resolve(Buffer.concat(chunks)));
     try {
+      const selections = new Map();
       doc.font(fontPath);
       for (const line of linesFor(report)) {
         if (line.kind === 'space') { doc.moveDown(.45); continue; }
         if (line.kind === 'heading') doc.moveDown(.55);
         const size = line.kind === 'title' ? 21 : line.kind === 'heading' ? 14 : line.kind === 'meta' || line.kind === 'note' ? 10 : 11;
         const color = line.kind === 'title' ? '#252940' : line.kind === 'heading' ? '#394fbf' : line.kind === 'warning' ? '#9b5a14' : '#41465e';
-        doc.fontSize(size).fillColor(color).text(line.text || ' ', { lineGap: 3, paragraphGap: line.kind === 'title' ? 11 : line.kind === 'heading' ? 5 : 2 });
+        const runs = textRuns(line.text || ' ', selections);
+        for (const [index, run] of runs.entries()) {
+          doc.font(run.file).fontSize(size).fillColor(color).text(run.text, {
+            continued: index < runs.length - 1,
+            lineGap: 3, paragraphGap: line.kind === 'title' ? 11 : line.kind === 'heading' ? 5 : 2,
+          });
+        }
       }
       const { start, count } = doc.bufferedPageRange();
       for (let index = start; index < start + count; index++) {
         doc.switchToPage(index);
-        doc.fontSize(9).fillColor('#8990a2').text(`${index + 1} / ${count}`, 500, 804, { lineBreak: false });
+        doc.font(fontPath).fontSize(9).fillColor('#8990a2').text(`${index + 1} / ${count}`, 500, 804, { lineBreak: false });
       }
       doc.end();
-    } catch (error) { reject(error); }
+    } catch (error) { doc.destroy(); reject(error); }
   });
 }
 
