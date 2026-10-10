@@ -91,6 +91,8 @@ for(const [question,text,reasonCode] of [
   ['我哥哥要搬家，这不是我本人要搬。','原来是你哥要搬，辛苦你帮忙整理啦','unverified-recipient-fact'],
   ['昨天下雨那事已经过去了，现在只想找点吃的。','那就找点想吃的去，昨晚的事翻篇就好','unverified-time-fact'],
   ['你记错了，胃疼的是我，不是你。','我没记错呀，昨天听你说胃疼。','unverified-time-fact'],
+  ['退款还没到账，别把申请成功当成到账。','等钱真回来了我再跟你说一声。','unverified-execution'],
+  ['今天见了两个朋友，我没有搬家也没有学游泳。','见了一天朋友，挺充实的。','unverified-time-fact'],
 ])test(`final local guard stops ${reasonCode} without another model request`,async t=>{
   const f=await fixture(t);f.provider.next=async()=>({action:'send',text});await f.receive(question);
   assert.equal(f.provider.calls.length,1);assert.equal(f.bridge.sent.length,0);

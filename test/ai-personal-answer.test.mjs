@@ -115,3 +115,21 @@ test('a vague yesterday event cannot be made a night event or an invented earlie
   assert.equal(unsupportedChatTime(['整理一年前的照片'],{messages:[{...m,text:'一年前的照片今天才整理'}],now}),'');
   for(const text of ['他说“昨晚的事翻篇”。','昨天的事翻篇就好。','你昨晚睡得好吗？'])assert.equal(unsupportedChatTime([text],{messages:[m],now}),'');
 });
+
+test('a refund result cannot create an unsolicited future notice',()=>{
+  for(const texts of [['等钱真回来了我再跟你说一声。'],['等退款到账了，我再通知你。'],['等结果出来了再告诉你'],['等钱真回来了我再','跟你说一声']])
+    assert.equal(unsupportedPersonalAnswer(texts),'future-notice');
+  for(const text of ['等钱到了你再告诉我','等你确认后告诉我','他说“等钱回来了我再通知你”','不用等钱回来了我再通知你','钱到账才算完成，先等一下吧'])
+    assert.equal(unsupportedPersonalAnswer([text]),'',text);
+});
+
+test('meeting friends today does not prove a full day of activity',()=>{
+  const message={direction:'other',text:'今天见了两个朋友，其中一个下周搬家，另一个开始学游泳。'};
+  for(const texts of [['见了一天朋友，挺充实的'],['你今天见了一整天朋友'],['见了一天','朋友']])
+    assert.equal(unsupportedChatTime(texts,{messages:[message]}),'time-fact');
+  for(const text of ['今天见了两个朋友','他说“见了一天朋友”','如果见了一天朋友，那会挺累'])
+    assert.equal(unsupportedChatTime([text],{messages:[message]}),'',text);
+  assert.equal(unsupportedChatTime(['见了一天朋友'],{messages:[{...message,text:'我今天见了一天朋友'}]}),'');
+  for(const text of ['哥哥今天见了一天朋友','我明天见一天朋友','我没有见一天朋友','他说“我见了一天朋友”'])
+    assert.equal(unsupportedChatTime(['见了一天朋友'],{messages:[{...message,text}]}),'time-fact',text);
+});

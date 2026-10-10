@@ -10,6 +10,7 @@ const confirmThenNotice = /我(?:先|再)?(?:确认|确定)(?:一下|下)?[^。�
 const futureCheck = /我(?:先|再|回头|稍后|到时候|到时|待会儿?)?(?:确认|确定)(?:一下|下)(?:具体)?(?:时间|几点|安排)?(?:再说)?$/;
 const deferredNotice = /^(?:那|好[的吧]?|嗯)?(?:我)?(?:回头|稍后|到时候|到时|待会儿?)(?:再|就|会)?(?:告诉|通知|联系|回复|(?:跟|和)(?:你|您)说|给(?:你|您)发(?:消息|信息))(?:你|您)?(?:一声|一下)?$/;
 const deferredPlanning = /^(?:(?:具体)?(?:几点|时间))?(?:到时候|到时|回头|以后|稍后)(?:再|就|会)?(?:定|确定|确认|商量|约|对|核对)(?:下|一下|具体时间|时间|好)?$/;
+const eventThenNotice = /^等(?:到)?[^。！？!?；;\n]{1,32}(?:了|后|以后|之后)[，,]?\s*(?:我)?(?:再|就|会)(?:告诉(?:你|您)|通知(?:你|您)|联系(?:你|您)|回复(?:你|您)|(?:跟|和)(?:你|您)说|给(?:你|您)发(?:消息|信息))(?:一声|一下)?$/;
 const unknownSelf = /^(?:这个|这边|这事)?我(?:这边|自己|现在|暂时|还真|目前)?(?:的)?(?:具体情况|情况|位置|工作)?(?:还|也|真|暂时)?(?:说不(?:太)?上来|说不太上|说不上来|不知道|不清楚|不太清楚)/;
 const privacyReason = /^(?:我(?:这边|现在|目前)?(?:的)?(?:位置|地点)?|这个|这边|位置)[^。！？!?，,；;\n]{0,8}不(?:太)?方便(?:说|透露)/;
 const plannedDelivery = /^(?:那|好[的吧]?|嗯)?(?:我)?(下次|回头|明天|周[一二三四五六日天])(?:再|就|会)?(?:给|帮|替)(?:你|您)(带|拿|送|取)(?:点|些|一点|一些)?(.{1,24})$/;
@@ -17,6 +18,12 @@ const plannedInvitation = /^(?:那|好[的吧]?|嗯)?(?:我)?(下次|回头|明�
 
 export function unsupportedPersonalAnswer(texts, { messages = [], pendingMessages = [], facts = '', boundaries = '', now = Date.now(), identityAsked = false } = {}) {
   if (unsupportedRecipientHelp(texts, { messages, facts })) return 'recipient-fact';
+  // A counterpart's future result does not create a callback or let the
+  // sender observe it. Keep the comma so split conditional clauses are
+  // checked together, while ordinary recipient instructions stay intact.
+  for (const text of [...texts, texts.join('')]) for (const sentence of clean(text).split(/[。！？!?；;\n]/).map(x => x.trim())) {
+    if (!attributed(sentence) && !/^(?:不用|不必|别|不要)|不(?:会|承诺|保证)/.test(sentence) && eventThenNotice.test(sentence)) return 'future-notice';
+  }
   const human = messages.filter(m => m.direction === 'self' && m.authorship === 'human' && !m.aiGenerated
     && Number.isSafeInteger(m.timestamp) && m.timestamp * 1000 <= now && now - m.timestamp * 1000 <= 86400000).map(m => clean(m.text));
   // Strategy facts are user supplied. Require a first-person statement; facts
@@ -96,6 +103,15 @@ export function unsupportedChatTime(texts, { messages = [], facts = '', now = Da
     if (nightWords.test(part) && !nightWords.test(evidence)) return 'time-fact';
     if (/一年前/.test(part) && /去年/.test(evidence) && !/一年前/.test(evidence)) return 'time-fact';
     if (/(?:昨天|昨日)(?:刚)?(?:听|看|见)(?:到)?你(?:说|提|发)|(?:昨天|昨日)你(?:说|提|发)/.test(part) && !heardYesterday) return 'time-fact';
+  }
+  const visitingDuration = /^(?:你|您)?(?:今天)?见(?:了)?(一整天|整整一天|一天)朋友/;
+  const durationEvidence = messages.filter(m => m.direction === 'other' && !m.aiGenerated).flatMap(m => parts(m.text))
+    .filter(p => !/[“”"「」]|(?:没|不)(?:有)?见|准备|打算|计划|如果|假如|明天/.test(p))
+    .map(p => p.replace(/^我/, ''));
+  durationEvidence.push(...parts(facts).filter(p => /^对方/.test(p) && !/[“”"「」]|(?:没|不)(?:有)?见|准备|打算|计划|如果|假如|明天/.test(p)).map(p => p.replace(/^对方/, '')));
+  for (const text of [...texts, texts.join('')]) for (const part of parts(text)) {
+    if (/(?:说|引用)[：:]?[“"「]|[“"「].*[”"」]|^(?:如果|假如|不是|不用|别)/.test(part)) continue;
+    if (visitingDuration.test(part) && !durationEvidence.some(p => visitingDuration.test(p))) return 'time-fact';
   }
   return '';
 }
