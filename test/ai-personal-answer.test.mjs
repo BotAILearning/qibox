@@ -19,6 +19,28 @@ test('topic prefixes and segment boundaries cannot create an unsupported callbac
   for(const text of ['等你确定了告诉我。','等他确认后再说吧。','不用等我确认再跟你说。','他说“等我确认一下再跟你说”。'])assert.equal(unsupportedPersonalAnswer([text]),'',text);
 });
 
+test('confirming and agreeing a time later is still an unsupported callback',()=>{
+  for(const texts of [['行，那就周日。具体几点我确认下再跟你定。'],['具体几点等我确认以后和你定时间。'],['我确认下再跟你','定']])assert.equal(unsupportedPersonalAnswer(texts),'future-notice');
+  for(const text of ['等你确认后我们再定。','他说“我确认下再跟你定”。','我不确认时间，也不定时间。'])assert.equal(unsupportedPersonalAnswer([text]),'',text);
+});
+
+test('a single pending AI question cannot get a bare false denial',()=>{
+  const context={identityAsked:true,pendingMessages:[{direction:'other',text:'你是AI在代回复吗？'}]};
+  for(const text of ['不是的，有什么事你说','并不是呀','我不是AI'])assert.equal(unsupportedPersonalAnswer([text],context),'identity-rule');
+  for(const text of ['哪里听着不自然？','他说“不是的”。','不是说AI没有用。'])assert.equal(unsupportedPersonalAnswer([text],context),'');
+  assert.equal(unsupportedPersonalAnswer(['不是的']), '');
+  assert.equal(unsupportedPersonalAnswer(['不是的'],{...context,pendingMessages:[{direction:'other',text:'是不是退款到账了？'}]}),'');
+  assert.equal(unsupportedPersonalAnswer(['不是的'],{...context,pendingMessages:[...context.pendingMessages,{direction:'other',text:'退款到账了吗？'}]}),'');
+});
+
+test('an unknown location cannot invent privacy as the reason for withholding it',()=>{
+  const context={pendingMessages:[{direction:'other',text:'你现在具体在哪个地方？'}]};
+  assert.equal(unsupportedPersonalAnswer(['我这边位置不太方便说'],context),'personal-fact');
+  assert.equal(unsupportedPersonalAnswer(['我这边位置不太方便说'],{...context,boundaries:'不透露位置'}),'');
+  assert.equal(unsupportedPersonalAnswer(['他说“位置不方便说”。'],context),'');
+  assert.equal(unsupportedPersonalAnswer(['这个不方便说'],{pendingMessages:[{direction:'other',text:'你银行卡密码多少？'}]}),'');
+});
+
 test('a vague yesterday event cannot be made a night event or an invented earlier message',()=>{
   const now=Date.parse('2026-10-10T13:00:00Z'),m={direction:'other',text:'昨天胃疼',timestamp:Math.floor(now/1000)-1200};
   assert.equal(unsupportedChatTime(['昨天听你说胃疼。'],{messages:[m],now}),'time-fact');
@@ -26,5 +48,7 @@ test('a vague yesterday event cannot be made a night event or an invented earlie
   assert.equal(unsupportedChatTime(['昨晚的事翻篇就好。'],{messages:[{...m,text:'昨晚下雨了'}],now}),'');
   assert.equal(unsupportedChatTime(['昨天听你说胃疼。'],{messages:[{...m,timestamp:m.timestamp-86400}],now}),'');
   assert.equal(unsupportedChatTime(['昨天听你说胃疼。'],{messages:[{...m,timestamp:m.timestamp-86400,direction:'self'}],now}),'time-fact');
+  assert.equal(unsupportedChatTime(['整理一年前的照片挺费劲的吧'],{messages:[{...m,text:'去年旅行拍的照片今天才整理'}],now}),'time-fact');
+  assert.equal(unsupportedChatTime(['整理一年前的照片'],{messages:[{...m,text:'一年前的照片今天才整理'}],now}),'');
   for(const text of ['他说“昨晚的事翻篇”。','昨天的事翻篇就好。','你昨晚睡得好吗？'])assert.equal(unsupportedChatTime([text],{messages:[m],now}),'');
 });

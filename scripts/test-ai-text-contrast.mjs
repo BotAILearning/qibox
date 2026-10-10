@@ -16,6 +16,8 @@ try {
   const p = ai.profiles().find(p => p.contact === bridge.contacts[0].id);
   p.sentMessages = [{ id: 'contrast-reply', at: Date.now(), source: 'reply', body: ai.vault.seal({ text: '合成回复，用于文字可读性检查。' }) }];
   ai.event('error', p.id, 'reply', '合成模型服务超时，尚未发送');
+  ai.data.proactiveTasks = ['running','paused','ended','failed'].map((status,i)=>({id:`contrast-task-${i}`,account:ai.data.account,name:`合成${status}任务`,taskType:'work',revision:1,contacts:[{id:p.contact,label:p.label,profileId:p.id}],goal:'合成任务目标',requirements:'合成补充要求',schedule:{cycle:'once'},status,nextAt:null,createdAt:Date.now(),updatedAt:Date.now()}));
+  ai.data.analysisReports.push({id:'11111111-1111-4111-8111-111111111111',account:ai.data.account,contact:p.contact,label:p.label,createdAt:Date.now(),count:1,report:'合成分析报告，仅用于可读性检查。'});
   await ai.save();
   browser = await chromium.launch({ channel: 'msedge', headless: true });
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
@@ -31,6 +33,10 @@ try {
       await page.locator('.ai-reply-record-preview').filter({ hasText: '合成回复' }).waitFor();
       await page.locator('[data-ai-record-expand]').click();
       await page.locator('.ap-record-errors > summary').click();
+    }
+    if (name === '分析报告') {
+      await page.locator('[data-ai-optional=analysis] > summary').click();
+      await page.locator('[data-ai-optional=analysis-media] > summary').click();
     }
     const rows = await page.locator('#ai-panel').evaluate(panel => {
       const rgb = s => s.match(/[\d.]+/g).map(Number);

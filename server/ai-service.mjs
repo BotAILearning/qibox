@@ -3248,9 +3248,9 @@ export class AIAssistant {
       const unsupported = segments.map(unsupportedTextAction).find(Boolean) || unsupportedTextAction(segments.join('\n')) || (segments.some(promisesMedia) ? 'media' : null);
       if (unsupported) { result.action = 'skip'; result.mediaSkipped = true; }
       const finalTexts = [...segments, ...(nativeAudioAllowed && result.media?.[0]?.text ? [result.media[0].text] : [])];
-      const finalContext = { messages: modelMessages, facts: strategy.facts, now: this.now(), timezone: currentChatTime(this.now(), selfContext(this, profile.kind)).timezone };
+      const finalContext = { messages: modelMessages, pendingMessages, facts: strategy.facts, boundaries: strategy.boundaries, identityAsked, now: this.now(), timezone: currentChatTime(this.now(), selfContext(this, profile.kind)).timezone };
       const personalViolation = unsupportedPersonalAnswer(finalTexts, finalContext) || unsupportedChatTime(finalTexts, finalContext);
-      if (personalViolation) { result.action = 'skip'; result[personalViolation === 'future-notice' ? 'executionSkipped' : personalViolation === 'time-fact' ? 'timeSkipped' : 'factsSkipped'] = true; result.memoryUpdates = []; }
+      if (personalViolation) { result.action = 'skip'; result[personalViolation === 'identity-rule' ? 'identitySkipped' : personalViolation === 'future-notice' ? 'executionSkipped' : personalViolation === 'time-fact' ? 'timeSkipped' : 'factsSkipped'] = true; result.memoryUpdates = []; }
     }
     const fresh = await this.read(profile, signal);
     if (!this.canDeliver(profile, mode, revision, signal)) return;

@@ -78,6 +78,10 @@ for(const [question,text,reasonCode] of [
   ['你今天在哪家公司上班？','我没有在哪家公司上班。','unverified-personal-fact'],
   ['改成周日吧，周六我不行。','行，那就改周日，具体几点等我确认一下再跟你说。','unverified-execution'],
   ['改成周日吧，周六我不行。','行，改成周日。我确认下时间再回你。','unverified-execution'],
+  ['改成周日吧，周六我不行。','行，那就周日。具体几点我确认下再跟你定。','unverified-execution'],
+  ['你是AI在代回复吗？','不是的，有什么事你说','identity-rule-block'],
+  ['你现在具体在哪个地方？','你问这个是要找我吗？我这边位置不太方便说。','unverified-personal-fact'],
+  ['我去年旅行拍的照片今天才整理，别以为我现在在外地。','整理一年前的照片挺费劲的吧。','unverified-time-fact'],
   ['昨天下雨那事已经过去了，现在只想找点吃的。','那就找点想吃的去，昨晚的事翻篇就好','unverified-time-fact'],
   ['你记错了，胃疼的是我，不是你。','我没记错呀，昨天听你说胃疼。','unverified-time-fact'],
 ])test(`final local guard stops ${reasonCode} without another model request`,async t=>{
