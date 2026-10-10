@@ -1818,9 +1818,13 @@ export class AIAssistant {
     }
     return used;
   }
-  async applyReplyLimitToKind(kind, maxRounds) {
+  async applyReplyLimitToKind(kind, maxRounds, scope = null) {
+    const account = scope ? scope.account : this.data.account;
     return this.exclusive(async () => {
       if (!['person', 'group'].includes(kind) || maxRounds == null) throw new AppError('上限设置无效');
+      const identity = await this.bridge.currentAccount();
+      const contacts = [...this.contacts.values()].filter(contact => contact.kind === kind).map(contact => contact.id).sort();
+      if (!account || account !== this.data.account || identity.account !== account || (scope && (!Array.isArray(scope.contacts) || scope.contacts.some(contact => typeof contact !== 'string') || JSON.stringify([...scope.contacts].sort()) !== JSON.stringify(contacts)))) throw new AppError('账号或对象范围已变化，请重新确认应用范围', 409, 'AI_SCOPE_CHANGED');
       maxRounds = replyLimitValue(maxRounds);
       this.data.replyRoundLimits = { person: null, group: null, ...(this.data.replyRoundLimits || {}), [kind]: maxRounds };
       let count = 0;

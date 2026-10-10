@@ -269,6 +269,29 @@ test('applying a reply limit updates only the selected object type and preserves
  const personDetail=objectPage(listState,{selected:'new-person',kind:'person',search:''}),groupDetail=objectPage(listState,{selected:'new-group',kind:'group',search:''});
  assert.match(personDetail,/<input\b[^>]*name="maxRounds"[^>]*value="12"/);assert.match(groupDetail,/<input\b[^>]*name="maxRounds"[^>]*value="8"/);
 });
+
+test('batch reply limits reject an account change before the page sees it',async t=>{
+ const {a,bridge,provider}=await fixture(t);
+ const scope={account:a.data.account,contacts:bridge.contacts.map(contact=>contact.id)};
+ const before=structuredClone(a.data.replyRoundLimits);
+ bridge.account=key('different-batch-account');
+ await assert.rejects(a.applyReplyLimitToKind('person',13,scope),error=>error.code==='AI_SCOPE_CHANGED');
+ assert.deepEqual(a.data.replyRoundLimits,before);
+ assert.equal(provider.calls.length,0);
+});
+
+test('batch reply limits require the confirmed contact range and preserve new objects on mismatch',async t=>{
+ const {a,bridge}=await fixture(t);
+ const scope={account:a.data.account,contacts:bridge.contacts.map(contact=>contact.id)};
+ bridge.contacts.push({id:key('new-batch-contact'),label:'新增测试对象',kind:'person'});await a.scan();
+ const before=structuredClone(a.data.replyRoundLimits);
+ await assert.rejects(a.applyReplyLimitToKind('person',13,scope),error=>error.code==='AI_SCOPE_CHANGED');
+ assert.deepEqual(a.data.replyRoundLimits,before);
+ const current={account:a.data.account,contacts:bridge.contacts.map(contact=>contact.id)};
+ const result=await a.applyReplyLimitToKind('person',13,current);
+ assert.equal(result.appliedReplyLimit.count,4);assert.equal(a.data.replyRoundLimits.person,13);
+ assert.equal(a.data.replyRoundLimits.group,null);
+});
 test('unlimited bulk setting reaches the selected type without showing a limit badge',async t=>{
  const {a,bridge}=await fixture(t),contact=bridge.contacts[0];
  await a.saveReplyProfile({contact:contact.id,style:a.publicState().schema.defaultStyle,strategy:{maxRounds:50}});

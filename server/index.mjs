@@ -140,7 +140,7 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
             'analysis-use-chat': () => ai.useSharedAnalysis(), 'analysis-report-delete': () => ai.deleteAnalysisReport(data.id || data.value?.id), 'contact-remark': () => ai.setContactRemark(data.id, data.value || {}),
             'group-options': () => ai.setGroupOptions(data.value || {}),
             calendar: () => ai.calendar(data.value || {}), learn: () => ai.learn(data.value || {}), analyze: () => ai.analyze(data.value || {}), cancel: () => ai.cancel(), settings: () => ai.settings(data.value || {}),
-            strategy: () => ai.saveStrategy(data.value, data.id, data.mode), 'apply-reply-limit': () => ai.applyReplyLimitToKind(data.value?.kind, data.value?.maxRounds), profile: () => ai.editProfile(data.id, data.value || {}),
+            strategy: () => ai.saveStrategy(data.value, data.id, data.mode), 'apply-reply-limit': () => ai.applyReplyLimitToKind(data.value?.kind, data.value?.maxRounds, { account: data.value?.account, contacts: data.value?.contacts }), profile: () => ai.editProfile(data.id, data.value || {}),
             'reply-profile': () => ai.saveReplyProfile(data.value || {}), configuration: () => ai.configuration(data.value || {}),
             'save-default-style': () => ai.saveDefaultStyle(data.value || {}), 'clear-default-style': () => ai.clearDefaultStyle(), 'apply-default-style': () => ai.applyDefaultStyle(),
             'cancel-default-style': () => ai.cancelDefaultStyle(), 'commit-default-style': () => ai.commitDefaultStyle(data.value || {}),

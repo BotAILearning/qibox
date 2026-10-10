@@ -1,0 +1,30 @@
+import {createRequire} from 'node:module';
+import {createHash} from 'node:crypto';
+import {pathToFileURL,fileURLToPath} from 'node:url';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+import {root,playwrightPath} from './tooling.mjs';
+import {proactiveFixture} from './proactive-ui-fixture.mjs';
+const {chromium}=createRequire(import.meta.url)(playwrightPath);
+const fixture=await proactiveFixture(),{ai,bridge,provider}=fixture;
+const output=pathToFileURL(path.resolve(root,process.env.QIBOX_TEST_OUTPUT||'reports/ai-confirmation-isolation')+path.sep);
+const proof={scope:'Disposable production UI; record cleanup confirmation across accounts',realWechatSends:0,realProviderCalls:0,previewRequests:0,cleanupRequests:0,passed:false};
+let browser;
+try{
+ await fs.mkdir(output,{recursive:true});
+ const contact=bridge.contacts[0].id;await ai.setReplyOptions({contact,enabled:true});
+ const profile=ai.profiles().find(p=>p.contact===contact);
+ profile.sentMessages=[{id:'old-record-confirmation',at:Date.now(),source:'reply',body:ai.vault.seal({text:'OLD_ACCOUNT_RECORD'})}];await ai.save();
+ browser=await chromium.launch({channel:'msedge',headless:true});const page=await browser.newPage({viewport:{width:1280,height:900}});
+ page.on('request',request=>{if(request.method()==='POST'&&request.url().endsWith('/ai')){const body=request.postDataJSON();if(body.action==='configuration'&&body.value?.type==='clear-records'){if(body.value.token)proof.cleanupRequests++;else proof.previewRequests++;}}});
+ await page.goto(fixture.url);await page.locator('[data-action=open]').click();await page.locator('#ai-open').click();await page.locator('[data-ai-nav=activity]').click();
+ await page.locator('[data-ai-clear-records=reply]').click();const dialog=page.locator('dialog.qbx-product-dialog');await dialog.waitFor();
+ bridge.account=createHash('sha256').update('record-confirmation-new-account').digest('hex');await ai.scan();await ai.setReplyOptions({contact,enabled:true});
+ const next=ai.profiles().find(p=>p.contact===contact);next.sentMessages=[{id:'new-record-confirmation',at:Date.now(),source:'reply',body:ai.vault.seal({text:'NEW_ACCOUNT_RECORD'})}];await ai.save();
+ await dialog.waitFor({state:'detached',timeout:7000});await page.waitForTimeout(300);
+ proof.oldConfirmationCancelled=true;proof.newAccountRecordsRetained=next.sentMessages.length===1;
+ assert.equal(proof.cleanupRequests,0);assert.equal(proof.newAccountRecordsRetained,true);assert.equal(provider.calls.length,0);assert.equal(bridge.sent.length,0);
+ await page.screenshot({path:fileURLToPath(new URL('new-account-records.png',output))});proof.passed=true;
+}finally{await fs.writeFile(new URL('report.json',output),JSON.stringify(proof,null,2));await browser?.close();await fixture.close();}
+console.log(JSON.stringify(proof));

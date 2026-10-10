@@ -1,4 +1,4 @@
-import { confirmDialog, productDialog } from './dialogs.mjs';
+import { productDialog as platformProductDialog } from './dialogs.mjs';
 import { personalInformationPage, personalEntriesFromForm, personalDraftFromForm, updatePersonalInformationForm, globalReplyStrategyPage, objectStyleTabs } from './ai-account-settings.mjs';
 import { retiredPersonalFields } from '../server/ai-personal-fields.mjs';
 import { dateRangeField, chooseDateRange } from './ai-date-range.mjs';
@@ -87,6 +87,20 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   }
   const acknowledgedReplyLimitOverflow = new WeakMap();
   let replyLimitOverflowDialogOpen = false;
+  let replyLimitConfirmController = null;
+  const confirmationControllers = new Set();
+  async function productDialog(options = {}) {
+    const current = generation, target = id, account = state?.account, controller = new AbortController();
+    const cancel = () => controller.abort();
+    confirmationControllers.add(controller);
+    options.signal?.addEventListener('abort', cancel, { once: true });
+    if (options.signal?.aborted) cancel();
+    try {
+      const answer = await platformProductDialog({ ...options, signal: controller.signal });
+      return !controller.signal.aborted && current === generation && target === id && account === state?.account ? answer : null;
+    } finally { confirmationControllers.delete(controller); options.signal?.removeEventListener('abort', cancel); }
+  }
+  const confirmDialog = message => productDialog({ message });
   const objectView = () => ({ kind: objectKind, selected: selectedObject, section: objectSection, memoryCategory: objectMemoryCategory, search: objectSearch, draft: objectDrafts.get(selectedObject), dirty: objectDirtyContacts.has(selectedObject), scrollTop: rememberedObjectScroll(), height: $('#ai-object-list')?.clientHeight || 600 });
   function objects() { return objectPage(state, objectView()); }
   function drawObjectList() {
@@ -544,6 +558,8 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       // Removing a focused input emits a change event synchronously. Detach
       // the old account first so that event cannot remember its private text.
       state = null; $('#ai-content').innerHTML = loadingContent;
+      replyLimitConfirmController?.abort(); replyLimitConfirmController = null;
+      for (const controller of confirmationControllers) controller.abort();
       concealKey(true); providerRevision++; modelDraft = null; learningDraft = null; replyDraft = null;
       profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); objectDirtyContacts.clear();
       objectScrollKey = ''; objectScrollTop = 0; selectedObject = ''; objectSearch = ''; objectKind = 'person'; objectSection = 'reply'; objectMemoryCategory = 'name';
@@ -1547,8 +1563,13 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       }
       if (button.hasAttribute('data-ai-apply-limit-kind')) {
         const form = button.closest('form'), value = parseReplyLimit(form.elements.maxRounds.value), kind = button.dataset.aiApplyLimitKind;
-        if (!await productDialog({ title: `应用到全部${kind === 'group' ? '群聊' : '联系人'}？`, message: `将把当前账号所有${kind === 'group' ? '群聊' : '联系人'}的回复次数上限设为${value === 'unlimited' ? '不限' : value + '次'}。`, confirm: '应用到全部' })) return;
-        const result = await execute('apply-reply-limit', { value: { kind, maxRounds: value } }, `已应用到全部${kind === 'group' ? '群聊' : '联系人'}`);
+        const current = generation, target = id, account = state.account, contacts = state.contacts.filter(contact => contact.kind === kind).map(contact => contact.id).sort();
+        const controller = new AbortController(); replyLimitConfirmController?.abort(); replyLimitConfirmController = controller;
+        let accepted;
+        try { accepted = await productDialog({ title: `应用到全部${kind === 'group' ? '群聊' : '联系人'}？`, message: `将把当前账号全部${contacts.length}个${kind === 'group' ? '群聊' : '联系人'}的回复次数上限设为${value === 'unlimited' ? '不限' : value + '次'}，之后新增的同类对象也默认使用此上限。`, confirm: '应用到全部', signal: controller.signal }); }
+        finally { if (replyLimitConfirmController === controller) replyLimitConfirmController = null; }
+        if (!accepted || controller.signal.aborted || current !== generation || target !== id || account !== state?.account) return;
+        const result = await execute('apply-reply-limit', { value: { kind, maxRounds: value, account, contacts } }, `已应用到全部${kind === 'group' ? '群聊' : '联系人'}`);
         if (result?.appliedReplyLimit) message(`已更新 ${result.appliedReplyLimit.count} 个${kind === 'group' ? '群聊' : '联系人'}的回复次数上限`);
         return;
       }
@@ -2018,6 +2039,8 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     show,
     attached: () => !!id,
     async attach(instanceId) {
+      for (const controller of confirmationControllers) controller.abort();
+      replyLimitConfirmController?.abort(); replyLimitConfirmController = null;
       contactDialog?.close();
       rememberRecords();
       analysisDraft = { request: '', from: '', to: '', contacts: [], includeVoice: false, includeVisual: false }; analysisRangeMode = 'all'; analysisRangeBeforeCustom = null; analysisContactsExpanded = false; analysisSearch = ''; analysisHistoryReport = null; analysisHistoryEpoch++; resetAnalysisExport(); learnRange = {from:'',to:''}; learnRangeMode = 'all'; learnScope='range'; learnTarget='both'; defaultStylePerspective = 'self'; analysisResult = null; proactiveUI.reset();
