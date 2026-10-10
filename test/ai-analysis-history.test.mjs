@@ -47,9 +47,9 @@ test('单联系人一次请求覆盖全部消息并保存完整统计，不保�
   assert.equal(result.status, 'complete', JSON.stringify(result)); assert.equal(calls, 1);
   assert.match(provider.calls[0].system, /4–6 个短章节/); assert.match(provider.calls[0].system, /每章标题不超过 20 字，正文约 60–140 字/);
   assert.match(provider.calls[0].system, /用户明确指定格式时优先按其格式/); assert.equal(captured.userRequest, '提取关键事件');
-  assert.ok(captured.messages.every(message => Array.isArray(message) && Number.isSafeInteger(message[1]) && message.length === 3));
+  assert.ok(captured.messages.every(message => Array.isArray(message) && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(message[1]) && message.length === 3));
   assert.deepEqual(captured.messages.map(row => row[2]), messages.map(row => row.text));
-  assert.deepEqual(captured.messages[0].slice(0, 2), ['本人', messages[0].timestamp]);
+  assert.deepEqual(captured.messages[0].slice(0, 2), ['本人', '2026-09-01 09:15:00']);
   assert.equal(captured.coverage.truncated, false);
   assert.equal(captured.coverage.analyzedChars, messages.reduce((sum, row) => sum + Array.from(row.text).length, 0));
   assert.equal(Object.hasOwn(result, 'sampledCount'), false);
@@ -71,6 +71,33 @@ test('多人单请求被拒绝，必须由前端逐人排队', async t => {
   assert.equal(calls, 0);
 });
 
+test('analysis supplies explicit Beijing times in chronological order without moving afternoon into night', async t => {
+  const { bridge, provider, a, contact } = await fixture(t);
+  const messages = [
+    { id: key('time-midnight'), direction: 'other', text: '晚点再聊', timestamp: 1791561995 },
+    { id: key('time-morning'), direction: 'other', text: '验收上午记录', timestamp: 1791591832 },
+    { id: key('time-afternoon'), direction: 'self', text: '验收 Q10-H01：这条是我手动回复的', timestamp: 1791621268 },
+  ];
+  bridge.readRange = async args => ({ account: args.account, contact: args.contact, messages });
+  let calls = 0;
+  provider.complete = async (_config, system, input) => {
+    calls++;
+    assert.deepEqual(input.messages, [
+      ['对方', '2026-10-10 00:06:35', '晚点再聊'],
+      ['对方', '2026-10-10 08:23:52', '验收上午记录'],
+      ['本人', '2026-10-10 16:34:28', '验收 Q10-H01：这条是我手动回复的'],
+    ]);
+    assert.deepEqual(input.metrics.hours, { morning: 1, afternoon: 1, evening: 0, night: 1 });
+    assert.match(system, /北京时间.*不再换算时区/);
+    assert.match(system, /不按“晚点再聊”等原话或报告章节顺序推测/);
+    return { report: '测试报告' };
+  };
+  const result = (await a.analyze({ contacts: [contact], from: '2026-10-10', to: '2026-10-10' })).reports[0];
+  assert.equal(result.status, 'complete');
+  assert.equal(calls, 1);
+  assert.equal(messages[2].timestamp, 1791621268);
+});
+
 test('analysis identifies self, other and unknown with readable labels without rewriting quoted text or extra calls', async t => {
   const { bridge, provider, a, contact } = await fixture(t);
   const messages = ['self', 'other', 'unknown'].map((direction, index) => ({
@@ -82,7 +109,11 @@ test('analysis identifies self, other and unknown with readable labels without r
   let calls = 0;
   provider.complete = async (_config, system, input) => {
     calls++;
-    assert.deepEqual(input.messages, messages.map((message, index) => [['本人', '对方', '未知'][index], message.timestamp, message.text]));
+    assert.deepEqual(input.messages, [
+      ['本人', '2026-09-02 10:00:00', '原话 0'],
+      ['对方', '2026-09-02 10:00:01', '原话包含 s：示例 和 o：示例'],
+      ['未知', '2026-09-02 10:00:02', '原话 2'],
+    ]);
     assert.match(system, /清楚的中文称呼/);
     assert.match(system, /不改变聊天原文中的正常字词/);
     return { report: '本人和对方的原话均保留，第三条发言方未知。' };

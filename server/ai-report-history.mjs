@@ -10,6 +10,11 @@ const timeText = timestamp => {
   return new Date(timestamp * 1000 + 28800000).toISOString().slice(11, 16);
 };
 
+export function reportMessageTime(timestamp) {
+  if (!Number.isSafeInteger(timestamp) || timestamp < 0) return '未知时间';
+  return new Date(timestamp * 1000 + 28800000).toISOString().slice(0, 19).replace('T', ' ');
+}
+
 export function reportMetrics(messages) {
   const rows = Array.isArray(messages) ? messages.filter(message => typeof message?.text === 'string' && message.text.trim()) : [];
   const self = rows.filter(message => message.direction === 'self').length;
