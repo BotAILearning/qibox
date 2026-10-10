@@ -83,7 +83,7 @@ try{
   await page.locator('.ai-contact-picker-dialog footer [data-picker-cancel]').click();
   assert.equal(await page.locator('#ai-analysis-count').innerText(),'2','取消修改应保留原联系人');
   assert.deepEqual(await draft(),originalDraft,'取消联系人选择应保留分析要求和时间范围');
-  for(const width of [320,390,1180,1440])await createLayout(width);
+  for(const width of [768,960,1180,1440])await createLayout(width);
   await page.screenshot({path:path.join(output,'desktop-create-analysis.png')});
   report.checks.push('创建分析内添加联系人；搜索备注与微信名后保留多选、卡内名单和人数；确认与取消均保留分析要求和时间范围草稿');
 
@@ -107,26 +107,26 @@ try{
   assert.equal(await page.locator('#ai-analysis-contacts [name=contacts]').count(),0,'completed reports clear the old selection');
   report.checks.push('逐人队列生成两份报告，完成后清除旧选择');
 
-  await page.setViewportSize({width:390,height:844});
+  await page.setViewportSize({width:768,height:844});
   await page.locator('.ai-main-tabs [data-ai-nav=analysis]').click();await settled();
   await page.locator('[data-ai-analysis-pick]').click();
   const mobileDialog=page.locator('.ai-contact-picker-dialog');
   await mobileDialog.locator('[data-picker-all]').click();
   const bounds=await mobileDialog.evaluate(node=>{const d=node.getBoundingClientRect(),f=node.querySelector('footer').getBoundingClientRect();return{width:d.width,bottom:d.bottom,footerBottom:f.bottom};});
-  assert.ok(bounds.width<=390&&bounds.bottom<=844&&bounds.footerBottom<=844);
+  assert.ok(bounds.width<=768&&bounds.bottom<=844&&bounds.footerBottom<=844);
   await mobileDialog.locator('[data-picker-confirm]').click();
   const people=bridge.contacts.filter(contact=>contact.kind==='person');
   assert.equal(await page.locator('#ai-analysis-contacts [name=contacts]').count(),people.length);
   assert.equal(await page.locator('#ai-analysis-count').innerText(),String(people.length));
   assert.deepEqual(new Set(await page.locator('#ai-analysis-contacts .ai-analysis-picked-row').allTextContents()),new Set(['陈小雨（小雨同学）',...people.slice(1).map(contact=>contact.label)]));
-  await createLayout(320,true);
-  await page.screenshot({path:path.join(output,'mobile-contact-selection-320.png')});
-  await createLayout(390,true);
-  await page.screenshot({path:path.join(output,'mobile-contact-selection.png')});
+  await createLayout(768,true);
+  await page.screenshot({path:path.join(output,'narrow-desktop-contact-selection-768.png')});
+  await createLayout(860,true);
+  await page.screenshot({path:path.join(output,'narrow-desktop-contact-selection-860.png')});
   const lastContact=page.locator('#ai-analysis-contacts .ai-analysis-picked-row').last();
   await lastContact.scrollIntoViewIfNeeded();
   assert.ok(await lastContact.evaluate(node=>{const row=node.getBoundingClientRect(),list=node.parentElement.getBoundingClientRect();return row.top>=list.top-1&&row.bottom<=list.bottom+1;}),'多联系人列表的最后一项可滚动完整显示');
-  report.checks.push('320/390/1180/1440px 创建分析无横向溢出；手机多联系人标签自动换行，弹窗底部按钮可见');
+  report.checks.push('768/860/960/1180/1440px 电脑创建分析无横向溢出；紧凑电脑布局多联系人标签换行，弹窗底部按钮可见。手机范围由独立轻量开关检查验证');
   assert.equal(bridge.sent.length,0);assert.deepEqual(report.errors,[]);report.passed=true;
 }catch(error){report.failure=error.stack;throw error;}
 finally{await writeFile(path.join(output,'report.json'),JSON.stringify(report,null,2));await browser?.close();await app.close();await peer.close();await cleanup(dataRoot);}

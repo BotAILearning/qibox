@@ -27,6 +27,7 @@ window.addEventListener('resize', syncLayout);
 let session, state, toastTimer, modalSubmit, requiredModal = false, polling = false, rfb, ime, fileBridge, desktopId, remoteGeneration = 0, lastInstancesMarkup = '';
 let modalGeneration = 0, submittingModalGeneration = null;
 let desktopConnected = false, desktopBusy = false, desktopConnecting = false, pointer, connectionTimer, desktopOperation = 0;
+let pendingAIEntry = null;
 let sound, standaloneAI = false;
 let mobileLoginId = null;
 let mobileLoginCheckTimer = null, mobileLoginChecking = false;
@@ -60,6 +61,7 @@ function syncDesktopInteraction() {
 const assistant = aiAssistant({ api, downloadAnalysisReport, guard: aiRailGuard, onVisibilityChange: syncDesktopInteraction, onClose: () => { if (standaloneAI) disconnect(); },
   // 入口常驻后，入口可能先于实例挂载出现：操作开关 / 打开面板前补一次挂载，避免用空实例 id 请求。
   ensure: async () => {
+    if (mobile()) return;
     const target = desktopId || state?.instances.find(item => (item.appId || 'wechat') === 'wechat')?.id || null;
     if (!target) return;
     if (assistantId === target && assistant.attached()) return;
@@ -76,6 +78,7 @@ function aiBlockedDialog(hint) {
   dialog('暂无法使用 AI 辅助', `<p>${esc(hint)}</p>`, '<button type="button" data-close class="primary">知道了</button>');
 }
 function aiRailGuard() {
+  if (mobile()) return false;
   const entry = state?.instances.find(item => item.id === desktopId);
   if (!entry || (entry.appId || 'wechat') !== 'wechat') return false;
   const hint = aiBlockedHint(entry.runtime, standaloneAI ? true : desktopConnected);
@@ -83,30 +86,25 @@ function aiRailGuard() {
   return true;
 }
 async function openAIEntry(id) {
+  if (mobile()) return;
   const entry = state.instances.find(item => item.id === id);
   if (!entry || (entry.appId || 'wechat') !== 'wechat') return;
   const hint = aiBlockedHint(entry.runtime, true);
   if (hint) return aiBlockedDialog(hint);
-  if (mobile()) {
-    if (standaloneAI && desktopId === id) { assistant.show(); return; }
-    if (standaloneAI) disconnect();
-    stopMobileLoginChecks(); mobileLoginId = null;
-    desktopId = id; standaloneAI = true;
-    $('#ai-account-label').textContent = '当前微信：' + (entry.name || '微信');
-    $('#desktop-view').classList.add('ai-only');
-    assistant.detach(); assistantId = id;
-    const attachment = assistant.attach(id);
-    $('#desktop-view').hidden = false;
-    assistant.show();
-    await attachment;
-    return;
-  }
   if (standaloneAI) return;
-  if (desktopId !== id || $('#desktop-view').hidden || !desktopConnected) await openDesktop(id, false, false, true);
-  if (assistantId === id && !$('#desktop-view').hidden) assistant.show();
+  let operation = desktopOperation;
+  if (desktopId !== id || $('#desktop-view').hidden || !desktopConnected) {
+    const opening = openDesktop(id, false, false, true);
+    operation = desktopOperation;
+    await opening;
+  }
+  if (operation !== desktopOperation || desktopId !== id || mobile() || $('#desktop-view').hidden) return;
+  pendingAIEntry = { id, operation };
+  renderDesktop();
 }
 let assistantId = null;
 function syncAssistant(id) {
+  if (mobile()) id = null;
   if (assistantId === id) return;
   assistant.detach(); assistantId = id;
   if (id) return assistant.attach(id);
@@ -275,7 +273,7 @@ function renderMobileAI() {
     const hint = runtimeAvailable && !loading && !known ? `<button type="button" class="quiet" data-mobile-ai-retry="${esc(item.id)}">重试读取开关</button>` : '';
     const message = !runtimeAvailable ? '微信登录后可用' : loading ? '正在读取开关…' : '暂时无法读取开关';
     const control = known ? `<input type="checkbox" role="switch" data-mobile-ai-master="${esc(item.id)}" aria-label="${esc(item.name)} AI 总开关" ${checked ? 'checked' : ''} ${loading ? 'disabled aria-busy="true"' : ''}>` : `<span class="mobile-ai-state" role="status">${message}</span>`;
-    return `<article class="mobile-ai-card"><button type="button" class="mobile-ai-open" data-mobile-ai-open="${esc(item.id)}" aria-label="打开${esc(item.name)}的 AI 辅助设置" ${runtimeAvailable ? '' : 'disabled'}>${esc(item.name)}</button>${control}${hint ? `<div class="mobile-ai-status">${hint}</div>` : ''}</article>`;
+    return `<article class="mobile-ai-card"><strong class="mobile-ai-name">${esc(item.name)}</strong>${control}${hint ? `<div class="mobile-ai-status">${hint}</div>` : ''}</article>`;
   }).join('');
   if (markup !== lastMobileAIMarkup) { $('#mobile-ai-list').innerHTML = markup; lastMobileAIMarkup = markup; }
   $('#mobile-ai').hidden = !entries.length;
@@ -422,9 +420,13 @@ function renderDesktop() {
   if (standaloneAI) { if (!aiAvailable(runtime, true)) { disconnect(); notify('请先登录微信'); } return; }
   // 登录确认且桌面已连接时显示入口；短暂未知状态沿用 aiEntryAvailable。
   const wechatEntry = !!(entry && (entry.appId || 'wechat') === 'wechat');
-  const showAI = aiAvailable(runtime, desktopConnected);
+  const showAI = !mobile() && aiAvailable(runtime, desktopConnected);
   $('#ai-rail').hidden = !showAI;
   syncAssistant(showAI && wechatEntry ? desktopId : null);
+  if (showAI && pendingAIEntry?.id === desktopId && pendingAIEntry.operation === desktopOperation && !$('#desktop-view').hidden) {
+    pendingAIEntry = null;
+    assistant.show();
+  }
   const action = desktopAction(runtime, desktopConnected);
   $('#desktop-reconnect').hidden = !action;
   $('#desktop-reconnect').textContent = action?.label || '显示微信';
@@ -560,6 +562,7 @@ async function upload(file) {
   await refresh(); notify('微信已安装');
 }
 function disconnect(invalidate = true, keepAssistant = false, recovering = false) {
+  pendingAIEntry = null;
   if (!recovering) reconnect.stop();
   sound?.dispose(); sound = null;
   if (!keepAssistant) syncAssistant(null);
@@ -681,10 +684,12 @@ $('#desktop-reconnect').onclick = async () => {
 const syncFullscreen = () => { const full = document.fullscreenElement === $('#desktop-view'); $('#desktop-fullscreen').textContent = full ? '退出全屏' : '全屏'; $('#desktop-fullscreen').setAttribute('aria-pressed', String(full)); };
 document.addEventListener('fullscreenchange', syncFullscreen); syncFullscreen();
 $('#desktop-fullscreen').onclick = () => { (document.fullscreenElement === $('#desktop-view') ? document.exitFullscreen() : $('#desktop-view').requestFullscreen()).then(syncFullscreen).catch(() => notify('当前浏览器暂不支持全屏')); };
-small.addEventListener('change', () => {
-  if (mobile() && !$('#ai-panel').hidden && assistantId) {
-    disconnect(false, true); standaloneAI = true; $('#desktop-view').classList.add('ai-only'); $('#desktop-view').hidden = false;
-  } else if (mobileLoginId && mobileLoginId === desktopId) { renderDesktop(); }
+let lastMobileLayout = mobile();
+window.addEventListener('resize', () => {
+  const nextMobileLayout = mobile();
+  if (nextMobileLayout === lastMobileLayout) return;
+  lastMobileLayout = nextMobileLayout;
+  if (mobileLoginId && mobileLoginId === desktopId) { renderDesktop(); }
   else if (mobile()) { mobileLoginId = null; disconnect(); }
   render();
 });
@@ -698,7 +703,6 @@ document.addEventListener('click', async event => {
   const button = event.target.closest('button'); if (!button || button.disabled) return;
   try {
     if (button.hasAttribute('data-close')) return closeModal();
-    if (button.dataset.mobileAiOpen) { await openAIEntry(button.dataset.mobileAiOpen); return; }
     if (button.dataset.mobileAiRetry) { mobileAISettings.delete(button.dataset.mobileAiRetry); await loadMobileAISettings(button.dataset.mobileAiRetry); return; }
     if (button.dataset.mobileLogin) { const id = button.dataset.mobileLogin; closeModal(); await openMobileLogin(id); return; }
     if (button.dataset.mobileStop) {

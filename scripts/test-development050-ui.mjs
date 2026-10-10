@@ -244,15 +244,15 @@ try {
   assert.ok(styleLayout.scrollHeight > styleLayout.clientHeight, '长文本在风格说明框内滚动');
   await page.locator('#toast').waitFor({ state: 'hidden' });
   await page.screenshot({ path: path.join(output, 'style-autosize.png') });
-  await page.setViewportSize({ width: 760, height: 900 });
-  assert.equal(await page.locator('.ai-main-tabs').evaluate(node => Math.round(node.getBoundingClientRect().width)), 760);
+  await page.setViewportSize({ width: 768, height: 900 });
+  assert.equal(await page.locator('.ai-main-tabs').evaluate(node => Math.round(node.getBoundingClientRect().width)), 768);
   await page.locator('#ai-object-form .ai-object-save').scrollIntoViewIfNeeded();
   await page.screenshot({ path: path.join(output, 'narrow-style-actions.png') });
   const longStyleHeight = await styleSummary.evaluate(node => node.getBoundingClientRect().height);
   await styleSummary.fill('简短风格');
   assert.ok(await styleSummary.evaluate(node => node.getBoundingClientRect().height) < longStyleHeight, '文本缩短后输入框收回');
-  report.checks.push('Touch navigation spans the narrow screen below the content');
-  for (const width of [320,390,768]) {
+  report.checks.push('Compact desktop navigation spans the narrow screen below the content');
+  for (const width of [768,800,860]) {
     await page.setViewportSize({width,height:844});
     for (const section of ['reply','style','memory']) {
       await page.locator('[data-ai-object-section='+section+']').click();
@@ -271,7 +271,7 @@ try {
     await page.locator('.ai-main-tabs [data-ai-nav=overview]').click();
     await page.locator('[data-ai-object]').first().click();
   }
-  for (const width of [320,390,768,1440]) {
+  for (const width of [768,800,860,1440]) {
     await page.setViewportSize({width,height:844});
     await page.locator('[data-ai-object-section=memory]').click();
     await page.locator('.ai-reference-memory-content').evaluate(el=>{
@@ -287,7 +287,7 @@ try {
     await page.screenshot({path:path.join(output,'sticky-actions-'+width+'.png')});
     await page.locator('.sticky-test-content').evaluate(el=>el.remove());
   }
-  report.checks.push('Object save and learning actions visible at start, middle and end of long content on phone and desktop');
+  report.checks.push('Object save and learning actions visible at start, middle and end of long content on compact and wide desktop layouts; phone scope is verified separately');
   assert.deepEqual(report.errors, []); report.passed = true;
 } catch (error) { report.failure = error.stack; throw error; }
 finally { await writeFile(path.join(output, 'report.json'), JSON.stringify(report, null, 2)); await browser?.close(); await app.close(); await peer.close(); await chooser.close(); await cleanup(dataRoot); }
