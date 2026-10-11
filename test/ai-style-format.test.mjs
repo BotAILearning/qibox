@@ -55,3 +55,37 @@ test('single-contact style learning cleans the same result without extra provide
   assert.equal(a.profiles()[0].learnedStyle.summary, expectedSummary);
   assert.equal(provider.calls.length - calls, 1);
 });
+
+const placeholderStyle = { language: '语言层', rhythm: '节奏层', interaction: '互动层', emotion: '偶尔用🙂，整体语气平和', role: '样本不足，无法判断主导或倾听倾向' };
+
+test('bare layer labels are rejected while manual summaries and ordinary descriptions remain intact', () => {
+  for (const language of ['语言层', '语言', '"语言层"', '节奏层']) {
+    assert.throws(() => composeLearnedStyle({ ...placeholderStyle, language }), { code: 'ai_model_schema', status: 502 });
+  }
+  assert.equal(composeLearnedStyle({ language: '语言层会使用简短口语' }).summary, '语言：语言层会使用简短口语');
+  assert.deepEqual(composeLearnedStyle({ summary: '语言层', customTone: '手动原文' }), { summary: '语言层', customTone: '手动原文' });
+});
+
+test('paste default learning rejects bare layer labels after one request and preserves the confirmed style', async t => {
+  const { a, provider } = await fixture(t);
+  await a.saveDefaultStyle({ summary: '原默认口吻，简洁自然。' });
+  const original = structuredClone(a.publicState().learnedDefaultStyle), calls = provider.calls.length;
+  provider.next = async () => ({ style: structuredClone(placeholderStyle) });
+  await assert.rejects(a.learn({ text: '我：刚忙完，终于能歇会儿🙂。\n对方：辛苦啦，先休息。\n我：嗯，晚点再聊，不着急。\n对方：好呀。', asDefault: true, perspective: 'self' }), { code: 'ai_model_schema', status: 502 });
+  assert.deepEqual(a.publicState().learnedDefaultStyle, original);
+  assert.equal(a.publicState().defaultStyleUndoable, false);
+  assert.equal(a.activeDefaultStyle().style.summary, original.style.summary);
+  assert.equal(provider.calls.length - calls, 1);
+});
+
+test('single-contact style learning rejects bare layer labels without changing the profile or retrying', async t => {
+  const { a, provider, contact } = await fixture(t);
+  await a.learn({ contacts: [contact], target: 'style', perspective: 'self' });
+  const calls = provider.calls.length;
+  const original = structuredClone(a.profiles()[0]);
+  provider.next = async () => ({ style: structuredClone(placeholderStyle) });
+  await assert.rejects(a.learn({ contacts: [contact], target: 'style', perspective: 'self' }), error => error.status === 400 && /模型风格学习的语言维度没有有效说明，原风格未修改/u.test(error.message));
+  const current = a.profiles()[0];
+  for (const field of ['style', 'learnedStyle', 'styleId', 'learnedAt', 'replyOptions', 'paused']) assert.deepEqual(current[field], original[field], field);
+  assert.equal(provider.calls.length - calls, 1);
+});
