@@ -36,6 +36,27 @@ test('catalog survives process restart; installation is shared without migrating
   finally { await users.close(); await cleanup(dataRoot); }
 });
 
+test('thirty-character Unicode names survive renaming and catalog reload while invalid boundaries preserve the name', async () => {
+  const dataRoot = await temp();
+  let users = new Instances({ dataRoot, appRoot: dataRoot, library: { installed: () => ({ version: '4.1.13.9' }) }, runtimeFactory });
+  try {
+    await users.init(); let space = await users.get('1001'); await space.setConsent(true);
+    const instance = await space.add('验'.repeat(29) + '🙂');
+    assert.equal([...instance.name].length, 30);
+    const emojiName = '🙂'.repeat(30);
+    await space.rename(instance.id, emojiName);
+    for (const invalid of ['验'.repeat(31), '🙂'.repeat(31), '  ', '名称\u0001']) {
+      await assert.rejects(space.rename(instance.id, invalid), /1–30/);
+      assert.equal(space.list().instances[0].name, emojiName);
+    }
+    await users.close();
+    users = new Instances({ dataRoot, appRoot: dataRoot, library: { installed: () => ({ version: '4.1.13.9' }) }, runtimeFactory });
+    await users.init(); space = await users.get('1001');
+    assert.equal(space.list().instances[0].id, instance.id);
+    assert.equal(space.list().instances[0].name, emojiName);
+  } finally { await users.close(); await cleanup(dataRoot); }
+});
+
 test('deferred saved-user recovery cannot delay metadata initialization, shares user loads and drains on shutdown', async () => {
  const dataRoot=await temp(),gate=Promise.withResolvers(),started=Promise.withResolvers();
  await writeFile(path.join(dataRoot,'users.json'),JSON.stringify(['1001','1002']));

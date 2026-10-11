@@ -466,15 +466,17 @@ function nameTaken(name, exceptId) {
   return [...state.instances, ...state.retained].some(item => item.id !== exceptId && item.name.trim() === name.trim());
 }
 function checkedName(name, exceptId) {
+  name = name.trim();
+  if (!name || [...name].length > 30 || /[\x00-\x1f\x7f]/.test(name)) throw new Error('请输入 1–30 个字的名称');
   if (nameTaken(name, exceptId)) throw new Error('名称已存在，请修改名称');
-  return name.trim();
+  return name;
 }
 function newInstance(fresh = false, appId = marketAppId) {
   if (!fresh && retainedFor(appId).length) return retainedDialog(true);
   const app = definition(appId);
   let name = app.name, suffix = 2;
   while (nameTaken(name)) name = `${app.name} ${suffix++}`;
-  dialog(`添加${app.name}`, `<label class="field">名称<input type="text" name="name" value="${esc(name)}" maxlength="30" required></label>`, undefined, async form => {
+  dialog(`添加${app.name}`, `<label class="field">名称<input type="text" name="name" value="${esc(name)}" maxlength="60" required></label><p>名称可填写 1–30 个字。</p>`, undefined, async form => {
     await api('/instances', { appId, name: checkedName(form.get('name')) });
     await refresh();
     notify(mobile() && appId === 'wechat' ? '实例已添加，请从列表中点击“登录”' : '已添加到桌面');
@@ -512,7 +514,7 @@ function retainedDialog(adding = false) {
   dialog('保留的数据', `<p>${state.library.installed ? '选择原来的应用，恢复后登录原微信。' : '请先安装微信，再恢复保留的数据。'}</p>${entries || '<p>暂无保留的数据。</p>'}`, `${adding ? '<button type="button" id="create-fresh" class="quiet">新建微信</button>' : ''}<button type="button" data-close class="secondary">关闭</button>`);
 }
 function restoreNameDialog(item) {
-  dialog('修改名称后恢复', `<p>名称已存在，请修改名称。</p><label class="field">名称<input type="text" name="name" value="${esc(item.name)}" maxlength="30" required></label>`, '<button type="button" data-close class="secondary">取消</button><button type="submit" class="primary">恢复使用</button>', async form => {
+  dialog('修改名称后恢复', `<p>名称已存在，请修改名称。</p><label class="field">名称<input type="text" name="name" value="${esc(item.name)}" maxlength="60" required></label><p>名称可填写 1–30 个字。</p>`, '<button type="button" data-close class="secondary">取消</button><button type="submit" class="primary">恢复使用</button>', async form => {
     await api(`/instances/${item.id}/restore`, { name: checkedName(form.get('name'), item.id) });
     await refresh(); notify('已恢复，请打开并登录原微信');
   });
@@ -750,7 +752,7 @@ document.addEventListener('click', async event => {
       if (button.dataset.action === 'ai') await openAIEntry(id);
       if (button.dataset.action === 'recheck') { button.disabled = true; try { await api(`/instances/${id}/recheck`, {}, 15000); } finally { await refresh(); button.disabled = false; } }
       if (button.dataset.action === 'delete') removeInstance(item);
-      if (button.dataset.action === 'rename') dialog('重命名', `<label class="field">名称<input type="text" name="name" value="${esc(item.name)}" maxlength="30" required></label>`, undefined, async form => { await api(`/instances/${id}/rename`, { name: checkedName(form.get('name'), id) }); await refresh(); });
+      if (button.dataset.action === 'rename') dialog('重命名', `<label class="field">名称<input type="text" name="name" value="${esc(item.name)}" maxlength="60" required></label><p>名称可填写 1–30 个字。</p>`, undefined, async form => { await api(`/instances/${id}/rename`, { name: checkedName(form.get('name'), id) }); await refresh(); });
       if (button.dataset.action === 'stop') {
         if (busyIds.has(id) || item.busy || ['preparing', 'starting', 'stopping'].includes(item.runtime.status)) return;
         busyIds.add(id); render();
