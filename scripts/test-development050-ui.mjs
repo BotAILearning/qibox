@@ -33,7 +33,7 @@ await new Promise(r => app.server.listen(0, '127.0.0.1', r));
 const space = await app.users.get('development'); await space.setConsent(true); app.library.download(); await app.library.working;
 const meta = await space.add('开发回归微信'); await space.start(meta.id); const ai = space.get(meta.id).ai;
 clearInterval(ai.timer); await ai.configure(modelConfig); await ai.testProvider(); await ai.scan(); await ai.settings({ enabled: false });
-const output = path.join(root, process.argv[2] || 'reports/layout-2026-09-16/browser-development'); await mkdir(output, { recursive: true });
+const output = path.resolve(root, process.argv[2] || 'reports/layout-2026-09-16/browser-development'); await mkdir(output, { recursive: true });
 const report = { scope: 'Disposable browser, model, native file and RFB fixtures. No real WeChat send or NAS acceptance.', checks: [], errors: [] };
 let browser;
 try {

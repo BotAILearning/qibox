@@ -240,7 +240,7 @@ try {
   assert.deepEqual(errors, []); report.status = 'passed';
 } catch (error) { report.status = 'failed'; report.error = error.stack; throw error; }
 finally {
-  const output = path.join(root, process.argv[2] || 'reports/layout-2026-09-16/browser-provider'); await mkdir(output, { recursive: true });
+  const output = path.resolve(root, process.argv[2] || 'reports/layout-2026-09-16/browser-provider'); await mkdir(output, { recursive: true });
   await writeFile(path.join(output, 'report.json'), JSON.stringify(report, null, 2));
   await browser?.close(); await app.close(); await peer.close(); await cleanup(dataRoot);
 }

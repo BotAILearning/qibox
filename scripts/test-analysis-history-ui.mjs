@@ -18,7 +18,7 @@ for (let index = 0; index < 10; index++) bridge.contacts.push({ id: key(`analysi
 const provider = new AIModelFixture();
 const contact = bridge.contacts[0];
 contact.label = '分析报告测试联系人';
-const output = path.join(root, process.argv[2] || 'reports/analysis-report-history-ui/browser');
+const output = path.resolve(root, process.argv[2] || 'reports/analysis-report-history-ui/browser');
 await mkdir(output, { recursive: true });
 const report = { scope: 'Disposable local fixtures; no live account, NAS or WeChat messages.', checks: [], errors: [] };
 let peer, app, browser, ai, restoreAiSave, queuedAnalyzeCalls = [];
@@ -160,6 +160,9 @@ try {
   report.checks.push('Generated report renders model short-title sections and excludes system excerpts');
 
   const providerAfterFirst = provider.calls.length;
+  const onlineComplete = provider.complete;
+  let offlineCalls = 0;
+  provider.complete = async () => { offlineCalls++; throw new Error('Synthetic provider explicitly offline'); };
   await page.reload();
   await page.locator('[data-action=open]').first().click();
   await page.locator('#ai-open').click();
@@ -187,6 +190,8 @@ try {
   assert.match(word.suggestedFilename(), /\.docx$/);
   assert.ok(unzipSync(await readFile(await word.path()))['word/document.xml']);
   assert.equal(provider.calls.length, providerAfterFirst, 'export reads the saved snapshot without asking the model');
+  assert.equal(offlineCalls, 0, 'offline model is never needed for saved history, detail, copy or export');
+  report.checks.push('Explicitly offline provider cannot block saved-history reload, detail, complete copy or Word export; no provider request is attempted');
   report.checks.push('Single Word download opens from saved history and omits the removed format descriptions');
 
   const detailDelete = page.locator('.ai-analysis-history-detail [data-ai-history-delete]');
@@ -203,6 +208,7 @@ try {
 
   await page.locator('[data-ai-history-back]').click();
   await settled();
+  provider.complete = onlineComplete;
   await generate('第二份独立测试报告');
   assert.equal(await historyCount(), 2, 'repeated generation creates a second snapshot');
   await page.locator('[data-ai-history-export-mode]').click();

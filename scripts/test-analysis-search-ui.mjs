@@ -11,7 +11,7 @@ import {rfbFixture} from '../test/rfb-fixture.mjs';
 
 const {chromium}=createRequire(import.meta.url)(playwrightPath);
 const dataRoot=await temp(),bridge=new ChatFixture(),provider=new AIModelFixture();
-const output=path.join(root,process.argv[2]||'reports/analysis-search/browser');
+const output=path.resolve(root,process.argv[2]||'reports/analysis-search/browser');
 await mkdir(output,{recursive:true});
 const completed=[],report={scope:'Disposable local fixtures; no live model, NAS or WeChat messages.',checks:[],errors:[]};
 bridge.contacts[0].label='陈小雨';bridge.contacts[0].nickname='小雨同学';

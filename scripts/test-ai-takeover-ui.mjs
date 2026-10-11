@@ -13,7 +13,7 @@ bridge.stableMessageIds = true;
 const peer = await rfbFixture(path.join(root, 'web/backgrounds/mist.jpg'));
 const app = await createApplication({ appRoot: root, dataRoot, dev: true, extract: extractor, fetcher, trustedHashes: [packageSha256], aiProvider: provider,
   runtimeFactory: (...args) => ({ ...runtimeFactory(...args), port: peer.port, aiBridge: bridge, loginStatus: 'logged-in' }) });
-const output = path.join(root, process.argv[2] || 'reports/ai-wait-switch-20260924/ui');
+const output = path.resolve(root, process.argv[2] || 'reports/ai-wait-switch-20260924/ui');
 await mkdir(output, { recursive: true });
 let browser;
 try {
