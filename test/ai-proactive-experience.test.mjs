@@ -207,8 +207,9 @@ test('a contact removal confirmation from an old instance cannot alter a new tas
     activeElement: null,
     body: { append(node) { modal = node; } },
     createElement() {
-      const dialog = element(), cancel = element(), close = element(), form = element();
-      dialog.querySelector = selector => ({ '[data-cancel]': cancel, '.qbx-dialog-close': close, form }[selector]);
+      const dialog = element(), cancel = element(), close = element(), form = element(), heading = {};
+      dialog.setAttribute = () => {};
+      dialog.querySelector = selector => ({ '[data-cancel]': cancel, '.qbx-dialog-close': close, form, h3: heading }[selector]);
       dialog.showModal = () => {};
       dialog.remove = () => {};
       dialog.close = () => dialog.listeners.get('close')();
