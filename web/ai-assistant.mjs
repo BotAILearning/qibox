@@ -566,6 +566,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     const current = generation, target = id, epoch = action ? ++requestEpoch : requestEpoch;
     // 未挂载实例时不要用空 id 发请求（会落到不存在的路由上），先补挂载或明确提示。
     if (!target) throw new Error('AI 辅助尚未就绪，请重新打开微信后再试');
+    if (['save-default-style', 'commit-default-style', 'clear-default-style', 'apply-default-style', 'cancel-default-style'].includes(action) || action === 'learn' && extras.value?.asDefault) extras = { ...extras, value: { ...extras.value, account: state?.account || null } };
     let result;
     try { result = await api(`/instances/${target}/ai${compact && state ? '?view=live' + (selectedObject ? '&contact=' + encodeURIComponent(selectedObject) : '') : ''}`, action ? { action, ...extras } : undefined, ['learn', 'scan'].includes(action) ? 30 * 60 * 1000 : 130000); }
     catch (error) { if (current !== generation || target !== id || epoch !== requestEpoch) return null; throw error; }
@@ -899,7 +900,9 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   function defaultStyleLearning() {
     const ds = state.learnedDefaultStyle || null;
     const perspectiveLabel = p => p === 'other' ? '对方的风格' : '我的风格';
-    const meta = ds ? `${perspectiveLabel(ds.perspective)}${ds.source === 'paste' ? ' · 来自粘贴的聊天' : ` · 基于 ${ds.labels?.length || ds.contacts?.length || 0} 位联系人的聊天`}${ds.learnedAt ? ` · ${new Date(ds.learnedAt).toLocaleString('zh-CN', { hour12: false })}` : ''}` : '';
+    const contactCount = ds?.labels?.length || ds?.contacts?.length || 0;
+    const source = ds?.source === 'manual' ? '手动设置' : ds?.source === 'paste' ? '来自粘贴的聊天' : contactCount ? `基于 ${contactCount} 位联系人的聊天` : '未记录学习来源';
+    const meta = ds ? `${perspectiveLabel(ds.perspective)} · ${source}${ds.learnedAt ? ` · ${new Date(ds.learnedAt).toLocaleString('zh-CN', { hour12: false })}` : ''}` : '';
     const current = ds ? `<section class="ai-card ai-default-current"><div class="ai-card-heading"><h4>当前默认风格</h4><span class="ai-badge blue">${state.defaultStyleUndoable ? '待确认' : '已保存'}</span></div><form id="ai-default-style-form"><label class="ai-field"><span class="sr-only">风格总结</span><textarea name="summary" maxlength="6000" rows="7" placeholder="用自然语言描述默认的口吻与表达习惯">${esc(ds.style?.summary || summaryText(ds.style))}</textarea></label><small class="ai-default-count">${String(ds.style?.summary || summaryText(ds.style)).length} / 6000</small><p class="ai-help">${esc(meta)}。这将作为后续自动回复的默认风格。</p><div class="ai-actions">${state.defaultStyleUndoable ? '<button type="button" class="secondary" data-ai-action="cancel-default-style">取消当前学习</button>' : ''}<button type="submit" class="primary">保存修改</button></div></form></section>` : `<section class="ai-card ai-default-current ai-default-empty"><div><span class="ai-badge muted">尚未设置</span><h4>当前还没有默认风格</h4><p>选择联系人聊天或粘贴聊天内容开始学习。确认并保存后，才会应用于没有单独风格设置的对象。</p></div></section>`;
     const backLabel = ({ overview: '自动回复', settings: '系统设置', 'personal-info': '我的信息', 'global-reply': '全局回复策略', results: '学习结果', learning: '学习聊天风格', profile: '学习结果', 'manual-reply': '自动回复' })[defaultStyleReturn] || '系统设置';
     const sourceTabs = `<div class="ai-default-source-tabs" role="tablist" aria-label="学习素材来源"><button type="button" role="tab" data-ai-default-mode="contacts" aria-selected="${defaultStyleMode === 'contacts'}" class="${defaultStyleMode === 'contacts' ? 'selected' : ''}">${icon('chat')}<strong>联系人聊天</strong><small>选择与特定联系人的聊天记录</small></button><button type="button" role="tab" data-ai-default-mode="paste" aria-selected="${defaultStyleMode === 'paste'}" class="${defaultStyleMode === 'paste' ? 'selected' : ''}">${icon('file')}<strong>粘贴聊天</strong><small>直接粘贴聊天内容文本</small></button></div>`;
@@ -1284,6 +1287,14 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   });
   panel.addEventListener('input', event => {
     if (!state) return;
+    if (event.target.name === 'summary' && event.target.closest('#ai-default-style-form')) {
+      const form = event.target.form;
+      form.querySelector('.ai-default-count').textContent = `${event.target.value.length} / 6000`;
+      const saved = state.learnedDefaultStyle?.style;
+      const badge = form.closest('.ai-default-current').querySelector('.ai-badge');
+      badge.textContent = event.target.value !== (saved?.summary || summaryText(saved)) ? '未保存' : state.defaultStyleUndoable ? '待确认' : '已保存';
+      return;
+    }
     if (event.target.closest('#ai-object-form')) objectDirtyContacts.add(selectedObject);
     if (event.target.closest('#ai-personal-information-form')) { updatePersonalInformationForm($('#ai-personal-information-form'), state); rememberDraft(); return; }
     if (event.target.name === 'facts' && event.target.closest('#ai-global-reply-form')) {

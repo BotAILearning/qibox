@@ -1,3 +1,4 @@
+import { initDefaultStyleAccounts, rememberDefaultStyle, switchDefaultStyleAccount, verifyDefaultStyleAccount, saveDefaultStyleChange } from './ai-default-style-scope.mjs';
 import { mediaCapability, mediaOutputPrompt, generateMediaOutput } from './ai-media-output.mjs';
 import { readableMediaInput } from './ai-media-input.mjs';
 import { authoredMessages, factEvidence, contextualReplyStyle, contextualStylePrompt, monitorMemoryPrompt, validatedMonitorMemory } from './ai-context-learning.mjs';
@@ -252,6 +253,7 @@ export class AIAssistant {
       try { if (this.data.defaultStyleSnapshot.previous) this.data.defaultStyleSnapshot.previous.style = styleValue(this.data.defaultStyleSnapshot.previous.style); }
       catch { this.data.defaultStyleSnapshot = null; }
     }
+    initDefaultStyleAccounts(this);
     if (this.data.provider) { try { this.config = this.vault.open(this.data.provider); } catch { this.data.provider = null; this.data.tested = null; } }
     if (this.data.analysisProvider) { try { this.analysisConfig = this.vault.open(this.data.analysisProvider); } catch { this.analysisConfig = null; } }
     // Keep the encrypted legacy analysis configuration for recovery; one active model.
@@ -356,6 +358,7 @@ export class AIAssistant {
     finally { this.warmupRunning = false; this.lastWarmupAt = this.now(); }
   }
   save() {
+    rememberDefaultStyle(this);
     this.syncScheduledRun();
     if (this.bridge.stableMessageIds) for (const profile of this.profiles()) {
       const cursor = this.cursors.get(profile.id);
@@ -1335,6 +1338,7 @@ export class AIAssistant {
       if (this.data.account !== result.account) {
         this.available = false; this.contacts.clear(); this.avatarUrls.clear(); this.avatarReady = false; this.data.contacts = []; this.data.lastScanAt = null;
         this.invalidate(); if (this.data.account) this.data.settings.enabled = false; this.data.replyTargets = migrated.replyTargets; this.data.proactiveTargets = migrated.proactiveTargets; this.syncTargets(); this.data.queue = { status: 'idle', items: [], nextAt: null }; this.forgetContext();
+        switchDefaultStyleAccount(this, result.account, { equivalentIdentity: migrated.equivalentIdentity });
         this.data.account = result.account;
       }
       const nextContacts = new Map(), nextAvatarUrls = new Map();
@@ -1383,7 +1387,7 @@ export class AIAssistant {
       this.data.profiles[id] ??= { ...previous, id, account: result.account, contact: contact.id, label: contact.label, kind: contact.kind };
       ids.set(oldId, id);
     }
-    return { replyTargets: this.data.replyTargets.map(id => ids.get(id)).filter(Boolean),
+    return { equivalentIdentity: ids.size > 0, replyTargets: this.data.replyTargets.map(id => ids.get(id)).filter(Boolean),
       proactiveTargets: this.data.proactiveTargets.map(id => ids.get(id)).filter(Boolean) };
   }
   async read(profile, signal, { priority = false } = {}) {
@@ -1426,7 +1430,8 @@ export class AIAssistant {
     return { dates: [...dates].sort() };
   }
   analyze(value) { return analyzeContacts(this, value); }
-  async learn({ contacts, text, label, id, contact, from = '', to = '', scope = 'recent', previewOnly = false, perspective = 'self', asDefault = false, target = 'both' }) {
+  async learn({ contacts, text, label, id, contact, from = '', to = '', scope = 'recent', previewOnly = false, perspective = 'self', asDefault = false, target = 'both', account = this.data.account }) {
+    if (asDefault) await verifyDefaultStyleAccount(this, account);
     if (!this.modelReady()) throw new AppError('请先配置模型');
     if (this.operation) throw new AppError('已有学习任务，请等待或取消');
     perspective = perspective === 'other' ? 'other' : 'self';
@@ -1554,15 +1559,16 @@ export class AIAssistant {
         signal.throwIfAborted();
         if (revision !== this.revision) throw new AppError('学习已取消');
         // 记下学习前那一份，供「取消本次学习」还原（没有则记 null，取消时回到「未设置默认风格」）。
-        const previous = this.data.learnedDefaultStyle;
-        this.data.defaultStyleSnapshot = { previous: previous ? structuredClone(previous) : null, at: this.now() };
-        this.data.learnedDefaultStyle = {
-          style: styleValue(result.style), perspective,
-          contacts: learned.map(entry => entry.contact).filter(Boolean),
-          labels: learned.map(entry => entry.label).filter(Boolean),
-          learnedAt: this.now(), source: learned.length === 1 && learned[0].source === 'paste' ? 'paste' : 'learned',
-        };
-        await this.save();
+        await saveDefaultStyleChange(this, account, () => {
+          const previous = this.data.learnedDefaultStyle;
+          this.data.defaultStyleSnapshot = { previous: previous ? structuredClone(previous) : null, at: this.now() };
+          this.data.learnedDefaultStyle = {
+            style: styleValue(result.style), perspective,
+            contacts: learned.map(entry => entry.contact).filter(Boolean),
+            labels: learned.map(entry => entry.label).filter(Boolean),
+            learnedAt: this.now(), source: learned.length === 1 && learned[0].source === 'paste' ? 'paste' : 'learned',
+          };
+        });
         this.notice = `默认风格已更新，将应用于没有单独风格的联系人${learnTruncated ? '；部分联系人的聊天内容过长，已按上限截取' : ''}${learningFailures.length ? `；${learningFailures.map(failure => `${failure.label}：${failure.error}`).join('；')}` : ''}`; return this.publicState();
       }
       if (target === 'memory') {
@@ -1692,20 +1698,18 @@ export class AIAssistant {
       throw error;
     } finally { this.operation = null; this.bridge.clearContext?.(); this.learningFinished?.resolve(); }
   }
-  async saveDefaultStyle({ summary } = {}) {
-    return this.exclusive(async () => {
+  async saveDefaultStyle({ summary, account = this.data.account } = {}) {
+    return this.exclusive(() => saveDefaultStyleChange(this, account, () => {
       const text = textField(summary, 6000);
       if (!text) throw new AppError('请填写默认风格说明');
       this.data.learnedDefaultStyle ||= { source: 'manual', style: structuredClone(defaultStyle) };
       this.data.learnedDefaultStyle.style = { ...this.data.learnedDefaultStyle.style, summary: text };
-      await this.save(); return this.publicState();
-    });
+    }));
   }
-  async clearDefaultStyle() {
-    return this.exclusive(async () => {
+  async clearDefaultStyle({ account = this.data.account } = {}) {
+    return this.exclusive(() => saveDefaultStyleChange(this, account, () => {
       delete this.data.learnedDefaultStyle;
-      await this.save(); return this.publicState();
-    });
+    }));
   }
   // 把当前默认风格同步到所有联系人与群聊：清掉各对象上的历史副本，并把选择「默认风格」的对象
   // 换成最新的默认风格内容（它们本来就跟随账号级默认风格的后续更新）。
@@ -1723,40 +1727,37 @@ export class AIAssistant {
     }
     return count;
   }
-  async applyDefaultStyle() {
-    return this.exclusive(async () => {
+  async applyDefaultStyle({ account = this.data.account } = {}) {
+    return this.exclusive(() => saveDefaultStyleChange(this, account, () => {
       if (!this.data.learnedDefaultStyle?.style) throw new AppError('还没有默认风格，请先学习');
       const count = this.syncDefaultStyle();
-      await this.save();
-      return { ...this.publicState(), appliedDefaultStyle: count };
-    });
+      return { appliedDefaultStyle: count };
+    }));
   }
   // 【取消】撤销最近一次默认风格学习：有快照就整份还原学习前那一份（含来源、学习时间等元信息），
   // 学习前本来没有默认风格时回到「未设置默认风格」。没有可撤销的学习（已保存过或从未学习）时
   // 退化为清除默认风格。两种情况都不改动任何联系人与群聊。
-  async cancelDefaultStyle() {
-    return this.exclusive(async () => {
+  async cancelDefaultStyle({ account = this.data.account } = {}) {
+    return this.exclusive(() => saveDefaultStyleChange(this, account, () => {
       const snapshot = this.data.defaultStyleSnapshot;
       this.data.defaultStyleSnapshot = null;
       if (snapshot?.previous) this.data.learnedDefaultStyle = structuredClone(snapshot.previous);
       else delete this.data.learnedDefaultStyle;
-      await this.save();
-      return { ...this.publicState(), defaultStyleCancelled: snapshot?.previous ? 'reverted' : 'cleared' };
-    });
+      return { defaultStyleCancelled: snapshot?.previous ? 'reverted' : 'cleared' };
+    }));
   }
   // 【保存】保存默认风格 + 应用到聊天风格一步完成：把编辑后的风格说明写回档案，再把最新内容
   // 同步给所有对象，并结束本次学习的可撤销状态（此后取消即等于清除默认风格）。
-  async commitDefaultStyle({ summary } = {}) {
-    return this.exclusive(async () => {
+  async commitDefaultStyle({ summary, account = this.data.account } = {}) {
+    return this.exclusive(() => saveDefaultStyleChange(this, account, () => {
       const text = textField(summary, 6000);
       if (!text) throw new AppError('请填写默认风格说明');
       this.data.learnedDefaultStyle ||= { source: 'manual', style: structuredClone(defaultStyle) };
       this.data.learnedDefaultStyle.style = { ...this.data.learnedDefaultStyle.style, summary: text };
       const count = this.syncDefaultStyle();
       this.data.defaultStyleSnapshot = null;
-      await this.save();
-      return { ...this.publicState(), appliedDefaultStyle: count };
-    });
+      return { appliedDefaultStyle: count };
+    }));
   }
   async cancel() { this.invalidate(); this.pauseQueue(); this.forgetContext(); for (const profile of this.profiles()) delete profile.continuation; this.notice = '已取消未完成的操作'; await this.save(); return this.publicState(); }
   pauseQueue() { if (this.data.queue.status === 'running') this.data.queue.status = 'paused'; this.data.queue.nextAt = null; this.followUps.clear(); }
