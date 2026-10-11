@@ -741,10 +741,15 @@ export class AIAssistant {
   // 「默认风格」只有一套（账号级）：对象选择的是默认风格时，一律使用账号级学习到的默认风格，
   // 并跟随其后续更新；只有内容被改过（styleId 变为 custom/preset/learned）或锁定了自定义字段时才用对象自己的风格。
   defaultStyleApplied(profile) {
-    return !!profile && (profile.styleId ?? '') === '' && !(profile.locked?.length) && !!this.data.learnedDefaultStyle?.style;
+    return !!profile && (profile.styleId ?? '') === '' && !(profile.locked?.length) && !!this.activeDefaultStyle()?.style;
+  }
+  activeDefaultStyle() {
+    return this.data.defaultStyleSnapshot ? this.data.defaultStyleSnapshot.previous || null : this.data.learnedDefaultStyle || null;
   }
   effectiveStyle(profile) {
-    return this.defaultStyleApplied(profile) ? this.data.learnedDefaultStyle.style : profile.style;
+    if (this.defaultStyleApplied(profile)) return this.activeDefaultStyle().style;
+    if (this.data.defaultStyleSnapshot && (profile.styleId ?? '') === '' && !(profile.locked?.length)) return defaultStyle;
+    return profile.style;
   }
   generationStyle(profile, strategy, mode) {
     if (mode === 'reply' && !this.continuing(profile)) return this.effectiveStyle(profile);
@@ -1027,6 +1032,7 @@ export class AIAssistant {
       available: this.available, notice: this.notice, waiting: this.data.settings.enabled && (!this.ready() || !this.available || !this.modelReady() || !!this.operation || !!this.scanOperation), operation: this.operation || this.scanOperation || null, manualRecovery: false, labels: { available: false, groups: [] },
       live: this.liveStates(), recentErrors: errors.records, errorsPage: errors.page,
       learnedDefaultStyle: this.data.learnedDefaultStyle || null,
+      effectiveDefaultStyle: this.activeDefaultStyle()?.style || null,
       defaultStyleUndoable: !!this.data.defaultStyleSnapshot,
       requirements: { proactive: this.data.proactiveVersion === 2 ? this.proactiveV2.requirements().join('；') : this.prerequisites('proactive'), reply: this.prerequisites('reply') }, schema: { categories, styleOptions, avoidOptions, defaultStyle, providerPresets, goalPresets, replyPresets } };
   }
@@ -1560,7 +1566,7 @@ export class AIAssistant {
         if (revision !== this.revision) throw new AppError('学习已取消');
         // 记下学习前那一份，供「取消本次学习」还原（没有则记 null，取消时回到「未设置默认风格」）。
         await saveDefaultStyleChange(this, account, () => {
-          const previous = this.data.learnedDefaultStyle;
+          const previous = this.activeDefaultStyle();
           this.data.defaultStyleSnapshot = { previous: previous ? structuredClone(previous) : null, at: this.now() };
           this.data.learnedDefaultStyle = {
             style: styleValue(result.style), perspective,
@@ -1569,7 +1575,7 @@ export class AIAssistant {
             learnedAt: this.now(), source: learned.length === 1 && learned[0].source === 'paste' ? 'paste' : 'learned',
           };
         });
-        this.notice = `默认风格已更新，将应用于没有单独风格的联系人${learnTruncated ? '；部分联系人的聊天内容过长，已按上限截取' : ''}${learningFailures.length ? `；${learningFailures.map(failure => `${failure.label}：${failure.error}`).join('；')}` : ''}`; return this.publicState();
+        this.notice = `默认风格已生成，确认并保存后才会用于自动回复${learnTruncated ? '；部分联系人的聊天内容过长，已按上限截取' : ''}${learningFailures.length ? `；${learningFailures.map(failure => `${failure.label}：${failure.error}`).join('；')}` : ''}`; return this.publicState();
       }
       if (target === 'memory') {
         // 仅学习记忆：每位对象的聊天整理成一份候选记忆，先放进待确认，不直接覆盖已有记忆。
@@ -1704,11 +1710,13 @@ export class AIAssistant {
       if (!text) throw new AppError('请填写默认风格说明');
       this.data.learnedDefaultStyle ||= { source: 'manual', style: structuredClone(defaultStyle) };
       this.data.learnedDefaultStyle.style = { ...this.data.learnedDefaultStyle.style, summary: text };
+      this.data.defaultStyleSnapshot = null;
     }));
   }
   async clearDefaultStyle({ account = this.data.account } = {}) {
     return this.exclusive(() => saveDefaultStyleChange(this, account, () => {
       delete this.data.learnedDefaultStyle;
+      this.data.defaultStyleSnapshot = null;
     }));
   }
   // 把当前默认风格同步到所有联系人与群聊：清掉各对象上的历史副本，并把选择「默认风格」的对象
@@ -1731,6 +1739,7 @@ export class AIAssistant {
     return this.exclusive(() => saveDefaultStyleChange(this, account, () => {
       if (!this.data.learnedDefaultStyle?.style) throw new AppError('还没有默认风格，请先学习');
       const count = this.syncDefaultStyle();
+      this.data.defaultStyleSnapshot = null;
       return { appliedDefaultStyle: count };
     }));
   }
@@ -1855,7 +1864,7 @@ export class AIAssistant {
       }
       if (previous) migrateLearnedStyle(previous);
       const styleDraft = structuredClone(previous || {}); migrateObjectStyles(styleDraft);
-      const resolvedStyle = styleSet === false ? { style, styleId: '' } : saveObjectStyle(styleDraft, style, styleId ?? '', this.data.learnedDefaultStyle?.style);
+      const resolvedStyle = styleSet === false ? { style, styleId: '' } : saveObjectStyle(styleDraft, style, styleId ?? '', this.activeDefaultStyle()?.style);
       const resolvedGroup = group ? groupOptions(group, previous?.groupOptions || groupDefaults()) : null;
       const resolvedMemory = memory ? changeMemory(this.vault, previous || { id, kind: target.kind }, memory, this.now()) : null;
       const wasEnabled = previous ? this.replySelected(previous) : false;
@@ -1915,7 +1924,7 @@ export class AIAssistant {
         if (value.paused === false && (profile.delivery?.status === 'sending' || profile.proactiveDelivery?.status === 'sending')) throw new AppError('发送仍在进行，请稍后重试');
         profile.locked = [...new Set([...(profile.locked || []), ...Object.keys(style).filter(key => JSON.stringify(style[key]) !== JSON.stringify(profile.style[key]))])];
         profile.style = style;
-        profile.styleId = selectedStyleId(profile, style, profile.styleId ?? '', true, this.data.learnedDefaultStyle?.style); profile.replyStyleSet = true;
+        profile.styleId = selectedStyleId(profile, style, profile.styleId ?? '', true, this.activeDefaultStyle()?.style); profile.replyStyleSet = true;
         if (typeof value.paused === 'boolean') {
           if (value.paused) this.pauseProfile(profile, 'explicit');
           else {
@@ -3275,7 +3284,7 @@ export class AIAssistant {
       }
     }
     delete profile.groupWait;
-    if (this.data.settings.updateStyle && result.style && contextualReplyStyle(modelMessages).samples.length) { const style = styleValue(result.style); for (const field of [...(profile.locked || []), 'customTone', 'customAvoid']) style[field] = profile.style[field]; profile.style = style; profile.styleId = selectedStyleId(profile, style, profile.styleId ?? '', true, this.data.learnedDefaultStyle?.style); profile.replyStyleSet = true; }
+    if (this.data.settings.updateStyle && result.style && contextualReplyStyle(modelMessages).samples.length) { const style = styleValue(result.style); for (const field of [...(profile.locked || []), 'customTone', 'customAvoid']) style[field] = profile.style[field]; profile.style = style; profile.styleId = selectedStyleId(profile, style, profile.styleId ?? '', true, this.activeDefaultStyle()?.style); profile.replyStyleSet = true; }
     if (Array.isArray(result.memoryUpdates)) {
       try { this.mergeObservedMemory(profile, result.memoryUpdates, modelMessages); }
       catch { profile.memoryNotice = '本轮记忆格式无效，已保留原记忆。'; }

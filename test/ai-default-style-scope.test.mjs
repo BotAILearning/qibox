@@ -134,3 +134,38 @@ test('failed default learning persistence keeps the previous default and undo', 
   assert.equal(f.a.publicState().defaultStyleUndoable, before.defaultStyleUndoable);
   assert.deepEqual(f.a.publicState().profiles, before.profiles);
 });
+
+test('a learned default remains a preview until explicit confirmation', async t => {
+  const f = await fixture(t); await f.a.commitDefaultStyle({ summary: 'CONFIRMED_PREVIOUS_STYLE' });
+  await f.a.learn({ contacts: [f.bridge.contacts[0].id], asDefault: true });
+  const candidate = f.a.publicState().learnedDefaultStyle.style.summary;
+  assert.notEqual(candidate, 'CONFIRMED_PREVIOUS_STYLE');
+  assert.equal(f.a.publicState().defaultStyleUndoable, true);
+  assert.ok(f.a.profiles().every(p => f.a.effectiveStyle(p).summary === 'CONFIRMED_PREVIOUS_STYLE'), 'preview must not change effective reply styles');
+  await f.a.commitDefaultStyle({ summary: candidate });
+  assert.ok(f.a.profiles().every(p => f.a.effectiveStyle(p).summary === candidate));
+  assert.equal(f.a.publicState().defaultStyleUndoable, false);
+  assert.equal(f.bridge.sent.length, 0);
+});
+
+test('relearning an unconfirmed default and cancelling restores the last confirmed style', async t => {
+  const f = await fixture(t); await f.a.commitDefaultStyle({ summary: 'LAST_CONFIRMED_STYLE' });
+  await f.a.learn({ contacts: [f.bridge.contacts[0].id], asDefault: true });
+  await f.a.learn({ contacts: [f.bridge.contacts[1].id], asDefault: true });
+  const restarted = await f.create();
+  assert.equal(restarted.publicState().effectiveDefaultStyle.summary, 'LAST_CONFIRMED_STYLE');
+  await restarted.cancelDefaultStyle();
+  assert.equal(restarted.publicState().learnedDefaultStyle.style.summary, 'LAST_CONFIRMED_STYLE');
+  assert.equal(restarted.publicState().defaultStyleUndoable, false);
+  assert.equal(f.bridge.sent.length, 0);
+});
+
+test('the first learned default does not replace the built-in style before confirmation', async t => {
+  const f = await fixture(t),before=f.a.profiles().map(p=>structuredClone(f.a.effectiveStyle(p)));
+  await f.a.learn({ contacts: [f.bridge.contacts[0].id], asDefault: true });
+  assert.equal(f.a.publicState().effectiveDefaultStyle,null);
+  assert.deepEqual(f.a.profiles().map(p=>f.a.effectiveStyle(p)),before);
+  await f.a.applyDefaultStyle();
+  assert.equal(f.a.publicState().defaultStyleUndoable,false);
+  assert.equal(f.a.publicState().effectiveDefaultStyle.summary,f.a.publicState().learnedDefaultStyle.style.summary);
+});

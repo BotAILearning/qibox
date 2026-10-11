@@ -897,13 +897,16 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   function pasteModule() {
     return `<form id="ai-paste-form" class="ai-default-paste-form"><h4>粘贴聊天内容</h4><p class="ai-help">按聊天顺序粘贴，区分“我”和“对方”。</p><label class="ai-field"><span class="sr-only">聊天内容</span><textarea name="text" required maxlength="90000" rows="9" placeholder="我：你好，周五的会议时间可以调整吗？&#10;对方：可以的，改到下午三点吧。"></textarea></label><p class="ai-help">学习结果生成后，确认并保存才会生效。</p></form>`;
   }
+  function defaultReplyStyle() {
+    return Object.hasOwn(state, 'effectiveDefaultStyle') ? state.effectiveDefaultStyle || state.schema?.defaultStyle : state.learnedDefaultStyle?.style || state.schema?.defaultStyle;
+  }
   function defaultStyleLearning() {
     const ds = state.learnedDefaultStyle || null;
     const perspectiveLabel = p => p === 'other' ? '对方的风格' : '我的风格';
     const contactCount = ds?.labels?.length || ds?.contacts?.length || 0;
     const source = ds?.source === 'manual' ? '手动设置' : ds?.source === 'paste' ? '来自粘贴的聊天' : contactCount ? `基于 ${contactCount} 位联系人的聊天` : '未记录学习来源';
     const meta = ds ? `${perspectiveLabel(ds.perspective)} · ${source}${ds.learnedAt ? ` · ${new Date(ds.learnedAt).toLocaleString('zh-CN', { hour12: false })}` : ''}` : '';
-    const current = ds ? `<section class="ai-card ai-default-current"><div class="ai-card-heading"><h4>当前默认风格</h4><span class="ai-badge blue">${state.defaultStyleUndoable ? '待确认' : '已保存'}</span></div><form id="ai-default-style-form"><label class="ai-field"><span class="sr-only">风格总结</span><textarea name="summary" maxlength="6000" rows="7" placeholder="用自然语言描述默认的口吻与表达习惯">${esc(ds.style?.summary || summaryText(ds.style))}</textarea></label><small class="ai-default-count">${String(ds.style?.summary || summaryText(ds.style)).length} / 6000</small><p class="ai-help">${esc(meta)}。这将作为后续自动回复的默认风格。</p><div class="ai-actions">${state.defaultStyleUndoable ? '<button type="button" class="secondary" data-ai-action="cancel-default-style">取消当前学习</button>' : ''}<button type="submit" class="primary">保存修改</button></div></form></section>` : `<section class="ai-card ai-default-current ai-default-empty"><div><span class="ai-badge muted">尚未设置</span><h4>当前还没有默认风格</h4><p>选择联系人聊天或粘贴聊天内容开始学习。确认并保存后，才会应用于没有单独风格设置的对象。</p></div></section>`;
+    const current = ds ? `<section class="ai-card ai-default-current"><div class="ai-card-heading"><h4>${state.defaultStyleUndoable ? '待确认的默认风格' : '当前默认风格'}</h4><span class="ai-badge blue">${state.defaultStyleUndoable ? '待确认' : '已保存'}</span></div><form id="ai-default-style-form"><label class="ai-field"><span class="sr-only">风格总结</span><textarea name="summary" maxlength="6000" rows="7" placeholder="用自然语言描述默认的口吻与表达习惯">${esc(ds.style?.summary || summaryText(ds.style))}</textarea></label><small class="ai-default-count">${String(ds.style?.summary || summaryText(ds.style)).length} / 6000</small><p class="ai-help">${esc(meta)}。${state.defaultStyleUndoable ? '确认并保存后才用于自动回复；当前仍使用原风格。' : '这将作为后续自动回复的默认风格。'}</p><div class="ai-actions">${state.defaultStyleUndoable ? '<button type="button" class="secondary" data-ai-action="cancel-default-style">取消当前学习</button>' : ''}<button type="submit" class="primary">保存修改</button></div></form></section>` : `<section class="ai-card ai-default-current ai-default-empty"><div><span class="ai-badge muted">尚未设置</span><h4>当前还没有默认风格</h4><p>选择联系人聊天或粘贴聊天内容开始学习。确认并保存后，才会应用于没有单独风格设置的对象。</p></div></section>`;
     const backLabel = ({ overview: '自动回复', settings: '系统设置', 'personal-info': '我的信息', 'global-reply': '全局回复策略', results: '学习结果', learning: '学习聊天风格', profile: '学习结果', 'manual-reply': '自动回复' })[defaultStyleReturn] || '系统设置';
     const sourceTabs = `<div class="ai-default-source-tabs" role="tablist" aria-label="学习素材来源"><button type="button" role="tab" data-ai-default-mode="contacts" aria-selected="${defaultStyleMode === 'contacts'}" class="${defaultStyleMode === 'contacts' ? 'selected' : ''}">${icon('chat')}<strong>联系人聊天</strong><small>选择与特定联系人的聊天记录</small></button><button type="button" role="tab" data-ai-default-mode="paste" aria-selected="${defaultStyleMode === 'paste'}" class="${defaultStyleMode === 'paste' ? 'selected' : ''}">${icon('file')}<strong>粘贴聊天</strong><small>直接粘贴聊天内容文本</small></button></div>`;
     const direction = `<section class="ai-default-direction"><h4>学习方向</h4><p class="ai-help">确定以谁的聊天风格为主要参考</p><div class="ai-default-perspectives"><label><input type="radio" name="default-perspective" value="self" ${defaultStylePerspective === 'self' ? 'checked' : ''}><span><strong>我的风格</strong><small>学习我在聊天中的表达方式，作为默认风格</small></span></label><label><input type="radio" name="default-perspective" value="other" ${defaultStylePerspective === 'other' ? 'checked' : ''}><span><strong>对方的风格</strong><small>仅学习对方的说话方式和表达习惯</small></span></label></div></section>`;
@@ -1234,7 +1237,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         const profile = state.profiles.find(p => p.contact === selectedObject), preset = state.schema.replyPresets.find(p => 'preset:' + p.id === input.value);
         const style = input.value === 'learned' ? profile?.learnedStyle : preset?.style;
         // 【默认风格】只有一套（账号级）：填入学习到的默认风格内容，并跟随其更新。
-        if (input.value === '') $('#ai-object-form').elements.summary.value = summaryText(state.learnedDefaultStyle?.style || {});
+        if (input.value === '') $('#ai-object-form').elements.summary.value = summaryText(defaultReplyStyle() || {});
         else if (style) $('#ai-object-form').elements.summary.value = summaryText(style);
         
         rememberDraft(); render(); return;
@@ -1456,7 +1459,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         const styleId = data.get('styleId') || '';
         const strategy = { ...profile?.replyStrategy, replyGoal: data.get('replyGoal') || '', facts: profile?.replyStrategy?.facts || '', boundaries: data.get('boundaries') || '', maxRounds: parseReplyLimit(data.get('maxRounds') ?? 50) };
         // 以页面当前 styleId 对应的完整风格为基础，仅覆盖页面编辑的说明，避免丢失预设/学习风格的其余字段。
-        const base = styleId === '' ? (state.learnedDefaultStyle?.style || state.schema?.defaultStyle) : styleId === 'learned' ? (profile?.learnedStyle || profile?.style || state.schema?.defaultStyle)
+        const base = styleId === '' ? (defaultReplyStyle()) : styleId === 'learned' ? (profile?.learnedStyle || profile?.style || state.schema?.defaultStyle)
           : (objectStyleTabs(state, profile).find(row => row.id === styleId)?.style || profile?.style || state.schema?.defaultStyle);
         const style = summary ? { ...base, summary } : { ...state.schema?.defaultStyle };
         // 群聊开启实时回复需要先确认 Token 消耗与账号风险；取消则回滚草稿，不视为已保存。
@@ -1478,7 +1481,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         const changedRealtimeMode = kind === 'group' && String(data.get('realtimeMode') || 'normal') !== (profile?.groupOptions?.realtimeMode || 'normal');
         const currentStyle = styleChoice(profile);
         const baselineStyleId = currentStyle.styleId || '';
-        const baselineSummary = currentStyle.styleId ? (currentStyle.summary || '') : styleSummaryText(state.learnedDefaultStyle?.style || state.schema?.defaultStyle);
+        const baselineSummary = currentStyle.styleId ? (currentStyle.summary || '') : styleSummaryText(defaultReplyStyle());
         const changedStyle = String(data.get('styleId') || '') !== baselineStyleId || String(data.get('summary') || '') !== baselineSummary;
         const hasReplySettings = !!profile?.replyStrategy || ['replyGoal','boundaries'].some(key => String(data.get(key) || '').trim()) || changedSwitch || changedRealtimeMode || changedStyle || String(strategy.maxRounds) !== String(profile?.replyStrategy?.maxRounds ?? state.replyRoundLimits?.[kind] ?? state.replyStrategy?.maxRounds ?? 50);
         const memoryEntries = JSON.parse(String(data.get('memorySummary') || '[]'));
@@ -1857,7 +1860,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         if (command === 'delete' && !await productDialog({ title: '删除这个风格？', message: '只删除当前风格，聊天记忆与回复设置保留。', confirm: '删除风格', danger: true })) return;
         const result = await execute('configuration', { value: { type: 'style', id: profile?.id, contact: selectedObject, styleId, command, name } }, command === 'delete' ? '风格已删除' : command === 'rename' ? '风格已重命名' : '已添加自定义风格');
         const updated = result?.profiles?.find(p => p.contact === selectedObject);
-        if (updated) { const selectedStyle = command === 'rename' ? styleId : updated.styleId, selected = objectStyleTabs(state, updated).find(row => row.id === selectedStyle); objectDrafts.set(selectedObject, { ...objectDrafts.get(selectedObject), styleId: selectedStyle, summary: styleSummaryText(selected?.style || (selectedStyle ? updated.style : state.learnedDefaultStyle?.style)) }); render(); }
+        if (updated) { const selectedStyle = command === 'rename' ? styleId : updated.styleId, selected = objectStyleTabs(state, updated).find(row => row.id === selectedStyle); objectDrafts.set(selectedObject, { ...objectDrafts.get(selectedObject), styleId: selectedStyle, summary: styleSummaryText(selected?.style || (selectedStyle ? updated.style : defaultReplyStyle())) }); render(); }
         return;
       }
       if ('aiClearRecords' in button.dataset || 'aiClearTasks' in button.dataset) {
@@ -1912,7 +1915,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         const style = styleId === 'learned' ? profile?.learnedStyle : objectStyleTabs(state, profile).find(row => row.id === styleId)?.style;
         form.elements.styleId.value = styleId;
         // 【默认风格】只有一套（账号级）：填入学习到的默认风格内容，并跟随其更新。
-        if (styleId === '') form.elements.summary.value = summaryText(state.learnedDefaultStyle?.style || state.schema?.defaultStyle);
+        if (styleId === '') form.elements.summary.value = summaryText(defaultReplyStyle());
         else if (style) form.elements.summary.value = summaryText(style);
         rememberDraft();
         objectDrafts.set(selectedObject, { ...objectDrafts.get(selectedObject), styleId: form.elements.styleId.value, summary: form.elements.summary.value });
@@ -2021,11 +2024,11 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       }
       if (action === 'cancel-default-style') {
         if (!state.defaultStyleUndoable) return;
-        if (!await confirmDialog('取消本次学习？默认风格将恢复为学习前的内容，联系人与群聊的设置不受影响。')) return;
+        if (!await confirmDialog('取消本次学习？默认风格将恢复为最近已确认的内容，联系人与群聊的设置不受影响。')) return;
         const current = generation;
         const cancelled = await execute('cancel-default-style', {});
         if (!cancelled || current !== generation) return;
-        message(cancelled.defaultStyleCancelled === 'reverted' ? '已取消本次学习，默认风格恢复为学习前的内容' : '默认风格已清除');
+        message(cancelled.defaultStyleCancelled === 'reverted' ? '已取消本次学习，默认风格恢复为最近已确认的内容' : '默认风格已清除');
         return;
       }
       if (action === 'cancel') {

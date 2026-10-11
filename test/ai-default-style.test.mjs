@@ -162,6 +162,7 @@ test('cancelling a default style learning restores the previous one; saving comm
   provider.next = async () => ({ style: learnedStyle('第一版默认风格。') });
   await a.learn({ contacts: contacts.slice(0, 2), asDefault: true, perspective: 'other' });
   const first = structuredClone(a.publicState().learnedDefaultStyle);
+  await a.commitDefaultStyle({ summary: first.style.summary });
   provider.next = async () => ({ style: learnedStyle('第二版默认风格。') });
   await a.learn({ contacts: [contacts[1]], asDefault: true, perspective: 'self' });
   assert.match(a.publicState().learnedDefaultStyle.style.summary, /第二版默认风格/);
@@ -188,6 +189,7 @@ test('untouched default profiles fall back to the learned default style at gener
   const { a, provider, contacts } = await fixture(t, 3);
   provider.next = async () => ({ style: learnedStyle('账号级默认风格。') });
   await a.learn({ contacts: contacts.slice(0, 2), asDefault: true });
+  await a.applyDefaultStyle();
   const learned = a.publicState().learnedDefaultStyle.style;
   await a.settings({ enabled: true, reply: true, replyScope: 'all' });
   const fallback = a.profiles().find(p => p.source === 'default');
