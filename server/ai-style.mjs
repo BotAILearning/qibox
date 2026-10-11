@@ -10,7 +10,12 @@ export function composeLearnedStyle(value) {
   if (Object.hasOwn(raw, 'summary')) return { ...raw };
   const lines = [];
   for (const [key, label] of styleLayers) {
-    const text = typeof raw[key] === 'string' ? raw[key].replace(/\s+/gu, ' ').trim().slice(0, 600) : '';
+    // Some model values contain the template fragment itself as text, such as
+    // 语言层":"样本不足. Remove only this layer's quoted prefix, preserving
+    // ordinary quoted prose and anything in the body of the description.
+    const text = typeof raw[key] === 'string' ? raw[key].trim()
+      .replace(new RegExp(`^"?${label}层"\\s*:\\s*"`), '')
+      .replace(/\s+/gu, ' ').trim().slice(0, 600) : '';
     if (text) lines.push(`${label}：${text}`);
   }
   return lines.length ? { summary: lines.join('\n') } : { ...raw };
