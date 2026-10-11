@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { productDialog } from '../web/dialogs.mjs';
+import { productDialog, bindDialogFocus } from '../web/dialogs.mjs';
 
 function surface(t) {
   const previous = globalThis.document, handlers = new Map(), controls = [], attributes = new Map();
@@ -57,4 +57,18 @@ test('input dialogs keep editing and submission while exposing a unique accessib
   f.submit(); assert.equal(await first, '新名字'); assert.equal(f.document.activeElement, f.origin);
   const second = productDialog({ title: '再次确认' });
   assert.notEqual(f.heading.id, titleId); f.escape(); await second;
+});
+
+test('reused instance dialogs update focus boundaries as content and pending controls change', async t => {
+  const f = surface(t); bindDialogFocus(f.dialog);
+  f.confirm.focus(); assert.equal(f.key('Tab'), true); assert.equal(f.document.activeElement, f.close);
+  f.controls.splice(0, f.controls.length, f.input, f.cancel, f.confirm);
+  f.input.focus(); assert.equal(f.key('Tab', true), true); assert.equal(f.document.activeElement, f.confirm);
+  f.confirm.disabled = true;
+  f.cancel.focus(); assert.equal(f.key('Tab'), true); assert.equal(f.document.activeElement, f.input);
+  assert.equal(f.key('Enter'), false);
+  assert.equal(f.key('Tab', false, { ctrlKey: true }), false);
+  f.controls.splice(0, f.controls.length, f.cancel);
+  f.cancel.focus(); assert.equal(f.key('Tab'), true); assert.equal(f.document.activeElement, f.cancel);
+  assert.equal(f.key('Tab', true), true); assert.equal(f.document.activeElement, f.cancel);
 });

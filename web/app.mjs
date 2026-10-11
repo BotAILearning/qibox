@@ -11,6 +11,7 @@ import { aiAssistant } from './ai-assistant.mjs';
 import { desktopAudio } from './desktop-audio.mjs';
 import { dismissibleNotice } from './dismissible-notice.mjs';
 import { visibleRefresh, stateRefreshDelay } from './visible-refresh.mjs';
+import { bindDialogFocus } from './dialogs.mjs';
 import './qiapp-adopt.mjs';
 
 const $ = selector => document.querySelector(selector);
@@ -160,6 +161,8 @@ async function downloadAnalysisReport(instanceId, value, signal) {
   setTimeout(() => URL.revokeObjectURL(url), 60000);
   return filename;
 }
+bindDialogFocus(modal);
+modal.setAttribute('aria-labelledby', 'modal-title');
 function closeModal(generation = modalGeneration) { if (requiredModal || generation !== modalGeneration) return; modalGeneration++; modal.close(); modalSubmit = null; }
 function dialog(title, content, actions = '<button type="button" data-close class="secondary">取消</button><button type="submit" class="primary">确定</button>', submit, required = false) {
   const generation = ++modalGeneration;
