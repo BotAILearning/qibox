@@ -1075,12 +1075,20 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       if (value.contacts && !value.contacts.length) throw new Error('请选择至少一位联系人');
       if (value.contacts?.some(key => !state.contacts.some(c => c.id === key && ['person', 'group'].includes(c.kind)))) throw new Error('联系人已变化，请刷新后重新选择');
       rememberDraft();
+      const current = generation, expectedWorkToken = workToken + 1;
       await workflow(async step => {
         $('#ai-operation').hidden = false; $('#ai-operation-text').textContent = '正在读取聊天并学习默认风格…';
         await step('learn', { value: { ...value, previewOnly: false } });
+        if (current !== generation || workToken !== expectedWorkToken) return;
+        if (typeof value.text === 'string') {
+          const input = $('#ai-paste-form')?.querySelector('[name=text]');
+          if (input?.value === value.text) input.value = '';
+          if (learningDraft?.text === value.text) learningDraft.text = '';
+        }
         state.operation = null;
         tab = 'default-style';
       });
+      if (current !== generation || workToken !== expectedWorkToken) return;
       message(state.notice || '默认风格已更新，可在此调整后保存，或取消本次学习', /失败/.test(state.notice || ''));
       return;
     }
@@ -1531,7 +1539,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         message(saved.appliedDefaultStyle ? `默认风格已保存，并同步给 ${saved.appliedDefaultStyle} 个使用默认风格的对象` : '默认风格已保存，当前没有使用默认风格的对象');
         return;
       }
-      if (form.id === 'ai-paste-form') { const value = Object.fromEntries(data); form.querySelector('[name=text]').value = ''; if (learningDraft) learningDraft.text = ''; await learn({ ...value, perspective: defaultStylePerspective, asDefault: true }); }
+      if (form.id === 'ai-paste-form') { const value = Object.fromEntries(data); await learn({ ...value, perspective: defaultStylePerspective, asDefault: true }); }
       if (form.id === 'ai-proactive-form') { await proactiveUI.submit(); return; }
       if (form.id === 'ai-profile-form') {
         const key = form.dataset.id, original = state.profiles.find(p => p.id === key), base = { ...(original.strategy || replyStrategy()), ...original.replyStrategy };

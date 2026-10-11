@@ -728,3 +728,79 @@ test('a delayed skip acknowledgement cannot refresh or replace a newly selected 
   assert.equal(calls.some(call => call.url.includes('?view=live')), false);
   assert.doesNotMatch(dom.node('#ai-feedback').textContent, /已跳过等待|undefined/);
 });
+
+function pasteLearningSurface(t, respond) {
+  const originalDocument = globalThis.document, OriginalFormData = globalThis.FormData, dom = surface(), actions = [];
+  globalThis.document = dom.document;
+  globalThis.FormData = class extends OriginalFormData { constructor(form) { super(); for (const [key, value] of form?.entries || []) this.append(key, value); } };
+  const snapshot = { ...availableState(), account: 'account-a', learnedDefaultStyle: { style: { summary: '原已确认的默认风格' }, perspective: 'self' } };
+  const controller = aiAssistant({ api: async (url, payload) => {
+    if (payload?.action) actions.push(payload.action);
+    return payload?.action === 'learn' ? respond(snapshot, payload) : { ...snapshot, account: url.includes('instance-b') ? 'account-b' : 'account-a' };
+  } });
+  const mount = text => {
+    const form = dom.form('#ai-paste-form', []), input = { value: text };
+    form.querySelector = selector => selector === '[name=text]' ? input : null;
+    form.elements = { text: input };
+    Object.defineProperty(form, 'entries', { get: () => [['text', input.value]] });
+    return { form, input };
+  };
+  t.after(() => { controller.detach(); globalThis.document = originalDocument; globalThis.FormData = OriginalFormData; });
+  return { dom, controller, mount, actions };
+}
+
+test('failed default paste learning retains editable Chinese and emoji material across redraw without a retry', async t => {
+  const f = pasteLearningSurface(t, async () => { throw new Error('模型风格学习的语言维度没有有效说明，原风格未修改'); });
+  await f.controller.attach('instance-a'); await f.dom.navigate('default-style');
+  const text = '我：刚忙完🙂。\n对方：先休息。', { form, input } = f.mount(text);
+  await f.dom.submit(form);
+  assert.equal(input.value, text);
+  assert.match(f.dom.node('#ai-feedback').textContent, /原风格未修改/);
+  await f.dom.navigate('settings'); await f.dom.navigate('default-style');
+  assert.equal(input.value, text);
+  assert.match(f.dom.node('#ai-content').innerHTML, /原已确认的默认风格/);
+  assert.deepEqual(f.actions, ['learn']);
+});
+
+test('successful default paste learning clears only submitted material after receiving its candidate', async t => {
+  const f = pasteLearningSurface(t, async snapshot => ({ ...snapshot, defaultStyleUndoable: true, learnedDefaultStyle: { style: { summary: '有效的待确认候选' }, perspective: 'self' } }));
+  await f.controller.attach('instance-a'); await f.dom.navigate('default-style');
+  const { form, input } = f.mount('我：好的🙂。\n对方：晚点聊。');
+  await f.dom.submit(form);
+  assert.equal(input.value, '');
+  await f.dom.navigate('settings'); await f.dom.navigate('default-style');
+  assert.equal(input.value, '');
+  assert.match(f.dom.node('#ai-content').innerHTML, /有效的待确认候选/);
+  assert.deepEqual(f.actions, ['learn']);
+});
+
+test('cancelled default paste learning retains material and does not show a late success', { timeout: 2000 }, async t => {
+  const entered = Promise.withResolvers(), released = Promise.withResolvers();
+  const f = pasteLearningSurface(t, async snapshot => { entered.resolve(); await released.promise; return { ...snapshot, defaultStyleUndoable: true }; });
+  await f.controller.attach('instance-a'); await f.dom.navigate('default-style');
+  const text = '我：取消后继续编辑🙂。', { form, input } = f.mount(text);
+  const pending = f.dom.submit(form); await entered.promise;
+  t.after(async () => { released.resolve(); await pending; });
+  assert.equal(input.value, text);
+  await f.dom.click('cancel'); const notice = f.dom.node('#ai-feedback').textContent;
+  released.resolve(); await pending;
+  assert.equal(input.value, text);
+  assert.equal(f.dom.node('#ai-feedback').textContent, notice);
+  assert.doesNotMatch(notice, /默认风格已更新/);
+  assert.deepEqual(f.actions, ['learn', 'cancel']);
+});
+
+test('a late default paste result cannot clear a new instance material or overwrite its notice', { timeout: 2000 }, async t => {
+  const entered = Promise.withResolvers(), released = Promise.withResolvers();
+  const f = pasteLearningSurface(t, async snapshot => { entered.resolve(); await released.promise; return snapshot; });
+  await f.controller.attach('instance-a'); await f.dom.navigate('default-style');
+  const old = f.mount('旧账号的素材'), pending = f.dom.submit(old.form); await entered.promise;
+  t.after(async () => { released.resolve(); await pending; });
+  f.controller.detach(); await f.controller.attach('instance-b'); await f.dom.navigate('default-style');
+  const next = f.mount('新账号的素材🙂。'), notice = f.dom.node('#ai-feedback').textContent, renders = f.dom.node('#ai-content').writes;
+  released.resolve(); await pending;
+  assert.equal(next.input.value, '新账号的素材🙂。');
+  assert.equal(f.dom.node('#ai-feedback').textContent, notice);
+  assert.equal(f.dom.node('#ai-content').writes, renders);
+  assert.deepEqual(f.actions, ['learn']);
+});
