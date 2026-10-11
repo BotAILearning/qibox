@@ -7,6 +7,7 @@ import { root, playwrightPath } from './tooling.mjs';
 import { temp, cleanup, runtimeFactory, extractor, fetcher, packageSha256 } from '../test/fixtures.mjs';
 import { ChatFixture, AIModelFixture, key, strategy } from '../test/ai-fixtures.mjs';
 import { AIProvider } from '../server/ai-provider.mjs';
+import { AppError } from '../server/files.mjs';
 import { rfbFixture } from '../test/rfb-fixture.mjs';
 
 const { chromium } = createRequire(import.meta.url)(playwrightPath);
@@ -32,7 +33,7 @@ let browser, page;
 const errors = [];
 const savedKeyMask = '********';
 try {
-  browser = await chromium.launch({ channel: 'msedge', headless: true });
+  browser = await chromium.launch({ channel: 'msedge', headless: true, timeout: 60000 });
   page = await browser.newPage({ viewport: { width: 1440, height: 960 } });
   page.on('pageerror', e => errors.push(e.message));
   const aiRequests = [];
@@ -98,8 +99,14 @@ try {
   await page.getByRole('button', { name: '保存模型', exact: true }).click();
   const firstItem = page.locator('.ai-model-item').filter({ hasText: 'MiniMax-M3' });
   await firstItem.waitFor();
+  assert.match(await firstItem.locator('.ai-model-item-title').innerText(), /已验证/, '编辑窗口测试成功后，保存模型立即保留验证标签，无需列表再次测试');
   assert.match(await firstItem.innerText(), /未分配功能/, '模型列表只展示已保存的功能分配');
   const firstId = await page.locator('[data-ai-assignment=chat]').inputValue();
+  await page.locator(`[data-ai-model-edit=${firstId}]`).click();
+  assert.equal(await page.locator('[name=apiKey]').inputValue(), 'temporary-minimax-key', '未提交的新模型重新编辑时保留输入的密钥');
+  assert.equal(await page.locator('[name=apiKey]').getAttribute('type'), 'password');
+  await page.getByRole('button', { name: '保存模型', exact: true }).click();
+  assert.match(await firstItem.locator('.ai-model-item-title').innerText(), /已验证/);
   for (const feature of ['chat', 'learningAnalysis']) assert.equal(await page.locator(`[data-ai-assignment=${feature}]`).inputValue(), firstId);
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('#ai-panel').getAttribute('aria-busy') === 'false' && document.querySelector('#ai-feedback').textContent.includes('保存'));
@@ -154,6 +161,7 @@ try {
   await page.getByRole('button', { name: '保存模型', exact: true }).click();
   const secondItem = page.locator('.ai-model-item').filter({ hasText: 'fixture-chat-pro' });
   await secondItem.waitFor();
+  assert.match(await secondItem.locator('.ai-model-item-title').innerText(), /已验证/);
   assert.match(await secondItem.innerText(), /未分配功能/);
   const secondId = await secondItem.locator('[data-ai-model-edit]').getAttribute('data-ai-model-edit');
   assert.ok(secondId && secondId !== firstId, secondId);
@@ -204,6 +212,31 @@ try {
   await mkdir(path.join(root, 'reports/screenshots'), { recursive: true });
   await page.screenshot({ path: path.join(root, 'reports/screenshots/ai-provider.png') });
   report.checks.push('Saved keys stay masked after reopen; explicit reveal returns the original key exactly once; save/configure requests never carry the mask');
+  // 已保存和未保存的模型都保留精确配置的验证。
+  await page.getByRole('button', { name: '保存模型', exact: true }).click();
+  assert.match(await firstItem.locator('.ai-model-item-title').innerText(), /已验证/);
+  await page.locator(`[data-ai-model-edit=${firstId}]`).click();
+  await page.locator('[name=model]').fill('validated-edit');
+  await page.getByRole('button', { name: '测试连接', exact: true }).click();
+  await page.locator('#ai-provider-status').filter({ hasText: '连接测试通过' }).waitFor();
+  await page.getByRole('button', { name: '保存模型', exact: true }).click();
+  const editedItem = page.locator('.ai-model-item').filter({ hasText: 'validated-edit' });
+  assert.match(await editedItem.locator('.ai-model-item-title').innerText(), /已验证/);
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('#ai-panel').getAttribute('aria-busy') === 'false' && document.querySelector('#ai-feedback').textContent.includes('保存'));
+  assert.equal(ai.publicState().models[0].tested, true);
+  await page.locator(`[data-ai-model-edit=${firstId}]`).click();
+  await page.locator('[name=timeout]').fill('61');
+  await page.getByRole('button', { name: '保存模型', exact: true }).click();
+  assert.match(await editedItem.locator('.ai-model-item-title').innerText(), /未测试/);
+  await page.locator(`[data-ai-model-edit=${firstId}]`).click();
+  await page.locator('[name=timeout]').fill('60');
+  provider.test = async () => { throw new AppError('fixture test failure'); };
+  await page.getByRole('button', { name: '测试连接', exact: true }).click();
+  await page.getByText('fixture test failure', { exact: true }).waitFor();
+  await page.getByRole('button', { name: '保存模型', exact: true }).click();
+  assert.match(await editedItem.locator('.ai-model-item-title').innerText(), /未测试/);
+  report.checks.push('New and edited tested drafts immediately display 已验证 after 保存模型; unchanged verified edits retain it; changed connection parameters and failed unverified tests cannot borrow verification');
   assert.deepEqual(errors, []); report.status = 'passed';
 } catch (error) { report.status = 'failed'; report.error = error.stack; throw error; }
 finally {

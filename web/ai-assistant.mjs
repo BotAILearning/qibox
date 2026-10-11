@@ -679,6 +679,9 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     if (value.keyStored) delete value.apiKey;
     return value;
   }
+  function providerTestSignature(value) {
+    return JSON.stringify([value.baseUrl?.trim().replace(/\/+$/, ''), value.model?.trim(), value.protocol || 'openai', Number(value.timeout), !!value.consent, !!value.keyStored, value.keyStored ? null : (value.apiKey || '').trim()]);
+  }
   function rememberProvider() {
     const form = $('#ai-model-form');
     if (!form || !modelDraft?.editing) return;
@@ -730,7 +733,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     const id = editing !== 'new' ? editing : (modelDraft.draftId || `draft-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
     const list = modelDraft.models.filter(m => m.id !== id);
     const first = editing === 'new' && !list.length;
-    list.push({ id, label: value.label || value.model, baseUrl: value.baseUrl, model: value.model, protocol: value.protocol || 'openai', timeout: value.timeout, consent: value.consent, hasKey: value.keyStored || !!value.apiKey, apiKey: value.keyStored ? undefined : (value.apiKey || ''), tested: false, usedBy: [] });
+    list.push({ id, label: value.label || value.model, baseUrl: value.baseUrl, model: value.model, protocol: value.protocol || 'openai', timeout: value.timeout, consent: value.consent, hasKey: value.keyStored || !!value.apiKey, apiKey: value.keyStored ? undefined : (value.apiKey || ''), tested: modelDraft.testedSignature === providerTestSignature(value), usedBy: [] });
     const assignments = { ...modelDraft.assignments };
     for (const key of Object.keys(assignments)) if (first || assignments[key] === editing) assignments[key] = id;
     modelDraft = { models: list, assignments, editing: null, draftId: undefined, form: null, status: '模型已加入列表，点击“保存”后生效' };
@@ -760,7 +763,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         const result = await api(`/instances/${target}/ai`, { action: 'model-test', value: { ...value, modelId: modelId && modelId !== 'new' ? modelId : (modelDraft?.draftId || undefined) } }, 130000);
         if (!result || current !== generation || target !== id) return;
         if ($('#ai-model-form') === form && providerRevision === revision && modelDraft?.editing === modelId && JSON.stringify(providerDraft()) === signature) {
-          modelDraft = { ...modelDraft, status: '连接测试通过' };
+          modelDraft = { ...modelDraft, status: '连接测试通过', testedSignature: providerTestSignature(value) };
           rememberProvider(); render(); message('模型连接成功');
         } else message('已测试提交的配置，当前改动仍需保存并测试');
       } else {
@@ -780,9 +783,10 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     const base = id === 'new' ? null : list.find(m => m.id === id);
     const preset = base ? (presets.find(x => x.baseUrl === base.baseUrl && x.protocol === (base.protocol || 'openai'))?.id || 'custom') : (presets[0]?.id || 'custom');
     const starter = base || presets[0] || { protocol: 'openai', baseUrl: '', model: '', timeout: 60 };
+    const form = { label: base?.label || '', preset, protocol: starter.protocol || 'openai', baseUrl: base?.baseUrl || starter.baseUrl || '', apiKey: base?.apiKey || '', keyStored: !!base?.hasKey && !base?.apiKey, model: base?.model || starter.model || '', timeout: base?.timeout || starter.timeout || 60, consent: !!base?.consent };
     modelDraft = {
       models: list, assignments: { ...(modelDraft?.assignments || state.assignments || {}) }, editing: id, draftId: id === 'new' ? `draft-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` : undefined,
-      form: { label: base?.label || '', preset, protocol: starter.protocol || 'openai', baseUrl: base?.baseUrl || starter.baseUrl || '', apiKey: '', keyStored: !!base?.hasKey, model: base?.model || starter.model || '', timeout: base?.timeout || starter.timeout || 60, consent: !!base?.consent },
+      form, testedSignature: base?.tested ? providerTestSignature(form) : null,
       status: '',
     };
     render();

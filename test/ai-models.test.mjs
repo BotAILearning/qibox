@@ -87,6 +87,8 @@ test('修改模型配置后清除已验证状态，未修改则保留', async t 
   assert.equal(a.publicState().models[0].tested, true);
   await a.saveModels({ models: [{ id, label: '模型A', ...modelA }], assignments: { chat: id, learningAnalysis: id } });
   assert.equal(a.publicState().models[0].tested, true);
+  await a.saveModels({ models: [{ id, label: '模型改名', ...modelA }], assignments: { chat: id, learningAnalysis: id } });
+  assert.equal(a.publicState().models[0].tested, true, '显示名称不改变实际连接配置');
   await a.saveModels({ models: [{ id, label: '模型A', ...modelA, model: 'changed-model' }], assignments: { chat: id, learningAnalysis: id } });
   assert.equal(a.publicState().models[0].tested, false);
 });
