@@ -30,7 +30,7 @@ let browser, trigger, page;
 const fileRequests = [];
 app.library.trustedHashes.push(packageSha256);
 try {
-  browser = await chromium.launch({ channel: 'msedge', headless: true });
+  browser = await chromium.launch({ channel: 'msedge', headless: true, timeout: 60000 });
   page = await browser.newPage({ viewport: { width: 1440, height: 900 } }); const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('request', request => { if (request.url().endsWith('/files')) fileRequests.push(request.postData()); });
@@ -110,8 +110,10 @@ try {
     return route.continue();
   });
   report.staleResponseHidPicker = {};
+  report.cancelRequestCounts = {};
   for (const interrupt of ['reconnect','cancel']) {
-    oldPlan=null; chooser.receive({ type: 'request', id: randomUUID(), multiple: false });
+    const oldRequestId = randomUUID();
+    oldPlan=null; chooser.receive({ type: 'request', id: oldRequestId, multiple: false });
     const oldPicker = page.waitForEvent('filechooser'); await page.mouse.click(box.x + 50, box.y + 50);
     await page.locator('[data-file-choose]').click();
     await (await oldPicker).setFiles([{ name:'old.txt',mimeType:'text/plain',buffer:Buffer.from('old') }]);
@@ -128,6 +130,10 @@ try {
     await page.locator('[data-file-choose]').click(); await freshPicker;
     await page.locator('#file-transfer').waitFor({state:'visible'});
     await oldPlan.abort(); await new Promise(resolve=>setTimeout(resolve,200));
+    report.cancelRequestCounts[interrupt] = fileRequests.filter(body => {
+      const request = JSON.parse(body); return request.action === 'cancel' && request.id === oldRequestId;
+    }).length;
+    assert.equal(report.cancelRequestCounts[interrupt], 1, `${interrupt}: cancel and the late upload rejection must submit only one cancellation`);
     report.staleResponseHidPicker[interrupt]=await page.locator('#file-transfer').isHidden();
     if (!process.argv.includes('--race-baseline')) assert.equal(report.staleResponseHidPicker[interrupt],false,`${interrupt}: an old response hid or cancelled the new chooser`);
     await page.locator('#chat-file').dispatchEvent('cancel');

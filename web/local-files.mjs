@@ -7,6 +7,7 @@ export function localFiles({ screen, input, panel, api, upload, download, openFo
   const hex = [...bytes].map(value => value.toString(16).padStart(2, '0')).join('');
   const client = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
   let disposed = false, current = null, timer, checking = false, activeUntil = 0, pointerArmed = false, picked = false, controller;
+  const cancelledRequests = new WeakSet();
   const label = panel.querySelector('[data-file-status]'), choose = panel.querySelector('[data-file-choose]'), cancel = panel.querySelector('[data-file-cancel]'), progress = panel.querySelector('progress');
   const nas = panel.querySelector('[data-file-nas]');
   const nameInput = panel.querySelector('[data-file-name]'), destinationHelp = panel.querySelector('[data-file-destination-help]');
@@ -94,6 +95,10 @@ export function localFiles({ screen, input, panel, api, upload, download, openFo
     schedule(30);
   };
   const abort = async (request = current) => {
+    // The upload's rejection runs after a user cancel or disconnect. Both
+    // paths share this request, so release its portal only once.
+    if (request && cancelledRequests.has(request)) return;
+    if (request) cancelledRequests.add(request);
     const ownsCurrent = current === request;
     if (request) exporter.discard(request.id);
     if (ownsCurrent) {
