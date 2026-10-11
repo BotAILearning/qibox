@@ -1,6 +1,6 @@
 {
   "name": "qibox",
-  "version": "0.10.72",
+  "version": "0.10.73",
   "private": true,
   "type": "module",
   "description": "栖盒：在 NAS 上安装和运行 Linux 应用",
@@ -15,7 +15,8 @@
     "test:ui": "node scripts/test-ui.mjs",
     "test:desktop": "node scripts/test-desktop.mjs",
     "test:ai-ui": "node scripts/test-ai-ui.mjs",
-    "test:ui-proportions": "node scripts/test-ui-proportions.mjs"
+    "test:ui-proportions": "node scripts/test-ui-proportions.mjs",
+    "test:instance-lifecycle": "node scripts/test-instance-lifecycle-ui.mjs"
   },
   "dependencies": {
     "@novnc/novnc": "1.7.0",

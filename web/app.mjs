@@ -373,7 +373,7 @@ function render() {
     const app = definition(item.appId), installed = app?.library.installed;
     const pending = app?.library.job && !['complete', 'error'].includes(app.library.job.status);
     const busy = !!pending || busyIds.has(item.id) || item.busy || ['preparing', 'starting', 'stopping'].includes(item.runtime.status);
-    return `<article class="instance-card" data-instance="${esc(item.id)}" data-app-id="${esc(item.appId || 'wechat')}"><button class="desktop-icon" data-action="open" aria-label="打开${esc(item.name)}" title="${esc(modes[item.schedule.mode] || '')}${item.schedule.paused ? ' · 已暂停' : ''}" ${busy || !installed ? 'disabled' : ''}><span class="wechat-icon" aria-hidden="true">${appIcon(app?.icon)}</span><h3 title="${esc(item.name)}">${esc(item.name)}</h3><span class="status ${item.runtime.status === 'running' && item.runtime.loginStatus === 'logged-in' ? 'logged-in' : 'logged-out'}">${busy ? '请稍候…' : installed ? (app?.id === 'wechat' ? loginLabel(item.runtime) : item.runtime.status === 'running' ? '运行中' : item.runtime.status === 'error' ? '启动失败' : '已停止') : '待重新安装'}</span></button><details class="app-menu"><summary aria-label="${esc(item.name)}的更多操作">•••</summary><div>${app?.capabilities.includes('startup-settings') ? `<button data-action="settings" ${busy || !installed ? 'disabled' : ''}>启动设置</button>` : ''}${(item.appId || 'wechat') === 'wechat' ? '<button data-action="ai">AI 辅助</button>' : ''}${item.runtime.loginCheckTimedOut ? '<button data-action="recheck">重新检测</button>' : ''}<button data-action="rename">重命名</button>${item.runtime.status === 'running' ? '<button data-action="stop">停止</button>' : ''}<button class="danger-link" data-action="delete">删除</button></div></details></article>`;
+    return `<article class="instance-card" data-instance="${esc(item.id)}" data-app-id="${esc(item.appId || 'wechat')}"><button class="desktop-icon" data-action="open" aria-label="打开${esc(item.name)}" title="${esc(modes[item.schedule.mode] || '')}${item.schedule.paused ? ' · 已暂停' : ''}" ${busy || !installed ? 'disabled' : ''}><span class="wechat-icon" aria-hidden="true">${appIcon(app?.icon)}</span><h3 title="${esc(item.name)}">${esc(item.name)}</h3><span class="status ${item.runtime.status === 'running' && item.runtime.loginStatus === 'logged-in' ? 'logged-in' : 'logged-out'}">${busy ? '请稍候…' : installed ? (app?.id === 'wechat' ? loginLabel(item.runtime) : item.runtime.status === 'running' ? '运行中' : item.runtime.status === 'error' ? '启动失败' : '已停止') : '待重新安装'}</span></button><details class="app-menu"><summary aria-label="${esc(item.name)}的更多操作">•••</summary><div>${app?.capabilities.includes('startup-settings') ? `<button data-action="settings" ${busy || !installed ? 'disabled' : ''}>启动设置</button>` : ''}${(item.appId || 'wechat') === 'wechat' ? '<button data-action="ai">AI 辅助</button>' : ''}${item.runtime.loginCheckTimedOut ? '<button data-action="recheck">重新检测</button>' : ''}<button data-action="rename">重命名</button>${item.runtime.status === 'running' ? `<button data-action="stop" ${busy ? 'disabled' : ''}>停止</button>` : ''}<button class="danger-link" data-action="delete">删除</button></div></details></article>`;
   }).join('');
   if (lastInstancesMarkup !== markup) {
     const opened = [...document.querySelectorAll('#instances .app-menu[open]')].map(menu => menu.closest('[data-instance]').dataset.instance);
@@ -751,7 +751,12 @@ document.addEventListener('click', async event => {
       if (button.dataset.action === 'recheck') { button.disabled = true; try { await api(`/instances/${id}/recheck`, {}, 15000); } finally { await refresh(); button.disabled = false; } }
       if (button.dataset.action === 'delete') removeInstance(item);
       if (button.dataset.action === 'rename') dialog('重命名', `<label class="field">名称<input type="text" name="name" value="${esc(item.name)}" maxlength="30" required></label>`, undefined, async form => { await api(`/instances/${id}/rename`, { name: checkedName(form.get('name'), id) }); await refresh(); });
-      if (button.dataset.action === 'stop') { busyIds.add(id); render(); try { await api(`/instances/${id}/stop`, {}); } finally { busyIds.delete(id); await refresh(); } }
+      if (button.dataset.action === 'stop') {
+        if (busyIds.has(id) || item.busy || ['preparing', 'starting', 'stopping'].includes(item.runtime.status)) return;
+        busyIds.add(id); render();
+        try { await api(`/instances/${id}/stop`, {}); }
+        finally { busyIds.delete(id); await refresh(); }
+      }
     }
   } catch (error) { notify(error.message); }
 });
