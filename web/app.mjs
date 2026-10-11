@@ -720,7 +720,11 @@ document.addEventListener('click', async event => {
       } finally { busyIds.delete(id); await refresh(); }
       return;
     }
-    button.closest('details.app-menu')?.removeAttribute('open');
+    const menu = button.closest('details.app-menu');
+    if (menu) {
+      menu.querySelector('summary')?.focus({ preventScroll: true });
+      menu.removeAttribute('open');
+    }
     if (button.dataset.marketAction) {
       marketAppId = button.closest('[data-market-app]').dataset.marketApp;
       const action = button.dataset.marketAction;
