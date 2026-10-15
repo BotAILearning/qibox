@@ -12,6 +12,7 @@ import { desktopAudio } from './desktop-audio.mjs';
 import { dismissibleNotice } from './dismissible-notice.mjs';
 import { visibleRefresh, stateRefreshDelay } from './visible-refresh.mjs';
 import { bindDialogFocus } from './dialogs.mjs';
+import { readApiResponse, parseApiResponse, requireDownloadResponse } from './http-response.mjs';
 import './qiapp-adopt.mjs';
 
 const $ = selector => document.querySelector(selector);
@@ -32,6 +33,7 @@ let pendingAIEntry = null;
 let sound, standaloneAI = false;
 let mobileLoginId = null;
 let mobileLoginCheckTimer = null, mobileLoginChecking = false;
+let hostSessionEpoch = 0;
 const mobileAISettings = new Map(), mobileAISettingsLoading = new Set(), mobileAIGeneration = new Map(), mobileAIRequests = new Map();
 // Rendering a failed read must not immediately launch another request.
 const mobileAIReadErrors = new Set();
@@ -119,7 +121,34 @@ document.addEventListener('keydown', event => {
   if (menu) { menu.removeAttribute('open'); menu.querySelector('summary').focus(); event.preventDefault(); }
 });
 function notify(text) { clearTimeout(toastTimer); $('#toast').textContent = text; $('#toast').hidden = false; toastTimer = setTimeout(() => { $('#toast').hidden = true; }, 4200); }
+function expireHostSession(message) {
+  hostSessionEpoch++;
+  invalidateHostToken();
+  stopMobileLoginChecks(); mobileLoginId = null;
+  disconnect(); desktopId = null;
+  requiredModal = false; closeModal();
+  session = null; state = null;
+  inputDrafts.clear(); busyIds.clear(); renderMobileAI();
+  for (const selector of ['#instances', '#mobile-instance-list', '#catalog-list', '#modal-body', '#modal-actions']) $(selector).replaceChildren();
+  lastInstancesMarkup = lastMobileInstancesMarkup = lastCatalogMarkup = '';
+  for (const selector of ['#desktop-count', '#ai-account-label', '#mobile-login-instance']) $(selector).textContent = '';
+  $('#native-input').value = ''; $('#input-recovery-text').value = ''; $('#input-recovery').hidden = true;
+  $('#empty-state').hidden = true; $('#mobile-instance-empty').hidden = true;
+  clearTimeout(toastTimer); $('#toast').hidden = true; $('#toast').textContent = '';
+  connectionNotice.show(message, true, { repeat: false });
+}
+async function authenticatedResponse(pending, epoch) {
+  try {
+    const value = await pending;
+    if (epoch !== hostSessionEpoch) throw new Error('飞牛登录状态已变化，请重新打开栖盒后再操作。');
+    return value;
+  } catch (error) {
+    if (error.code === 'HOST_SESSION_EXPIRED' && epoch === hostSessionEpoch) expireHostSession(error.message);
+    throw error;
+  }
+}
 async function api(route, data, timeout = data === undefined ? 15000 : 120000) {
+  const epoch = hostSessionEpoch;
   const headers = { ...await hostHeaders(), ...(data === undefined ? {} : { 'Content-Type': 'application/json', 'X-CSRF-Token': session?.csrf || '' }) };
   let response;
   try { response = await fetch(`${prefix}/api${route}`, { method: data === undefined ? 'GET' : 'POST', credentials: 'same-origin', headers, body: data === undefined ? undefined : JSON.stringify(data), signal: AbortSignal.timeout(timeout) }); }
@@ -129,10 +158,10 @@ async function api(route, data, timeout = data === undefined ? 15000 : 120000) {
     throw error;
   }
   if (response.status === 401) invalidateHostToken();
-  let result; try { result = await response.json(); } catch { throw new Error('连接已中断，请刷新页面'); }
-  if (!response.ok) throw Object.assign(new Error(result.error || '操作未完成，请重试'), { code: result.code }); return result;
+  return authenticatedResponse(readApiResponse(response), epoch);
 }
 async function downloadAnalysisReport(instanceId, value, signal) {
+  const epoch = hostSessionEpoch;
   const combined = signal ? AbortSignal.any([signal, AbortSignal.timeout(300000)]) : AbortSignal.timeout(300000);
   let response;
   try {
@@ -147,10 +176,7 @@ async function downloadAnalysisReport(instanceId, value, signal) {
     throw error;
   }
   if (response.status === 401) invalidateHostToken();
-  if (!response.ok) {
-    const failure = await response.json().catch(() => ({}));
-    throw new Error(failure.error || '导出失败，请重试');
-  }
+  await authenticatedResponse(requireDownloadResponse(response, '导出失败，请重试'), epoch);
   const encoded = /filename\*=UTF-8''([^;]+)/i.exec(response.headers.get('Content-Disposition') || '')?.[1];
   const filename = encoded ? decodeURIComponent(encoded) : `分析报告.${value.ids.length === 1 ? value.format : 'zip'}`;
   const blob = await response.blob();
@@ -417,7 +443,7 @@ function renderDesktop() {
       : runtime?.status === 'error' ? '微信登录未完成，请返回实例列表后重试。'
         : runtime?.status !== 'running' ? '正在启动微信…'
         : runtime.loginStatus === 'logged-in' ? '已检测到微信登录，正在完成确认…'
-          : ['logged-out', 'relogin-required'].includes(runtime.loginStatus) ? '微信二维码已显示，请扫码登录。'
+          : ['logged-out', 'relogin-required'].includes(runtime.loginStatus) ? '微信登录画面已显示，请按画面提示完成登录。'
             : '正在检测微信登录状态…';
   }
   if (standaloneAI) { if (!aiAvailable(runtime, true)) { disconnect(); notify('请先登录微信'); } return; }
@@ -586,7 +612,7 @@ async function openDesktop(id, start = true, login = false, allowMobile = false,
   const mobileLogin = mobile() && mobileLoginId === id;
   $('#desktop-view').classList.toggle('mobile-login-view', mobileLogin);
   $('#mobile-login-instance').textContent = state.instances.find(x => x.id === id)?.name || '微信实例';
-  $('#mobile-login-help').textContent = '微信登录二维码会直接显示在下方，请用另一台设备扫码。';
+  $('#mobile-login-help').textContent = '请按下方微信画面的提示登录；需要扫码时，请用另一台设备扫码。';
   const entry = state.instances.find(x => x.id === id), app = definition(entry?.appId);
   const isWechat = app?.id === 'wechat';
   sound?.dispose();
@@ -634,11 +660,12 @@ async function openDesktop(id, start = true, login = false, allowMobile = false,
         openFolder: session.capabilities?.nasPicker ? path => picker.openFolder(path) : null,
         api: data => api(`/instances/${id}/files`, data, data.action === 'export-nas' ? 20 * 60 * 1000 : 10000), notify, focus: () => ime?.focus(),
         download: async ({ signal, ...data }) => {
+          const epoch = hostSessionEpoch;
           const response = await fetch(`${prefix}/api/instances/${id}/files`, { method: 'POST', credentials: 'same-origin', headers: { ...await hostHeaders(), 'X-CSRF-Token': session.csrf, 'Content-Type': 'application/json' }, body: JSON.stringify(data), signal });
-          if (!response.ok) { const value = await response.json().catch(() => ({})); throw new Error(value.error || '文件下载未完成，请重试'); }
-          return response;
+          return authenticatedResponse(requireDownloadResponse(response, '文件下载未完成，请重试'), epoch);
         },
         upload: async ({ requestId, fileId, client: fileClient, file, signal, progress }) => {
+          const epoch = hostSessionEpoch;
           const headers = { ...await hostHeaders(), 'X-CSRF-Token': session.csrf, 'X-File-Client': fileClient, 'Content-Type': 'application/octet-stream' };
           signal.throwIfAborted();
           return new Promise((resolve, reject) => {
@@ -650,9 +677,8 @@ async function openDesktop(id, start = true, login = false, allowMobile = false,
             request.onloadend = () => signal.removeEventListener('abort', abort);
             request.upload.onprogress = event => progress(event.loaded);
             request.onload = () => {
-              let value; try { value = JSON.parse(request.responseText); } catch {}
               if (request.status === 401) invalidateHostToken();
-              request.status >= 200 && request.status < 300 ? resolve(value) : reject(new Error(value?.error || '文件未传完，请重新选择'));
+              void authenticatedResponse(Promise.resolve().then(() => parseApiResponse(request.responseText, request.status, '文件未传完，请重新选择')), epoch).then(resolve, reject);
             };
             request.onerror = request.ontimeout = () => reject(new Error('文件传输中断，请检查网络后重试'));
             request.onabort = () => reject(new DOMException('已取消', 'AbortError'));
@@ -773,6 +799,7 @@ async function init() {
   try {
     session = await api('/session'); $('#version').textContent = `栖盒 ${session.product.buildId || session.product.version}`;
     const loaded = await refresh();
+    if (!session) return false;
     if (!session.consent.accepted) consentDialog();
     else void picker.refresh().catch(error => connectionNotice.show(error.message, true, { repeat: false }));
     return loaded;
