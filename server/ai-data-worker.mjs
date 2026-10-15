@@ -174,6 +174,14 @@ export class DataWorker {
         this.stop(); return { error: 'account-changed' };
       }
     } catch { this.stop(); throw unavailable(); }
+    // Process shutdown can finish while the asynchronous account-root check is
+    // in flight. Never attach a request after finish() has settled the worker:
+    // no remaining close event could reject it or release the caller's queue.
+    if (this.stopping || signal?.aborted) {
+      await this.stop();
+      if (signal?.aborted) throw signal.reason;
+      throw unavailable();
+    }
     clearTimeout(this.idleTimer);
     const result = await new Promise((resolve, reject) => {
       const abort = () => this.softCancel(signal), timer = setTimeout(abort, 43000);

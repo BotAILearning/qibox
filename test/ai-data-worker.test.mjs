@@ -73,6 +73,36 @@ test('abort while opening memory prevents process launch and waits for descripto
   assert.equal(children.length, 0); assert.equal(descriptors[0].closed, true);
 });
 
+test('closing the reader during account validation cannot strand the serialized data queue', async () => {
+  const { runtime, options, requests } = fixture();
+  const resolveRoot = options.resolveAccountRoot, entered = Promise.withResolvers(), release = Promise.withResolvers();
+  let blocked = false;
+  options.resolveAccountRoot = async (...args) => {
+    if (blocked) { blocked = false; entered.resolve(); await release.promise; }
+    return resolveRoot(...args);
+  };
+  const bridge = new DataChatBridge(runtime, options);
+  await bridge.scan();
+  const worker = bridge.dataWorker, before = requests.length;
+  blocked = true;
+  const reading = bridge.read({ account, contact }).then(() => 'resolved', () => 'rejected');
+  await entered.promise;
+  await worker.stop();
+  release.resolve();
+  let timer;
+  try {
+    const outcome = await Promise.race([reading, new Promise(resolve => { timer = setTimeout(() => resolve('stranded'), 300); })]);
+    assert.equal(outcome, 'rejected');
+    assert.equal(requests.length, before, 'closed reader must receive no new request');
+    await bridge.scan();
+    await bridge.read({ account, contact });
+  } finally {
+    clearTimeout(timer);
+    worker.settle(new Error('test cleanup'));
+    await bridge.close();
+  }
+});
+
 // Answers only when the test asks for one, and aborts like the real worker does
 // for SIGUSR1: the cancelled request still reports back and the process stays.
 function gated() {
