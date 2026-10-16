@@ -13,13 +13,23 @@ try{
  const page=await browser.newPage({viewport:{width:1280,height:900}});page.on('pageerror',e=>report.errors.push(e.message));
  let initial=true;
  page.on('request',r=>{if(initial&&/\/chunks\/desktop-runtime-|\/ai-workspace\.css/.test(r.url()))report.initialDeferredRequests.push(new URL(r.url()).pathname);});
- await page.goto(fixture.url);await page.locator('[data-action=open]').waitFor();
+ let unblock;
+ const unavailable=new Promise(resolve=>unblock=resolve);
+ const waitForFeature=async route=>{await unavailable;await route.continue();};
+ await page.route('**/chunks/desktop-runtime-*.js',waitForFeature);
+ await page.route('**/ai-workspace.css*',waitForFeature);
+ try {
+   await page.goto(fixture.url,{waitUntil:'commit'});
+   await page.locator('[data-action=open]').waitFor({timeout:2000});
+ } finally {
+   unblock();await page.unroute('**/chunks/desktop-runtime-*.js',waitForFeature);await page.unroute('**/ai-workspace.css*',waitForFeature);
+ }
  await page.screenshot({path:path.join(out,'home.png')});
  report.entryBytes=await page.evaluate(()=>performance.getEntriesByType('resource').find(r=>new URL(r.name).pathname.endsWith('/app.js'))?.decodedBodySize);
  initial=false;
  assert.deepEqual(report.initialDeferredRequests,[],'Home must not download or execute desktop/AI resources before they are opened');
  assert.ok(report.entryBytes<100000,'The startup entry must stay below 100 kB decoded');
- report.checks.push('The homepage is interactive without downloading desktop/AI modules or their stylesheet.');
+ report.checks.push('The homepage becomes usable within two seconds even while desktop/AI resource requests are held unavailable; it downloads neither feature.');
  const heavy=[];page.on('request',r=>{if(/\/chunks\/desktop-runtime-|\/ai-workspace\.css/.test(r.url()))heavy.push(new URL(r.url()).pathname);});
  await page.locator('[data-action=open]').click();await page.locator('#ai-open').waitFor();
  assert.ok(heavy.some(p=>p.endsWith('/ai-workspace.css')));assert.ok(heavy.some(p=>p.includes('/chunks/')));
