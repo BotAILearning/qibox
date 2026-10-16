@@ -4,7 +4,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { readFile, writeFile } from 'node:fs/promises';
 import { gunzipSync } from 'node:zlib';
-import { StaticAssets } from '../server/static-assets.mjs';
+import { StaticAssets, webChunkRoutes } from '../server/static-assets.mjs';
 import { temp, cleanup } from './fixtures.mjs';
 
 async function fixture(options = {}) {
@@ -74,6 +74,22 @@ test('an upgraded asset invalidates its bytes and validators without restarting 
     assert.equal(after.status, 200); assert.notEqual(after.headers.etag, before.headers.etag);
     assert.equal(gunzipSync(after.bytes).toString(), next); assert.equal(f.reads(), 2);
   } finally { await f.close(); }
+});
+
+test('generated script allowlist permits only distinct build chunk paths', async () => {
+  const directory = await temp();
+  try {
+    assert.deepEqual(await webChunkRoutes(directory), {});
+    await writeFile(path.join(directory, 'web-chunks.json'), JSON.stringify(['chunks/desktop-runtime-A123.js', 'chunks/chunk-BCD.js']));
+    assert.deepEqual(await webChunkRoutes(directory), {
+      '/chunks/desktop-runtime-A123.js': ['chunks/desktop-runtime-A123.js', 'text/javascript'],
+      '/chunks/chunk-BCD.js': ['chunks/chunk-BCD.js', 'text/javascript'],
+    });
+    for (const value of [['../private.js'], ['chunks/../private.js'], ['chunks/a.js', 'chunks/a.js'], ['chunks/a.json'], ['/chunks/a.js'], ['https://example.test/a.js'], {files:['chunks/a.js']}]) {
+      await writeFile(path.join(directory, 'web-chunks.json'), JSON.stringify(value));
+      await assert.rejects(webChunkRoutes(directory), /Invalid generated web chunk manifest/);
+    }
+  } finally { await cleanup(directory); }
 });
 
 test('cache capacity limits retained bytes and files outside the public root are refused', async () => {

@@ -48,6 +48,19 @@ with tarfile.open(fpk, 'r:*') as package:
             assert set(name for name in contents if name.startswith('assets/'))=={'assets/'+assets['file']}
             contents.update(restored)
         def read(name): return contents[name]
+        if 'public/web-chunks.json' in contents:
+            chunks=json.loads(read('public/web-chunks.json'))
+            assert isinstance(chunks,list) and len(chunks)==len(set(chunks))
+            assert all(re.fullmatch(r'chunks/[A-Za-z0-9_-]+\.js',name) for name in chunks)
+            assert {'public/'+name for name in chunks}=={name for name in contents if name.startswith('public/chunks/')}
+            for name in ['app.js','auth-callback.js']+chunks:
+                assert source_matches('public/'+name,pathlib.Path(__file__).resolve().parent.parent/'public'/name),name
+                for target in re.findall(r'["\'](\./[A-Za-z0-9_/-]+\.js)["\']',read('public/'+name).decode()):
+                    import posixpath
+                    resolved=posixpath.normpath(posixpath.join(posixpath.dirname(name),target))
+                    assert resolved in chunks,(name,target)
+            assert b'data-desktop-style=' in read('public/index.html')
+            assert 'public/home-foundation.css' in contents
         backups = [name for name in members if re.search(r'\.(?:bak|before)(?:$|[.\-_])', pathlib.PurePosixPath(name).name, re.I)]
         assert not backups, backups
         config = json.loads(read('config/product.json'))

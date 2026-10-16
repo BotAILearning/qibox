@@ -24,10 +24,16 @@ for (const file of ['index.html', 'auth-callback.html']) {
   await writeFile(path.join(out, file), html.replaceAll('./icon.png', `./icon.png?v=${iconRevision}`));
 }
 await cp(path.join(root, 'web/backgrounds'), path.join(out, 'backgrounds'), { recursive: true });
-for (const name of ['app', 'auth-callback']) await build({ entryPoints: [path.join(root, `web/${name}.mjs`)], outfile: path.join(out, `${name}.js`), bundle: true, format: 'esm', platform: 'browser', target: ['chrome110', 'safari16'], define: { __QIBOX_HOST__: JSON.stringify(host) }, minify: true, legalComments: 'inline' });
+// Keep desktop/AI parsing out of the initial entry, while sharing modules (and
+// their state) between entries instead of bundling separate copies.
+await rm(path.join(out, 'chunks'), { recursive: true, force: true });
+const webBuild = await build({ absWorkingDir: root, entryPoints: { app: 'web/app.mjs', 'auth-callback': 'web/auth-callback.mjs' }, outdir: out, chunkNames: 'chunks/[name]-[hash]', splitting: true, metafile: true, bundle: true, format: 'esm', platform: 'browser', target: ['chrome110', 'safari16'], define: { __QIBOX_HOST__: JSON.stringify(host) }, minify: true, legalComments: 'inline' });
+const chunks = Object.keys(webBuild.metafile.outputs).map(file => path.relative(out, path.resolve(root, file)).replaceAll('\\', '/')).filter(file => file.startsWith('chunks/') && file.endsWith('.js')).sort();
+await writeFile(path.join(out, 'web-chunks.json'), JSON.stringify(chunks) + '\n');
+await build({ entryPoints: [path.join(root, 'web/home-foundation.css')], outfile: path.join(out, 'home-foundation.css'), bundle: true, minify: true });
 for (const name of (await readdir(out)).filter(name => name.endsWith('.html'))) {
   const file = path.join(out, name); let html = await readFile(file, 'utf8');
-  for (const match of html.matchAll(/(?:src|href)=["']\.\/([^"'?]+\.(?:js|css))["']/g)) {
+  for (const match of html.matchAll(/(?:src|href|data-desktop-style)=["']\.\/([^"'?]+\.(?:js|css))["']/g)) {
     const revision = createHash('sha256').update(await readFile(path.join(out, match[1]))).digest('hex').slice(0, 16);
     html = html.replaceAll(`./${match[1]}`, `./${match[1]}?v=${revision}`);
   }

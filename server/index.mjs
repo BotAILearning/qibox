@@ -20,7 +20,7 @@ import { streamAudio } from './audio.mjs';
 import { proxyWebApp } from './web-app.mjs';
 import { exportAnalysisReports } from './ai-report-export.mjs';
 import { readWechatAvatar } from './ai-avatar.mjs';
-import { StaticAssets } from './static-assets.mjs';
+import { StaticAssets, webChunkRoutes } from './static-assets.mjs';
 import { protectGatewaySocket } from './gateway-socket.mjs';
 import { gatewayPeerVerifier } from './gateway-peer.mjs';
 
@@ -54,6 +54,7 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
   function check(req, user) { if (req.headers['sec-fetch-site'] === 'cross-site' || !equal(req.headers['x-csrf-token'], token(user.uid))) throw new AppError('页面已过期，请刷新后重试', 403); }
   const library = new PackageLibrary({ appRoot, dataRoot, dev, fetcher, extract, arch, ...(trustedHashes ? { trustedHashes } : {}) }); await library.init();
   const assets = new StaticAssets(path.join(appRoot, 'public'));
+  const chunks = await webChunkRoutes(path.join(appRoot, 'public'));
   const users = new Instances({ appRoot, dataRoot, dev, host, library, runtimeFactory, aiProvider, deferRestore }); await users.init();
   library.beforeInstall = async () => { await users.ensureAssets(); if (users.assets.status === 'error') throw new AppError('准备失败，请重新打开栖盒'); };
   library.beforeUninstall = () => users.suspendForUninstall();
@@ -242,6 +243,8 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
       if (!['GET', 'HEAD'].includes(req.method)) throw new AppError('请求方式不支持', 405);
       const files = { '/': ['index.html', 'text/html'], '/app.js': ['app.js', 'text/javascript'], '/style.css': ['style.css', 'text/css'], '/icon.png': ['icon.png', 'image/png'], '/backgrounds/mist.jpg': ['backgrounds/mist.jpg', 'image/jpeg'], '/auth-callback.html': ['auth-callback.html', 'text/html'], '/auth-callback.js': ['auth-callback.js', 'text/javascript'], '/privacy.html': ['privacy.html', 'text/html'], '/terms.html': ['terms.html', 'text/html'] };
       files['/ai-workspace.css'] = ['ai-workspace.css', 'text/css'];
+      files['/home-foundation.css'] = ['home-foundation.css', 'text/css'];
+      Object.assign(files, chunks);
       files['/ui-foundation.css'] = ['ui-foundation.css', 'text/css'];
       files['/qiapp-product.css'] = ['qiapp-product.css', 'text/css'];
       files['/qibox-components.css'] = ['qibox-components.css', 'text/css'];

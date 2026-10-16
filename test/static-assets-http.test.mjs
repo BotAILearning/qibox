@@ -14,6 +14,10 @@ test('static cache stays behind gateway identity and never caches or compresses 
     await writeFile(path.join(appRoot, 'config/product.json'), JSON.stringify({ gatewayPrefix: '/app/qibox' }));
     const source = '// 微信桌面与 AI 辅助\n'.repeat(200);
     await writeFile(path.join(appRoot, 'public/app.js'), source);
+    await mkdir(path.join(appRoot, 'public/chunks'));
+    await writeFile(path.join(appRoot, 'public/chunks/desktop-runtime-ABC.js'), source);
+    await writeFile(path.join(appRoot, 'public/chunks/not-registered.js'), source);
+    await writeFile(path.join(appRoot, 'public/web-chunks.json'), JSON.stringify(['chunks/desktop-runtime-ABC.js']));
     app = await createApplication({ appRoot, dataRoot, dev: true, runtimeFactory });
     await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve));
     const request = (route, { authenticated = true, etag, method = 'GET' } = {}) => new Promise((resolve, reject) => {
@@ -37,5 +41,9 @@ test('static cache stays behind gateway identity and never caches or compresses 
     assert.equal(state.headers['content-encoding'], undefined); assert.equal(state.headers['cache-control'], 'no-store');
     const invalid = await request('/app.js', { method: 'POST' });
     assert.equal(invalid.status, 405); assert.equal(invalid.headers.etag, undefined); assert.equal(invalid.headers['content-encoding'], undefined);
+    assert.equal((await request('/chunks/desktop-runtime-ABC.js')).status, 200);
+    assert.equal((await request('/chunks/desktop-runtime-ABC.js', {authenticated:false})).status, 401);
+    assert.equal((await request('/chunks/not-registered.js')).status, 404);
+    assert.equal((await request('/web-chunks.json')).status, 404);
   } finally { await app?.close(); await cleanup(dataRoot); await cleanup(appRoot); }
 });

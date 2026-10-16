@@ -1,4 +1,4 @@
-import RFB from '@novnc/novnc';
+import { desktopLoader } from './desktop-loader.mjs';
 import { nativeInput } from './native-input.mjs';
 import { clipboardFiles } from './clipboard-files.mjs';
 import { appIcon } from './app-icons.mjs';
@@ -7,7 +7,6 @@ import { localFiles } from './local-files.mjs';
 import { loginLabel, desktopAction, desktopStatus, aiAvailable } from './wechat-state.mjs';
 import { desktopPointer } from './desktop-pointer.mjs';
 import { desktopReconnect } from './desktop-reconnect.mjs';
-import { aiAssistant } from './ai-assistant.mjs';
 import { desktopAudio } from './desktop-audio.mjs';
 import { dismissibleNotice } from './dismissible-notice.mjs';
 import { visibleRefresh, stateRefreshDelay } from './visible-refresh.mjs';
@@ -61,7 +60,10 @@ function syncDesktopInteraction() {
   for (const element of document.querySelectorAll('#desktop-screen, .desktop-bar, #ai-rail')) element.inert = aiVisible;
   if (rfb) rfb.viewOnly = aiVisible;
 }
-const assistant = aiAssistant({ api, downloadAnalysisReport, guard: aiRailGuard, onVisibilityChange: syncDesktopInteraction, onClose: () => { if (standaloneAI) disconnect(); },
+const loadDesktop = desktopLoader();
+let assistant;
+function initializeAssistant(aiAssistant) {
+  assistant ??= aiAssistant({ api, downloadAnalysisReport, guard: aiRailGuard, onVisibilityChange: syncDesktopInteraction, onClose: () => { if (standaloneAI) disconnect(); },
   // 入口常驻后，入口可能先于实例挂载出现：操作开关 / 打开面板前补一次挂载，避免用空实例 id 请求。
   ensure: async () => {
     if (mobile()) return;
@@ -71,6 +73,7 @@ const assistant = aiAssistant({ api, downloadAnalysisReport, guard: aiRailGuard,
     assistant.detach(); assistantId = target; await assistant.attach(target);
   },
   onOpenChat: async id => { if (standaloneAI || !desktopConnected || desktopId !== id) await openDesktop(id, false, false, true); } });
+}
 function aiBlockedHint(runtime, connected) {
   if (runtime?.status !== 'running') return '微信尚未运行，请先打开微信并完成登录，再使用 AI 辅助。';
   if (['logged-out', 'relogin-required'].includes(runtime?.loginStatus) || (runtime?.loginStatus !== 'logged-in' && runtime?.aiEntryAvailable !== true)) return '微信尚未登录，请先完成微信登录，再使用 AI 辅助。';
@@ -109,8 +112,8 @@ let assistantId = null;
 function syncAssistant(id) {
   if (mobile()) id = null;
   if (assistantId === id) return;
-  assistant.detach(); assistantId = id;
-  if (id) return assistant.attach(id);
+  assistant?.detach(); assistantId = id;
+  if (id && assistant) return assistant.attach(id);
 }
 document.addEventListener('click', event => {
   for (const menu of document.querySelectorAll('.app-menu[open]')) if (!menu.contains(event.target)) menu.removeAttribute('open');
@@ -565,10 +568,10 @@ async function restoreInstance(item, button) {
 function importDialog() {
   dialog('导入微信安装包', `<p>选择从官网下载的 ${esc(definition(marketAppId).architecture)} 版微信 .deb 安装包。当前支持 ${esc((state.library.importVersions || []).join('、'))}。</p><div class="import-options"><button type="button" id="import-local" class="secondary"><strong>从本机上传</strong><span>选择这台设备上的安装包</span></button>${session.capabilities?.nasPicker ? '<button type="button" id="import-nas" class="secondary"><strong>从 NAS 选择</strong><span>选择已经保存到 NAS 的安装包</span></button>' : ''}</div>`, '');
 }
-let picker = { refresh: async () => {}, pick: async () => {} };
-if (host === 'fnos') {
+let pickerPromise;
+async function loadPicker() {
   const { nasPicker } = await import('./nas-picker.mjs');
-  picker = nasPicker({ notify, receive: async (purpose, file, context) => {
+  return nasPicker({ notify, receive: async (purpose, file, context) => {
     if (purpose === 'chat' || purpose === 'chat-export') {
       if (context.instance !== desktopId || !fileBridge) throw new Error('文件选择已结束，请重新打开微信选择');
       return purpose === 'chat-export' ? fileBridge.selectExportNas(file, context) : fileBridge.selectNas(file, context);
@@ -576,6 +579,12 @@ if (host === 'fnos') {
     await api(`/apps/${marketAppId}/install/nas`, { path: file }); await refresh();
   } });
 }
+const getPicker = () => pickerPromise ??= loadPicker();
+const picker = {
+  refresh: async (...args) => host === 'fnos' && (await getPicker()).refresh(...args),
+  pick: async (...args) => host === 'fnos' && (await getPicker()).pick(...args),
+  openFolder: async (...args) => host === 'fnos' && (await getPicker()).openFolder(...args),
+};
 async function upload(file) {
   if (!file || !file.name.toLowerCase().endsWith('.deb')) throw new Error('请选择微信 .deb 安装包');
   if (file.size > 1024 ** 3) throw new Error('请选择 1 GB 以内的安装包');
@@ -622,6 +631,9 @@ async function openDesktop(id, start = true, login = false, allowMobile = false,
   $('#desktop-name').textContent = state.instances.find(x => x.id === id)?.name || '微信';
   $('#desktop-view').hidden = false; render(); renderDesktop();
   try {
+    const { RFB, aiAssistant } = await loadDesktop();
+    if (operation !== desktopOperation || !session) return;
+    initializeAssistant(aiAssistant);
     if (start) await api(`/instances/${id}/start`, {});
     if (operation !== desktopOperation) return;
     if (app?.adapter === 'docker') {

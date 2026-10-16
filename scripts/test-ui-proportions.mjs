@@ -17,10 +17,14 @@ const app = await createApplication({ appRoot: root, dataRoot, dev: true, extrac
   runtimeFactory: (...args) => ({ ...runtimeFactory(...args), port: peer.port, aiBridge: bridge, loginStatus: 'logged-in' }) });
 await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve));
 const space = await app.users.get('development'); await space.setConsent(true);
-const output = path.join(root, process.argv[2] || 'reports/ui-proportions');
+const output = path.resolve(root, process.argv[2] || 'reports/ui-proportions');
 await mkdir(output, { recursive: true });
 const desktopWidths = [1180, 1200, 1280, 1366, 1440, 1920];
 const report = { scope: 'Disposable local app, WeChat and model fixtures; browser geometry only.', checks: [], errors: [], widths: [320, 390, 1024, ...desktopWidths], desktopWidths, geometry: { analysis: [] } };
+// The supported phone surface is the lightweight instance/master-switch list;
+// crossing into it intentionally detaches the desktop workspace. Its scope is
+// exercised by test-mobile-scope-ui.mjs instead of forcing hidden AI forms open.
+const workspaceWidths = [1024, ...desktopWidths];
 let browser;
 try {
   browser = await chromium.launch({ channel: 'msedge', headless: true });
@@ -142,7 +146,7 @@ try {
   assert.equal(await page.locator('.ai-analysis-eyebrow:visible').count(), 0, 'analysis should not display numbered steps');
   assert.equal(await page.locator('#ai-analysis-form .ai-analysis-selection').count(), 0, 'analysis has no standalone contact card');
   assert.equal(await page.locator('.ai-analysis-request .ai-analysis-contact-entry [data-ai-analysis-pick]').count(), 1, 'add-contact belongs below the creation heading');
-  for (const width of report.widths) {
+  for (const width of workspaceWidths) {
     await page.setViewportSize({ width, height: 900 });
     const flow = await page.locator('#ai-analysis-form').evaluate(form => {
       const rect = selector => form.querySelector(selector).getBoundingClientRect();
@@ -195,17 +199,17 @@ try {
     await noOverflow(`${width}px analysis form`);
     await page.screenshot({ path: path.join(output, `analysis-directions-${width}.png`) });
   }
-  await page.setViewportSize({ width: 390, height: 900 });
+  await page.setViewportSize({ width: 1024, height: 900 });
   await page.locator('[data-ai-analysis-pick]').click();
   await page.locator('.ai-contact-picker-dialog [data-picker-id]').first().check();
   await page.locator('.ai-contact-picker-dialog [data-picker-confirm]').click();
   assert.equal(await page.locator('#ai-analysis-count').innerText(), '1');
   assert.ok((await size('[data-ai-analysis-pick]', '.ai-analysis-request')).ratio < .72);
-  await page.screenshot({ path: path.join(output, 'analysis-selected-390.png') });
-  report.checks.push(`Analysis: contact entry and four quick ranges precede optional request and media at ${report.widths.join('/')}px; eight readable expanded direction labels, unclipped form and picker selection.`);
+  await page.screenshot({ path: path.join(output, 'analysis-selected-1024.png') });
+  report.checks.push(`Analysis: contact entry and four quick ranges precede optional request and media at ${workspaceWidths.join('/')}px; eight readable expanded direction labels, unclipped form and picker selection.`);
 
   await page.locator('.ai-main-tabs [data-ai-nav=settings]').click();
-  for (const width of [320, 390, 1440]) {
+  for (const width of [1024, 1280, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     const settings = await page.evaluate(() => {
       const links = document.querySelector('.qbx-settings-links').getBoundingClientRect();
@@ -245,7 +249,7 @@ try {
   const changedThumb = await toggle.evaluate(node => getComputedStyle(node, '::after').transform);
   assert.equal(changedThumb === 'none' || changedThumb === 'matrix(1, 0, 0, 1, 0, 0)', beforeToggle, 'switch thumb must travel to the opposite end when state changes');
   await toggle.evaluate((node, checked) => { node.checked = checked; }, beforeToggle);
-  await page.setViewportSize({ width: 390, height: 900 });
+  await page.setViewportSize({ width: 1024, height: 900 });
   const navContrast = await page.locator('.qbx-bottom-nav button[aria-current=page]').evaluate(node => {
     const style = getComputedStyle(node);
     const rgb = value => (value.match(/[\d.]+/g) || []).slice(0, 3).map(Number).map(x => { x /= 255; return x <= .04045 ? x / 12.92 : ((x + .055) / 1.055) ** 2.4; });
@@ -254,9 +258,9 @@ try {
     return (Math.max(a, b) + .05) / (Math.min(a, b) + .05);
   });
   assert.ok(navContrast >= 4.5, `active navigation label contrast is ${navContrast.toFixed(2)}`);
-  report.checks.push('Qibox components: compact mobile toolbar and first-screen actions; settings groups have no oversized gap; every visible switch has one centered thumb; active navigation label meets 4.5:1 contrast.');
+  report.checks.push('Desktop workspace: settings groups have no oversized gap; every visible switch has one centered thumb; active navigation label meets 4.5:1 contrast. Phone scope is checked separately.');
   await page.locator('[data-ai-nav=default-style]').click();
-  for (const width of report.widths) {
+  for (const width of workspaceWidths) {
     await page.setViewportSize({ width, height: 900 });
     const empty = await size('.ai-default-current.ai-default-empty', '.ai-default-current');
     assert.ok(empty.height < 260, `${width}px: default-style empty state is ${empty.height}px tall`);
@@ -268,7 +272,7 @@ try {
     if (nav === 'learning') { await page.locator('.ai-main-tabs [data-ai-nav=overview]').click(); await page.locator('.ai-contact-footer [data-ai-nav=learning]').click(); }
     else if (nav === 'provider') { await page.locator('.ai-main-tabs [data-ai-nav=settings]').click(); await page.locator('.ai-reference-settings [data-ai-nav=provider]').click(); }
     else await page.locator(`.ai-main-tabs [data-ai-nav=${nav}]`).click();
-    for (const width of [320, 390, 1440]) {
+    for (const width of [1024, 1280, 1440]) {
       await page.setViewportSize({ width, height: 900 });
       await noOverflow(`${width}px ${nav}`);
     }
@@ -297,7 +301,7 @@ try {
       report.checks.push('1280px model workspace: saved model names and selected assignments are readable, and both cards remain within their workspace.');
     }
   }
-  report.checks.push('Other AI pages: learning, model, proactive, activity and settings remain within 320px, 390px and 1440px viewports.');
+  report.checks.push('Other desktop AI pages: learning, model, proactive, activity and settings remain within 1024px, 1280px and 1440px viewports.');
   assert.equal(bridge.sent.length, 0);
   assert.deepEqual(report.errors, []);
   report.passed = true;

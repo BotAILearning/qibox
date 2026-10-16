@@ -16,6 +16,14 @@ const encodingQuality = (header, encoding) => {
 };
 const matches = (header, etag) => typeof header === 'string' && header.split(',').some(value => value.trim() === '*' || value.trim().replace(/^W\//, '') === etag);
 
+export async function webChunkRoutes(root) {
+  let names;
+  try { names = JSON.parse(await readFile(path.join(root, 'web-chunks.json'), 'utf8')); }
+  catch (error) { if (error.code === 'ENOENT') return {}; throw error; }
+  if (!Array.isArray(names) || names.length > 100 || names.some(name => typeof name !== 'string' || !/^chunks\/[A-Za-z0-9_-]+\.js$/.test(name)) || new Set(names).size !== names.length) throw new Error('Invalid generated web chunk manifest');
+  return Object.fromEntries(names.map(name => ['/' + name, [name, 'text/javascript']]));
+}
+
 // Only the explicit public-file allowlist in index.mjs calls this responder.
 // Account data, API responses and model credentials never enter this cache.
 export class StaticAssets {
