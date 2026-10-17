@@ -21,6 +21,7 @@ try {
  await page.goto(`http://127.0.0.1:${app.server.address().port}${app.prefix}/?dev=${app.devKey}`);await page.locator('[data-action=open]').first().click();await page.locator('#ai-open').click();
  await page.locator('[data-ai-nav=settings]').first().click();await page.locator('[data-ai-nav="personal-info"]').click();
  assert.equal(await page.locator('[data-personal-field]').count(),12);assert.equal(await page.locator('.ai-personal-more [data-personal-field]').count(),5);
+ assert.ok(await page.evaluate(()=>document.documentElement.clientWidth===innerWidth),'full-screen AI owns scrolling without a second browser scrollbar');
  assert.equal(await page.getByText('聊天中的待确认信息',{exact:true}).count(),0);assert.equal(await page.getByText('我的信息历史版本',{exact:true}).count(),0);
  const city=page.locator('[data-personal-field=city]');await city.locator('summary').click();await city.locator('[data-personal-input]').fill('仅测试城市与生活区域');await page.getByRole('button',{name:'保存我的信息',exact:true}).click();
  await page.getByRole('button',{name:'返回系统设置',exact:true}).click();await page.locator('[data-ai-nav="personal-info"]').click();assert.equal(await page.locator('[name=city]').inputValue(),'仅测试城市与生活区域');

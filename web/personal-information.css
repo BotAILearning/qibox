@@ -40,3 +40,6 @@
 #ai-panel[aria-busy=true]:has(.ai-personal-form,.qbx-settings-page) #ai-content { opacity:1; }
 #ai-panel:has(.ai-personal-form,.qbx-settings-page) { --qbx-ink:var(--qi-text);--qbx-muted:var(--qi-text-secondary);--qbx-accent:var(--qi-primary);--qbx-line:var(--qi-border);--qbx-surface:var(--qi-surface);--qbx-canvas:var(--qi-bg);--qbx-module-radius:12px;--qbx-radius:12px;--qbx-module-padding:24px; }
 @media(max-width:767px) { #ai-panel:has(.ai-personal-form,.qbx-settings-page) { --qbx-module-padding:16px; } }
+/* Full-screen desktop/AI views own their scroll containers. Keep the hidden
+   homepage's minimum height from creating a second browser scrollbar. */
+html:has(#desktop-view:not([hidden])) { overflow: hidden; }
