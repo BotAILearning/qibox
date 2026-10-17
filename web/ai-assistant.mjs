@@ -8,7 +8,7 @@ import { settingsPage } from './ai-settings-view.mjs';
 import { icon, iconSprite, logoIcon } from './ai-icons.mjs';
 import { keyIcon } from './ai-key-icon.mjs';
 import { memoryFields, pendingMemoryFields, wikiEntryMarkup, sameWikiEntries, degreeOptions } from './ai-memory-view.mjs';
-import { objectPage, objectList, objectExecutionStatus, objectWindow, OBJECT_ROW_HEIGHT } from './ai-object-view.mjs';
+import { objectPage, objectList, objectExecutionStatus, refreshObjectTiming, objectWindow, OBJECT_ROW_HEIGHT } from './ai-object-view.mjs';
 import { replyLimitControl, syncReplyLimitControl, parseReplyLimit, replyLimitManualMax } from './ai-reply-limit.mjs';
 import { styleChoice, styleSummary as styleSummaryText } from './ai-style-view.mjs';
 import { learnedObjectDraft } from './ai-learning-draft.mjs';
@@ -652,6 +652,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     proactiveUI.refresh();
     if (tab === 'overview') drawObjectList();
     if (tab === 'overview' && selectedObject) {
+      refreshObjectTiming($('#ai-object-form'), state);
       const execution = panel.querySelector('[data-ai-object-execution]');
       if (execution?.dataset.aiObjectExecution === selectedObject) replaceLiveContent(execution, objectExecutionStatus(state, selectedObject));
     }
@@ -949,6 +950,12 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     if (object) {
       if (object.querySelector('[data-ai-dirty]')?.hidden === false) objectDirtyContacts.add(selectedObject);
       const draft = { ...Object.fromEntries(new FormData(object)) };
+      for (const key of ['inheritTiming','inheritTakeover','takeoverEnabled']) {
+        const input = object.querySelector(`[name=${key}]`); if (input) draft[key] = input.checked;
+      }
+      for (const key of ['replyDelay','replyMaxWait','segmentDelayMin','segmentDelayMax','followUpDelayMin','followUpDelayMax','takeoverMinutes']) {
+        const input = object.querySelector(`[name=${key}]`); if (input) draft[key] = input.value;
+      }
       if (object.querySelector('[data-ai-wiki-entities]')) draft.memorySummary = JSON.stringify(wikiEntries(object));
       for (const input of object.querySelectorAll('[data-object-option]')) draft[input.dataset.objectOption] = input.checked;
       objectDrafts.set(selectedObject, draft);
@@ -1030,6 +1037,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     }
     const paste = $('#ai-paste-form'); if (paste && learningDraft) for (const [key, value] of Object.entries(learningDraft)) if (paste.elements[key]) paste.elements[key].value = value;
     updatePersonalInformationForm($('#ai-personal-information-form'), state);
+    refreshObjectTiming($('#ai-object-form'), state);
     controls();
     resizeStyleSummary();
     mobileLayout();
@@ -1235,6 +1243,9 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         $('#ai-analysis-mobile-count').textContent = checked.length ? `已选择 ${checked.length} 位联系人` : '选择要分析的联系人';
         $('#ai-analysis-form button[type=submit] span').textContent = `开始分析 · ${checked.length} 位`;
         rememberDraft();
+      }
+      if (input.closest('#ai-object-form') && ['inheritTiming','inheritTakeover'].includes(input.name)) {
+        rememberDraft(); render(); if ($('[data-ai-dirty]')) $('[data-ai-dirty]').hidden = false; return;
       }
       if (input.dataset.objectOption) {
         // 开关修改只作为草稿，点击【保存设置】后统一生效。

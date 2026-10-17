@@ -86,8 +86,9 @@ export class Runtime {
     await this.loginInspection?.catch(() => {});
   }
   desktopConnected() {
+    const generation = this.viewerGeneration || 0;
     this.desktopViewers++;
-    return () => { this.desktopViewers = Math.max(0, this.desktopViewers - 1); this.foregroundUntil = Date.now() + 60000; };
+    return () => { if (generation !== (this.viewerGeneration || 0)) return; this.desktopViewers = Math.max(0, this.desktopViewers - 1); this.foregroundUntil = Date.now() + 60000; };
   }
   async inspectAutoLogin({ signal, requested = false } = {}) {
     if (this.dev) return Promise.resolve({ status: 'unknown' });
@@ -401,6 +402,9 @@ export class Runtime {
     this.processes = []; this.port = null; this.password = null; this.desktopEnv = null;
     if (clean && !force) await this.loginVerifier.stopped();
     else await this.loginVerifier.clear();
+    // The old process no longer has a foreground window. Its cancelled probe
+    // and late viewer disconnects must not delay login in a new process.
+    this.foregroundUntil = 0; this.viewerGeneration = (this.viewerGeneration || 0) + 1; this.desktopViewers = 0;
     if (!this.dev && this.status !== 'preparing') { this.status = 'stopped'; this.message = ''; }
     return clean;
   }

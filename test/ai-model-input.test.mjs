@@ -41,3 +41,13 @@ test('different speakers, quotes, duplicate IDs and additional summaries are pre
   }
   assert.equal(compactModelInput({ mode: 'reply', messages: [message, message], conversation: { latestIncoming: message } }).conversation.latestIncoming.text, message.text);
 });
+
+test('automatic style sample references match the compacted transcript', () => {
+  const ids = ['a','b','c'].map(value => value.repeat(64));
+  for (const mode of ['reply','memory-monitor']) {
+    const input = {mode, messages:ids.map(id=>({id,direction:'self',authorship:'human',text:'好的呀'})),styleLearningMessageIds:ids,newMessageIds:[ids[2]]};
+    const wire = encodeModelRequest('学习',input);
+    assert.deepEqual(wire.input.styleLearningMessageIds,wire.input.messages.map(row=>row.id));
+    assert.deepEqual(wire.decode(wire.input),input);
+  }
+});

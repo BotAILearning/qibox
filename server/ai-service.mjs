@@ -372,6 +372,16 @@ export class AIAssistant {
     const snapshot = structuredClone(this.data); const operation = this.writes.then(() => atomicJson(this.file, snapshot)); this.writes = operation.catch(() => {}); return operation;
   }
   exclusive(action) { const task = this.actions.then(action); this.actions = task.catch(() => {}); return task; }
+  async commitAutomaticLearning(epoch, valid, apply) {
+    // Do not expose or snapshot results while storage is still busy. A switch
+    // change can invalidate them before this short, serialized commit begins.
+    await this.writes;
+    return this.exclusive(async () => {
+      if (!learningCurrent(this, epoch) || !valid()) return false;
+      if (apply() !== false) await this.save();
+      return true;
+    });
+  }
   invalidate() { this.revision++; this.controller.abort(); this.controller = new AbortController(); this.followUps.clear(); this.skipReplyWaits.clear(); this.scanOperation = null; }
   forgetContext({ preserveCursors = false } = {}) { if (!preserveCursors || !this.bridge.stableMessageIds) this.cursors.clear(); this.followUps.clear(); this.bridge.clearContext?.(); }
   readSkipSnapshot(row) {
@@ -2788,11 +2798,15 @@ export class AIAssistant {
     profile.memoryWatch = { ...profile.memoryWatch, learned: last.id, learnedTimestamp: last.timestamp, lastLearnedAt: this.now() };
     if (profile.memoryWatch.seen === last.id) { delete profile.memoryWatch.pendingAt; delete profile.memoryWatch.retryAt; }
   }
+  unlearnedMessages(profile, messages) {
+    if (!profile.memoryWatch?.learned) return messages;
+    const boundary = messages.findIndex(message => message.id === profile.memoryWatch.learned);
+    return boundary >= 0 ? messages.slice(boundary + 1) : messages.filter(message => Number.isSafeInteger(message.timestamp) && message.timestamp > (profile.memoryWatch.learnedTimestamp || Infinity));
+  }
   mergeObservedMemory(profile, updates, messages, newIds = null) {
     if (!learningEnabled(this)) return;
     if (!newIds && profile.memoryWatch?.learned) {
-      const boundary = messages.findIndex(message => message.id === profile.memoryWatch.learned);
-      newIds = new Set((boundary >= 0 ? messages.slice(boundary + 1) : messages.filter(message => Number.isSafeInteger(message.timestamp) && message.timestamp > (profile.memoryWatch.learnedTimestamp || Infinity))).map(message => message.id));
+      newIds = new Set(this.unlearnedMessages(profile, messages).map(message => message.id));
     }
     const evidenceMessages = messages.filter(factEvidence), evidenceById = new Map(evidenceMessages.map(message => [message.id, message]));
     const entries = updates.filter(entry => entry && !sensitiveMemory(entry.text)).filter(entry => !newIds || Array.isArray(entry?.evidence) && entry.evidence.some(id => newIds.has(id))).filter(entry => {
@@ -2847,7 +2861,9 @@ export class AIAssistant {
     try {
       const result = await this.provider.complete(config, automaticLearningPrompt + (profile.kind === 'group' ? groupMemoryInstruction : ''), {
         mode: 'memory-monitor', kind: profile.kind, contact: profile.contact, messages: annotateSourceDates(material.map(message => withSpeaker(message, profile))),
-        newMessageIds: [...newIds], previousMemory: readMemory(this.vault, profile), myInformation: selfContext(this, profile.kind, batch.map(message => message.text).join('\n')), ...currentChatTime(this.now(), [])
+        newMessageIds: [...newIds], previousMemory: readMemory(this.vault, profile), myInformation: selfContext(this, profile.kind, batch.map(message => message.text).join('\n')),
+        learnStyle: this.automaticStyleAllowed(profile, material), styleLearningMessageIds: this.automaticStyleSamples(profile, material).map(row=>row.id),
+        previousStyle: profile.learnedStyle?.summary ? {summary:profile.learnedStyle.summary.slice(0,1500)} : null, ...currentChatTime(this.now(), [])
       }, signal, { purpose: 'learning', validate: validatedMonitorMemory, budget: 4096 });
       validatedMonitorMemory(result);
       if (!current()) {
@@ -2856,11 +2872,15 @@ export class AIAssistant {
         }
         return;
       }
-      this.mergeObservedMemory(profile, result.memoryUpdates, material, newIds);
-      stageSelfSuggestions(this, result.selfMemorySuggestions, batch);
-      this.updateAutomaticStyle(profile, result.style, batch);
-      this.finishMemoryWatch(profile, completeSnapshot); delete profile.memoryLearningNotice;
-      await this.save();
+      const committed = await this.commitAutomaticLearning(epoch, current, () => {
+        this.mergeObservedMemory(profile, result.memoryUpdates, material, newIds);
+        stageSelfSuggestions(this, result.selfMemorySuggestions, batch);
+        this.updateAutomaticStyle(profile, result.style, material);
+        this.finishMemoryWatch(profile, completeSnapshot); delete profile.memoryLearningNotice;
+      });
+      if (!committed && learningCurrent(this, epoch) && profile.account === this.data.account && profile.memoryWatch === checkpoint && JSON.stringify(profile.memory) !== originalMemory) {
+        this.finishMemoryWatch(profile, completeSnapshot); await this.save();
+      }
     } catch (error) {
       if (!current()) return;
       this.finishMemoryWatch(profile, completeSnapshot);
@@ -2868,12 +2888,21 @@ export class AIAssistant {
       await this.save();
     }
   }
+  automaticStyleSamples(profile, messages) {
+    const known = new Set(profile.styleLearning?.evidence || []), since = this.data.settings.learningSince || 0;
+    return contextualReplyStyle(messages).samples.filter(row => known.has(row.id) || Number.isSafeInteger(row.timestamp) && row.timestamp * 1000 > since);
+  }
+  automaticStyleAllowed(profile, messages) {
+    if (!learningEnabled(this) || profile.replyStyleSource === 'manual' || profile.styleId && profile.styleId !== 'learned' || profile.locked?.length) return false;
+    const samples = this.automaticStyleSamples(profile, messages), known = new Set(profile.styleLearning?.evidence || []);
+    return samples.filter(row => !known.has(row.id)).length >= 3 && this.unlearnedMessages(profile, messages).some(message => message.direction === 'self' && factEvidence(message));
+  }
   updateAutomaticStyle(profile, value, messages) {
-    if (!learningEnabled(this) || !value || profile.replyStyleSource === 'manual' || profile.styleId && profile.styleId !== 'learned' || profile.locked?.length) return;
-    const samples = contextualReplyStyle(messages).samples;
-    if (samples.length < 3) return;
+    if (!value || !this.automaticStyleAllowed(profile, messages)) return;
+    const samples = this.automaticStyleSamples(profile, messages);
     try {
       const learned = styleValue(value);
+      if (sensitiveMemory(JSON.stringify(learned))) return;
       learned.customTone = profile.style.customTone; learned.customAvoid = profile.style.customAvoid;
       profile.learnedStyle = learned; profile.learnedAt = this.now();
       profile.styleLearning = { account: profile.account, object: profile.contact, source: 'auto', evidence: samples.map(row => row.id), updatedAt: this.now() };
@@ -3228,8 +3257,8 @@ export class AIAssistant {
         const sendImages = this.replyOptions(profile).sendImages && mediaReady, sendAudio = this.replyOptions(profile).sendAudio && mediaReady && this.bridge.supportsNativeVoiceOutput === true;
         result = onlyImages && !images.length && profile.kind !== 'group' ? { action: 'skip', mediaSkipped: true } : await this.provider.complete(
           this.modelFor('chat'),
-          `${replyFixedRules}${learningEnabled(this) ? learningRules : ' 自动学习已关闭，不提取或返回本人资料、风格更新和聊天记忆更新。'}${contextualStylePrompt}${speakerIdentityPrompt}${personalContextPrompt}${presentTimePrompt}${learningEnabled(this) ? chatMemoryPrompt : ''}${profile.kind === 'group' ? groupMemoryInstruction : ' 单聊中，对方姓名写入 name；只有用户确实直接这样称呼对方且对象明确时，才把称呼写入 addressing。'}${identityPrompt(allowIdentity)}${conversationPrompt}${replySummaryContext} ${mediaOutputPrompt} 只能发送文字和capabilities明确允许的生成图片或微信原生语音，不能读取或下载任意文件，不能拨打或接听电话，仅能理解实际附带的图片；未附带的图片与未转写的语音直接略过，不回复这些内容，不要求重发或转文字，不猜测内容；只回应本轮可读取的文字、微信转写或实际附带的图片。${groupTriggerInstruction}${groupBatch?.sender ? ` 本轮只回复成员ID ${groupBatch.sender} 对应的消息 ${groupBatch.ids.join(',')}，其余成员的消息仅作背景。需要称呼时仅使用members中该ID对应的真实称呼，不编造姓名。` : ''}${profile.groupContextWait?.trigger === 'atMe' ? ' 上轮已等待补充信息，本次必须回复；信息仍不足时用一句简短问题澄清，不能再次wait。' : ''}${currentTask}${currentStyle}${profile.kind === 'group' ? groupPrompt(trigger, allowSegments, profile.groupOptions?.realtimeMode) : ''}${generationProtocol({ multiTurn, allowSegments, group: profile.kind === 'group', followUpAllowed: profile.kind !== 'group' && !followUp, updateStyle: this.data.settings.updateStyle, memoryUpdates: learningEnabled(this), allowSkip: !mustReply, allowStop: true })}${reflectiveReplyPrompt}${currentTimeAnchor(time)}${mode === 'reply' && !followUp ? ' 本轮只回应conversation.pendingIncomingMessages列出的来信；其中excerpt=true时按ID查阅messages全文。messages中pending=false的旧问题和已发回复只作背景，不能再补答。' : ''}${replySafetyPrompt}${naturalAttributionPrompt}${safetyCorrection}`,
-          { identityPolicy: { asked: identityAsked, allowDisclosure: !!allowIdentity }, images: images, onlyImages: onlyImages, capabilityConcern: reason, mode, continuation, multiTurn, allowSegments, followUp, followUpAllowed: profile.kind !== 'group' && !followUp, kind: profile.kind, replyPerspective: replyPerspective(profile), roleAnchor: replyRoleAnchor(profile), conversation, addressing, memory: replyMemory, ...time, myInformation: replyFacts, groupState, capabilities: { sendText: true, wechatVoiceText: true, files: false, calls: false, executeExternalActions: false, sendImages, sendAudio, receiveImages: images.length > 0, sendMedia: sendImages || sendAudio }, strategy, style, contextualStyle: contextualReplyStyle(modelMessages), styleOwner: 'self', judgeReply: profile.kind === 'group' ? trigger !== 'atMe' : followUp || this.replyOptions(profile).judgeReply, updateStyle: this.data.settings.updateStyle, messages: annotateChatTimes(modelMessages, this.now(), time.timezone).map(message => ({ ...withSpeaker(message, profile), pending: conversation.pendingIncomingIds.includes(message.id), aiGenerated: message.aiGenerated === true || (profile.generatedIds || []).includes(message.id) })) }, signal, { validate: value => validateCurrentTimeReply(validateReplyResult(value, { multiTurn, allowSegments, group: profile.kind === 'group' }), time) }
+          `${replyFixedRules}${learningEnabled(this) ? learningRules : ' 自动学习已关闭，不提取或返回本人资料、风格更新和聊天记忆更新。'}${contextualStylePrompt}${speakerIdentityPrompt}${personalContextPrompt}${presentTimePrompt}${learningEnabled(this) ? chatMemoryPrompt : ''}${profile.kind === 'group' ? groupMemoryInstruction : ' 单聊中，对方姓名写入 name；只有用户确实直接这样称呼对方且对象明确时，才把称呼写入 addressing。'}${identityPrompt(allowIdentity)}${conversationPrompt}${replySummaryContext} ${mediaOutputPrompt} 只能发送文字和capabilities明确允许的生成图片或微信原生语音，不能读取或下载任意文件，不能拨打或接听电话，仅能理解实际附带的图片；未附带的图片与未转写的语音直接略过，不回复这些内容，不要求重发或转文字，不猜测内容；只回应本轮可读取的文字、微信转写或实际附带的图片。${groupTriggerInstruction}${groupBatch?.sender ? ` 本轮只回复成员ID ${groupBatch.sender} 对应的消息 ${groupBatch.ids.join(',')}，其余成员的消息仅作背景。需要称呼时仅使用members中该ID对应的真实称呼，不编造姓名。` : ''}${profile.groupContextWait?.trigger === 'atMe' ? ' 上轮已等待补充信息，本次必须回复；信息仍不足时用一句简短问题澄清，不能再次wait。' : ''}${currentTask}${currentStyle}${profile.kind === 'group' ? groupPrompt(trigger, allowSegments, profile.groupOptions?.realtimeMode) : ''}${generationProtocol({ multiTurn, allowSegments, group: profile.kind === 'group', followUpAllowed: profile.kind !== 'group' && !followUp, updateStyle: this.automaticStyleAllowed(profile, modelMessages), memoryUpdates: learningEnabled(this), allowSkip: !mustReply, allowStop: true })}${reflectiveReplyPrompt}${currentTimeAnchor(time)}${mode === 'reply' && !followUp ? ' 本轮只回应conversation.pendingIncomingMessages列出的来信；其中excerpt=true时按ID查阅messages全文。messages中pending=false的旧问题和已发回复只作背景，不能再补答。' : ''}${replySafetyPrompt}${naturalAttributionPrompt}${safetyCorrection}`,
+          { identityPolicy: { asked: identityAsked, allowDisclosure: !!allowIdentity }, images: images, onlyImages: onlyImages, capabilityConcern: reason, mode, continuation, multiTurn, allowSegments, followUp, followUpAllowed: profile.kind !== 'group' && !followUp, kind: profile.kind, replyPerspective: replyPerspective(profile), roleAnchor: replyRoleAnchor(profile), conversation, addressing, memory: replyMemory, ...time, myInformation: replyFacts, groupState, capabilities: { sendText: true, wechatVoiceText: true, files: false, calls: false, executeExternalActions: false, sendImages, sendAudio, receiveImages: images.length > 0, sendMedia: sendImages || sendAudio }, strategy, style, contextualStyle: contextualReplyStyle(modelMessages), styleOwner: 'self', ...(learningEnabled(this) ? {styleLearningMessageIds: this.automaticStyleSamples(profile, modelMessages).map(row=>row.id)} : {}), judgeReply: profile.kind === 'group' ? trigger !== 'atMe' : followUp || this.replyOptions(profile).judgeReply, updateStyle: this.automaticStyleAllowed(profile, modelMessages), messages: annotateChatTimes(modelMessages, this.now(), time.timezone).map(message => ({ ...withSpeaker(message, profile), pending: conversation.pendingIncomingIds.includes(message.id), aiGenerated: message.aiGenerated === true || (profile.generatedIds || []).includes(message.id) })) }, signal, { validate: value => validateCurrentTimeReply(validateReplyResult(value, { multiTurn, allowSegments, group: profile.kind === 'group' }), time) }
         );
         if (result?.action === 'send') {
           const violation = replySafetyViolation(messageSegments(result, { multiTurn, allowSegments }), { allowIdentity, identityAsked, audioText: sendAudio && result.media?.[0]?.type === 'audio' ? result.media[0].text : '' });
@@ -3265,7 +3294,7 @@ export class AIAssistant {
     } finally { this.generatingProfiles.delete(profile.id); }
     delete profile.replyFailureCount; delete profile.replyRetryAt;
     if (!this.canDeliver(profile, mode, revision, signal)) return;
-    if (learningCurrent(this, automaticEpoch) && stageSelfSuggestions(this, result?.selfMemorySuggestions, modelMessages)) await this.save();
+    if (mode === 'reply' && learningCurrent(this, automaticEpoch) && result?.selfMemorySuggestions?.length) await this.commitAutomaticLearning(automaticEpoch, () => this.canDeliver(profile, mode, revision, signal), () => stageSelfSuggestions(this, result.selfMemorySuggestions, this.unlearnedMessages(profile, modelMessages)));
     if (mode === 'reply') result = guardFinancialCommitment(pendingText, result, strategy);
     if (assumedProactiveRows.length) {
       for (const row of assumedProactiveRows) { row.assumedPresent = false; row.handedToReplyAt = this.now(); }
@@ -3351,12 +3380,14 @@ export class AIAssistant {
       }
     }
     delete profile.groupWait;
-    if (learningCurrent(this, automaticEpoch)) this.updateAutomaticStyle(profile, result.style, modelMessages);
-    if (learningCurrent(this, automaticEpoch) && Array.isArray(result.memoryUpdates)) {
-      try { this.mergeObservedMemory(profile, result.memoryUpdates, modelMessages); }
-      catch { profile.memoryNotice = '本轮记忆格式无效，已保留原记忆。'; }
-    }
-    this.finishMemoryWatch(profile, snapshot);
+    if (mode === 'reply' && learningCurrent(this, automaticEpoch)) await this.commitAutomaticLearning(automaticEpoch, () => this.canDeliver(profile, mode, revision, signal), () => {
+      this.updateAutomaticStyle(profile, result.style, modelMessages);
+      if (Array.isArray(result.memoryUpdates)) {
+        try { this.mergeObservedMemory(profile, result.memoryUpdates, modelMessages); }
+        catch { profile.memoryNotice = '本轮记忆格式无效，已保留原记忆。'; }
+      }
+      this.finishMemoryWatch(profile, snapshot);
+    });
     if (result.action !== 'send') {
       profile.handledIncomingId = pendingMessages.findLast(m => m.direction === 'other')?.id;
       if (groupBatch) settleGroupBatch(this.vault, profile, groupBatch);

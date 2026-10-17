@@ -14,6 +14,22 @@ const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;
 const avatar = contact => contactPickerAvatar(contact);
 const toggle = (key, title, hint, checked, disabled = false, main = false) => `<div class="ai-reference-toggle ${main ? 'main ai-reply-module-heading' : ''} ${disabled ? 'dim' : ''}"><div class="ai-reference-toggle-copy">${main ? `<h4>${title}</h4>` : `<b>${title}</b>`}<small>${hint}</small></div><input type="checkbox" name="${key}" role="switch" data-object-option="${key}" ${key === 'atMe' || key === 'atAll' || key === 'realtime' ? 'data-group-option' : ''} aria-label="${title}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}></div>`;
 const tab = (id, title, current) => `<button type="button" data-ai-object-section="${id}" class="${current === id ? 'active' : ''}" aria-current="${current === id ? 'page' : 'false'}">${title}</button>`;
+export function refreshObjectTiming(form, state) {
+  if (!form) return;
+  const inherited = form.querySelector('[name=inheritTiming]')?.checked;
+  for (const key of Object.keys(timingDefaults)) {
+    const input = form.querySelector(`[name=${key}]`); if (!input) continue;
+    input.disabled = !!inherited;
+    if (inherited) input.value = state.settings?.[key] ?? timingDefaults[key];
+  }
+  const inheritedTakeover = form.querySelector('[name=inheritTakeover]')?.checked;
+  const rule = state.settings?.takeover || {enabled:true,minutes:5};
+  for (const key of ['takeoverEnabled','takeoverMinutes']) {
+    const input = form.querySelector(`[name=${key}]`); if (!input) continue;
+    input.disabled = !!inheritedTakeover;
+    if (inheritedTakeover) { if (key === 'takeoverEnabled') input.checked = rule.enabled; else input.value = rule.minutes; }
+  }
+}
 export function objectExecutionStatus(state, contactId) {
   const profile = state.profiles.find(p => p.contact === contactId);
   const live = (state.live || []).find(row => row.id === profile?.id);

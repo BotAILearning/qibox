@@ -39,4 +39,4 @@ export function objectList(state, view) {
     : view.kind === 'group' ? '当前微信没有可读取的群聊。' : '当前微信没有可读取的联系人。';
   return rows ? `<div data-object-window="${start}:${end}" class="ai-object-spacer" style="height:${start * OBJECT_ROW_HEIGHT}px" aria-hidden="true"></div>${rows}<div class="ai-object-spacer" style="height:${(contacts.length - end) * OBJECT_ROW_HEIGHT}px" aria-hidden="true"></div>` : `<p class="ai-empty">${emptyHint}</p>`;
 }
-export { objectPage, objectExecutionStatus } from './ai-object-page-new.mjs';
+export { objectPage, objectExecutionStatus, refreshObjectTiming } from './ai-object-page-new.mjs';

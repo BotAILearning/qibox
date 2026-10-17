@@ -74,6 +74,28 @@ test('0.11 manual facts are protected and deleted automatic evidence cannot resu
   for(const extra of [{aiGenerated:true},{authorship:'unknown'},{type:'quote'},{forwarded:true}]) assert.equal(stageSelfSuggestions(a,[{field:'other',text:'不能保存',messageId:source.id}],[{...source,...extra}]),false);
 });
 
+test('0.11 learning results queued behind storage cannot cross a closing switch',async t=>{
+ const f=await fixture(t);await f.enable();f.advance(1000);const other=f.push('other','我住苏州');const human=f.push('self','我喜欢徒步');await f.a.tick();f.advance(21000);
+ const entered=Promise.withResolvers(),gate=Promise.withResolvers();
+ f.provider.complete=async()=>{f.a.writes=gate.promise;entered.resolve();return {memoryUpdates:[{text:'对方住苏州',evidence:[other.id]}],selfMemorySuggestions:[{field:'interests',text:'喜欢徒步',messageId:human.id}]};};
+ const pending=f.a.tick();await entered.promise;await new Promise(setImmediate);
+ const closing=f.a.settings({autoLearning:false});await new Promise(setImmediate);assert.equal(f.a.data.settings.autoLearning,false);
+ gate.resolve();await Promise.all([pending,closing]);
+ assert.equal(readMemory(f.a.vault,f.p).entries.length,0);assert.equal(personalInformation(f.a).entries.length,0);
+});
+
+test('0.11 style accumulates authorized samples across batches and one new sentence cannot replace it',async t=>{
+ const f=await fixture(t);delete f.p.replyStyleSource;delete f.p.styleId;f.p.style={summary:'初始默认风格',customTone:'',customAvoid:''};await f.enable();
+ let phase=0;f.provider.complete=async()=>({memoryUpdates:[],style:{summary:phase<4?'短句口语，温和简洁':'正式公文，不用表情'}});
+ for(const text of ['嗯嗯，慢慢来🙂','好的呀，不着急哈','行的呀，再看看🙂','请采用正式公文口吻']){
+  phase++;f.advance(121000);f.push('self',text);await f.a.tick();f.advance(21000);await f.a.tick();
+  if(phase<3)assert.equal(f.p.learnedStyle,undefined);else assert.equal(f.p.learnedStyle.summary,'短句口语，温和简洁');
+ }
+ const evidence=[...f.p.styleLearning.evidence];assert.equal(evidence.length,3);
+ await f.a.settings({autoLearning:false});f.advance(1000);const closed=[f.push('self','关闭期间的第一条'),f.push('self','关闭期间的第二条'),f.push('self','关闭期间的第三条')];f.advance(1000);await f.enable();f.advance(1000);f.push('self','重新开启后的单条');await f.a.tick();f.advance(21000);await f.a.tick();
+ assert.deepEqual(f.p.styleLearning.evidence,evidence);const samples=f.a.automaticStyleSamples(f.p,f.bridge.messages.get(f.c.id).map(row=>({...row,authorship:'human'})));assert.ok(samples.every(row=>!closed.some(old=>old.id===row.id)));
+});
+
 test('0.11 timing persists, inherits and bounds the entire message burst independently of takeover', async t=>{
   const f=await fixture(t);await f.a.settings({replyDelay:7,replyMaxWait:15,segmentDelayMin:1,segmentDelayMax:2});
   await f.a.saveReplyProfile({contact:f.c.id,style:{summary:'自然简洁'},strategy,timing:{replyDelay:2,replyMaxWait:5},takeover:{enabled:true,minutes:9}});
