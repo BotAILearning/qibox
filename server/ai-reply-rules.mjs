@@ -8,7 +8,7 @@ export function takeoverValue(value) {
 }
 // Personal overrides remain stored for backward recovery, but no longer
 // override the single wait control exposed in the current settings screen.
-export const effectiveTakeover = settings => settings.takeover || defaultTakeover();
+export const effectiveTakeover = (settings, profile) => profile?.takeover || settings.takeover || defaultTakeover();
 export function identityPrompt(acknowledge) {
   return acknowledge
     ? '身份规则：仅当本轮待回复来信明确询问是否AI时，如实简短说明由AI代为回复；普通聊天绝不主动说明AI、机器人或模型身份，旧身份问题不构成本轮说明身份的理由。'

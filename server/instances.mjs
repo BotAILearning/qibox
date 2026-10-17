@@ -198,7 +198,11 @@ class UserInstances {
     this.requireConsent(); this.requireInstalled();
     return this.mutate(async () => {
       this.requireInstalled(); const scheduler = this.get(id).scheduler;
-      await scheduler.save(value); await scheduler.tick(); return scheduler.publicState();
+      if (value?.command === 'pause-idle' || value?.command === 'resume-idle') {
+        if (scheduler.settings.mode !== 'idle') throw new AppError('当前未开启闲时备份');
+        if (value.command === 'pause-idle') await scheduler.pause(); else await scheduler.resume();
+      } else { await scheduler.save(value); await scheduler.tick(); }
+      return scheduler.publicState();
     });
   }
   async remove(id, { deleteData = false, confirmName } = {}) {

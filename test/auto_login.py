@@ -49,6 +49,13 @@ class SettingsInspector(module.Inspector):
 
 
 class NativeControlTest(unittest.TestCase):
+    def test_current_official_client_automatic_label_is_exact_and_account_scoped(self):
+        states = {8, 24, 25, 30}
+        self.assertEqual(module.classify_control(states, ['自动']), 'ready')
+        self.assertEqual(module.classify_control(states, ['自动', '扫码']), 'unavailable')
+        self.assertEqual(module.classify_control(states, ['自动登录失败']), 'unavailable')
+        self.assertEqual(module.classify_control(states, ['自动'], 'check box'), 'unavailable')
+
     def test_expired_notice_dismissal_requires_explicit_login_request_and_exact_native_notice(self):
         for variant in ('valid', 'read-only', 'other-notice', 'unmapped'):
             inspector = SettingsInspector()

@@ -51,7 +51,7 @@ test('verified group @me asks for clarification after two model skips', async t 
   const a = new AIAssistant({ dataRoot: root, bridge, provider, now: () => now, delay: async () => {} });
   await a.init(); await a.configure(modelConfig); await a.scan();
   const target = bridge.contacts[0]; target.kind = 'group'; await a.scan();
-  await a.setGroupOptions({ contact: target.id, atMe: true }); await a.settings({ enabled: true }); await a.tick();
+  await a.setGroupOptions({ contact: target.id, atMe: true }); await a.settings({ enabled: true, replyDelay: 3, replyMaxWait: 8 }); await a.tick();
   let calls = 0;
   provider.complete = async () => { calls++; return { action: 'skip' }; };
   const incoming = Object.assign(bridge.push(target.id, 'other', '@我 请处理'), {
@@ -75,7 +75,7 @@ test('verified group @me sends after one invalid model skip', async t => {
   const a = new AIAssistant({ dataRoot: root, bridge, provider, now: () => now, delay: async () => {} });
   await a.init(); await a.configure(modelConfig); await a.scan();
   const target = bridge.contacts[0]; target.kind = 'group'; await a.scan();
-  await a.setGroupOptions({ contact: target.id, atMe: true }); await a.settings({ enabled: true }); await a.tick();
+  await a.setGroupOptions({ contact: target.id, atMe: true }); await a.settings({ enabled: true, replyDelay: 3, replyMaxWait: 8 }); await a.tick();
   let calls = 0; const prompts = [];
   provider.complete = async (_config, system) => { prompts.push(system); return ++calls === 1 ? { action: 'skip' } : { action: 'send', text: '我收到了' }; };
   Object.assign(bridge.push(target.id, 'other', '@我 请确认'), { timestamp: Math.floor(now / 1000), sender: 'a'.repeat(64), mentions: { verified: true, self: true, all: false, others: false } });
@@ -95,7 +95,7 @@ test('@me explicit stop request sets stopUntil like required private replies', a
   const a = new AIAssistant({ dataRoot: root, bridge, provider, now: () => now, delay: async () => {} });
   await a.init(); await a.configure(modelConfig); await a.testProvider(); await a.scan();
   const target = bridge.contacts[0]; target.kind = 'group'; await a.scan();
-  await a.setGroupOptions({ contact: target.id, atMe: true }); await a.settings({ enabled: true }); await a.tick();
+  await a.setGroupOptions({ contact: target.id, atMe: true }); await a.settings({ enabled: true, replyDelay: 3, replyMaxWait: 8 }); await a.tick();
   let calls = 0; provider.complete = async () => { calls++; return { stop: true }; };
   const incoming = Object.assign(bridge.push(target.id, 'other', '@我 请不要再回复'), { timestamp: Math.floor(now / 1000), sender: 'a'.repeat(64), mentions: { verified: true, self: true, all: false, others: false } });
   await a.tick(); now += 3000; await a.tick(); await a.tick();
@@ -116,7 +116,7 @@ test('verified group @all may skip when the model sees no reason to participate'
   const a = new AIAssistant({ dataRoot: root, bridge, provider, now: () => now, delay: async () => {} });
   await a.init(); await a.configure(modelConfig); await a.testProvider(); await a.scan();
   const target = bridge.contacts[0]; target.kind = 'group'; await a.scan();
-  await a.setGroupOptions({ contact: target.id, atAll: true }); await a.settings({ enabled: true }); await a.tick();
+  await a.setGroupOptions({ contact: target.id, atAll: true }); await a.settings({ enabled: true, replyDelay: 3, replyMaxWait: 8 }); await a.tick();
   provider.next = async () => ({ action: 'skip' });
   Object.assign(bridge.push(target.id, 'other', '@所有人 通知'), { timestamp: Math.floor(now / 1000), sender: 'a'.repeat(64), mentions: { verified: true, self: false, all: true, others: false } });
   await a.tick(); now += 3000; await a.tick();
@@ -133,7 +133,7 @@ test('verified group @all accepts an explicit request not to reply', async t => 
   const a = new AIAssistant({ dataRoot: root, bridge, provider, now: () => now, delay: async () => {} });
   await a.init(); await a.configure(modelConfig); await a.testProvider(); await a.scan();
   const target = bridge.contacts[0]; target.kind = 'group'; await a.scan();
-  await a.setGroupOptions({ contact: target.id, atAll: true }); await a.settings({ enabled: true }); await a.tick();
+  await a.setGroupOptions({ contact: target.id, atAll: true }); await a.settings({ enabled: true, replyDelay: 3, replyMaxWait: 8 }); await a.tick();
   provider.next = async () => ({ stop: true });
   const incoming = Object.assign(bridge.push(target.id, 'other', '@所有人 请不要回复'), { timestamp: Math.floor(now / 1000), sender: 'a'.repeat(64), mentions: { verified: true, self: false, all: true, others: false } });
   await a.tick(); now += 3000; await a.tick();
@@ -151,7 +151,7 @@ test('unreadable image on @me is consumed without a model call or reply', async 
   const a = new AIAssistant({ dataRoot: root, bridge, provider, now: () => now, delay: async () => {} });
   await a.init(); await a.configure(modelConfig); await a.testProvider(); await a.scan();
   const target = bridge.contacts[0]; target.kind = 'group'; await a.scan();
-  await a.setGroupOptions({ contact: target.id, atMe: true }); await a.settings({ enabled: true }); await a.tick();
+  await a.setGroupOptions({ contact: target.id, atMe: true }); await a.settings({ enabled: true, replyDelay: 3, replyMaxWait: 8 }); await a.tick();
   provider.next = async () => ({ action: 'send', text: '我这里看不到图片，可以请你用文字描述一下吗？' });
   const image = Object.assign(bridge.push(target.id, 'other', '[图片]'), { type: 'image', timestamp: Math.floor(now / 1000), sender: 'a'.repeat(64), mentions: { verified: true, self: true, all: false, others: false } });
   await a.tick(); now += 3000; await a.tick();
@@ -167,7 +167,7 @@ test('unreadable voice on @all is consumed without a model call or reply', async
   const a = new AIAssistant({ dataRoot: root, bridge, provider, now: () => now, delay: async () => {} });
   await a.init(); await a.configure(modelConfig); await a.testProvider(); await a.scan();
   const target = bridge.contacts[0]; target.kind = 'group'; await a.scan();
-  await a.setGroupOptions({ contact: target.id, atAll: true }); await a.settings({ enabled: true }); await a.tick();
+  await a.setGroupOptions({ contact: target.id, atAll: true }); await a.settings({ enabled: true, replyDelay: 3, replyMaxWait: 8 }); await a.tick();
   provider.next = async () => ({ action: 'send', text: '我暂时读不到这条语音，请发一下文字内容' });
   const incoming = Object.assign(bridge.push(target.id, 'other', '[语音]'), { type: 'voice', timestamp: Math.floor(now / 1000), sender: 'a'.repeat(64), mentions: { verified: true, self: false, all: true, others: false } });
   await a.tick(); now += 3000; await a.tick();
@@ -183,7 +183,7 @@ test('@me briefly waits then clarifies without pausing or losing the mention', a
   const a = new AIAssistant({ dataRoot: root, bridge, provider, now: () => now, delay: async () => {} });
   await a.init(); await a.configure(modelConfig); await a.testProvider(); await a.scan();
   const target = bridge.contacts[0]; target.kind = 'group'; await a.scan();
-  await a.setGroupOptions({ contact: target.id, atMe: true }); await a.settings({ enabled: true }); await a.tick();
+  await a.setGroupOptions({ contact: target.id, atMe: true }); await a.settings({ enabled: true, replyDelay: 3, replyMaxWait: 8 }); await a.tick();
   let calls = 0; provider.complete = async () => { calls++; return { action: 'wait' }; };
   Object.assign(bridge.push(target.id, 'other', '@我 这个问题'), { timestamp: Math.floor(now / 1000), sender: 'a'.repeat(64), mentions: { verified: true, self: true, all: false, others: false } });
   await a.tick(); now += 3000; await a.tick();
@@ -205,7 +205,7 @@ test('@me unsafe identity text is skipped for the current group turn without han
   const a = new AIAssistant({ dataRoot: root, bridge, provider, now: () => now, delay: async () => {} });
   await a.init(); await a.configure(modelConfig); await a.testProvider(); await a.scan();
   const target = bridge.contacts[0]; target.kind = 'group'; await a.scan();
-  await a.setGroupOptions({ contact: target.id, atMe: true }); await a.settings({ enabled: true }); await a.tick();
+  await a.setGroupOptions({ contact: target.id, atMe: true }); await a.settings({ enabled: true, replyDelay: 3, replyMaxWait: 8 }); await a.tick();
   provider.complete = async () => ({ action: 'send', text: '我是AI，這個問題我來處理' });
   Object.assign(bridge.push(target.id, 'other', '@我 帮忙'), { timestamp: Math.floor(now / 1000), sender: 'a'.repeat(64), mentions: { verified: true, self: true, all: false, others: false } });
   await a.tick(); now += 3000; await a.tick();
@@ -221,7 +221,7 @@ test('@me unsupported media promises are skipped for this turn without handoff',
   const a = new AIAssistant({ dataRoot: root, bridge, provider, now: () => now, delay: async () => {} });
   await a.init(); await a.configure(modelConfig); await a.testProvider(); await a.scan();
   const target = bridge.contacts[0]; target.kind = 'group'; await a.scan();
-  await a.setGroupOptions({ contact: target.id, atMe: true }); await a.settings({ enabled: true }); await a.tick();
+  await a.setGroupOptions({ contact: target.id, atMe: true }); await a.settings({ enabled: true, replyDelay: 3, replyMaxWait: 8 }); await a.tick();
   provider.next = async () => ({ action: 'send', text: '我马上给你发图片' });
   Object.assign(bridge.push(target.id, 'other', '@我 发我图片'), { timestamp: Math.floor(now / 1000), sender: 'a'.repeat(64), mentions: { verified: true, self: true, all: false, others: false } });
   await a.tick(); now += 3000; await a.tick();

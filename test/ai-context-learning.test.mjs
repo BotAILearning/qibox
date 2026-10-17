@@ -7,15 +7,15 @@ import { readMemory, editMemory } from '../server/ai-wiki.mjs';
 import { ChatFixture, AIModelFixture, modelConfig, strategy, key } from './ai-fixtures.mjs';
 import { temp, cleanup } from './fixtures.mjs';
 
-test('malformed monitored facts cannot silently consume the evidence checkpoint',async t=>{
+test('malformed monitored facts consume the failed batch once and never write',async t=>{
   for(const value of [{memoryUpdates:[{text:'事实',newMessageIds:['source']}]},{memoryUpdates:[{text:'事实',evidence:[]}]},{memoryUpdates:[{text:' ',evidence:['source']}]},{memoryUpdates:[null]}])
     assert.throws(()=>validatedMonitorMemory(value),{code:'ai_model_schema'});
   const f=await fixture(t);f.advance(1000);f.push('self','收到');await f.a.tick();const fact=f.push('other','我家猫叫豆包');await f.a.tick();f.advance(21000);
   const learned=f.p.memoryWatch.learned;
   f.provider.complete=async()=>({memoryUpdates:[{text:'对方的猫叫豆包',newMessageIds:[fact.id]}]});
-  await f.a.tick();assert.equal(f.p.memoryWatch.learned,learned);assert.equal(readMemory(f.a.vault,f.p).entries.length,0);assert.ok(f.p.memoryLearningNotice);
+  await f.a.tick();assert.equal(f.p.memoryWatch.learned,fact.id);assert.equal(readMemory(f.a.vault,f.p).entries.length,0);assert.ok(f.p.memoryLearningNotice);
   f.advance(121000);f.provider.complete=async()=>({memoryUpdates:[{text:'对方的猫叫豆包',evidence:[fact.id]}]});
-  await f.a.tick();assert.equal(readMemory(f.a.vault,f.p).entries[0].text,'对方的猫叫豆包');assert.equal(f.p.memoryWatch.learned,fact.id);
+  await f.a.tick();assert.equal(readMemory(f.a.vault,f.p).entries.length,0);assert.equal(f.p.memoryWatch.learned,fact.id);
 });
 
 async function fixture(t) {
@@ -24,14 +24,14 @@ async function fixture(t) {
   await a.init(); t.after(async () => { await a.close(); await cleanup(root); });
   await a.configure(modelConfig); await a.testProvider(); await a.scan();
   const c = bridge.contacts[0]; await a.saveReplyProfile({ contact: c.id, style: { summary: '自然简洁' }, strategy, replyEnabled: true });
-  const p = a.profiles()[0]; await a.settings({ enabled: true }); await a.tick();
+  const p = a.profiles()[0]; await a.settings({ enabled: true, autoLearning: true }); await a.tick();
   const push = (direction, text) => { const m = bridge.push(c.id, direction, text); m.timestamp = Math.floor(now / 1000); return m; };
   const advance = ms => now += ms;
   return { a, p, c, root, bridge, provider, push, advance };
 }
 
 test('current reply uses recent human samples immediately with automatic style updates off and never includes AI or unknown samples', async t => {
-  const f = await fixture(t); f.advance(1000);
+  const f = await fixture(t); await f.a.settings({ autoLearning:false }); f.advance(1000);
   const human = f.push('self', '行呀 咱就这么定~');
   const auto = f.push('self', '敬爱的先生您好。'); f.p.generatedIds = [auto.id];
   const ambiguous = f.push('self', '来源不明的相同正文'); f.push('self', ambiguous.text);
@@ -70,13 +70,13 @@ test('monitor hard-rejects AI, unknown and cross-contact evidence and protects m
   assert.equal(readMemory(f.a.vault,f.p,'memorySuggestion').summary,'覆盖手动事实');
 });
 
-test('a failed monitor request retains progress and retries after cooldown without blocking ordinary replies', async t => {
+test('a failed monitor request advances its batch without repeated calls or blocking ordinary replies', async t => {
   const f = await fixture(t); f.advance(1000); f.push('self','收到'); await f.a.tick(); f.push('other','我喜欢茶'); await f.a.tick();
   const complete = f.provider.complete.bind(f.provider); let attempts=0;
   f.provider.complete = async (...args) => { if(args[2].mode==='memory-monitor'){attempts++;throw Error('failure');} return complete(...args); };
   f.advance(21000); await f.a.tick(); assert.equal(attempts,1); assert.ok(f.p.memoryLearningNotice);
   f.advance(30000); await f.a.tick(); assert.equal(attempts,1);
-  f.advance(91000); await f.a.tick(); assert.equal(attempts,2);
+  f.advance(91000); await f.a.tick(); assert.equal(attempts,1);
   f.advance(160000); await f.a.tick(); assert.ok(f.bridge.sent.length); assert.ok(!f.a.retryAt || f.a.retryAt <= f.a.now());
 });
 

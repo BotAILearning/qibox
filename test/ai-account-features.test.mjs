@@ -13,7 +13,7 @@ async function fixture(t) {
   const root = await temp(), bridge = new ChatFixture(), provider = new AIModelFixture();
   let now = Date.parse('2026-09-30T15:20:30+08:00');
   const options = { dataRoot: root, bridge, provider, now: () => now };
-  const a = new AIAssistant(options); await a.init(); await a.configure(modelConfig); await a.scan();
+  const a = new AIAssistant(options); await a.init(); await a.configure(modelConfig); await a.scan(); await a.settings({ autoLearning: true });
   const contact = bridge.contacts[0].id;
   await a.setReplyOptions({ contact, enabled: true });
   t.after(async () => { await a.close(); await cleanup(root); });
@@ -59,14 +59,14 @@ test('new conversation-scene fields persist while unconfirmed model suggestions 
     { field: 'hometown', text: '潮州' }, { field: 'relationships', text: '和家人同住', allowGroup: true },
   ] });
   assert.deepEqual(selfContext(a, 'group').map(row => row.field), ['relationships']);
-  assert.ok(a.publicState().personalFields.some(([key]) => key === 'hometown'));
+  assert.ok(a.publicState().personalFields.some(([key]) => key === 'experiences'));
   await assert.rejects(a.configuration({ type: 'personal-information', entries: [{ field: 'password', text: 'invalid' }] }), /请检查个人信息/);
 });
 
 test('retired timezone stays encrypted and survives current-field saves/history without becoming model context', async t => {
   const { a, advance } = await fixture(t);
-  assert.deepEqual(retiredPersonalFields, ['timezone']);
-  assert.equal(personalFieldDefinitions.length, 16);
+  assert.deepEqual(retiredPersonalFields, ['timezone','boundaries']);
+  assert.equal(personalFieldDefinitions.length, 12);
   assert.ok(!personalFieldDefinitions.some(row => row.key === 'timezone'));
   assert.ok(!a.publicState().personalFields.some(([field]) => field === 'timezone'));
   await a.configuration({ type: 'personal-information', entries: [
@@ -100,11 +100,11 @@ test('a legacy timezone save payload remains accepted while new model suggestion
   await a.configuration({ type: 'personal-information', entries: [{ id: 'legacy-zone', field: 'timezone', text: 'Europe/London', allowGroup: true }] });
   assert.equal(personalInformation(a).entries.find(row => row.field === 'timezone').text, 'Europe/London');
   assert.deepEqual(selfContext(a, 'person'), []); assert.deepEqual(selfContext(a, 'group'), []);
-  const source = { id: 'human-timezone', direction: 'self', text: '我现在用伦敦时间，常住伦敦。' };
+  const source = { id: 'human-timezone', direction: 'self', authorship: 'human', text: '我现在用伦敦时间，常住伦敦。' };
   assert.equal(stageSelfSuggestions(a, [{ field: 'timezone', text: 'Europe/London', messageId: source.id }], [source]), false);
   assert.deepEqual(personalInformation(a).suggestions, []);
   assert.equal(stageSelfSuggestions(a, [{ field: 'timezone', text: 'Europe/London', messageId: source.id }, { field: 'city', text: '伦敦', messageId: source.id }], [source]), true);
-  assert.deepEqual(personalInformation(a).suggestions.map(row => row.field), ['city']);
+  assert.deepEqual(personalInformation(a).entries.filter(row=>row.source==='auto').map(row => row.field), ['city']);
 });
 
 test('preserving a retired field never permits duplicate IDs or bypasses the existing account entry limit', async t => {
@@ -133,18 +133,13 @@ test('stale personal drafts and history actions cannot read or write a newly con
   a.data.account = account;
 });
 
-test('chat self-information proposals never overwrite manual facts or learn AI-generated facts', async t => {
+test('automatic self facts never overwrite manual facts or save AI-generated facts', async t => {
   const { a, p } = await fixture(t);
   await a.configuration({ type: 'personal-information', entries: [{ field: 'city', text: '深圳' }] });
   p.generatedIds = ['ai-self'];
-  const messages = [{ id: 'human', direction: 'self', text: '我搬到上海了' }, { id: 'ai-self', direction: 'self', text: '我搬到北京了' }, { id: 'other', direction: 'other', text: '你住杭州' }];
-  assert.equal(stageSelfSuggestions(a, [{ field: 'city', text: '上海', messageId: 'human' }, { field: 'city', text: '北京', messageId: 'ai-self' }, { field: 'city', text: '杭州', messageId: 'other' }], messages), true);
-  assert.equal(personalInformation(a).entries[0].text, '深圳');
-  const suggestions = personalInformation(a).suggestions; assert.equal(suggestions.length, 1);
-  await a.configuration({ type: 'personal-suggestion', id: suggestions[0].id, command: 'accept' });
-  assert.equal(personalInformation(a).entries[0].text, '上海');
-  assert.equal(selfContext(a, 'group').length, 0);
-  assert.ok(personalInformation(a).history.some(row => row.entries.some(entry => entry.text === '深圳')));
+  const messages = [{ id: 'human', direction: 'self', authorship:'human', text: '我搬到上海了' }, { id: 'ai-self', direction: 'self', authorship:'ai', text: '我搬到北京了' }, { id: 'other', direction: 'other', authorship:'other', text: '你住杭州' }];
+  assert.equal(stageSelfSuggestions(a, [{field:'city',text:'上海',messageId:'human'},{field:'city',text:'北京',messageId:'ai-self'},{field:'city',text:'杭州',messageId:'other'}],messages), false);
+  assert.equal(personalInformation(a).entries[0].text,'深圳'); assert.equal(personalInformation(a).suggestions.length,0);
 });
 
 test('global reply strategy follows inheritance and preserves per-object cap and independent facts', async t => {

@@ -359,6 +359,9 @@ try {
   report.checks.push('Switching disposable accounts clears private history search, page and analysis draft; only current-account reports are visible, no model calls');
 
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator('#ai-panel').waitFor({state:'visible'});
+  assert.equal(await page.locator('#desktop-view').isVisible(), true, 'resizing preserves the active AI workspace and draft');
+  for (let back=0; back<5 && await page.locator('#desktop-view').isVisible(); back++) { await page.locator('#ai-mobile-back').click(); await page.waitForTimeout(100); }
   const mobileMaster = page.locator('[data-mobile-ai-master]');
   await mobileMaster.waitFor();
   await page.waitForFunction(() => {
@@ -367,16 +370,16 @@ try {
   });
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), '390px phone list must not overflow horizontally');
   assert.equal(await page.locator('#mobile-instances h2').textContent(), '桌面');
-  assert.equal(await page.locator('[data-mobile-ai-open]').count(), 0, 'confirmed phone scope does not expose the desktop AI workspace');
-  assert.equal((await page.locator('.mobile-ai-card strong').textContent()).trim(), '分析报告 UI 测试微信');
-  assert.equal(await page.locator('#ai-panel').isVisible(), false, 'resizing to phone closes the full analysis workspace');
+  assert.equal(await page.locator('[data-mobile-ai-open]').count(), 1, 'phone offers the explicitly requested personal/settings entry');
+  assert.match(await page.locator('[data-mobile-ai-open]').textContent(), /分析报告 UI 测试微信/);
+  assert.equal(await page.locator('#ai-panel').isVisible(), false, 'returning to the list closes the workspace');
   assert.equal(await page.locator('#desktop-view').isVisible(), false, 'resizing does not leave an empty desktop');
   let mobileFullReads = 0;
   page.on('request', request => {
     if (request.method() === 'GET' && /\/ai(?:\?|$)/.test(new URL(request.url()).pathname + new URL(request.url()).search)) mobileFullReads++;
   });
   await screenshot('03-mobile-list-390');
-  report.checks.push('390px phone scope closes analysis/history and retains only instance management and the lightweight AI master switch');
+  report.checks.push('390px resize preserves the current workspace; returning to the list exposes settings entry and lightweight AI master without horizontal overflow');
   const waitMasterPost = expected => page.waitForResponse(response => response.request().method() === 'POST' && response.url().includes(`/api/instances/${meta.id}/ai`) && response.request().postDataJSON()?.action === 'mobile-master' && response.request().postDataJSON()?.value?.enabled === expected);
   const enableResponse = waitMasterPost(true);
   await mobileMaster.check();

@@ -113,10 +113,10 @@ test('configured models prioritize assignments, but creating and editing models 
 test('personal priorities preserve draft content, group permission and the shared field schema', () => {
   const order = personalFieldDefinitions.map(field => field.key);
   const html = personalInformationPage({ account: 'test', personalInformation: { entries: [] } }, { status: { text: '本周休假', allowGroup: true, open: true }, city: { text: '深圳\n广州', allowGroup: false } });
-  before(html, 'data-personal-field="status"', 'data-personal-field="city"');
-  before(html, 'data-personal-field="boundaries"', 'data-personal-field="interests"');
+  before(html, 'data-personal-field="city"', 'data-personal-field="status"');
+  assert.doesNotMatch(html, /data-personal-field="boundaries"/);
   assert.match(html, /本周休假/);
-  const statusCard = html.slice(html.indexOf('data-personal-field="status"'), html.indexOf('data-personal-field="plans"'));
+  const statusCard = html.slice(html.indexOf('data-personal-field="status"'), html.indexOf('id="ai-personal-more"'));
   assert.match(statusCard, /data-personal-share checked/);
   assert.match(html, /深圳\n广州/);
   assert.deepEqual(personalFieldDefinitions.map(field => field.key), order);

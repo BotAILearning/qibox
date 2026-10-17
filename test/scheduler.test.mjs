@@ -8,7 +8,7 @@ import { temp, cleanup } from './fixtures.mjs';
 test('idle saves and runs without inspecting eligibility, including legacy profiles', async () => {
   const root = await temp(); let starts = 0, stops = 0, now = new Date('2026-09-10T18:00:00Z');
   const runtime = { status: 'stopped', inspectAutoLogin() { assert.fail('No eligibility detection'); } };
-  const options = { dataRoot: root, runtime, ready: () => true, now: () => now,
+  const options = { resources:async()=>({allowed:true}), setPriority:async()=>true, dataRoot: root, runtime, ready: () => true, now: () => now,
     start: async () => { starts++; runtime.status = 'running'; }, stop: async () => { stops++; runtime.status = 'stopped'; } };
   const scheduler = new WechatScheduler(options);
   try {
@@ -30,7 +30,7 @@ test('scheduled idle waits for the login page, clicks once and stops trying afte
       if (end === 'failure') throw new Error('inaccessible');
       return attempts > 1 && end === 'clicked' ? { status: 'logged-out', clicked: true } : { status: end === 'logged-in' ? 'logged-in' : 'unknown' };
     } };
-    const scheduler = new WechatScheduler({ dataRoot: root, runtime, ready: () => true, now: () => now,
+    const scheduler = new WechatScheduler({ resources: async()=>({allowed:true}), setPriority:async()=>true, dataRoot: root, runtime, ready: () => true, now: () => now,
       start: async () => { runtime.status = 'running'; }, stop: async () => { runtime.status = 'stopped'; } });
     try {
       await scheduler.init(); await scheduler.save({ mode: end === 'continuous' ? 'continuous' : 'idle', startTime: '02:00', endTime: '03:00' });
@@ -62,7 +62,7 @@ test('manual default, explicit continuous mode, persistent pause and reopening r
 test('idle follows a cross-midnight window and never stops a session the user has opened', async () => {
   const root = await temp(); let now = new Date('2026-09-10T14:59:00Z'), starts = 0, stops = 0;
   const runtime = { status: 'stopped', inspectAutoLogin: async () => ({ status: 'ready' }) };
-  const scheduler = new WechatScheduler({ dataRoot: root, runtime, ready: () => true, now: () => now,
+  const scheduler = new WechatScheduler({ resources: async()=>({allowed:true}), setPriority:async()=>true, dataRoot: root, runtime, ready: () => true, now: () => now,
     start: async () => { starts++; runtime.status = 'running'; }, stop: async () => { stops++; runtime.status = 'stopped'; } });
   try {
     await scheduler.init(); await scheduler.save({ mode: 'idle', startTime: '23:00', endTime: '06:00' });
@@ -78,7 +78,7 @@ test('idle follows a cross-midnight window and never stops a session the user ha
 });
 test('failed startup attempts obey 60-second backoff and three failures per day', async () => {
   const root = await temp(); let now = new Date('2026-09-10T03:00:00Z'), attempts = 0;
-  const scheduler = new WechatScheduler({ dataRoot: root, runtime: { status: 'stopped' }, ready: () => true, now: () => now, start: async () => { attempts++; throw new Error('offline'); }, stop: async () => {} });
+  const scheduler = new WechatScheduler({ resources: async()=>({allowed:true}), setPriority:async()=>true, dataRoot: root, runtime: { status: 'stopped' }, ready: () => true, now: () => now, start: async () => { attempts++; throw new Error('offline'); }, stop: async () => {} });
   try {
     await scheduler.init(); await scheduler.save({ mode: 'continuous', startTime: '02:00', endTime: '02:30' });
     await scheduler.tick(); await scheduler.tick(); assert.equal(attempts, 1);
@@ -89,7 +89,7 @@ test('failed startup attempts obey 60-second backoff and three failures per day'
 
 test('not ready instances never start', async () => {
   const root = await temp(); let ready = false, starts = 0;
-  const scheduler = new WechatScheduler({ dataRoot: root, runtime: { status: 'stopped' }, ready: () => ready, start: async () => { starts++; }, stop: async () => {} });
+  const scheduler = new WechatScheduler({ resources: async()=>({allowed:true}), setPriority:async()=>true, dataRoot: root, runtime: { status: 'stopped' }, ready: () => ready, start: async () => { starts++; }, stop: async () => {} });
   try { await scheduler.init(); await scheduler.save({ mode: 'continuous', startTime: '02:00', endTime: '02:30' }); await scheduler.tick(); assert.equal(starts, 0); ready = true; await scheduler.tick(); assert.equal(starts, 1); }
   finally { await scheduler.close(); await cleanup(root); }
 });

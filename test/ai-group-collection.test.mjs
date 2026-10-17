@@ -14,7 +14,7 @@ async function fixture(t) {
   t.after(async () => { await a.close(); await cleanup(root); });
   await a.configure(modelConfig); await a.testProvider(); await a.scan();
   await a.setGroupOptions({ contact: bridge.contacts[0].id, atMe: true, atAll: true, realtime: true, confirmRealtime: true });
-  await a.settings({ enabled: true }); await a.tick();
+  await a.settings({ enabled: true, replyDelay: 3, replyMaxWait: 8 }); await a.tick();
   const profile = a.profiles().find(p => p.contact === bridge.contacts[0].id);
   const push = (sender, self = true, text = '请回答我的问题') => Object.assign(bridge.push(profile.contact, 'other', text), {
     timestamp: Math.floor(now / 1000), sender: key(sender), mentions: { verified: true, self, all: false, others: false },

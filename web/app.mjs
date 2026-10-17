@@ -1,3 +1,4 @@
+import { restoreAppearance } from './appearance.mjs';
 import { desktopLoader } from './desktop-loader.mjs';
 import { nativeInput } from './native-input.mjs';
 import { clipboardFiles } from './clipboard-files.mjs';
@@ -18,6 +19,7 @@ const $ = selector => document.querySelector(selector);
 const connectionNotice = dismissibleNotice($('#connection-error'), { fallbackFocus: () => $('.brand') });
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const prefix = apiPrefix;
+restoreAppearance();
 const small = matchMedia('(max-width: 760px)');
 const phone = /Android|iPhone|iPad|iPod|Mobile|HarmonyOS/i.test(navigator.userAgent);
 // A phone that requests a desktop-sized viewport should receive the PC controls.
@@ -66,7 +68,7 @@ function initializeAssistant(aiAssistant) {
   assistant ??= aiAssistant({ api, downloadAnalysisReport, guard: aiRailGuard, onVisibilityChange: syncDesktopInteraction, onClose: () => { if (standaloneAI) disconnect(); },
   // 入口常驻后，入口可能先于实例挂载出现：操作开关 / 打开面板前补一次挂载，避免用空实例 id 请求。
   ensure: async () => {
-    if (mobile()) return;
+    if (mobile() && !standaloneAI) return;
     const target = desktopId || state?.instances.find(item => (item.appId || 'wechat') === 'wechat')?.id || null;
     if (!target) return;
     if (assistantId === target && assistant.attached()) return;
@@ -84,7 +86,7 @@ function aiBlockedDialog(hint) {
   dialog('暂无法使用 AI 辅助', `<p>${esc(hint)}</p>`, '<button type="button" data-close class="primary">知道了</button>');
 }
 function aiRailGuard() {
-  if (mobile()) return false;
+  if (mobile() && !standaloneAI) return false;
   const entry = state?.instances.find(item => item.id === desktopId);
   if (!entry || (entry.appId || 'wechat') !== 'wechat') return false;
   const hint = aiBlockedHint(entry.runtime, standaloneAI ? true : desktopConnected);
@@ -92,11 +94,23 @@ function aiRailGuard() {
   return true;
 }
 async function openAIEntry(id) {
-  if (mobile()) return;
   const entry = state.instances.find(item => item.id === id);
   if (!entry || (entry.appId || 'wechat') !== 'wechat') return;
   const hint = aiBlockedHint(entry.runtime, true);
   if (hint) return aiBlockedDialog(hint);
+  if (mobile()) {
+    const operation = ++desktopOperation; disconnect(false);
+    const { aiAssistant } = await loadDesktop();
+    if (operation !== desktopOperation || !session) return;
+    initializeAssistant(aiAssistant); standaloneAI = true; desktopId = id;
+    $('#desktop-view').classList.add('ai-only'); $('#desktop-view').hidden = false;
+    $('#ai-rail').hidden = true;
+    await syncAssistant(id);
+    if (operation !== desktopOperation) return;
+    $('#ai-account-label').textContent = '当前微信：' + entry.name;
+    $('#ai-close').setAttribute('aria-label', '返回栖盒'); $('#ai-close span').textContent = '返回栖盒';
+    assistant.show(); syncDesktopInteraction(); return;
+  }
   if (standaloneAI) return;
   let operation = desktopOperation;
   if (desktopId !== id || $('#desktop-view').hidden || !desktopConnected) {
@@ -110,7 +124,7 @@ async function openAIEntry(id) {
 }
 let assistantId = null;
 function syncAssistant(id) {
-  if (mobile()) id = null;
+  if (mobile() && !standaloneAI) id = null;
   if (assistantId === id) return;
   assistant?.detach(); assistantId = id;
   if (id && assistant) return assistant.attach(id);
@@ -305,7 +319,7 @@ function renderMobileAI() {
     const hint = runtimeAvailable && !loading && !known ? `<button type="button" class="quiet" data-mobile-ai-retry="${esc(item.id)}">重试读取开关</button>` : '';
     const message = !runtimeAvailable ? '微信登录后可用' : loading ? '正在读取开关…' : '暂时无法读取开关';
     const control = known ? `<input type="checkbox" role="switch" data-mobile-ai-master="${esc(item.id)}" aria-label="${esc(item.name)} AI 总开关" ${checked ? 'checked' : ''} ${loading ? 'disabled aria-busy="true"' : ''}>` : `<span class="mobile-ai-state" role="status">${message}</span>`;
-    return `<article class="mobile-ai-card"><strong class="mobile-ai-name">${esc(item.name)}</strong>${control}${hint ? `<div class="mobile-ai-status">${hint}</div>` : ''}</article>`;
+    return `<article class="mobile-ai-card"><button type="button" class="mobile-ai-open" data-mobile-ai-open="${esc(item.id)}" ${runtimeAvailable ? '' : 'disabled'}>${esc(item.name)} · AI 设置</button>${control}${hint ? `<div class="mobile-ai-status">${hint}</div>` : ''}</article>`;
   }).join('');
   if (markup !== lastMobileAIMarkup) { $('#mobile-ai-list').innerHTML = markup; lastMobileAIMarkup = markup; }
   $('#mobile-ai').hidden = !entries.length;
@@ -517,12 +531,12 @@ function newInstance(fresh = false, appId = marketAppId) {
 function settings(item) {
   dialog('启动设置', `<p>${esc(item.name)}</p>
     <label class="choice"><input type="radio" name="mode" value="manual" ${item.schedule.mode === 'manual' ? 'checked' : ''}><span><strong>手动启动</strong><small>需要时打开。</small></span></label>
-    <label class="choice"><input type="radio" name="mode" value="continuous" ${item.schedule.mode === 'continuous' ? 'checked' : ''}><span><strong>持续备份</strong><small>登录后持续接收并保存记录。与电脑登录同一微信冲突，适合主要使用手机时开启。</small></span></label>
-    <label id="idle-choice" class="choice"><input id="idle-mode" data-instance-id="${esc(item.id)}" type="radio" name="mode" value="idle" ${item.schedule.mode === 'idle' ? 'checked' : ''}><span><strong>闲时备份</strong><small>按时启动并退出，适合不使用电脑微信的时段。</small></span></label>
+    <label class="choice"><input type="radio" name="mode" value="continuous" ${item.schedule.mode === 'continuous' ? 'checked' : ''}><span><strong>在线实时同步</strong><small>运行官方微信，在线期间持续接收并保存可获取的消息。与电脑登录同一微信冲突，适合主要使用手机时开启。</small></span></label>
+    <label id="idle-choice" class="choice"><input id="idle-mode" data-instance-id="${esc(item.id)}" type="radio" name="mode" value="idle" ${item.schedule.mode === 'idle' ? 'checked' : ''}><span><strong>闲时备份</strong><small>按时段低优先级运行；检测到网络、负载繁忙或可用内存不足时退让，恢复空闲后继续。</small></span></label>
     <p class="field-help">因微信限制，前期使用需扫码登录。后续在微信勾选“自动登录该设备”后，才能在定时重启后自动登录；栖盒会自动点击启动页的“登录”按钮。</p>
-    <div id="idle-window" class="time-fields" ${item.schedule.mode === 'idle' ? '' : 'hidden'}><label>开始时间<input type="time" name="startTime" value="${esc(item.schedule.startTime)}" required></label><label>结束时间<input type="time" name="endTime" value="${esc(item.schedule.endTime)}" required></label><small>支持跨夜时段。</small></div>
-    <p class="field-help">关闭页面后微信继续运行；主动停止后，需再次打开或保存设置。</p>`, '<button type="button" data-close class="secondary">取消</button><button type="submit" class="primary">保存设置</button>', async form => {
-      await api(`/instances/${item.id}/settings`, { mode: form.get('mode'), startTime: form.get('startTime'), endTime: form.get('endTime') });
+    <div id="idle-window" class="time-fields" ${item.schedule.mode === 'idle' ? '' : 'hidden'}><label>开始时间<input type="time" name="startTime" value="${esc(item.schedule.startTime)}" required></label><label>结束时间<input type="time" name="endTime" value="${esc(item.schedule.endTime)}" required></label><small>支持跨夜时段。</small><label>负载上限（%）<input type="number" name="loadPercent" min="10" max="100" value="${item.schedule.resourceLimits?.loadPercent ?? 70}" required></label><label>网络繁忙阈值（MB/s）<input type="number" name="networkMBps" min="0.1" max="10000" step="0.1" value="${item.schedule.resourceLimits?.networkMBps ?? 2}" required></label><label>最低可用内存（MB）<input type="number" name="freeMemoryMB" min="128" max="1048576" value="${item.schedule.resourceLimits?.freeMemoryMB ?? 512}" required></label><p class="field-help">按整机一分钟负载、总网络吞吐和可用内存检测；仅调度本计划启动的微信，不区分上传来源，不能保证零影响。${esc(item.schedule.resourceState?.reason || '')}</p></div>
+    <p class="field-help">关闭页面后微信继续运行；主动停止后，需再次打开或保存设置。</p>`, `${item.schedule.mode === 'idle' ? `<button type="button" class="secondary" data-idle-command="${item.schedule.paused ? 'resume-idle' : 'pause-idle'}" data-instance-id="${esc(item.id)}">${item.schedule.paused ? '恢复闲时备份' : '暂停闲时备份'}</button>` : ''}<button type="button" data-close class="secondary">取消</button><button type="submit" class="primary">保存设置</button>`, async form => {
+      await api(`/instances/${item.id}/settings`, { mode: form.get('mode'), startTime: form.get('startTime'), endTime: form.get('endTime'), resourceLimits: Object.fromEntries(['loadPercent','networkMBps','freeMemoryMB'].map(key=>[key,Number(form.get(key))])) });
       await refresh(); notify('启动设置已保存');
     });
   updateIdleChoice();
@@ -733,7 +747,16 @@ window.addEventListener('resize', () => {
   if (nextMobileLayout === lastMobileLayout) return;
   lastMobileLayout = nextMobileLayout;
   if (mobileLoginId && mobileLoginId === desktopId) { renderDesktop(); }
-  else if (mobile()) { mobileLoginId = null; disconnect(); }
+  else if (mobile() && !$('#ai-panel').hidden && desktopId && assistant?.attached()) {
+    // Keep the same form and draft when crossing the mobile breakpoint. Only
+    // the desktop stream is disconnected; this is the same account workspace.
+    disconnect(true, true); standaloneAI = true;
+    $('#desktop-view').classList.add('ai-only'); $('#desktop-view').hidden = false;
+    $('#ai-rail').hidden = true;
+    $('#ai-close').setAttribute('aria-label', '返回栖盒'); $('#ai-close span').textContent = '返回栖盒';
+    syncDesktopInteraction();
+  }
+  else if (mobile() && !standaloneAI) { mobileLoginId = null; disconnect(); }
   render();
 });
 document.addEventListener('change', e => {
@@ -746,7 +769,10 @@ document.addEventListener('click', async event => {
   const button = event.target.closest('button'); if (!button || button.disabled) return;
   try {
     if (button.hasAttribute('data-close')) return closeModal();
-    if (button.dataset.mobileAiRetry) { mobileAISettings.delete(button.dataset.mobileAiRetry); await loadMobileAISettings(button.dataset.mobileAiRetry); return; }
+    if (button.id === 'about-qibox') { dialog('关于栖盒', '<p>栖盒 '+esc(session?.product?.version || '')+'</p><h3>NAS 登录微信</h3><p>运行官方微信客户端，支持自动登录及在线期间可获取消息的实时同步，具体范围遵循官方客户端能力。</p><h3>AI 辅助</h3><p>使用你自己的模型 API，提供学习、总结、分析和自动回复等功能。</p><h3>闲时备份</h3><p>与在线同步分开调度，可设置时间段及负载、网络、内存阈值。计划启动的微信低优先级运行，检测到繁忙时退让，支持暂停恢复。避让取决于可检测的整机指标，不能保证零影响。</p><p>开发者：Bot · <a href="mailto:bot@qiapp.online">bot@qiapp.online</a></p>', '<button type="button" data-close class="secondary">关闭</button>'); return; }
+    if (button.dataset.idleCommand) { await api('/instances/'+button.dataset.instanceId+'/settings',{command:button.dataset.idleCommand});closeModal();await refresh();notify('闲时备份设置已更新');return; }
+      if (button.dataset.mobileAiOpen) { await openAIEntry(button.dataset.mobileAiOpen); return; }
+      if (button.dataset.mobileAiRetry) { mobileAISettings.delete(button.dataset.mobileAiRetry); await loadMobileAISettings(button.dataset.mobileAiRetry); return; }
     if (button.dataset.mobileLogin) { const id = button.dataset.mobileLogin; closeModal(); await openMobileLogin(id); return; }
     if (button.dataset.mobileStop) {
       const id = button.dataset.mobileStop;

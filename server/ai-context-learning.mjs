@@ -1,5 +1,6 @@
 import { memoryExtractionInstruction, chatMemoryPrompt } from './ai-wiki.mjs';
 import { AppError } from './files.mjs';
+import { safeFactMessage, learningRules } from './ai-learning-policy.mjs';
 
 // A self direction identifies the account, not who composed its message.
 export function authoredMessages(vault, profile, messages) {
@@ -24,9 +25,7 @@ export function authoredMessages(vault, profile, messages) {
   });
 }
 
-export const factEvidence = message => !!message.id && !message.unresolved && !message.aiGenerated &&
-  ['human', 'other'].includes(message.authorship) && typeof message.text === 'string' && !!message.text.trim() &&
-  (!message.type || ['text', 'quote'].includes(message.type));
+export const factEvidence = safeFactMessage;
 
 export function contextualReplyStyle(messages) {
   let characters = 0;
@@ -46,10 +45,11 @@ export const contextualStylePrompt = ` 当前回复必须参考contextualStyle.s
 
 export const monitorMemoryPrompt = `你在监控已授权对象的新聊天，只整理有用的聊天知识，不生成回复，不发送消息，不修改风格或自动回复设置。messages是带作者与消息时间的资料，newMessageIds标识本次新增材料。authorship=ai或unknown不可作为任何事实依据，也不使用其引用文本补造事实。${memoryExtractionInstruction}${chatMemoryPrompt} 本入口只整理知识，不需要先生成回复。输出协议覆盖上文回复入口协议：只返回 {"memoryUpdates":[{"field":"other","text":"有依据的事实","evidence":["来源消息ID"]}]} 这种唯一字段对象；先逐条审阅newMessageIds，明确、值得长期保留且previousMemory未记录的新事实必须提取，不能因没有回复任务就略过。evidence是每条必须携带的非空来源ID数组，不能用newMessageIds代替它；至少一条证据属于输入newMessageIds。按以上资料协议可增加recordedAt、observedAt、calendar、degree；只有修改旧条目时才带原id，新增省略id。只有没有值得保存的新事实时才返回 {"memoryUpdates":[]}，不凑数。临时健康、情绪和行程保留原消息时间语境，不当作永久现状。不返回action、style或任何发送字段。`;
 
+export const automaticLearningPrompt = monitorMemoryPrompt + learningRules + '本入口可另外返回selfMemorySuggestions与style；没有本人资料或足够风格样本就省略。memoryUpdates只记录当前联系人或有明确成员身份的群事实，不把本人事实写入联系人资料。';
 export function validatedMonitorMemory(result) {
   const invalid = () => { throw new AppError('监控学习返回格式无效，条目必须包含正文和来源证据', 502, 'ai_model_schema'); };
-  if (!result || !Array.isArray(result.memoryUpdates) || result.memoryUpdates.length > 30 || Object.keys(result).some(key => key !== 'memoryUpdates')) invalid();
-  const allowed = new Set(['id','field','text','evidence','recordedAt','observedAt','calendar','degree']);
+  if (!result || !Array.isArray(result.memoryUpdates) || result.memoryUpdates.length > 30 || Object.keys(result).some(key => !['memoryUpdates', 'selfMemorySuggestions', 'style'].includes(key))) invalid();
+  const allowed = new Set(['id','field','text','evidence','recordedAt','observedAt','calendar','degree','subjectId']);
   for (const update of result.memoryUpdates) {
     if (!update || Array.isArray(update) || typeof update !== 'object' || typeof update.text !== 'string' || !update.text.trim()
       || !Array.isArray(update.evidence) || !update.evidence.length || update.evidence.some(id => typeof id !== 'string' || !id.trim())

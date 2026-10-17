@@ -63,7 +63,7 @@ async function fixture(t, group = false) {
   const contact = bridge.contacts[0].id;
   if (group) await a.setGroupOptions({ contact, atMe: true });
   else await a.setReplyOptions({ contact, enabled: true, judgeReply: false });
-  await a.settings({ enabled: true }); await a.tick();
+  await a.settings({ enabled: true, ...(group ? {replyDelay:3,replyMaxWait:8} : {}) }); await a.tick();
   const p = a.profiles().find(value => value.contact === contact);
   t.after(async () => { await a.close(); await cleanup(root); });
   return { a, bridge, provider, p, async receive(text = '请帮我处理任务') {

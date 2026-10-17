@@ -69,7 +69,9 @@ def classify_control(states, labels, role='combo box'):
     values = [value for value in labels if value]
     if role == 'check box':
         return 'ready' if values == ['自动登录该设备'] and CHECKED in states else 'unavailable'
-    return 'ready' if len(values) == 1 and values[0] in {'自动登录', '自动登录该设备'} else 'unavailable'
+    # Official 4.1.13.23 abbreviates the selected login method to 自动.
+    # This is still restricted to the verified account's 登录方式 combo box.
+    return 'ready' if len(values) == 1 and values[0] in {'自动', '自动登录', '自动登录该设备'} else 'unavailable'
 
 
 class Inspector:

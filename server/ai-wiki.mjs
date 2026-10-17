@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { memoryDimensionsInstruction } from './ai-prompts.mjs';
 import { textField } from './ai-schema.mjs';
+import { sensitiveMemory } from './ai-learning-policy.mjs';
 
 export const timeContextPrompt = ' 时间规则：timestamp 为原始消息发送时间（Unix 秒），不是学习执行时间；事件时间可能与发送时间不同。material 中的 sourceDate 和 relativeDates 如有提供，是系统按消息时间算好的北京时间日期；相对日期只能采用对应值，不自行推算其他具体日期。缺少对应值或时间含糊时保留相对描述，不补造年月日。保留粘贴材料已有时间，不将旧计划当成当前待办。';
 export const memoryObservationInstruction = ' 每条记忆如有明确来源消息时间，附 observedAt=该消息 timestamp 换算的 Unix 毫秒；没有来源时间就省略，不用学习或保存时间代替。observedAt 是听到这件事的时间，不代表事实一直有效。';
@@ -41,6 +42,7 @@ export function memoryValue(value) {
     const entries = value.entries.map(e => {
       const field = ['name','addressing','phone','birthday','date','school','household','residence','workplace','employer','shipping','group_info','group_member','group_rule','group_topic','group_plan','group_event','other'].includes(e.field) ? e.field : 'other';
       const text = textField(e.text, 2000, true), degree = e.degree ? textField(e.degree, 120, true) : undefined;
+      if (sensitiveMemory(text)) throw new Error('请勿将密码、验证码或密钥保存到聊天记忆');
       const calendar = e.calendar === 'lunar' || e.calendar === 'solar' ? e.calendar : undefined;
       const from = Number.isSafeInteger(e.from) && Math.abs(e.from) <= 8640000000000000 ? e.from : undefined, to = Number.isSafeInteger(e.to) && Math.abs(e.to) <= 8640000000000000 ? e.to : undefined;
       const recordedAt = Number.isSafeInteger(e.recordedAt) && Math.abs(e.recordedAt) <= 8640000000000000 ? e.recordedAt : undefined;
@@ -50,11 +52,12 @@ export function memoryValue(value) {
       if (from !== undefined && to !== undefined && from > to) throw new Error('记忆的结束时间不能早于开始时间');
       const normalized = { field, text, ...(degree ? { degree } : {}), ...(calendar ? { calendar } : {}), ...(from !== undefined ? { from } : {}), ...(to !== undefined ? { to } : {}), ...(recordedAt !== undefined ? { recordedAt } : {}), ...(observedAt !== undefined ? { observedAt } : {}), ...(supersededAt !== undefined ? { supersededAt } : {}), ...(e.status === 'historical' || e.status === 'uncertain' ? { status: e.status } : {}), ...(evidence.length ? { evidence } : {}) };
       const id = typeof e.id === 'string' && /^[a-f0-9-]{16,40}$/.test(e.id) ? e.id : memoryEntryId(normalized);
-      return { id, ...normalized, ...(e.manual === true ? { manual: true } : {}) };
+      return { id, ...normalized, ...(e.factTime === null || typeof e.factTime === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(e.factTime) ? {factTime:e.factTime} : {}), ...Object.fromEntries(['account','object','subjectId','source'].filter(key => typeof e[key] === 'string' && e[key].length <= 180).map(key => [key, e[key]])), ...(typeof e.allowGroup === 'boolean' ? { allowGroup: e.allowGroup } : {}), ...(Number.isSafeInteger(e.updatedAt) ? { updatedAt: e.updatedAt } : {}), ...(e.manual === true ? { manual: true } : {}) };
     });
     if (summaryOf(entries).length > maxMemoryChars) throw new Error('记忆内容过多，请先整理');
     const suppressed = Array.isArray(value.suppressed) ? [...new Set(value.suppressed.filter(item => typeof item === 'string' && /^[a-f0-9]{24}$/.test(item)))].slice(0, 500) : [];
-    return { summary: summaryPreview(entries), entries, ...(suppressed.length ? { suppressed } : {}) };
+    const blockedEvidence = Array.isArray(value.blockedEvidence) ? [...new Set(value.blockedEvidence.filter(id => typeof id === 'string' && id.length > 0 && id.length <= 160))] : [];
+    return { summary: summaryPreview(entries), entries, ...(suppressed.length ? { suppressed } : {}), ...(blockedEvidence.length ? { blockedEvidence } : {}) };
   }
   const summary = textField(value.summary ?? '', 12000);
   return { summary, entries: summary.split(/\n+/).map(x => x.trim()).filter(Boolean).map(text => ({ id: key(`other\0${text}`), field: 'other', text })) };
@@ -76,6 +79,7 @@ export function mergeMemory(vault, profile, value, now, { evidence } = {}) {
   for (const [entryIndex, entry] of parsed.entries.entries()) {
     delete entry.manual;
     const raw = value.entries?.[entryIndex];
+    if (raw?.evidence?.some(id => current.blockedEvidence?.includes(id))) continue;
     if (suppressed.has(memoryFactKey(entry))) continue;
     if (evidence && (!Array.isArray(raw?.evidence) || !raw.evidence.length || raw.evidence.some(id => !evidence.has(id)))) continue;
     const index = entries.findIndex(e => e.id === entry.id);
@@ -114,7 +118,7 @@ export function mergeMemory(vault, profile, value, now, { evidence } = {}) {
   if (summary.length > maxMemoryChars || entries.length > 300) return { memoryNotice: '记忆空间不足，已保留原内容，请先整理。' };
   const comparable = values => values.map(e => ({ id: e.id || '', field: e.field || 'other', text: e.text || '', degree: e.degree || '', calendar: e.calendar || '', from: Number.isSafeInteger(e.from) ? e.from : null, to: Number.isSafeInteger(e.to) ? e.to : null, recordedAt: Number.isSafeInteger(e.recordedAt) ? e.recordedAt : null, observedAt: e.observedAt ?? null, status: e.status || '', evidence: e.evidence || [] }));
   const changed = JSON.stringify(comparable(entries)) !== JSON.stringify(comparable(current.entries));
-  return { ...(changed ? { memory: vault.seal({ summary: summaryPreview(entries), entries, ...(suppressed.size ? { suppressed: [...suppressed] } : {}) }), memoryHistory: history(vault, profile, current, now) } : {}),
+  return { ...(changed ? { memory: vault.seal({ summary: summaryPreview(entries), entries, ...(current.blockedEvidence?.length ? { blockedEvidence: current.blockedEvidence } : {}), ...(suppressed.size ? { suppressed: [...suppressed] } : {}) }), memoryHistory: history(vault, profile, current, now) } : {}),
     memorySuggestion: conflicts.length ? vault.seal({ summary: summaryOf(conflicts), entries: conflicts }) : profile.memorySuggestion || null,
     memoryNotice: conflicts.length ? '新信息与手动维护条目冲突，原内容已保留，请核对候选内容。' : '' };
 }
@@ -132,7 +136,7 @@ export function replaceMemory(vault, profile, value, now) {
   const summary = summaryOf(next.entries);
   if (summary.length > maxMemoryChars || next.entries.length > 300) throw new Error('记忆空间不足，请先整理后再应用');
   const entries = next.entries.map(pointInTimeOnly);
-  return { memory: vault.seal({ summary: summaryPreview(entries), entries, ...(current.suppressed?.length ? { suppressed: current.suppressed } : {}) }), memoryHistory: history(vault, profile, current, now), memoryLearnedAt: now, memoryNotice: '' };
+  return { memory: vault.seal({ summary: summaryPreview(entries), entries, ...(current.blockedEvidence?.length ? { blockedEvidence: current.blockedEvidence } : {}), ...(current.suppressed?.length ? { suppressed: current.suppressed } : {}) }), memoryHistory: history(vault, profile, current, now), memoryLearnedAt: now, memoryNotice: '' };
 }
 export function editMemory(vault, profile, value, now) {
   const current = readMemory(vault, profile);
@@ -141,8 +145,8 @@ export function editMemory(vault, profile, value, now) {
   if (value.restoreId && !restored) throw new Error('历史版本已变化，请刷新');
   const next = memoryValue(restored ? vault.open(restored.value) : value);
   if (!next) throw new Error('请检查聊天记忆内容');
-  const suppressed = new Set(current.suppressed || []);
-  for (const old of current.entries) if (!next.entries.some(entry => memoryFactKey(entry) === memoryFactKey(old))) suppressed.add(memoryFactKey(old));
+  const suppressed = new Set(current.suppressed || []), blockedEvidence = new Set(current.blockedEvidence || []);
+  for (const old of current.entries) if (!next.entries.some(entry => memoryFactKey(entry) === memoryFactKey(old))) { suppressed.add(memoryFactKey(old)); for (const id of old.evidence || []) blockedEvidence.add(id); }
   for (const entry of next.entries) suppressed.delete(memoryFactKey(entry));
   next.entries = next.entries.map(e => {
     const semantics = entry => JSON.stringify([entry.field || 'other', entry.text || '', entry.degree || '', entry.calendar || '',
@@ -152,7 +156,10 @@ export function editMemory(vault, profile, value, now) {
     const unchanged = !!prior && semantics(prior) === semantics(e);
     const { manual: _incomingManual, ...entry } = e;
     return {
+      ...(unchanged ? prior : {}),
       ...entry,
+      ...(profile.account ? { account: profile.account } : {}), ...(profile.contact ? { object: profile.contact } : {}),
+      ...(!unchanged ? { source: 'manual' } : {}),
       ...(unchanged && prior?.observedAt !== undefined ? { observedAt: prior.observedAt } : {}),
       ...(unchanged && prior?.evidence ? { evidence: prior.evidence } : {}),
       ...(unchanged && prior?.status ? { status: prior.status } : {}),
@@ -162,5 +169,6 @@ export function editMemory(vault, profile, value, now) {
     };
   });
   if (suppressed.size) next.suppressed = [...suppressed]; else delete next.suppressed;
+  if (blockedEvidence.size) next.blockedEvidence = [...blockedEvidence]; else delete next.blockedEvidence;
   return { memory: vault.seal(next), memoryHistory: history(vault, profile, current, now), memoryLocked: false, memoryEditedAt: now, memorySuggestion: null, memoryNotice: '' };
 }

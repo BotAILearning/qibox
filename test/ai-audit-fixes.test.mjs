@@ -112,7 +112,7 @@ test('a verified partial prefix cannot claim unsent segments or resolve unrelate
 
 test('AI-01 default profile retains custom style after memory/reply-goal saves and reload', async t => {
   const { a, bridge, options, provider } = await fixture(t);
-  await a.settings({ enabled: true });
+  await a.settings({ enabled: true, replyDelay: 3, replyMaxWait: 8 });
   const contact = bridge.contacts[0].id, text = '始终称呼对方王老师，表达正式简短。';
   await a.saveReplyProfile({ contact, style: { summary: text }, styleId: 'custom', strategy: {}, preserveSwitches: true, replyEnabled: true });
   let p = a.profiles().find(p => p.contact === contact);
@@ -138,7 +138,7 @@ test('object detail does not expose legacy pending-delivery review UI', () => {
   const contact = 'legacy-contact', state = {
     contacts: [{ id: contact, label: '旧联系人', kind: 'person' }],
     profiles: [{ id: 'legacy-profile', contact, label: '旧联系人', paused: true, pauseReason: 'uncertain', delivery: { status: 'uncertain' }, replyOptions: { enabled: true } }],
-    settings: { enabled: true, replyScope: 'selected', multiTurn: false, judgeReply: true },
+    settings: { enabled: true, replyScope: 'selected', replyDelay:3, replyMaxWait:8, multiTurn: false, judgeReply: true },
     replyTargets: ['legacy-profile'], replyRoundLimits: { person: 50, group: 50 }, replyStrategy: { maxRounds: 50 }, strategy: {}, schema: { replyPresets: [] },
   };
   const html = objectPage(state, { selected: contact, kind: 'person', search: '' });
@@ -195,7 +195,7 @@ test('AI-02 unknown send receipt is audit-only and does not persist a verificati
 for (const mention of ['self', 'all']) for (const otherSpeaker of [false, true]) test(`AI-03 ${mention} followed by ${otherSpeaker ? 'other member' : 'same member'} retains trigger once`, async t => {
   const { a, bridge, provider, advance } = await fixture(t), c = bridge.contacts[0];
   c.kind = 'group'; await a.scan(); await a.setGroupOptions({ contact: c.id, [mention === 'self' ? 'atMe' : 'atAll']: true });
-  await a.settings({ enabled: true, replyScope: 'selected' }); await a.tick();
+  await a.settings({ enabled: true, replyScope: 'selected', replyDelay:3, replyMaxWait:8 }); await a.tick();
   const push = (text, field, sender) => Object.assign(bridge.push(c.id, 'other', text), { sender: key(sender), mentions: { verified: true, self: field === 'self', all: field === 'all', others: false } });
   const first = push('@你 周六有空吗？', mention, 'one'); await a.tick(); advance(1000);
   push('下午一起喝咖啡。', '', otherSpeaker ? 'two' : 'one'); await a.tick(); advance(3000); await a.tick();
@@ -207,7 +207,7 @@ test('AI-03 @me cannot be lost and @all participation stays conditional', async 
   const { a, bridge, provider, advance } = await fixture(t), c = bridge.contacts[0]; c.kind = 'group'; await a.scan();
   const push = field => Object.assign(bridge.push(c.id, 'other', '测试'), { timestamp: Math.floor(a.now()/1000), sender: key('one'), mentions: { verified: true, self: field === 'self', all: field === 'all', others: false } });
   push('self'); advance(2000);
-  await a.setGroupOptions({ contact: c.id, atMe: true }); await a.settings({ enabled: true, replyScope: 'selected' });
+  await a.setGroupOptions({ contact: c.id, atMe: true }); await a.settings({ enabled: true, replyScope: 'selected', replyDelay:3, replyMaxWait:8 });
   push(''); await a.tick(); advance(4000); await a.tick(); assert.equal(provider.calls.length, 0, 'do not answer historical mentions from before enable');
   const profile = a.profiles().find(value => value.contact === c.id);
   provider.complete = async (_config, system, input) => { provider.calls.push({ system, input }); return { action: 'skip' }; };
@@ -224,7 +224,7 @@ test('AI-03 @me cannot be lost and @all participation stays conditional', async 
 });
 test('AI-03 pending burst survives restart with its original unprocessed boundary', async t => {
   const { a, bridge, provider, advance, options } = await fixture(t), c = bridge.contacts[0]; bridge.stableMessageIds = true; c.kind = 'group'; await a.scan();
-  await a.setGroupOptions({ contact: c.id, atMe: true }); await a.settings({ enabled: true, replyScope: 'selected' });
+  await a.setGroupOptions({ contact: c.id, atMe: true }); await a.settings({ enabled: true, replyScope: 'selected', replyDelay:3, replyMaxWait:8 });
   await a.tick(); // Establish the historical boundary before this fixture's timestamp-less incoming messages.
   Object.assign(bridge.push(c.id, 'other', '@你 周六见？'), { mentions: { verified: true, self: true }, sender: key('one') }); await a.tick();
   Object.assign(bridge.push(c.id, 'other', '在咖啡店。'), { mentions: { verified: true }, sender: key('one') }); await a.tick();
@@ -232,7 +232,7 @@ test('AI-03 pending burst survives restart with its original unprocessed boundar
   try { await b.tick(); assert.equal(bridge.sent.length, 1); assert.equal(provider.calls.at(-1).input.groupState.trigger, 'atMe'); } finally { await b.close(); }
 });
 test('AI-04 date filters keep deliveries and manual-help entries independent at UTC+8 midnight', async t => {
-  const { a, bridge } = await fixture(t); await a.settings({ enabled: true });
+  const { a, bridge } = await fixture(t); await a.settings({ enabled: true, replyDelay: 3, replyMaxWait: 8 });
   await a.saveReplyProfile({ contact: bridge.contacts[0].id, style: defaultStyle, strategy: {}, preserveSwitches: true, replyEnabled: false });
   const p = a.profiles()[0], dates = ['2026-09-13T23:59:59+08:00', '2026-09-14T00:00:00+08:00', '2026-09-14T23:59:59+08:00', '2026-09-15T00:00:00+08:00'];
   p.sentMessages = dates.map((date, i) => ({ id: bridge.push(p.contact, 'self', `BODY_${i}`).id, at: Date.parse(date), source: 'reply' })); p.generatedIds = p.sentMessages.map(m => m.id);

@@ -27,12 +27,12 @@ async function fixture(t) {
   return { a, bridge, provider, target, root, delays, randomCalls, advance, enableReply, incoming, launch };
 }
 
-test('multi-turn timing settings are fixed by backend even when legacy/custom values are submitted', async t => {
+test('multi-turn timing values validate, persist and fill missing legacy defaults', async t => {
   const { a, root, bridge, provider } = await fixture(t);
   const expected = { replyDelay: 20, multiTurn: false, segmentDelayMin: 15, segmentDelayMax: 60, followUpDelayMin: 45, followUpDelayMax: 120 };
   for (const [key, value] of Object.entries(expected)) assert.equal(a.publicState().settings[key], value);
   await assert.rejects(a.settings({ multiTurn: 'true' }));
-  await a.settings({ multiTurn: true, replyDelay: 1, segmentDelayMin: 999, segmentDelayMax: 1, followUpDelayMin: 0, followUpDelayMax: -4 });
+  await assert.rejects(a.settings({ multiTurn: true, replyDelay: 1, segmentDelayMin: 999, segmentDelayMax: 1, followUpDelayMin: 0, followUpDelayMax: -4 })); await a.settings({multiTurn:true});
   for (const [key, value] of Object.entries(expected)) assert.equal(a.data.settings[key], key === 'multiTurn' ? true : value);
   await a.close(); const persisted = JSON.parse(await readFile(a.file, 'utf8'));
   for (const key of Object.keys(expected)) if (key !== 'multiTurn') delete persisted.settings[key];
@@ -46,8 +46,8 @@ test('learning and per-reply style updates identify the owner as self rather tha
   const { a, provider, enableReply, incoming } = await fixture(t);
   const learning = provider.calls[0]; assert.equal(learning.input.styleOwner, 'self');
   assert.match(learning.system, /只学习 direction=self/); assert.match(learning.system, /不能模仿对方/);
-  await enableReply({ updateStyle: true }); await incoming({ action: 'send', text: '好的' });
-  const reply = provider.calls.at(-1); assert.equal(reply.input.styleOwner, 'self'); assert.match(reply.system, /只分析用户本人的 self 消息/);
+  await enableReply({ autoLearning: true }); await incoming({ action: 'send', text: '好的' });
+  const reply = provider.calls.at(-1); assert.equal(reply.input.styleOwner, 'self'); assert.match(reply.system, /仅从authorship=human、direction=self/);
 });
 
 test('a conversation with only other-party messages cannot be learned as the user style', async t => {
@@ -63,7 +63,7 @@ test('independent multi-turn replies send only needed segments with random verif
   await a.saveStrategy({...strategy,maxRounds:10},undefined,'reply'); await enableReply({ segmentDelayMin: 3, segmentDelayMax: 6 });
   await incoming({ action: 'send', segments: ['PRIVATE_SEGMENT_ONE。', 'PRIVATE_SEGMENT_TWO。', 'PRIVATE_SEGMENT_THREE。'] });
   assert.deepEqual(bridge.sent.map(x => x.text), ['PRIVATE_SEGMENT_ONE。', 'PRIVATE_SEGMENT_TWO。', 'PRIVATE_SEGMENT_THREE。']);
-  assert.deepEqual(delays, [60000, 60000]); assert.deepEqual(randomCalls, [[15, 60], [15, 60]]);
+  assert.deepEqual(delays, [6000, 6000]); assert.deepEqual(randomCalls, [[3, 6], [3, 6]]);
   assert.equal(target.rounds, 3); assert.equal(provider.calls.at(-1).input.multiTurn, true); assert.equal(provider.calls.at(-1).input.followUp, false);
   assert.equal(provider.calls.at(-1).input.continuation, false); assert.equal(a.followUps.size, 0);
   assert.equal((await readFile(a.file, 'utf8')).includes('PRIVATE_SEGMENT_'), false);
@@ -83,10 +83,10 @@ test('a follow-up is generated from current context only when due and cannot rea
   const { a, bridge, provider, target, advance, enableReply, incoming, randomCalls } = await fixture(t);
   await enableReply({ followUpDelayMin: 15, followUpDelayMax: 20 });
   await incoming({ action: 'send', text: 'INITIAL_FOLLOW_UP_PRIVATE。', followUp: true });
-  const pending = a.followUps.get(target.id); assert.ok(pending); assert.deepEqual(randomCalls.at(-1), [45, 120]);
+  const pending = a.followUps.get(target.id); assert.ok(pending); assert.deepEqual(randomCalls.at(-1), [15, 20]);
   assert.deepEqual(Object.keys(pending).sort(), ['contextRevision', 'dueAt', 'revision']);
   const saved = await readFile(a.file, 'utf8'); assert.equal(saved.includes('INITIAL_FOLLOW_UP_PRIVATE。'), false); assert.equal(saved.includes('contextRevision'), false);
-  const calls = provider.calls.length; advance(119999); await a.tick(); assert.equal(provider.calls.length, calls);
+  const calls = provider.calls.length; advance(19999); await a.tick(); assert.equal(provider.calls.length, calls);
   provider.next = async input => {
     assert.equal(input.followUp, true); assert.equal(input.mode, 'reply'); assert.equal(input.messages.at(-1).text, 'INITIAL_FOLLOW_UP_PRIVATE。');
     return { action: 'send', text: 'FOLLOW_UP_PRIVATE_QUESTION。', followUp: true };
@@ -116,8 +116,7 @@ test('stop is feedback independent of judgeReply and enforces only a five-minute
   const calls = provider.calls.length;
   bridge.push(target.contact, 'other', '保护期内的新消息'); advance(20000); await a.tick();
   assert.equal(provider.calls.length, calls);
-  advance(280001); bridge.push(target.contact, 'other', '保护期结束后的新问题'); await a.tick(); advance(20000);
-  provider.next = async () => ({ action: 'send', text: '保护期结束后正常回复' }); await a.tick();
+  advance(280001); bridge.push(target.contact, 'other', '保护期结束后的新问题'); provider.next = async () => ({ action: 'send', text: '保护期结束后正常回复' }); await a.tick(); advance(20000); await a.tick();
   assert.equal(bridge.sent.at(-1)?.text, '保护期结束后正常回复');
 });
 
@@ -209,7 +208,7 @@ test('restart preserves delay preferences but never resumes a scheduled follow-u
   await enableReply({ followUpDelayMin: 15, followUpDelayMax: 15 }); await incoming({ action: 'send', text: '旧消息', followUp: true });
   assert.equal(a.followUps.size, 1); await a.close();
   const restarted = new AIAssistant({ dataRoot: root, bridge, provider }); await restarted.init();
-  assert.equal(restarted.followUps.size, 0); assert.equal(restarted.data.settings.enabled, true); assert.equal(restarted.data.settings.followUpDelayMax, 120);
+  assert.equal(restarted.followUps.size, 0); assert.equal(restarted.data.settings.enabled, true); assert.equal(restarted.data.settings.followUpDelayMax, 15);
   const calls = provider.calls.length; await restarted.tick(); assert.equal(provider.calls.length, calls); await restarted.close();
 });
 

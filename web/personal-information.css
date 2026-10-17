@@ -1,0 +1,42 @@
+/* QIAPP UI spec 2026-10-14; bundled CSS runtime 0.1.0. Business composition only. */
+#ai-panel .ai-personal-form { max-width: 1120px; margin-inline: auto; }
+#ai-panel .ai-personal-form .ai-personal-fields { display: flex; flex-direction: column; gap: 0; }
+#ai-panel .ai-personal-form .ai-personal-card { width: 100%; border: 0; border-bottom: 1px solid var(--qi-border); border-radius: 0; background: transparent; box-shadow: none; padding: 0; }
+#ai-panel .ai-personal-form .ai-personal-card > summary { min-height: 56px; padding: 4px 8px; display: grid; grid-template-columns: 108px minmax(0,1fr) 160px; align-items: center; gap: 16px; cursor: pointer; }
+#ai-panel .ai-personal-form .ai-personal-card-head { display: contents; }
+#ai-panel .ai-personal-form .ai-personal-card-head strong { grid-column: 1; grid-row: 1; font-size: 14px; }
+#ai-panel .ai-personal-form .ai-personal-preview { grid-column: 2; grid-row: 1; margin: 0; min-width: 0; color: var(--qi-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+#ai-panel .ai-personal-form .ai-personal-preview[hidden] { display: none; }
+#ai-panel .ai-personal-form .ai-personal-edit-label { grid-column: 2; grid-row: 1; justify-self: end; font-size: 0; color: var(--qi-text-secondary); }
+#ai-panel .ai-personal-form .ai-personal-edit-label svg { width: 16px; }
+#ai-panel .ai-personal-form .ai-personal-card[open] { background: var(--qi-surface-muted); }
+#ai-panel .ai-personal-form .ai-personal-share { grid-column: 3; grid-row: 1; display: flex; gap: 8px; align-items: center; min-height: 44px; margin: 0; font-size: 13px; color: var(--qi-text-secondary); cursor: pointer; }
+#ai-panel .ai-personal-form .ai-personal-share input { width: 16px; height: 16px; accent-color: var(--qi-primary); }
+#ai-panel .ai-personal-form .ai-personal-editor { padding: 0 184px 16px 132px; }
+#ai-panel .ai-personal-form .ai-personal-editor textarea { width: 100%; min-height: 100px; border-radius: 8px; resize: vertical; font-size: 14px; line-height: 1.65; }
+#ai-panel .ai-personal-form .ai-personal-more { margin-top: 24px; border-radius: 0; }
+#ai-panel .ai-personal-form .ai-personal-title { font-size: 32px; line-height: 1.3; font-weight: 650; margin: 0; color: var(--qi-text); }
+#ai-panel .ai-personal-form summary:focus-visible, #ai-panel .ai-personal-form input:focus-visible, #ai-panel .ai-personal-form textarea:focus-visible { outline: 2px solid var(--qi-focus); outline-offset: 3px; }
+#ai-panel .ai-timing-fields { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; }
+@media (max-width: 767px) {
+  #ai-panel .ai-personal-form .ai-personal-card > summary { grid-template-columns: 72px minmax(0,1fr); padding: 8px; gap: 4px 12px; }
+  #ai-panel .ai-personal-form .ai-personal-share { grid-column: 2; grid-row: 2; }
+  #ai-panel .ai-personal-form .ai-personal-editor { padding: 0 8px 16px; }
+  #ai-panel .ai-personal-form .ai-personal-editor textarea { font-size: 16px; }
+  #ai-panel .ai-timing-fields { grid-template-columns: 1fr; }
+}
+
+:root[data-qi-theme=dark] #ai-panel:has(.ai-personal-form,.qbx-settings-page) { --qi-bg:#17151c; --qi-surface:#201d27; --qi-surface-muted:#292530; --qi-text:#f0ecf5; --qi-text-secondary:#b9b0c5; --qi-text-tertiary:#a297af; --qi-border:#393341; --qi-border-strong:#81768f; --qi-primary:#9bbcff; --qi-primary-hover:#b6ceff; --qi-primary-active:#cbdcff; --qi-on-primary:#182b51; --qi-focus:#9bbcff; --ai-bg:var(--qi-bg); --ai-text:var(--qi-text); --ai-muted:var(--qi-text-secondary); --ai-border:var(--qi-border); --ai-soft:var(--qi-surface-muted); --ai-primary:var(--qi-primary); color:var(--qi-text); background:var(--qi-bg); }
+@media (prefers-color-scheme:dark) { :root[data-qi-theme=system] #ai-panel:has(.ai-personal-form,.qbx-settings-page) { --qi-bg:#17151c; --qi-surface:#201d27; --qi-surface-muted:#292530; --qi-text:#f0ecf5; --qi-text-secondary:#b9b0c5; --qi-text-tertiary:#a297af; --qi-border:#393341; --qi-border-strong:#81768f; --qi-primary:#9bbcff; --qi-primary-hover:#b6ceff; --qi-primary-active:#cbdcff; --qi-on-primary:#182b51; --qi-focus:#9bbcff; --ai-bg:var(--qi-bg); --ai-text:var(--qi-text); --ai-muted:var(--qi-text-secondary); --ai-border:var(--qi-border); --ai-soft:var(--qi-surface-muted); --ai-primary:var(--qi-primary); color:var(--qi-text); background:var(--qi-bg); } }
+#ai-panel .ai-personal-form, #ai-panel .qbx-settings-page .ai-card { background:var(--qi-surface);color:var(--qi-text); }
+#ai-panel .ai-personal-form textarea, #ai-panel .qbx-settings-page input[type=number], #ai-panel .qbx-settings-page select { background:var(--qi-surface);color:var(--qi-text);border-color:var(--qi-border-strong); }
+#ai-panel .ai-personal-form .ai-help, #ai-panel .qbx-settings-page .ai-help { color:var(--qi-text-secondary); }
+#ai-panel .ai-personal-form button.primary, #ai-panel .qbx-settings-page button.primary { background:var(--qi-primary);color:var(--qi-on-primary); }
+#ai-panel:has(.ai-personal-form,.qbx-settings-page) #ai-content, #ai-panel:has(.ai-personal-form,.qbx-settings-page) .ai-page-body { background:var(--qi-bg); }
+#ai-panel .ai-personal-form .ai-personal-more { background:var(--qi-surface);border-color:var(--qi-border); }
+#ai-panel .ai-personal-form button.primary:hover:not(:disabled), #ai-panel .qbx-settings-page button.primary:hover:not(:disabled) { background:var(--qi-primary-hover); }
+#ai-panel .ai-personal-form button.primary:active:not(:disabled), #ai-panel .qbx-settings-page button.primary:active:not(:disabled) { background:var(--qi-primary-active); }
+#ai-panel .ai-personal-form button:disabled, #ai-panel .qbx-settings-page button:disabled { background:var(--qi-disabled,#efedf2);color:var(--qi-disabled-text,#847b90);opacity:1; }
+#ai-panel[aria-busy=true]:has(.ai-personal-form,.qbx-settings-page) #ai-content { opacity:1; }
+#ai-panel:has(.ai-personal-form,.qbx-settings-page) { --qbx-ink:var(--qi-text);--qbx-muted:var(--qi-text-secondary);--qbx-accent:var(--qi-primary);--qbx-line:var(--qi-border);--qbx-surface:var(--qi-surface);--qbx-canvas:var(--qi-bg);--qbx-module-radius:12px;--qbx-radius:12px;--qbx-module-padding:24px; }
+@media(max-width:767px) { #ai-panel:has(.ai-personal-form,.qbx-settings-page) { --qbx-module-padding:16px; } }

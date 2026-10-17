@@ -88,11 +88,11 @@ test('one launch sends once per target after random-range intervals without wait
 
 test('reply rounds merge bursts, can skip, refresh only enum style and do not respond to old history', async t => {
   const { assistant: a, bridge, provider, advance } = await fixture(t);
-  await enabled(a, { reply: true }); await a.settings({ updateStyle: true, replyDelay: 8 }); await a.tick(); assert.equal(bridge.sent.length, 0);
+  await enabled(a, { reply: true }); await a.settings({ autoLearning: true, replyDelay: 8 }); await a.tick(); assert.equal(bridge.sent.length, 0);
   const contact = bridge.contacts[0].id;
   bridge.push(contact, 'other', '第一句'); await a.tick(); advance(5000); bridge.push(contact, 'other', '第二句'); await a.tick();
-  advance(19999); await a.tick(); assert.equal(bridge.sent.length, 0); advance(1); await a.tick(); assert.equal(bridge.sent.length, 1);
-  assert.equal(a.profiles()[0].style.warmth, '亲切');
+  advance(7999); await a.tick(); assert.equal(bridge.sent.length, 0); advance(1); await a.tick(); assert.equal(bridge.sent.length, 1);
+  assert.notEqual(a.profiles()[0].style.warmth, '亲切'); // One sentence never overrides a saved style.
   bridge.push(contact, 'other', '话题结束'); await a.tick(); advance(20000); provider.next = async () => ({ action: 'skip' }); await a.tick();
   assert.equal(bridge.sent.length, 1); advance(20000); await a.tick(); assert.equal(bridge.sent.length, 1);
 });
@@ -255,7 +255,7 @@ test('manual style corrections survive per-round model updates and repeated lear
   const profile = a.profiles()[0];
   await a.editProfile(profile.id, { style: { ...profile.style, customTone: '保持克制', customAvoid: '不要使用叹号' } });
   await a.learn({ contacts: [profile.contact] }); assert.equal(a.profiles()[0].style.customTone, '保持克制');
-  await enabled(a, { reply: true }); await a.settings({ updateStyle: true }); await a.tick();
+  await enabled(a, { reply: true }); await a.settings({ autoLearning: true }); await a.tick();
   bridge.push(profile.contact, 'other'); await a.tick(); advance(20000); await a.tick();
   assert.equal(a.profiles()[0].style.customTone, '保持克制'); assert.equal(a.profiles()[0].style.customAvoid, '不要使用叹号');
 });

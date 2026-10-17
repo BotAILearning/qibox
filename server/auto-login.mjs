@@ -8,7 +8,9 @@ import { atomicJson, jsonFile } from './files.mjs';
 // Native control layout verified on this official package. Unknown releases
 // require a new compatibility check; version strings alone are not enough.
 export const AUTO_LOGIN_PACKAGE = '096865e050ba0d3c1a23887227e2400bf343037b1d7d658c84c88ff26bfdc17f';
-const supportedPackages = new Set([AUTO_LOGIN_PACKAGE, 'a6d115d24dfe3ed1b7e7de16cf6cc02acef8df5668150f702ac8d8c5256405fa']);
+const supportedPackages = new Set([AUTO_LOGIN_PACKAGE, 'a6d115d24dfe3ed1b7e7de16cf6cc02acef8df5668150f702ac8d8c5256405fa',
+  // Verified official Linux WeChat 4.1.13.23, same native account control.
+  'b7d0f8d53e9f648bc2c77a6096a04100d008f2d9f0d3988a2a4859b5992aca0a']);
 const digest = value => createHash('sha256').update(value).digest('hex');
 const isDigest = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 export async function deviceIdentity() {

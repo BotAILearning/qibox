@@ -9,6 +9,7 @@ import { download } from './download.mjs';
 import { architecture, runtimeArchives } from '../server/platform.mjs';
 import { prepareFonts } from './prepare-fonts.mjs';
 import { checkWebAssets } from './check-web-assets.mjs';
+import { runtimePackageFile } from './runtime-package-filter.mjs';
 const requestedArch = process.argv.find(x => x.startsWith('--arch='))?.slice(7) || 'all';
 const targets = requestedArch === 'all' ? [architecture('x64'), architecture('arm64')] : [architecture(requestedArch)];
 const host = 'fnos';
@@ -19,6 +20,7 @@ await rm(path.join(out, 'icon.svg'), { force: true });
 for (const file of ['index.html', 'style.css', 'ai-workspace.css', 'ui-foundation.css', 'qibox-components.css', 'qibox-modules.css', 'icon.png', 'auth-callback.html', 'privacy.html', 'terms.html']) await cp(path.join(root, 'web', file), path.join(out, file));
 await cp(path.join(root, 'web/vendor/qiapp-ui'), path.join(out, 'vendor/qiapp-ui'), { recursive: true });
 await cp(path.join(root, 'web/qiapp-product.css'), path.join(out, 'qiapp-product.css'));
+await writeFile(path.join(out, 'ai-workspace.css'), (await readFile(path.join(out, 'ai-workspace.css'), 'utf8')) + '\n' + (await readFile(path.join(root, 'web/personal-information.css'), 'utf8')));
 for (const file of ['index.html', 'auth-callback.html']) {
   const html = await readFile(path.join(out, file), 'utf8');
   await writeFile(path.join(out, file), html.replaceAll('./icon.png', `./icon.png?v=${iconRevision}`));
@@ -55,9 +57,7 @@ if (!process.argv.includes('--ui-only')) {
     // runtime data and licenses; browser bundles and JS debugging maps are not
     // used by the server or the separately built web application.
     await cp(path.join(root, 'node_modules', name), path.join(app, 'node_modules', name), { recursive: true,
-      filter: file => !/\.(?:js|cjs|mjs)\.map$/.test(file) &&
-        !(name === 'pdfkit' && /^pdfkit\.(?:browser|old|standalone)/.test(path.basename(file))) &&
-        !(name === 'fontkit' && /^browser(?:-module)?\.(?:cjs|mjs)$/.test(path.basename(file))) });
+      filter: file => runtimePackageFile(file, path.join(root, 'node_modules', name), name) });
   }
   await writeFile(path.join(app, 'package.json'), JSON.stringify({ name: product.appname, version: product.version, type: 'module', private: true }));
   let components = 0;
@@ -103,7 +103,7 @@ if (!process.argv.includes('--ui-only')) {
     const icon = await sharp(path.join(root, 'web/icon.png')).resize(pixels, pixels).png().toBuffer();
     await writeFile(path.join(ui, `images/qibox-${iconRevision}_${pixels}.png`), icon); await writeFile(path.join(directory, pixels === 64 ? 'ICON.PNG' : 'ICON_256.PNG'), icon);
   }
-  const manifest = { appname: product.appname, version: product.version, display_name: product.displayName, desc: '在 NAS 上安装应用，支持微信多开和持续备份。', platform: product.platform, os_min_version: product.minOSVersion, source: 'thirdparty', maintainer: product.publisher, distributor: product.publisher, desktop_uidir: 'ui', desktop_applaunchname: `${product.appname}.Application`, install_dep_apps: 'nodejs_v22', ctl_stop: 'true', checkport: 'false', micro_app: 'true' };
+  const manifest = { appname: product.appname, version: product.version, display_name: product.displayName, desc: 'NAS 登录官方微信、在线消息同步；自带 API 使用 AI 辅助；可设置时间段及资源退让的闲时备份。', maintainer_email: product.email, distributor_email: product.email, platform: product.platform, os_min_version: product.minOSVersion, source: 'thirdparty', maintainer: product.publisher, distributor: product.publisher, desktop_uidir: 'ui', desktop_applaunchname: `${product.appname}.Application`, install_dep_apps: 'nodejs_v22', ctl_stop: 'true', checkport: 'false', micro_app: 'true' };
   await writeFile(path.join(directory, 'manifest'), Object.entries(manifest).map(([k, v]) => `${k}=${v}`).join('\n') + '\n');
   await mkdir(path.join(directory, 'wizard'), { recursive: true });
   for (const name of ['install_init', 'config_init', 'config_callback', 'uninstall_callback']) await writeFile(path.join(directory, 'cmd', name), '#!/bin/bash\nexit 0\n');

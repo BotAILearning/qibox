@@ -32,7 +32,7 @@ try {
   const toggle = page.locator('#ai-takeover-form [name=enabled]'), minutes = page.locator('#ai-takeover-form [name=minutes]');
   assert.equal(await toggle.getAttribute('role'), 'switch'); assert.equal(await toggle.isChecked(), true);
   assert.equal(await minutes.inputValue(), '5'); assert.equal(await minutes.isVisible(), true);
-  assert.match(await page.locator('#ai-takeover-form .ai-help').textContent(), /关闭.*对应联系人.*群聊.*其他联系人/);
+  assert.match((await page.locator('#ai-takeover-form .ai-help').allTextContents()).join(' '), /关闭.*对应联系人.*群聊.*其他联系人/);
   await toggle.uncheck(); assert.equal(await minutes.isVisible(), false); assert.equal(await minutes.isDisabled(), true);
   await page.getByRole('button', { name: '保存设置', exact: true }).click(); await page.waitForFunction(() => document.querySelector('#ai-feedback')?.textContent.includes('已保存'));
   assert.equal(ai.data.settings.takeover.enabled, false); assert.equal(ai.data.settings.takeover.minutes, 5);

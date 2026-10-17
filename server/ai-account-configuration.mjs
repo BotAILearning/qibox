@@ -3,32 +3,47 @@ import { AppError } from './files.mjs';
 import { replyStrategyValue, styleValue, defaultStyle as fallbackStyle } from './ai-schema.mjs';
 import { replyPresets } from './ai-presets.mjs';
 import { recordSource, isDeletedActivityRecord } from './ai-activity-records.mjs';
-import { personalFields, retiredPersonalFields } from './ai-personal-fields.mjs';
+import { personalFields, retiredPersonalFields, normalizePersonalField } from './ai-personal-fields.mjs';
+import { learningEnabled, safeFactMessage, sensitiveMemory, explicitFactTime } from './ai-learning-policy.mjs';
+import { selectMemoryForChat } from './ai-memory-context.mjs';
 export { personalFields } from './ai-personal-fields.mjs';
 
 const withoutExpiry = ({ expiresAt, ...entry }) => entry;
 const timelessInformation = information => ({ ...information,
-  entries: (information.entries || []).map(withoutExpiry), suggestions: information.suggestions || [],
+  entries: (information.entries || []).map(withoutExpiry).map(entry => ({ ...entry, field: normalizePersonalField(entry.field) })), suggestions: information.suggestions || [],
   history: (information.history || []).map(row => ({ ...row, entries: (row.entries || []).map(withoutExpiry) })) });
 export function personalInformation(a) {
   const body = a.data.personalInformation?.[a.data.account];
-  return timelessInformation(body ? a.vault.open(body) : {});
+  const information = timelessInformation(body ? a.vault.open(body) : {});
+  information.entries = information.entries.map(entry => ({ ...entry, account: a.data.account, object: 'self', source: entry.source || 'manual' }));
+  return information;
 }
-export function selfContext(a, kind) {
-  return personalInformation(a).entries.filter(entry => !retiredPersonalFields.includes(entry.field) && (kind !== 'group' || entry.allowGroup))
-    .map(({ field, text, updatedAt }) => ({ field, text, source: 'user-confirmed', updatedAt }));
+export function selfContext(a, kind, query = null) {
+  const entries = personalInformation(a).entries.filter(entry => !retiredPersonalFields.includes(entry.field) && (kind !== 'group' || entry.allowGroup));
+  if (query === null) return entries;
+  return selectMemoryForChat({ entries }, { query, now: a.now(), maxEntries: 10, maxChars: 1800, relevantOnly: true }).entries;
 }
 export function stageSelfSuggestions(a, suggestions, messages) {
-  if (!Array.isArray(suggestions) || !a.data.account) return false;
+  if (!learningEnabled(a) || !Array.isArray(suggestions)) return false;
   const information = personalInformation(a), known = new Set(information.suggestions.map(row => `${row.field}\0${row.text}`));
   const generated = new Set(a.profiles().flatMap(profile => profile.generatedIds || []));
   let changed = false;
-  for (const item of suggestions.slice(0, 3)) {
-    const source = messages.find(message => message.id === item?.messageId && message.direction === 'self' && !message.aiGenerated && message.authorship !== 'unknown' && !generated.has(message.id));
+  for (let item of suggestions.slice(0, 12)) {
+    const source = messages.find(message => message.id === item?.messageId && message.direction === 'self' && safeFactMessage(message) && !generated.has(message.id));
+    if (item) item = { ...item, field: normalizePersonalField(item.field) };
     if (!source || !personalFields.some(([field]) => field === item.field) || typeof item.text !== 'string' || !item.text.trim() || item.text.length > 2000) continue;
     const text = item.text.trim();
     if (known.has(`${item.field}\0${text}`) || information.entries.some(row => row.field === item.field && row.text === text)) continue;
-    information.suggestions.push({ id: randomUUID(), field: item.field, text, sourceText: source.text, messageId: source.id, at: a.now() }); changed = true;
+    if (sensitiveMemory(text) || information.entries.some(row => row.field === item.field && row.source !== 'auto') ||
+      (information.suppressed || []).some(row => row.field === item.field && (row.text === text || row.evidence?.includes(source.id) || row.deletedAt && (!Number.isSafeInteger(source.timestamp) || source.timestamp * 1000 <= row.deletedAt)))) continue;
+    const existing = information.entries.find(row => row.id === item.replaces && row.field === item.field && row.source === 'auto');
+    // Updating an automatic fact preserves its private scope and source time.
+    if (existing && !/(?:不再|搬|改|换|现在|目前|已经)/u.test(source.text)) continue;
+    const entry = { id: randomUUID(), account: a.data.account, object: 'self', field: item.field, text, allowGroup: existing?.allowGroup === true,
+      source: 'auto', factTime: explicitFactTime(text), evidence: [source.id], observedAt: Number.isSafeInteger(source.timestamp) ? source.timestamp * 1000 : null, updatedAt: a.now() };
+    if (existing) { existing.status = 'historical'; existing.supersededAt = a.now(); }
+    information.entries.push(entry);
+    changed = true;
     known.add(`${item.field}\0${text}`);
   }
   if (changed) { information.suggestions = information.suggestions.slice(-30); a.data.personalInformation ||= {}; a.data.personalInformation[a.data.account] = a.vault.seal(information); }
@@ -83,11 +98,15 @@ export async function accountConfiguration(a, value) {
       if (!Array.isArray(value.entries) || value.entries.length > 100) throw new AppError('个人信息最多保存100条');
       const previous = personalInformation(a), ids = new Set();
       const entries = value.entries.map(entry => {
+        entry = { ...entry, field: normalizePersonalField(entry.field) };
         if (!(personalFields.some(([field]) => field === entry.field) || retiredPersonalFields.includes(entry.field)) || typeof entry.text !== 'string' || entry.text.length > 2000) throw new AppError('请检查个人信息内容');
+        if (sensitiveMemory(entry.text)) throw new AppError('请勿将密码、验证码或密钥保存到长期资料');
         const id = entry.id || randomUUID();
         if (typeof id !== 'string' || id.length > 80 || ids.has(id)) throw new AppError('个人信息编号无效'); ids.add(id);
-        return { id, field: entry.field, text: entry.text.trim(), allowGroup: entry.allowGroup === true,
-          source: 'manual', updatedAt: a.now() };
+        const old = previous.entries.find(row => row.id === id);
+        if (old && old.field === entry.field && old.text === entry.text.trim() && old.allowGroup === (entry.allowGroup === true)) return old;
+        return { ...(old || {}), id, account, object: 'self', field: entry.field, text: entry.text.trim(), allowGroup: entry.allowGroup === true,
+          source: 'manual', factTime: explicitFactTime(entry.text), updatedAt: a.now() };
       }).filter(entry => entry.text);
       // A form with only current fields cannot delete legacy hidden information
       // as a side effect of saving another field. Explicit old payloads retain
@@ -98,7 +117,9 @@ export async function accountConfiguration(a, value) {
       }
       if (entries.length > 100) throw new AppError('个人信息最多保存100条');
       a.data.personalInformation ||= {};
-      a.data.personalInformation[a.data.account] = a.vault.seal({ entries, suggestions: previous.suggestions,
+      const removed = previous.entries.filter(row => !entries.some(entry => entry.id === row.id && entry.text === row.text));
+      a.data.personalInformation[a.data.account] = a.vault.seal({ ...previous, entries, suggestions: previous.suggestions,
+        suppressed: [...(previous.suppressed || []), ...removed.map(({ field, text, evidence }) => ({ field, text, evidence, deletedAt: a.now() }))],
         history: [...previous.history, { at: a.now(), entries: previous.entries }].slice(-20) });
       a.invalidate();
     } else if (type === 'personal-suggestion') {

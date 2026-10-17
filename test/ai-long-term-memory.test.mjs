@@ -78,7 +78,7 @@ test('reply generation receives selected memory and stores verified source time 
     { field: 'other', text: '上周感冒了' },
   ] }, current));
   await assistant.save();
-  await assistant.settings({ enabled: true }); await assistant.tick();
+  await assistant.settings({ enabled: true, autoLearning: true }); await assistant.tick();
   const incoming = bridge.push(contact, 'other', '导师这件事你怎么看？');
   incoming.timestamp = Math.floor(current / 1000);
   await assistant.tick(); current += 20000;
@@ -88,8 +88,8 @@ test('reply generation receives selected memory and stores verified source time 
   assert.ok(call.input.memory.entries.some(entry => entry.text === '不喜欢当导师'));
   assert.ok(!call.input.memory.entries.some(entry => entry.text.includes('感冒')));
   assert.match(call.system, /historical 只表示过去/);
-  assert.match(call.system, /比较 messages 的时间戳与 currentTime/);
-  assert.match(call.system, /先回应其明说的处境或感受/);
+  assert.match(call.system, /日期不明就不当作当前安排/);
+  assert.match(call.system, /优先回应本轮全部待处理来信/);
   const saved = readMemory(assistant.vault, profile).entries.find(entry => entry.text === '对方现在在准备毕业论文');
   assert.deepEqual(saved?.evidence, [incoming.id]);
   assert.equal(saved?.observedAt, incoming.timestamp * 1000);

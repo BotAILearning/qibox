@@ -21,7 +21,7 @@ async function fixture(t, kind = 'person') {
   await a.configure(modelConfig); await a.scan();
   if (kind === 'group') await a.setGroupOptions({ contact, atMe: true, atAll: true, realtime: false });
   else await a.setReplyOptions({ contact, enabled: true, multiTurn: false });
-  await a.settings({ enabled: true, reply: true, multiTurn: false }); await a.tick();
+  await a.settings({ enabled: true, reply: true, multiTurn: false, ...(kind === 'group' ? {replyDelay:3,replyMaxWait:8} : {}) }); await a.tick();
   const push = (text, sender, mention = '') => Object.assign(bridge.push(contact, 'other', text), {
     timestamp: Math.floor(now / 1000), ...(sender ? { sender: key(sender) } : {}),
     ...(kind === 'group' ? { mentions: { verified: true, self: mention === 'self', all: mention === 'all', others: mention === 'others' } } : {})

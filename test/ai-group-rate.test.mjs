@@ -16,7 +16,7 @@ async function fixture(t) {
   await a.configure(modelConfig); await a.testProvider(); await a.scan();
   const contact = bridge.contacts[0].id;
   await a.setGroupOptions({ contact, atMe: true, realtime: true, confirmRealtime: true });
-  await a.settings({ enabled: true }); await a.tick();
+  await a.settings({ enabled: true, replyDelay: 3, replyMaxWait: 8 }); await a.tick();
   const profile = a.profiles().find(p => p.contact === contact);
   const push = (self = false) => Object.assign(bridge.push(contact, 'other'), { timestamp: Math.floor(now / 1000), sender: key('member'), mentions: { verified: true, self, all: false, others: false } });
   return { a, bridge, provider, profile, options, push, advance: ms => { now += ms; } };
@@ -168,7 +168,7 @@ test('realtime interval survives restart and @me interrupts the batch wait', asy
 
   const second = new AIAssistant(options); await second.init();
   try {
-    await second.settings({ enabled: true });
+    await second.settings({ enabled: true, replyDelay: 3, replyMaxWait: 8 });
     Object.assign(bridge.push(profile.contact, 'other', '普通群消息'), { timestamp: Math.floor(second.now() / 1000), sender: key('member'), mentions: { verified: true, self: false, all: false, others: false } });
     await second.tick(); advance(10000);
     Object.assign(bridge.push(profile.contact, 'other', '@我 请回答'), { timestamp: Math.floor(second.now() / 1000), sender: key('member'), mentions: { verified: true, self: true, all: false, others: false } });

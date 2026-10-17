@@ -1,3 +1,4 @@
+import { applyAppearance } from './appearance.mjs';
 import { productDialog as platformProductDialog } from './dialogs.mjs';
 import { personalInformationPage, personalEntriesFromForm, personalDraftFromForm, updatePersonalInformationForm, globalReplyStrategyPage, objectStyleTabs } from './ai-account-settings.mjs';
 import { retiredPersonalFields } from '../server/ai-personal-fields.mjs';
@@ -1140,6 +1141,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   };
   $('#ai-close').onclick = hide;
   const goBack = () => {
+    if (['personal-info', 'global-reply'].includes(tab)) { void navigate('settings'); return; }
     const content = $('#ai-content');
     const candidate = ['[data-ai-action="model-cancel"]', '[data-proactive-back]', '[data-ai-object-back]', '[data-ai-action="back-learning"]', '[data-ai-action="back-reply-contacts"]', '.ai-learning-back', '.ai-sticky-back button', '.ai-reference-learning-top [data-ai-nav]'].map(selector => content.querySelector(selector)).find(Boolean);
     if (candidate && (!candidate.hasAttribute('data-ai-object-back') || selectedObject)) candidate.click();
@@ -1408,7 +1410,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         data.set('memorySummary', JSON.stringify(entries));
       }
       if (form.id === 'ai-log-filter') { if (data.get('from') && data.get('to') && data.get('from') > data.get('to')) throw new Error('开始日期不能晚于结束日期'); logFilters = { ...logFilters, ...Object.fromEntries(data), page: 0 }; const refreshed = await call(); if (refreshed) { logLoading = logFilters.source === 'reply'; logRequestScope = ''; proactiveHistoryPage = null; proactiveRecordEpoch++; proactiveRecordLoading = false; render(); await Promise.all([loadActivity(), loadProactiveRecords()]); } return; }
-            if (form.id === 'ai-takeover-form') { await execute('settings', {value:{enabled:data.has('master'),acknowledgeAI:data.has('acknowledgeAI'),takeover:{enabled:data.get('enabled')==='on',minutes:Number(data.get('minutes') ?? form.elements.minutes.value ?? 5)}}}, '设置已保存'); return; }
+            if (form.id === 'ai-takeover-form') { await execute('settings', {value:{...Object.fromEntries(['replyDelay','replyMaxWait','segmentDelayMin','segmentDelayMax','followUpDelayMin','followUpDelayMax'].map(key=>[key,Number(data.get(key))])),autoLearning:data.has('autoLearning'),enabled:data.has('master'),acknowledgeAI:data.has('acknowledgeAI'),takeover:{enabled:data.get('enabled')==='on',minutes:Number(data.get('minutes') ?? form.elements.minutes.value ?? 5)}}}, '设置已保存'); applyAppearance(data.get('appearance'),true); render(); return; }
       if (form.id === 'ai-analysis-form') {
         rememberDraft();
         if (!analysisDraft.contacts.length) throw new Error('请至少选择一位联系人');
@@ -1498,7 +1500,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         const hasReplySettings = !!profile?.replyStrategy || ['replyGoal','boundaries'].some(key => String(data.get(key) || '').trim()) || changedSwitch || changedRealtimeMode || changedStyle || String(strategy.maxRounds) !== String(profile?.replyStrategy?.maxRounds ?? state.replyRoundLimits?.[kind] ?? state.replyStrategy?.maxRounds ?? 50);
         const memoryEntries = JSON.parse(String(data.get('memorySummary') || '[]'));
         await execute('reply-profile', { value: { contact, preserveSwitches: true, styleSet: !!summary, styleId, style, strategy,
-          inheritStrategy: data.has('inheritStrategy'), options: { multiTurn: optionChecked('multiTurn'), judgeReply: optionChecked('judgeReply'), sendImages: optionChecked('sendImages'), sendAudio: optionChecked('sendAudio') },
+          timing: data.has('inheritTiming') ? null : Object.fromEntries(['replyDelay','replyMaxWait','segmentDelayMin','segmentDelayMax','followUpDelayMin','followUpDelayMax'].map(key=>[key,Number(data.get(key))])), takeover: data.has('inheritTakeover') ? null : {enabled:data.has('takeoverEnabled'),minutes:Number(data.get('takeoverMinutes'))}, inheritStrategy: data.has('inheritStrategy'), options: { multiTurn: optionChecked('multiTurn'), judgeReply: optionChecked('judgeReply'), sendImages: optionChecked('sendImages'), sendAudio: optionChecked('sendAudio') },
           ...(kind === 'group' ? { group: { atMe: data.has('atMe'), atAll: data.has('atAll'), realtime: data.has('realtime'), realtimeMode: data.get('realtimeMode') || 'normal', ...(realtimeConfirmed ? { confirmRealtime: true } : {}) } }
             : { replyEnabled: data.has('enabled'), options: { multiTurn: optionChecked('multiTurn'), judgeReply: optionChecked('judgeReply'), sendImages: optionChecked('sendImages'), sendAudio: optionChecked('sendAudio') } }),
           ...(!sameWikiEntries(memoryEntries, profile?.memory?.entries || []) && !profile?.memory?.unavailable ? { memory: { entries: memoryEntries } } : {})

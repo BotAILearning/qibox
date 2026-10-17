@@ -5,6 +5,8 @@ const parts = value => clean(value).split(/[。！？!?，,；;\n]/).map(x => x.
 const attributed = value => /^(?:你|您|他|她|别人|对方|那个人|例如|比如|如果|假如|假设)|(?:说|写|问|原话|引用)[：:]?[“"「]|[“"「].*[”"」]/.test(value);
 const livePlace = /^(?:嗯|哈哈|好|对|是的)?\s*我(?:现在|这会儿|目前|这边)?(?:就|还|正)?在(家|公司|办公室|单位|学校|医院|外地|路上)(?:呢|里|这边|休息|上班|忙|[\s。！？!?，,；;]|$)/;
 const employmentDenial = /^我(?:现在|目前|今天)?(?:没有|没|不)(?:有)?(?:在)?(?:哪家|任何|什么|一家)?(?:公司|单位)(?:里)?(?:上班|工作)/;
+const availabilityClaim = /^(?:我(?:现在|今天|这会儿|目前)?|(?:现在|今天|这会儿|目前))(?:这边)?(?:肯定|一定|确实)?(?:有空|没空|不忙|很忙|没(?:有)?(?:什么)?安排|没(?:有)?(?:什么)?事)/;
+const deferredArrangement = /(?:等我|我|得|先).{0,10}(?:看|查|确认|核对).{0,8}(?:安排|时间|日程).{0,10}(?:再|后|就).{0,6}(?:告诉|通知|联系|跟你确认|跟你说|和你确认)/;
 const futureNotice = /等我(?:确认|确定|定下来|有消息|有结果)(?:一下|下|时间)?(?:了|后|以后|之后)?[^。！？!?，,；;\n]{0,16}(?:再|就|会)?(?:告诉|通知|联系|回复|(?:跟|和)(?:你|您)(?:说|定(?:时间|下来|好)?)|给(?:你|您)发(?:消息|信息))(?:你|您)?(?:一声|一下)?$/;
 const confirmThenNotice = /我(?:先|再)?(?:确认|确定)(?:一下|下)?[^。！？!?，,；;\n]{0,16}(?:再|就|后|然后)(?:回|回复|告诉|通知|联系)(?:你|您)|我(?:先|再)?(?:确认|确定)(?:一下|下)?[^。！？!?，,；;\n]{0,16}(?:再|就|后|然后)(?:跟|和)(?:你|您)(?:说|定(?:时间|下来|好)?)/;
 const futureCheck = /我(?:先|再|回头|稍后|到时候|到时|待会儿?)?(?:确认|确定)(?:一下|下)(?:具体)?(?:时间|几点|安排)?(?:再说)?$/;
@@ -42,6 +44,8 @@ export function unsupportedPersonalAnswer(texts, { messages = [], pendingMessage
     const place = livePlace.exec(part);
     if (place && !evidence.some(p => livePlace.exec(p)?.[1] === place[1])) return 'personal-fact';
     if (employmentDenial.test(part) && !evidence.some(p => employmentDenial.test(p))) return 'personal-fact';
+    if (availabilityClaim.test(part) && !evidence.some(p => availabilityClaim.test(p))) return 'personal-fact';
+    if (deferredArrangement.test(part) && !evidence.some(p => deferredArrangement.test(p))) return 'future-notice';
     if (locationQuestion && privacyReason.test(part) && !privacyAllowed) return 'personal-fact';
     // A contextual bare denial must not become a false guarantee about who
     // typed the message. This check runs only at the final local boundary.

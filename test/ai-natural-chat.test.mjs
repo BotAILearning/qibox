@@ -1,3 +1,4 @@
+import { replyFixedRules } from '../server/ai-reply-prompt.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { AIAssistant } from '../server/ai-service.mjs';
@@ -21,10 +22,10 @@ async function fixture(t) {
 // prompt cannot satisfy these checks. The provider and sends stay in memory;
 // these tests verify wiring and contracts, not a real model's naturalness.
 function assertChatRules(call) {
-  for (const prompt of [naturalChatPrompt, reflectiveReplyPrompt]) {
+  for (const prompt of [call.input.mode === 'reply' ? replyFixedRules : naturalChatPrompt, reflectiveReplyPrompt]) {
     assert.equal(call.system.split(prompt).length - 1, 1);
   }
-  assert.match(call.system, /事实边界（最高优先级/);
+  assert.match(call.system, /事实和指令严格分开|事实边界（最高优先级/);
   assert.match(call.system, /只返回 JSON 本身/);
 }
 

@@ -20,25 +20,25 @@ function personalCard(state, field, draft) {
   // editable in full instead of letting a single-line input erase newlines.
   const multiline = field.input !== 'short' || value.text.includes('\n') || value.text.length > 160;
   const input = multiline
-    ? `<textarea id="${inputId}" name="${field.key}" data-personal-input rows="${field.rows || 3}" maxlength="2000" placeholder="${esc(field.example)}">${esc(value.text)}</textarea>`
+    ? `<textarea id="${inputId}" name="${field.key}" data-personal-input rows="${field.rows || 3}" maxlength="2000" placeholder="${esc(field.hint)}">${esc(value.text)}</textarea>`
     : `<input id="${inputId}" name="${field.key}" data-personal-input type="text" maxlength="2000" value="${esc(value.text)}" placeholder="${esc(field.example)}">`;
   const scope = dirty ? value.allowGroup ? 'group' : 'private' : previous.scope;
   return `<details class="ai-personal-card${field.wide ? ' ai-personal-wide' : ''}" data-personal-field="${field.key}" data-ai-optional="personal:${field.key}" data-state="${status}" ${value.open ? 'open' : ''} ${value.shareChanged ? 'data-personal-share-changed="true"' : ''}>
-    <summary aria-labelledby="${labelId} personal-status-${field.key}"><div class="ai-personal-card-head"><strong id="${labelId}">${esc(field.label)}</strong><span class="ai-personal-status" id="personal-status-${field.key}" data-personal-status>${statusLabel}</span><span class="ai-personal-edit-label" aria-hidden="true">${value.text.trim() ? '编辑' : '补充'}${icon('chev-r')}</span></div><p class="ai-personal-preview" data-personal-preview ${value.text.trim() ? '' : 'hidden'}>${esc(value.text.trim())}</p><span class="ai-personal-scope" data-personal-scope ${value.text.trim() ? '' : 'hidden'}>${scopeLabel(scope)}</span></summary>
-    <div class="ai-personal-editor"><label class="ai-field" for="${inputId}"><span class="visually-hidden">${esc(field.label)}</span>${input}</label><div class="ai-personal-input-help"><span data-personal-count aria-hidden="true">${value.text.length}/2000</span></div><label class="ai-personal-share"><input type="checkbox" data-personal-share ${value.allowGroup ? 'checked' : ''}>允许这项信息用于群聊</label></div>
+    <summary aria-labelledby="${labelId} personal-status-${field.key}"><div class="ai-personal-card-head"><strong id="${labelId}">${esc(field.label)}</strong><span class="ai-personal-status sr-only" id="personal-status-${field.key}" data-personal-status>${statusLabel}</span><span class="ai-personal-edit-label" aria-hidden="true">${value.text.trim() ? '编辑' : '补充'}${icon('chev-r')}</span></div><p class="ai-personal-preview" data-personal-preview ${value.text.trim() ? '' : 'hidden'}>${esc(value.text.trim())}</p><span class="ai-personal-scope sr-only" data-personal-scope ${value.text.trim() ? '' : 'hidden'}>${scopeLabel(scope)}</span><label class="ai-personal-share"><input type="checkbox" data-personal-share ${value.allowGroup ? 'checked' : ''}>允许用于群聊</label></summary>
+    <div class="ai-personal-editor"><label class="ai-field" for="${inputId}"><span class="sr-only">${esc(field.label)}</span>${input}</label><div class="ai-personal-input-help"><span data-personal-count aria-hidden="true">${value.text.length}/2000</span></div><p class="ai-help">${esc(field.hint)}${previous.scope === 'mixed' ? '。此项原有分享权限不同，修改正文后将继续保留未改条目的权限；新增内容仅用于私聊。' : ''}</p></div>
   </details>`;
 }
 
 export function personalInformationPage(state, draft = {}) {
   const entries = state.personalInformation?.entries || [];
-  const commonOrder = ['addressing', 'status', 'plans', 'schedule', 'boundaries', 'city', 'occupation', 'preferences', 'interests'];
+  const commonOrder = ['addressing', 'city', 'occupation', 'schedule', 'interests', 'preferences', 'status'];
   const fields = [...personalFieldDefinitions].sort((a, b) => (commonOrder.indexOf(a.key) < 0 ? Infinity : commonOrder.indexOf(a.key)) - (commonOrder.indexOf(b.key) < 0 ? Infinity : commonOrder.indexOf(b.key)));
   const suggestions = (state.personalInformation?.suggestions || []).filter(row => !retiredPersonalFields.includes(row.field)), history = state.personalInformation?.history || [];
   const filled = fields.filter(field => entries.some(entry => entry.field === field.key && entry.text.trim())).length;
   const moreFilled = fields.filter(field => field.group === 'more' && entries.some(entry => entry.field === field.key && entry.text.trim())).length;
   const progress = filled ? `<span class="ai-personal-progress">已保存 ${filled} 项</span>` : '';
-  const additions = `<div class="ai-personal-additions"><details class="ai-card" data-ai-optional="personal-suggestions" ${suggestions.length ? 'open' : ''}><summary>聊天中的待确认信息 <span>${suggestions.length ? `${suggestions.length} 项待确认` : '暂无建议'}</span></summary>${suggestions.map(row => `<article class="ai-personal-suggestion"><strong>${esc(fields.find(field => field.key === row.field)?.label || '其他信息')}</strong><p>${esc(row.text)}</p><details><summary>查看原话</summary><p>${esc(row.sourceText)}</p></details><button type="button" class="secondary" data-ai-personal-suggestion="${esc(row.id)}" data-command="accept">确认采用</button><button type="button" class="quiet" data-ai-personal-suggestion="${esc(row.id)}" data-command="reject">忽略</button></article>`).join('')}</details><details class="ai-card" data-ai-optional="personal-history"><summary>我的信息历史版本 <span>${history.length ? `${history.length} 个版本` : '暂无版本'}</span></summary>${history.slice().reverse().map(row => `<p><time>${esc(new Date(row.at).toLocaleString('zh-CN'))}</time> <button type="button" class="secondary" data-ai-personal-history="${row.at}">查看并恢复</button></p>`).join('')}</details></div>`;
-  return `${back('')}<form id="ai-personal-information-form" data-personal-account="${esc(state.account || '')}" class="ai-card ai-account-form ai-personal-form"><header class="ai-personal-intro"><div><h4>让回复更了解你</h4></div>${progress}</header><div class="ai-personal-section-heading"><h4>常用信息</h4></div><div class="ai-personal-fields">${fields.filter(field => field.group === 'common').map(field => personalCard(state, field, draft)).join('')}</div><details id="ai-personal-more" class="ai-personal-more" data-ai-optional="personal-more" ${draft.moreOpen ? 'open' : ''}><summary><div><strong>更多信息</strong></div><span data-personal-more-status>${moreFilled ? `已填写 ${moreFilled} 项` : '按需补充'}</span>${icon('chev-r')}</summary><div class="ai-personal-fields">${fields.filter(field => field.group === 'more').map(field => personalCard(state, field, draft)).join('')}</div></details><footer class="ai-personal-save"><span data-personal-save-status role="status"></span><button type="submit" class="primary">保存我的信息</button></footer></form>${additions}`;
+  const additions = '';
+  return `${back('')}<form id="ai-personal-information-form" data-personal-account="${esc(state.account || '')}" class="ai-card ai-account-form ai-personal-form"><header class="ai-personal-intro"><div><h1 class="ai-personal-title">我的信息</h1><p class="ai-help">仅填写真实信息，所有项目均为选填。</p></div>${progress}</header><div class="ai-personal-section-heading"><h4>常用信息</h4></div><div class="ai-personal-fields">${fields.filter(field => field.group === 'common').map(field => personalCard(state, field, draft)).join('')}</div><details id="ai-personal-more" class="ai-personal-more" data-ai-optional="personal-more" ${draft.moreOpen ? 'open' : ''}><summary><div><strong>更多信息</strong></div><span data-personal-more-status>${moreFilled ? `已填写 ${moreFilled} 项` : '按需补充'}</span>${icon('chev-r')}</summary><div class="ai-personal-fields">${fields.filter(field => field.group === 'more').map(field => personalCard(state, field, draft)).join('')}</div></details><footer class="ai-personal-save"><span data-personal-save-status role="status"></span><button type="submit" class="primary">保存我的信息</button></footer></form>${additions}`;
 }
 export function personalDraftFromForm(form) {
   return Object.fromEntries([['moreOpen', form.querySelector('#ai-personal-more')?.open === true], ...[...form.querySelectorAll('[data-personal-field]')].map(section => [section.dataset.personalField,
@@ -79,6 +79,17 @@ export function personalEntriesFromForm(form, state) {
     const rows = (state.personalInformation?.entries || []).filter(entry => entry.field === field), allowGroup = section.querySelector('[data-personal-share]').checked;
     if (!fieldDirty({ text, allowGroup, shareChanged: section.dataset.personalShareChanged === 'true' }, fieldValue(state, field)))
       return rows.map(({ expiresAt, ...row }) => row);
+    if (rows.length > 1 && section.dataset.personalShareChanged !== 'true') {
+      const remaining = text.split('\n').map(line => line.trim()).filter(Boolean), result = [];
+      for (const row of rows) {
+        const lines = row.text.split('\n').map(line => line.trim()).filter(Boolean);
+        if (lines.every(line => remaining.includes(line))) {
+          result.push(row); for (const line of lines) remaining.splice(remaining.indexOf(line), 1);
+        }
+      }
+      if (remaining.length) result.push({ field, text: remaining.join('\n'), allowGroup: false });
+      return result;
+    }
     return [{ id: rows[0]?.id, field, text, allowGroup }];
   });
   return entries.concat((state.personalInformation?.entries || []).filter(row => retiredPersonalFields.includes(row.field)).map(({ expiresAt, ...row }) => row));

@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { AppError, atomicJson, jsonFile } from './files.mjs';
+import { idleResourceProbe, idlePriority } from './idle-resources.mjs';
 
 export function validateSchedule(value) {
   if (!value || typeof value !== 'object') throw new AppError('请选择微信运行方式');
@@ -7,7 +8,10 @@ export function validateSchedule(value) {
   const time = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
   if (!time.test(value.startTime) || !time.test(value.endTime) || value.startTime === value.endTime) throw new AppError('请设置不同的开始和结束时间');
   // Ignore legacy eligibility fields; only the requested schedule is stored.
-  return { mode: value.mode, startTime: value.startTime, endTime: value.endTime, timezone: 'Asia/Shanghai' };
+  const limits = { loadPercent: 70, networkMBps: 2, freeMemoryMB: 512, ...value.resourceLimits };
+  for (const [key, min, max] of [['loadPercent', 10, 100], ['networkMBps', 0.1, 10000], ['freeMemoryMB', 128, 1048576]])
+    if (typeof limits[key] !== 'number' || !Number.isFinite(limits[key]) || limits[key] < min || limits[key] > max) throw new AppError('请检查闲时备份的资源限制');
+  return { mode: value.mode, startTime: value.startTime, endTime: value.endTime, timezone: 'Asia/Shanghai', resourceLimits: limits };
 }
 export function scheduleWindow(settings, now) {
   const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: settings.timezone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(now).map(p => [p.type, p.value]));
@@ -22,9 +26,10 @@ export function scheduleWindow(settings, now) {
 }
 
 export class WechatScheduler {
-  constructor({ dataRoot, ready, runtime, start, stop, now = () => new Date() }) {
+  constructor({ dataRoot, ready, runtime, start, stop, now = () => new Date(), resources, setPriority = idlePriority }) {
     this.file = path.join(dataRoot, 'schedule.json'); this.stateFile = path.join(dataRoot, 'schedule-state.json');
     this.ready = ready; this.runtime = runtime; this.start = start; this.stop = stop; this.now = now; this.working = null;
+    this.resources = resources || idleResourceProbe(() => +this.now()); this.setPriority = setPriority;
   }
   async init() {
     const saved = await jsonFile(this.file, { mode: 'manual', startTime: '02:00', endTime: '02:30' });
@@ -42,7 +47,7 @@ export class WechatScheduler {
     return tracked;
   }
   // Kept for older clients; idle schedules no longer require qualification.
-  publicState() { return { ...this.settings, idleAvailable: true, paused: this.isPaused(), lastEvent: this.state.lastEvent }; }
+  publicState() { return { ...this.settings, idleAvailable: true, paused: this.isPaused(), resourceState: this.state.resourceState, priorityApplied: this.state.priorityApplied, lastEvent: this.state.lastEvent }; }
   isPaused() {
     const window = scheduleWindow(this.settings, this.now());
     return this.state.paused === 'continuous' || (window.active && this.state.paused === window.key);
@@ -66,11 +71,19 @@ export class WechatScheduler {
   }
   async pause() {
     return this.exclusive(async () => {
+    if (this.settings.mode === 'idle' && this.state.ownsProcess && this.runtime.status === 'running') await this.stop();
     const window = scheduleWindow(this.settings, this.now());
     this.state.paused = this.settings.mode === 'continuous' ? 'continuous' : window.key;
     this.state.resumeLoginAt = null; this.state.pendingLoginAt = null; this.state.ownsProcess = false;
     await atomicJson(this.stateFile, this.state);
     });
+  }
+  async resume() {
+    await this.exclusive(async () => {
+      this.state.paused = null; this.state.lastAttempt = null; this.state.failures = 0;
+      await atomicJson(this.stateFile, this.state);
+    });
+    await this.tick(); return this.publicState();
   }
   tick() {
     if (this.working || !this.ready()) return this.working || Promise.resolve();
@@ -82,6 +95,19 @@ export class WechatScheduler {
     const now = this.now(), window = scheduleWindow(this.settings, now);
     await this.resumeLogin();
     if (this.settings.mode === 'manual' || this.isPaused()) return;
+    if (this.settings.mode === 'idle' && window.active) {
+      const resource = await this.resources(this.settings.resourceLimits);
+      this.state.resourceState = resource;
+      if (!resource.allowed) {
+        // Only the client opened by this scheduler may be stopped. A user
+        // opening the desktop relinquishes ownership through interact().
+        if (this.state.ownsProcess && this.runtime.status === 'running') {
+          await this.stop(); this.state.ownsProcess = false; this.state.pendingLoginAt = null; this.state.lastAttempt = null;
+        }
+        this.state.lastEvent = { at: now.toISOString(), message: resource.reason };
+        await atomicJson(this.stateFile, this.state); return;
+      }
+    }
     if (window.active && this.runtime.status !== 'running') {
       if (!['stopped', 'error'].includes(this.runtime.status)) return;
       if (this.state.lastAttempt?.key !== window.key) this.state.failures = 0;
@@ -89,6 +115,7 @@ export class WechatScheduler {
       this.state.lastAttempt = { key: window.key, at: now.toISOString() };
       try {
         await this.start(); this.state.ownsProcess = true; this.state.failures = 0;
+        if (this.settings.mode === 'idle') this.state.priorityApplied = await this.setPriority(this.runtime);
         this.state.pendingLoginAt = this.settings.mode === 'idle' ? this.now().toISOString() : null;
         this.state.lastEvent = { at: now.toISOString(), message: '已按计划打开微信，请按需要确认登录' };
       } catch {
