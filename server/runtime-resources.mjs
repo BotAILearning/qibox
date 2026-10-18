@@ -4,8 +4,21 @@ import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { architecture, runtimeLibraries } from './platform.mjs';
 import { atomicJson, jsonFile, hashFile, AppError, ensureSpace } from './files.mjs';
+import { hashRuntimeFile } from './runtime-hash.mjs';
 
 const exists = async p => !!await stat(p).catch(() => null);
+// Bound filesystem work rather than serializing tens of thousands of reads.
+// Every worker settles before returning, including a rejected/invalid entry.
+async function everyRuntimeEntry(entries, check) {
+  let next = 0, valid = true;
+  await Promise.all(Array.from({ length: Math.min(16, entries.length) }, async () => {
+    while (valid && next < entries.length) {
+      const entry = entries[next++];
+      try { if (!await check(entry)) valid = false; } catch { valid = false; }
+    }
+  }));
+  return valid;
+}
 const inside = (root, relative) => {
   if (typeof relative !== 'string' || relative.includes('\\') || relative.startsWith('/') || relative.split('/').includes('..')) throw Error('Unsafe resource path');
   const result = path.resolve(root, relative);
@@ -64,20 +77,25 @@ export class RuntimeResources {
     architecture(arch);
     this.root = path.join(dataRoot, 'runtime'); this.cache = path.join(dataRoot, 'runtime-cache');
     this.stateFile = path.join(this.cache, 'preparation.json');
-    this.verifiedHashes = new Map(); this.hashesInFlight = new Map();
+    if (hash === hashFile) this.hash = (file, size) => process.platform === 'linux' && size >= 256 * 1024 ? hashRuntimeFile(file).catch(() => hashFile(file)) : hashFile(file);
+    this.verifiedHashes = new Map(); this.hashesInFlight = new Map(); this.resolvedSignatures = new Map();
     this.selftest = selftest || (root => this.checkEnvironment(root));
     this.state = { status: 'idle', stage: 'checking', bytes: 0, total: 0, remaining: 0, message: '检查微信所需环境' };
   }
   async fileSignature(file) {
-    const canonical = await realpath(file);
-    const info = await stat(canonical, { bigint: true });
+    const info = await stat(file, { bigint: true });
     if (!info.isFile()) throw Error('运行组件不是普通文件');
-    const signature = [info.dev, info.ino, info.size, info.mtimeNs, info.ctimeNs, info.mode, info.uid].map(String).join(':');
+    const signatureOf = row => [row.dev, row.ino, row.size, row.mtimeNs, row.ctimeNs, row.mode, row.uid].map(String).join(':');
+    const signature = signatureOf(info), resolved = this.resolvedSignatures.get(file);
+    if (resolved?.signature === signature) return { canonical: resolved.canonical, signature, key: `${resolved.canonical}\0${signature}` };
+    const canonical = await realpath(file);
+    if (signatureOf(await stat(canonical, { bigint: true })) !== signature) throw Error('运行组件在解析期间发生变化');
+    this.resolvedSignatures.set(file, { canonical, signature });
     return { canonical, signature, key: `${canonical}\0${signature}` };
   }
   async verifiedHash(file) {
-    // Cache only a stable read of the canonical target. Re-resolve the input
-    // after hashing so a replaced symlink cannot inherit the old target's hash.
+    // Cache only a stable target inode/content signature. Restat the input
+    // after hashing so a replaced symlink cannot inherit a different inode's hash.
     for (let attempt = 0; attempt < 3; attempt++) {
       const before = await this.fileSignature(file);
       const cached = this.verifiedHashes.get(before.canonical);
@@ -89,7 +107,9 @@ export class RuntimeResources {
       let pending = this.hashesInFlight.get(before.key);
       if (!pending) {
         pending = (async () => {
-          const sha256 = await this.hash(before.canonical);
+          // Read the requested path. A cached canonical name can have been
+          // replaced while this input still references the original inode.
+          const sha256 = await this.hash(file, Number(before.signature.split(':')[2]));
           const after = await this.fileSignature(file);
           if (after.key !== before.key) throw Error('运行组件在校验期间发生变化');
           this.verifiedHashes.set(before.canonical, { signature: before.signature, sha256 });
@@ -175,22 +195,25 @@ export class RuntimeResources {
     if (ready?.resourceIdentity !== this.manifest.identity || ready.arch !== this.arch) return false;
     if (checkSystem && ready.systemIdentity !== await this.systemIdentity()) return false;
     try {
-      for (const [name, file] of Object.entries(this.manifest.files)) {
+      const filesValid = await everyRuntimeEntry(Object.entries(this.manifest.files), async ([name, file]) => {
         const output = inside(root, name), info = await lstat(output);
         const host = ready.host?.[name];
         if (host) {
-          if (!info.isSymbolicLink() || await readlink(output) !== this.manifest.host[name]?.path || await this.verifiedHash(output) !== host.sha256 || !await this.hostMatches(name)) return false;
+          if (!info.isSymbolicLink() || await readlink(output) !== this.manifest.host[name]?.path || host.sha256 !== this.manifest.host[name]?.sha256 || !await this.hostMatches(name)) return false;
+          if (await readlink(output) !== this.manifest.host[name].path) return false;
         } else if (!info.isFile() || info.size !== file.size || await this.verifiedHash(output) !== file.sha256) return false;
         if (process.platform !== 'win32' && file.mode & 0o100 && !(info.mode & 0o100)) return false;
-      }
-      for (const [name, entry] of Object.entries(this.manifest.inventory || {})) {
+        return true;
+      });
+      if (!filesValid) return false;
+      return await everyRuntimeEntry(Object.entries(this.manifest.inventory || {}), async ([name, entry]) => {
         if (entry[0] === '2' && await readlink(inside(root, name)) !== entry[4]) return false;
         if (entry[0] === '1') {
           const file = await lstat(inside(root, name)), target = await lstat(inside(root, entry[4]));
           if (!file.isFile() || !target.isFile() || file.ino !== target.ino || file.dev !== target.dev) return false;
         }
-      }
-      return true;
+        return true;
+      });
     } catch { return false; }
   }
   async inspect() {

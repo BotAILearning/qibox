@@ -145,6 +145,11 @@ export class WechatScheduler {
     await atomicJson(this.stateFile, this.state); await this.resumeLogin();
   }
   async resumeLogin() {
+    if (this.loginResuming) return this.loginResuming;
+    this.loginResuming = this.performResumeLogin();
+    try { return await this.loginResuming; } finally { this.loginResuming = null; }
+  }
+  async performResumeLogin() {
     if (!this.state.resumeLoginAt) return;
     const age = this.now() - Date.parse(this.state.resumeLoginAt);
     if (age < 0 || age >= 120000 || this.runtime.status !== 'running' || this.isPaused()) this.state.resumeLoginAt = null;

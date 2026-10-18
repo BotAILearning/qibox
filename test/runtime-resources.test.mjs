@@ -312,3 +312,54 @@ test('concurrent checks share one hash but reject a file changed during that has
   assert.notEqual(await f.manager.verifiedHash(tool), f.manifest.files.tool.sha256, 'the changed bytes never satisfy the manifest');
   assert.equal(hashes, 2, 'later checks may reuse only the newly verified signature');
 });
+
+test('complete runtime validation overlaps bounded reads and settles all work before rejecting corruption', async t => {
+  const f = await fixture(t); f.manager.start(); await f.manager.working;
+  for (let i = 0; i < 40; i++) {
+    const name = `parallel-${i}`, bytes = Buffer.from(`required component ${i}`);
+    await writeFile(path.join(f.dataRoot, 'runtime', name), bytes);
+    f.manifest.files[name] = { size: bytes.length, sha256: sha(bytes), mode: 0o644 };
+  }
+  f.manager.manifest.files = f.manifest.files;
+  let active = 0, peak = 0;
+  f.manager.hash = async file => {
+    active++; peak = Math.max(peak, active);
+    try { await new Promise(resolve => setTimeout(resolve, 5)); return sha(await readFile(file)); }
+    finally { active--; }
+  };
+  f.manager.verifiedHashes.clear();
+  assert.equal(await f.manager.currentValid(), true);
+  assert.ok(peak > 1 && peak <= 16, `bounded overlapping reads required, observed ${peak}`);
+  assert.equal(active, 0);
+  await writeFile(path.join(f.dataRoot, 'runtime/parallel-23'), 'required component XX');
+  f.manager.verifiedHashes.clear();
+  assert.equal(await f.manager.currentValid(), false, 'a later component must still be checked');
+  assert.equal(active, 0, 'no validation worker may remain after returning failure');
+});
+
+test('cached canonical names cannot substitute replacement bytes for a surviving original inode', { skip: process.platform !== 'linux' }, async t => {
+  const f = await fixture(t); f.manager.start(); await f.manager.working;
+  const tool = path.join(f.dataRoot, 'runtime/tool'), held = path.join(f.dataRoot, 'held-runtime'), input = path.join(f.dataRoot, 'input');
+  const original = await readFile(tool);
+  await symlink(tool, input);
+  assert.equal(await f.manager.verifiedHash(input), sha(original));
+  await rename(path.dirname(tool), held);
+  await rm(input); await symlink(path.join(held, 'tool'), input);
+  await mkdir(path.dirname(tool)); await writeFile(tool, 'unrelated replacement canonical path');
+  f.manager.verifiedHashes.clear();
+  assert.equal(await f.manager.verifiedHash(input), sha(original));
+  assert.notEqual(await f.manager.verifiedHash(tool), sha(original));
+});
+
+test('a saved host reference must match the pinned host hash as well as the symlink', { skip: process.platform !== 'linux' }, async t => {
+  const f = await fixture(t); f.manager.start(); await f.manager.working;
+  const target = '/etc/hosts', bytes = await readFile(target), hash = sha(bytes), tool = path.join(f.dataRoot, 'runtime/tool');
+  f.manager.manifest.host.tool = { path: target, sha256: hash };
+  f.manager.manifest.files.tool = { ...f.manager.manifest.files.tool, sha256: hash, size: bytes.length, mode: 0o644 };
+  await rm(tool); await symlink(target, tool);
+  const readyPath = path.join(f.dataRoot, 'runtime/ready.json'), ready = JSON.parse(await readFile(readyPath));
+  ready.host = { tool: { sha256: hash } }; await writeFile(readyPath, JSON.stringify(ready));
+  assert.equal(await f.manager.currentValid(), true);
+  ready.host.tool.sha256 = '0'.repeat(64); await writeFile(readyPath, JSON.stringify(ready));
+  assert.equal(await f.manager.currentValid(), false);
+});

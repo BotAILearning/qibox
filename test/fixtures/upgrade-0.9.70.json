@@ -1,0 +1,250 @@
+{
+  "provenance": {
+    "version": "0.9.70",
+    "fpkSha256": "b77ea646ddfadb77e6c21e68c6503b2c49e2c3629f817a73811eab6334d3ac12",
+    "synthetic": true,
+    "personalInformation": "opaque encrypted extension used to verify retention; not a claimed 0.9.70 UI capability"
+  },
+  "id": "11111111-1111-4111-8111-111111111111",
+  "removed": "22222222-2222-4222-8222-222222222222",
+  "before": {
+    "version": 1,
+    "account": "fee4c3fef903ecc2a3b6cc4dd8fd8a5bb674a29d8135490449d1bc2dd8480b71",
+    "contacts": [
+      {
+        "id": "33e3580c093111e1c4cac922872c40371f7896bb3fa4e23be5840bd1834fc622",
+        "label": "测试对象甲",
+        "kind": "person",
+        "lastChatAt": null,
+        "contactOrder": 0
+      },
+      {
+        "id": "71530d4c49f12c489dcfc7d6d1b46d53546ca05bfd1775392c9a42b9b7944bbb",
+        "label": "测试对象乙",
+        "kind": "person",
+        "lastChatAt": null,
+        "contactOrder": 1
+      },
+      {
+        "id": "c680a614513fa8a73542527bd934fca22d0a198eec669fa288f12053150cd7e7",
+        "label": "测试对象丙",
+        "kind": "person",
+        "lastChatAt": null,
+        "contactOrder": 2
+      }
+    ],
+    "lastScanAt": 1792339620167,
+    "settings": {
+      "enabled": false,
+      "acknowledgeAI": false,
+      "takeover": {
+        "enabled": true,
+        "minutes": 7
+      },
+      "proactive": false,
+      "reply": true,
+      "replyScope": "selected",
+      "judgeReply": true,
+      "updateStyle": false,
+      "replyDelay": 20,
+      "multiTurn": false,
+      "segmentDelayMin": 15,
+      "segmentDelayMax": 60,
+      "followUpDelayMin": 45,
+      "followUpDelayMax": 120
+    },
+    "strategy": {
+      "purpose": "",
+      "content": "",
+      "persona": "",
+      "replyGoal": "",
+      "facts": "",
+      "boundaries": "",
+      "sendMode": "single",
+      "styleSource": "manual",
+      "styleProfileId": "",
+      "maxRounds": 50
+    },
+    "replyStrategy": {
+      "replyGoal": "",
+      "facts": "",
+      "boundaries": "",
+      "maxRounds": 50
+    },
+    "replyRoundLimits": {
+      "person": null,
+      "group": null
+    },
+    "profiles": {
+      "96df8b8ab90357ffbd5dd36d53487d5935ead3e56bd1929e2783aaab48840c3d": {
+        "id": "96df8b8ab90357ffbd5dd36d53487d5935ead3e56bd1929e2783aaab48840c3d",
+        "account": "fee4c3fef903ecc2a3b6cc4dd8fd8a5bb674a29d8135490449d1bc2dd8480b71",
+        "contact": "33e3580c093111e1c4cac922872c40371f7896bb3fa4e23be5840bd1834fc622",
+        "label": "测试对象甲",
+        "kind": "person",
+        "source": "manual",
+        "preparedAt": 1792339620171,
+        "style": {
+          "category": "unknown",
+          "roles": [
+            "暂未确定"
+          ],
+          "formality": "自然",
+          "warmth": "适度",
+          "length": "简短",
+          "directness": "委婉",
+          "emoji": "少量",
+          "humor": "偶尔",
+          "avoid": [
+            "擅自承诺"
+          ],
+          "customTone": "",
+          "customAvoid": "",
+          "language": "0970 中文🙂手动风格"
+        },
+        "paused": false,
+        "rounds": 0,
+        "takeover": {
+          "enabled": true,
+          "minutes": 9
+        },
+        "replyOptions": {
+          "enabled": true,
+          "multiTurn": false,
+          "judgeReply": true
+        },
+        "replyVersion": 1,
+        "replyWatchSince": 1792339620171,
+        "delivery": {
+          "operationId": "completed-0970",
+          "status": "sent",
+          "segmentsSent": 1,
+          "segmentsTotal": 1
+        },
+        "manualWait": {
+          "ownId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "at": 1790000000000,
+          "startedAt": 1790000001000
+        },
+        "memory": {
+          "iv": "xn/EK7LM0hIjAtXL",
+          "tag": "DFZBDCv9nMzxVpwtae79iw==",
+          "data": "4cxtOwVIs/UhMLpuJnBLrbAmxBVkGd2T0U29F7+Fo4ORR/oQegd1GYrwQDL6xwh39l724FrXm602exVOHVLyaXYL/kI3NYxlYML742HuPgg2TTQXB83Pu5K6oTLaAu9HaYwhuIzq8eUNoXW5nX6ywm+V2n3KnO7H6HsuIPa8ewW9n7WMQEOi9h0zOQI="
+        },
+        "memoryHistory": [
+          {
+            "id": "39b1deec-df27-42cd-8f9e-ed569f04b2f4",
+            "at": 1790000000000,
+            "value": {
+              "iv": "IazmU2meLgfg01AF",
+              "tag": "7QRLTCJUVrekl2Vj8dHeWA==",
+              "data": "2qZtwNmvazmnP9z8uElmkhsGiDUXvHSuiCh9"
+            }
+          }
+        ],
+        "memoryLearnedAt": 1790000000000,
+        "memoryNotice": ""
+      }
+    },
+    "targets": [
+      "96df8b8ab90357ffbd5dd36d53487d5935ead3e56bd1929e2783aaab48840c3d"
+    ],
+    "replyTargets": [
+      "96df8b8ab90357ffbd5dd36d53487d5935ead3e56bd1929e2783aaab48840c3d"
+    ],
+    "proactiveTargets": [],
+    "queue": {
+      "status": "idle",
+      "items": [],
+      "nextAt": null
+    },
+    "events": [],
+    "skipLog": [],
+    "pendingReplySummaries": [],
+    "errorLog": [],
+    "deletedActivityRecords": [],
+    "analysisReports": [],
+    "modelList": [],
+    "modelAssignments": {},
+    "modelTested": {},
+    "learnedDefaultStyle": null,
+    "defaultStyleSnapshot": null,
+    "schedules": [],
+    "analysisMode": "shared",
+    "proactiveTasks": [],
+    "proactiveRecords": [],
+    "provider": {
+      "iv": "LadEhzV2bk7N2EA8",
+      "tag": "/kT+MiO8/EDk1dpBQGctVA==",
+      "data": "BtqNAgzUCXHMVLRD7KDtZIG7o3avyL2KAhcTP5UlrpPStlJHjh2bI3fzYUm/YMaUufLkhjU4ZjhwLAB9rAdhn0bL3e0dybvHqMEbRYHtNhJhEcBBdwxflpJ1gMeU6uDjEpgnbqNKhrseZFfRzyMnXeNWzT+vONURlprdEAcezIcj12gYCA83quf3EA0="
+    },
+    "tested": "574629a2a6887b17ff167175d76b5bc4d73fcbea476b04a3a3125e8818439e1f",
+    "personalInformation": {
+      "fee4c3fef903ecc2a3b6cc4dd8fd8a5bb674a29d8135490449d1bc2dd8480b71": {
+        "iv": "zabY4jUBzAlmVW0x",
+        "tag": "y1UfqAHSySGky1ZFSF9kUQ==",
+        "data": "asf69aGGPWVwxkubtNInycX7dnyaGV2wTle3VzjypDllxVO9ezNakdDAVPmc6NpZdqutQ5YhNnqZJrR27n4OJhwb3vTdGCJ2JEb9LAEDGL901DO63pkEQVBuJs5QNKpZ2MJGrdFr+FJz/PVXZkxTlhVqIf6YPQhKKzOW+b1HqI9WgeQGOL4bVLQXl08cXXczCqQiJ0twlfQbFE0n5Ts7WypJUto7DwnfWKtnv31qvlzb3W2UcUdOJEFyvfklHazd4QeZ30jJrkSUctNkp6RPu4WiaB9wc6ricwP8uD5KAeKo4H+Wvx/PE/7Q/xd7XDMd926ykVNoVQvXHqcYPHmz4G3R/w=="
+      }
+    }
+  },
+  "key": "tU/mFfm5G2M30Wl0EPIC9s+4IcnpUMKLvcoepOAdqhU=",
+  "catalog": [
+    {
+      "id": "11111111-1111-4111-8111-111111111111",
+      "appId": "wechat",
+      "name": "0970 中文🙂微信"
+    },
+    {
+      "id": "22222222-2222-4222-8222-222222222222",
+      "appId": "wechat",
+      "name": "0970 保留资料",
+      "removedAt": "2026-10-01T00:00:00.000Z"
+    }
+  ],
+  "schedule": {
+    "mode": "manual",
+    "startTime": "02:10",
+    "endTime": "06:30",
+    "timezone": "Asia/Shanghai",
+    "resourceLimits": {
+      "loadPercent": 63,
+      "networkMBps": 3,
+      "freeMemoryMB": 768
+    }
+  },
+  "sentinels": [
+    "home/xwechat_files/0970-fixture/chat.db",
+    "home/0970文件🙂.bin",
+    "model-notes/资料.txt"
+  ],
+  "info": {
+    "entries": [
+      {
+        "id": "private",
+        "field": "city",
+        "text": "0970私有资料",
+        "allowGroup": false,
+        "updatedAt": 1790000000000
+      },
+      {
+        "id": "shared",
+        "field": "occupation",
+        "text": "0970群聊允许资料",
+        "allowGroup": true,
+        "updatedAt": 1790000000000
+      }
+    ],
+    "suggestions": [],
+    "history": []
+  },
+  "memoryBefore": {
+    "summary": "0970 聊天长期记忆🙂",
+    "entries": [
+      {
+        "id": "a12fa016a392ae1aaa55425f",
+        "field": "other",
+        "text": "0970 聊天长期记忆🙂"
+      }
+    ]
+  }
+}

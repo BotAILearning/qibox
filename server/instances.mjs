@@ -64,6 +64,7 @@ export class Instances {
       if (this.closing) throw new AppError('栖盒正在退出', 503);
       if ((!runtime.definition || runtime.definition.id === 'wechat') && (!this.library.installed() || this.library.uninstalling)) throw new AppError('请先完成微信安装', 409);
       if (this.resourceManager?.manifest) {
+        if (runtime.status === 'running') return;
         const prepared = await this.resourceManager.inspect();
         if (prepared.status !== 'ready') throw new AppError('系统运行组件已变化，请先重新准备微信；已有资料会保留', 409);
       }
@@ -151,7 +152,11 @@ class UserInstances {
       if (saved.resume && this.consent.accepted && !meta.removedAt && this.library.installed() && !this.library.uninstalling && !scheduler.isPaused() && windowAllowed) {
         try {
           await instance.preparing; await this.owner.start(runtime);
-          if (saved.loggedIn) await scheduler.restoreLogin();
+          // A validated, running desktop is usable while the native cached-login
+          // check finishes. Do not hide the entire user's catalog behind it.
+          if (saved.loggedIn) instance.loginRecovery = scheduler.restoreLogin().catch(() => {
+            runtime.message = '原微信登录状态暂未恢复，请打开微信检查';
+          });
         } catch { runtime.message = '更新前的会话暂未恢复，请打开微信检查'; }
       }
     }
@@ -197,7 +202,7 @@ class UserInstances {
     await item.scheduler.interact();
     return item.exclusive(async () => { this.get(id); this.requireConsent(); await item.preparing; await this.owner.start(item.runtime); return item.runtime.publicState(); });
   }
-  async stop(id) { const item = this.get(id); await item.ai.suspend(); await item.scheduler.pause(); return item.exclusive(async () => { await item.runtime.stop(); return item.runtime.publicState(); }); }
+  async stop(id) { const item = this.get(id); await item.ai.suspend(); await item.scheduler.pause(); return item.exclusive(async () => { await item.loginRecovery; await item.runtime.stop(); return item.runtime.publicState(); }); }
   async schedule(id, value) {
     this.requireConsent(); this.requireInstalled();
     return this.mutate(async () => {
@@ -263,7 +268,7 @@ class UserInstances {
   async close(deadline = Infinity) {
     await this.queue;
     await Promise.all([...this.instances.values()].map(async item => {
-      await item.ai.close(); await item.scheduler.close(); await item.tail; await item.preparing;
+      await item.ai.close(); await item.scheduler.close(); await item.loginRecovery; await item.tail; await item.preparing;
       const retain = item.meta.appId === 'wechat';
       const resume = retain && this.consent.accepted && !item.meta.removedAt && item.runtime.status === 'running';
       const loggedIn = resume && item.runtime.publicState().loginStatus === 'logged-in';

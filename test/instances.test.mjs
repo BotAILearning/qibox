@@ -29,6 +29,40 @@ test('two users and two instances isolate data, rename, startup and keep/delete/
     await one.setConsent(false); assert.equal(two.get(c.id).runtime.status, 'running');
   } finally { await users.close(); await cleanup(dataRoot); }
 });
+
+test('a running restored desktop is visible while cached-login verification remains pending', async () => {
+  const dataRoot = await temp(), library = { installed: () => ({ version: '4.1.13.23' }) };
+  const original = new Instances({ dataRoot, appRoot: dataRoot, library, runtimeFactory });
+  await original.init(); const saved = await original.get('1001'); await saved.setConsent(true);
+  const meta = await saved.add('恢复微信'); await saved.start(meta.id); saved.get(meta.id).runtime.loginStatus = 'logged-in'; await original.close();
+  let release, started, confirmations = 0;
+  const gate = new Promise(resolve => { release = resolve; }), checking = new Promise(resolve => { started = resolve; });
+  const restored = new Instances({ dataRoot, appRoot: dataRoot, library, runtimeFactory: (...args) => {
+    const runtime = runtimeFactory(...args);
+    runtime.confirmScheduledLogin = async () => { confirmations++; started(); await gate; runtime.loginStatus = 'logged-in'; return { status: 'logged-in' }; };
+    return runtime;
+  } });
+  try {
+    await Promise.race([restored.init(), new Promise((_, reject) => setTimeout(() => reject(Error('Catalog blocked behind login verification')), 1000).unref())]);
+    await checking;
+    const space = await restored.get('1001'), item = space.get(meta.id);
+    assert.equal(space.list().instances[0].runtime.status, 'running');
+    assert.notEqual(space.list().instances[0].runtime.loginStatus, 'logged-in', 'pending verification must not fake login');
+    const concurrent = item.scheduler.resumeLogin(); await new Promise(resolve => setImmediate(resolve));
+    assert.equal(confirmations, 1, 'scheduled ticks must share the pending native check');
+    await space.start(meta.id); assert.equal(item.scheduler.state.resumeLoginAt, null, 'manual opening takes ownership');
+    release(); await concurrent; await item.loginRecovery;
+    assert.equal(item.runtime.loginStatus, 'logged-in'); assert.equal(confirmations, 1);
+  } finally { release(); await restored.close(); await cleanup(dataRoot); }
+});
+
+test('opening an existing running process does not repeat validation, but starting a stopped one still validates', async () => {
+  let inspections = 0;
+  const users = new Instances({ library: { installed: () => ({}) }, resourceManager: { manifest: {}, inspect: async () => { inspections++; return { status: 'error' }; } } });
+  const runtime = { status: 'running', start: async () => { throw Error('Must not start twice'); } };
+  await users.start(runtime); assert.equal(inspections, 0);
+  runtime.status = 'stopped'; await assert.rejects(users.start(runtime), /系统运行组件已变化/); assert.equal(inspections, 1);
+});
 test('catalog survives process restart; installation is shared without migrating external data', async () => {
   const dataRoot = await temp(), library = { installed: () => ({ version: '4.1.13.9' }) };
   let users = new Instances({ dataRoot, appRoot: dataRoot, library, runtimeFactory });
