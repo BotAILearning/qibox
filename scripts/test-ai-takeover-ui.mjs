@@ -242,6 +242,25 @@ try {
   await page.screenshot({ path: path.join(output, 'personal-information-mobile.png'), fullPage: true });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.locator('[data-ai-nav="settings"]').first().click();
+  await page.locator('html').evaluate(node => { node.dataset.qiTheme = 'dark'; });
+  for (const width of [390, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    const surfaces = await page.evaluate(() => {
+      const toolbar = document.querySelector('#ai-panel .ai-mobile-navigation');
+      const tabs = document.querySelector('#ai-panel .ai-main-tabs');
+      const luminance = color => color.match(/[\d.]+/g).slice(0,3).map(Number).map(v => v / 255).map(v => v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4).reduce((sum,v,i) => sum + v * [0.2126,0.7152,0.0722][i],0);
+      const background = getComputedStyle(tabs).backgroundColor, foreground = getComputedStyle(tabs.querySelector('button[aria-current="false"]')).color;
+      const a = luminance(background), b = luminance(foreground);
+      return { toolbar: getComputedStyle(toolbar).backgroundColor, title: getComputedStyle(document.querySelector('#ai-mobile-title')).color, tabs: background, inactiveTextContrast: (Math.max(a,b)+0.05)/(Math.min(a,b)+0.05) };
+    });
+    assert.notEqual(surfaces.toolbar, 'rgb(255, 255, 255)', 'dark system settings mobile toolbar must share the theme');
+    assert.notEqual(surfaces.title, surfaces.toolbar, 'dark mobile title must contrast with its toolbar');
+    assert.equal(surfaces.tabs, surfaces.toolbar, 'dark mobile navigation surfaces must agree');
+    assert.ok(surfaces.inactiveTextContrast >= 4.5, `mobile navigation text contrast is ${surfaces.inactiveTextContrast}`);
+    await page.screenshot({ path: path.join(output, `settings-mobile-dark-${width}.png`) });
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.locator('html').evaluate(node => { node.dataset.qiTheme = 'light'; });
   const toggle = page.locator('#ai-takeover-form [name=enabled]'), minutes = page.locator('#ai-takeover-form [name=minutes]');
   assert.equal(await toggle.getAttribute('role'), 'switch'); assert.equal(await toggle.isChecked(), true);
   assert.equal(await minutes.inputValue(), '5'); assert.equal(await minutes.isVisible(), true);

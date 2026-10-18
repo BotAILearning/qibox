@@ -190,6 +190,10 @@ html.mobile .qiapp-product button.qi-btn.mobile-only { display: inline-flex; }
 #ai-panel button.ai-analysis-add.qi-btn { min-height: var(--qi-touch-target); height: var(--qi-touch-target); }
 
 @media(max-width:860px) {
+  .qiapp-product #ai-panel .ai-mobile-navigation.qbx-mobile-toolbar,
+  .qiapp-product #ai-panel .ai-main-tabs.qbx-bottom-nav { background: var(--qi-surface); color: var(--qi-text); border-color: var(--qi-border); }
+  .qiapp-product #ai-panel .ai-main-tabs.qbx-bottom-nav button { color: var(--qi-text-secondary); }
+  .qiapp-product #ai-panel .ai-main-tabs.qbx-bottom-nav button[aria-current="page"] { background: var(--qi-selected); color: var(--qi-primary); }
   .qiapp-product .content { padding: var(--qi-space-4); }
   .qiapp-product .workspace { grid-template-columns: minmax(0,1fr); }
   .qiapp-product button.qi-btn,
