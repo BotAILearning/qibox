@@ -65,7 +65,8 @@ async function waitPort(port, child) {
 }
 
 export class Runtime {
-  constructor({ appRoot, dataRoot, store, dev = false, runtimeRoot, sharedReady, application, definition = { id: 'wechat', name: '微信' } }) {
+  constructor({ appRoot, dataRoot, store, dev = false, runtimeRoot, sharedReady, resourceManager, application, definition = { id: 'wechat', name: '微信' } }) {
+    this.resourceManager = resourceManager;
     this.definition = definition; this.isWechat = definition.id === 'wechat';
     this.application = application; this.appRoot = appRoot; this.dataRoot = dataRoot; this.store = store; this.dev = dev;
     this.status = 'preparing'; this.message = ''; this.processes = []; this.port = null; this.password = null;
@@ -117,6 +118,11 @@ export class Runtime {
       architecture();
       const payloadRoot = await runtimePayload(this.appRoot);
       await this.stopTagged(false);
+      if (this.resourceManager?.manifest && !this.sharedReady) {
+        if (!await this.resourceManager.currentValid()) throw new AppError('请先在应用中心完成“准备微信”', 409);
+        this.xvfb = await prepareXvfb(this.appRoot, this.runtimeRoot);
+        this.status = 'stopped'; this.message = ''; return;
+      }
       if (this.sharedReady) {
         await this.sharedReady();
         this.lock = await jsonFile(path.join(payloadRoot, 'runtime-lock.json'));

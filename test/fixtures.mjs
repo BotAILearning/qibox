@@ -9,6 +9,12 @@ export async function temp() { return mkdtemp(path.join(os.tmpdir(), 'qibox-test
 export async function cleanup(root) { if (!path.basename(root).startsWith('qibox-test-')) throw new Error('Unexpected test root'); await rm(root, { recursive: true, force: true }); }
 export async function extractor(file, destination) { await mkdir(path.join(destination, 'opt/wechat'), { recursive: true }); await writeFile(path.join(destination, 'opt/wechat/wechat'), 'test fixture, not an application'); return { version: '4.1.13.9' }; }
 export const fetcher = async () => new Response(packageBytes, { headers: { 'content-length': String(packageBytes.length) } });
+fetcher.downloadSource = arch => ({
+  version: '4.1.13.9',
+  url: arch === 'arm64' ? 'https://dldir1v6.qq.com/weixin/Universal/Linux/WeChatLinux_arm64.deb' : 'https://dldir1v6.qq.com/weixin/Universal/Linux/WeChatLinux_x86_64.deb',
+  size: packageBytes.length,
+  sha256: packageSha256,
+});
 export function runtimeFactory(id, options, uid) {
   return { status: 'preparing', port: null, password: 'test1234', options, id, uid, starts: 0,
     autoLoginStatus: 'unknown', loginStatus: 'logged-out', windowVisible: true, shows: 0, logins: 0,

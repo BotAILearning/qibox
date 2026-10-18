@@ -1,0 +1,101 @@
+{
+  "format": 1,
+  "suite": "bookworm",
+  "source": "https://deb.debian.org/debian",
+  "packageIndexes": {
+    "amd64": "https://deb.debian.org/debian/dists/bookworm/main/binary-amd64/Packages.xz",
+    "arm64": "https://deb.debian.org/debian/dists/bookworm/main/binary-arm64/Packages.xz"
+  },
+  "architectures": {
+    "x64": {
+      "debianArchitecture": "amd64",
+      "packages": [
+        {
+          "name": "libopengl0",
+          "version": "1.6.0-1",
+          "architecture": "amd64",
+          "url": "https://deb.debian.org/debian/pool/main/libg/libglvnd/libopengl0_1.6.0-1_amd64.deb",
+          "debSha256": "dc71cb5aaddeb8b09b3d63b8426fd651d8c79ad55b23dbe640c1abbc94c85013",
+          "dataMember": "data.tar.xz",
+          "dataSha256": "87e15f29fcf02b05847947141142d95bcc202f63d524fbfa764321aa302bee57",
+          "depends": "libc6 (>= 2.34), libglvnd0 (= 1.6.0-1)"
+        },
+        {
+          "name": "libglu1-mesa",
+          "version": "9.0.2-1.1",
+          "architecture": "amd64",
+          "url": "https://deb.debian.org/debian/pool/main/libg/libglu/libglu1-mesa_9.0.2-1.1_amd64.deb",
+          "debSha256": "8f81a5fd51c1c35719757f05968b205b0c93ecc80c091781d8bfb5326eb95142",
+          "dataMember": "data.tar.xz",
+          "dataSha256": "a7a786466606f623244a6b543532e9412b6f889309d03c3fc9f1b65135205894",
+          "depends": "libc6 (>= 2.14), libgcc-s1 (>= 3.0), libopengl0, libstdc++6 (>= 5)"
+        },
+        {
+          "name": "libglut3.12",
+          "version": "3.4.0-1",
+          "architecture": "amd64",
+          "url": "https://deb.debian.org/debian/pool/main/f/freeglut/libglut3.12_3.4.0-1_amd64.deb",
+          "debSha256": "3fece06e9c34c026b43a6bf21b8183db4b90dea494254ba249d197879ac7fe53",
+          "dataMember": "data.tar.xz",
+          "dataSha256": "9a7ef90c229538385ebbbda35d99d8f24d6ecd0541d9055053f97e5633c00e1c",
+          "depends": "libc6 (>= 2.15), libgl1, libx11-6 (>= 2:1.2.99.901), libxi6 (>= 2:1.2.99.4), libxxf86vm1"
+        },
+        {
+          "name": "libsndio7.0",
+          "version": "1.9.0-0.3+b2",
+          "architecture": "amd64",
+          "url": "https://deb.debian.org/debian/pool/main/s/sndio/libsndio7.0_1.9.0-0.3+b2_amd64.deb",
+          "debSha256": "c4cc979126cc558549db25d42e2849a9d5dcdf7928e0ece69c38c374021a078b",
+          "dataMember": "data.tar.xz",
+          "dataSha256": "3afddfac6c2a8d9ca7b66d1ff0bc2aab1e6591bce2f9c84bf8c99dd36c3ec730",
+          "depends": "libasound2 (>= 1.0.17), libbsd0 (>= 0.0), libc6 (>= 2.33)"
+        }
+      ]
+    },
+    "arm64": {
+      "debianArchitecture": "arm64",
+      "packages": [
+        {
+          "name": "libopengl0",
+          "version": "1.6.0-1",
+          "architecture": "arm64",
+          "url": "https://deb.debian.org/debian/pool/main/libg/libglvnd/libopengl0_1.6.0-1_arm64.deb",
+          "debSha256": "4b3c6b3bc25530290cf231acac4c85b8806dda53ab6376ab22b3ec511b4fb7a0",
+          "dataMember": "data.tar.xz",
+          "dataSha256": "d26526a933b69e96b0ff74c0743366cd49a494a170fed2b3aa189c5cb88eb947",
+          "depends": "libc6 (>= 2.34), libglvnd0 (= 1.6.0-1)"
+        },
+        {
+          "name": "libglu1-mesa",
+          "version": "9.0.2-1.1",
+          "architecture": "arm64",
+          "url": "https://deb.debian.org/debian/pool/main/libg/libglu/libglu1-mesa_9.0.2-1.1_arm64.deb",
+          "debSha256": "e166da4c99100930e5e92e3e7bb8cfee910cf4e5fc7a79bf6bf683e440b64336",
+          "dataMember": "data.tar.xz",
+          "dataSha256": "ff512ca5e94a4404952e329b72b9b86b77e25abc6b9f3237d890f7bd1d70c017",
+          "depends": "libc6 (>= 2.17), libgcc-s1 (>= 3.0), libopengl0, libstdc++6 (>= 5)"
+        },
+        {
+          "name": "libglut3.12",
+          "version": "3.4.0-1",
+          "architecture": "arm64",
+          "url": "https://deb.debian.org/debian/pool/main/f/freeglut/libglut3.12_3.4.0-1_arm64.deb",
+          "debSha256": "97924b7b7910fd855e987aea9363e66d424f90847d1a6b95b6a9412813fb0307",
+          "dataMember": "data.tar.xz",
+          "dataSha256": "588f0dd5f2bcbd8b85c41475fcad6ec24ebea9f797b63fd094361d27727755a1",
+          "depends": "libc6 (>= 2.17), libgl1, libx11-6 (>= 2:1.2.99.901), libxi6 (>= 2:1.2.99.4)"
+        },
+        {
+          "name": "libsndio7.0",
+          "version": "1.9.0-0.3+b2",
+          "architecture": "arm64",
+          "url": "https://deb.debian.org/debian/pool/main/s/sndio/libsndio7.0_1.9.0-0.3+b2_arm64.deb",
+          "debSha256": "e7c787895eacf8363a4dea6a0cb3237a78857691d8d53f60a1a3ffeea3819808",
+          "dataMember": "data.tar.xz",
+          "dataSha256": "d78f204a862094f4dbc4a0b13705c039f1a1929c5475c635b68cf8dcd8b1e3ca",
+          "depends": "libasound2 (>= 1.0.17), libbsd0 (>= 0.0), libc6 (>= 2.33)"
+        }
+      ]
+    }
+  }
+}

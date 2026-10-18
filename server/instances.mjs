@@ -39,7 +39,7 @@ export class Instances {
     if (this.assets.status === 'error') { await this.assetsTask; this.assetsTask = null; }
     this.assetsTask ??= (async () => {
       const { Runtime } = await import('./runtime.mjs');
-      this.assets = new Runtime({ appRoot: this.appRoot, dataRoot: this.dataRoot, dev: this.dev });
+      this.assets = new Runtime({ appRoot: this.appRoot, dataRoot: this.dataRoot, dev: this.dev, resourceManager: this.resourceManager });
       this.preparing = this.assets.prepare(); await this.preparing;
     })();
     await this.assetsTask;
@@ -60,9 +60,13 @@ export class Instances {
     try { return await operation; } finally { this.pending.delete(uid); }
   }
   start(runtime) {
-    const task = this.starts.then(() => {
+    const task = this.starts.then(async () => {
       if (this.closing) throw new AppError('栖盒正在退出', 503);
       if ((!runtime.definition || runtime.definition.id === 'wechat') && (!this.library.installed() || this.library.uninstalling)) throw new AppError('请先完成微信安装', 409);
+      if (this.resourceManager?.manifest) {
+        const prepared = await this.resourceManager.inspect();
+        if (prepared.status !== 'ready') throw new AppError('系统运行组件已变化，请先重新准备微信；已有资料会保留', 409);
+      }
       return runtime.start();
     });
     this.starts = task.catch(() => {}); return task;

@@ -21,5 +21,23 @@
       "verifiedAt": "2026-09-10",
       "source": "https://dldir1v6.qq.com/weixin/Universal/Linux/WeChatLinux_arm64.deb"
     }
-  ]
+  ],
+  "downloads": {
+    "x64": {
+      "version": "4.1.13.26",
+      "url": "https://dldir1v6.qq.com/weixin/Universal/Linux/WeChatLinux_x86_64.deb",
+      "size": 231861976,
+      "sha256": "a0db8caeee8d1e6cfe0aa5ce58710270f8d74a90ff4920f53a3fc22aa0956fe9",
+      "verifiedAt": "2026-10-18",
+      "sourceLastModified": "2026-10-12T08:45:54Z"
+    },
+    "arm64": {
+      "version": "4.1.13.26",
+      "url": "https://dldir1v6.qq.com/weixin/Universal/Linux/WeChatLinux_arm64.deb",
+      "size": 211858460,
+      "sha256": "374732eda88a6f3a7e4eb315e64e5fac73ef17923d504d242964f19ed1b80c75",
+      "verifiedAt": "2026-10-18",
+      "sourceLastModified": "2026-10-12T08:46:16Z"
+    }
+  }
 }

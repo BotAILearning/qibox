@@ -1,0 +1,183 @@
+/* Reusable light-DOM layout for product settings forms. Business behavior stays with the consumer. */
+.qi-root .qi-settings-form,
+.qi-settings-form {
+  box-sizing: border-box;
+  display: grid;
+  gap: var(--qi-space-6, 24px);
+  width: min(100%, 760px);
+  min-width: 0;
+  margin-inline: auto;
+  color: var(--qi-text, #252130);
+  font-family: var(--qi-font-family, Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif);
+}
+
+.qi-settings-form *,
+.qi-settings-form *::before,
+.qi-settings-form *::after {
+  box-sizing: border-box;
+}
+
+.qi-settings-group {
+  display: grid;
+  gap: var(--qi-space-4, 16px);
+  min-width: 0;
+  padding: 0;
+  color: inherit;
+}
+
+.qi-settings-group > :is(h2, h3, legend) {
+  min-width: 0;
+  margin: 0;
+  color: var(--qi-text, #252130);
+  font-size: var(--qi-font-h3, 20px);
+  font-weight: var(--qi-weight-h3, 600);
+  line-height: var(--qi-line-h3, 1.4);
+  overflow-wrap: anywhere;
+}
+
+.qi-setting-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(min(240px, 42%), 42%);
+  align-items: center;
+  gap: var(--qi-space-6, 24px);
+  min-width: 0;
+  padding-block: var(--qi-space-4, 16px);
+  border-bottom: 1px solid var(--qi-border, #e5e1eb);
+}
+
+.qi-setting-row:last-child { border-bottom: 0; }
+
+.qi-setting-copy,
+.qi-setting-controls {
+  display: grid;
+  align-content: center;
+  gap: var(--qi-space-1, 4px);
+  min-width: 0;
+}
+
+.qi-setting-copy > :is(label, .qi-setting-label) {
+  color: var(--qi-text, #252130);
+  font-size: var(--qi-font-body, 14px);
+  font-weight: var(--qi-weight-label, 550);
+  line-height: var(--qi-line-body, 1.65);
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.qi-setting-copy > p,
+.qi-setting-copy > .qi-setting-description {
+  margin: 0;
+  color: var(--qi-text-secondary, #655d73);
+  font-size: var(--qi-font-small, 13px);
+  line-height: var(--qi-line-small, 1.6);
+  overflow-wrap: anywhere;
+}
+
+.qi-setting-controls {
+  justify-items: start;
+  color: var(--qi-text, #252130);
+}
+
+.qi-setting-controls > :is(.qi-input, input, select, textarea, button) {
+  max-width: 100%;
+}
+
+.qi-setting-controls :is(input, select, textarea, button):focus-visible,
+.qi-setting-row :is(input, select, textarea, button):focus-visible {
+  outline: 2px solid var(--qi-focus, #7956c5);
+  outline-offset: 3px;
+}
+
+.qi-setting-controls :is(input, select, textarea)[aria-invalid="true"] {
+  border-color: var(--qi-error, #ba3545);
+}
+
+.qi-setting-controls :is(input, select, textarea)[aria-invalid="true"]:focus {
+  border-color: var(--qi-error, #ba3545);
+}
+
+.qi-setting-controls :is(input, select, textarea):disabled,
+.qi-setting-controls :is(button[disabled], [aria-disabled="true"]) {
+  color: var(--qi-disabled-text, #847b90);
+  background-color: var(--qi-disabled, #efedf2);
+  cursor: not-allowed;
+}
+
+.qi-setting-controls [aria-busy="true"] { cursor: progress; }
+
+.qi-number-unit {
+  display: inline-grid;
+  grid-template-columns: minmax(5.5em, 7em) minmax(0, auto);
+  align-items: center;
+  gap: var(--qi-space-2, 8px);
+  min-width: 0;
+}
+
+.qi-number-unit > :is(input, .qi-input) { width: 100%; min-width: 0; }
+.qi-number-unit > :last-child { min-width: 0; color: var(--qi-text-secondary, #655d73); overflow-wrap: anywhere; }
+
+.qi-time-range {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--qi-space-2, 8px);
+  width: 100%;
+  min-width: 0;
+}
+
+.qi-time-range > :is(input, .qi-input) { width: 100%; min-width: 0; }
+.qi-time-range > :nth-child(2) { color: var(--qi-text-secondary, #655d73); }
+
+.qi-setting-dependent {
+  margin-inline-start: var(--qi-space-6, 24px);
+  padding-inline-start: var(--qi-space-4, 16px);
+  border-inline-start: 2px solid var(--qi-border, #e5e1eb);
+}
+
+.qi-setting-effective {
+  min-width: 0;
+  color: var(--qi-text-secondary, #655d73);
+  font-size: var(--qi-font-small, 13px);
+  line-height: var(--qi-line-small, 1.6);
+  overflow-wrap: anywhere;
+}
+
+.qi-setting-row [aria-invalid="true"] ~ [role="alert"],
+.qi-setting-error {
+  color: var(--qi-error, #ba3545);
+  font-size: var(--qi-font-small, 13px);
+  line-height: var(--qi-line-small, 1.6);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 767px) {
+  .qi-setting-row {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: var(--qi-space-3, 12px);
+  }
+
+  .qi-setting-controls { width: 100%; }
+  .qi-setting-controls > :is(.qi-input, input, select, textarea) { width: 100%; }
+  .qi-setting-controls > :is(input[type="checkbox"], input[type="radio"]) { width: auto; }
+}
+
+@media (max-width: 359px) {
+  .qi-time-range { grid-template-columns: minmax(0, 1fr); }
+  .qi-time-range > :nth-child(2) { display: none; }
+}
+
+@media (forced-colors: active) {
+  .qi-setting-row { border-color: CanvasText; }
+  .qi-setting-dependent { border-color: CanvasText; }
+  .qi-setting-controls :is(input, select, textarea)[aria-invalid="true"] { border-style: dashed; }
+  .qi-setting-controls :is(input, select, textarea, button):focus-visible,
+  .qi-setting-row :is(input, select, textarea, button):focus-visible { outline-color: Highlight; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qi-settings-form *, .qi-settings-form *::before, .qi-settings-form *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0ms !important;
+  }
+}

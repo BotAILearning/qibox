@@ -1,3 +1,4 @@
+import { preparationMarkup } from './preparation-view.mjs';
 import { restoreAppearance } from './appearance.mjs';
 import { desktopLoader } from './desktop-loader.mjs';
 import { nativeInput } from './native-input.mjs';
@@ -357,13 +358,21 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 window.addEventListener('focus', () => renderMobileAI());
 window.addEventListener('online', () => { for (const id of mobileAISettings.keys()) mobileAISettings.delete(id); mobileAIReadErrors.clear(); renderMobileAI(); });
 let marketAppId = 'wechat', lastCatalogMarkup = '';
+let preparationImporting = false, preparationImportError = '';
 function renderMarket(app) {
   const card = document.querySelector(`[data-market-app="${app.id}"]`);
   const part = name => card.querySelector(`[data-part="${name}"]`);
   const installed = app.library.installed, job = app.library.job;
+  if (app.id === 'wechat') {
+    let panel = card.querySelector('[data-preparation-panel]');
+    if (!panel) { panel = document.createElement('div'); panel.dataset.preparationPanel = ''; part('actions').before(panel); }
+    const mark = preparationMarkup(state.preparation, app.library, { importing: preparationImporting, importError: preparationImportError });
+    if (panel.dataset.mark !== mark) { const open = !!panel.querySelector('details[open]'); panel.innerHTML = mark; if (open) panel.querySelector('details')?.setAttribute('open', ''); panel.dataset.mark = mark; }
+  }
   const pending = job && !['complete', 'error'].includes(job.status);
   const actions = part('actions');
   part('format').hidden = !!installed;
+  part('actions').hidden = app.id === 'wechat' && !!state.preparation && state.preparation.status !== 'ready';
     const id = value => app.id === 'wechat' ? `id="${value}"` : '';
   const signature = `${!!installed}/${!!pending}/${!!session?.user.isAdmin}`;
   if (actions.dataset.state !== signature) {
@@ -388,6 +397,10 @@ function renderMarket(app) {
     const transferred = job.bytes != null ? job.total ? `${size(job.bytes)} / ${size(job.total)}` : `已下载 ${size(job.bytes)}` : '';
     const speed = job.bytesPerSecond != null ? `${size(job.bytesPerSecond)}/s` : '';
     part('detail').textContent = [transferred, speed].filter(Boolean).join(' · ');
+    let controls = card.querySelector('[data-download-controls]');
+    if (!controls) { controls = document.createElement('div'); controls.dataset.downloadControls = ''; part('progress').append(controls); }
+    const mark = job.status === 'downloading' ? '<button type="button" class="secondary" data-download-command="pause">暂停下载</button>' : ['paused', 'error'].includes(job.status) ? '<button type="button" class="primary" data-download-command="continue">'+(job.status === 'paused' ? '继续下载' : '重试下载')+'</button>' : '';
+    if (controls.innerHTML !== mark) controls.innerHTML = mark;
   }
 }
 async function unsupportedVersion(error) {
@@ -769,6 +782,18 @@ document.addEventListener('click', async event => {
   const button = event.target.closest('button'); if (!button || button.disabled) return;
   try {
     if (button.hasAttribute('data-close')) return closeModal();
+    if (button.dataset.downloadCommand) { button.disabled = true; try { await api('/install/' + button.dataset.downloadCommand, {}); } finally { button.disabled = false; await refresh(); } return; }
+    if (button.dataset.preparation === 'offline') {
+      const input = document.createElement('input'); input.type = 'file'; input.accept = '.qir';
+      input.onchange = async () => {
+        const file = input.files[0]; if (!file) return; preparationImporting = true; preparationImportError = ''; render();
+        try {
+          const response = await fetch(`${prefix}/api/preparation/import`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'X-CSRF-Token': session.csrf, 'X-Resource-Id': 'offline' }, body: file });
+          const result = await response.json(); if (!response.ok) throw Error(result.message || result.error || '离线导入失败'); notify('离线资源已校验，可开始准备微信');
+        } catch (error) { preparationImportError = error.message; } finally { preparationImporting = false; await refresh(); }
+      }; input.click(); return;
+    }
+    if (button.dataset.preparation) { button.disabled = true; try { await api('/preparation', { action: button.dataset.preparation }); } finally { button.disabled = false; await refresh(); } return; }
     if (button.id === 'about-qibox') { dialog('关于栖盒', '<p>栖盒 '+esc(session?.product?.version || '')+'</p><h3>NAS 登录微信</h3><p>运行官方微信客户端，支持自动登录及在线期间可获取消息的实时同步，具体范围遵循官方客户端能力。</p><h3>AI 辅助</h3><p>使用你自己的模型 API，提供学习、总结、分析和自动回复等功能。</p><h3>闲时备份</h3><p>与在线同步分开调度，可设置时间段及负载、网络、内存阈值。计划启动的微信低优先级运行，检测到繁忙时退让，支持暂停恢复。避让取决于可检测的整机指标，不能保证零影响。</p><p>开发者：Bot · <a href="mailto:bot@qiapp.online">bot@qiapp.online</a></p>', '<button type="button" data-close class="secondary">关闭</button>'); return; }
     if (button.dataset.idleCommand) { await api('/instances/'+button.dataset.instanceId+'/settings',{command:button.dataset.idleCommand});closeModal();await refresh();notify('闲时备份设置已更新');return; }
       if (button.dataset.mobileAiOpen) { await openAIEntry(button.dataset.mobileAiOpen); return; }

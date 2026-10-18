@@ -20,7 +20,7 @@ with tarfile.open(fpk, 'r:*') as package:
             name = member.name.removeprefix('./'); members[name] = member
             if not member.isfile(): continue
             stream = app.extractfile(member)
-            if name.startswith('payload/') and '-data.tar.' in name:
+            if name.startswith('payload/') and ('-data.tar.' in name or name.startswith('payload/resources/') and name.endswith('.tar.xz')):
                 hashes[name] = hashlib.file_digest(stream, 'sha256').hexdigest()
             else:
                 contents[name] = stream.read()
@@ -66,6 +66,11 @@ with tarfile.open(fpk, 'r:*') as package:
         config = json.loads(read('config/product.json'))
         assert config['appname'] == 'qibox' and config['gatewayPrefix'] == '/app/qibox'
         assert config['version'] == manifest['version'] == json.loads(read('package.json'))['version']
+        if 'config/build-provenance.json' in contents:
+            build_proof = json.loads(read('config/build-provenance.json'))
+            assert build_proof['format'] == 1 and re.fullmatch(r'[a-f0-9]{40}', build_proof['sourceCommit'])
+            assert build_proof['sourceDirty'] is False and build_proof['buildId'] == config['buildId']
+            assert build_proof['delivery'] == 'complete-bundled'
         entry = json.loads(read('ui/config'))['.url']['qibox.Application']
         assert entry['url'] == '/app/qibox/' and entry['gatewaySocket'] == 'app.sock'
         assert manifest['platform'] in ('x86', 'arm', 'all')
@@ -85,6 +90,34 @@ with tarfile.open(fpk, 'r:*') as package:
             original_name = 'runtime-lock.json' if arch == 'x64' else 'runtime-lock-arm64.json'
             original = json.loads(read('config/' + original_name))
             assert [{k:v for k,v in item.items() if k not in ('payloadFile','payloadSha256')} for item in lock['packages']] == original['packages']
+            if prefix + 'runtime-manifest.json' in members:
+                resource_manifest = json.loads(read(prefix + 'runtime-manifest.json'))
+                assert resource_manifest['format'] == 1 and resource_manifest['arch'] == arch
+                assert resource_manifest['delivery'] == 'complete-bundled' and not resource_manifest.get('sourceBase')
+                assert re.fullmatch(r'[a-f0-9]{64}', resource_manifest['identity'])
+                offline = json.loads(read(prefix + 'runtime-offline.json'))
+                assert offline['arch'] == arch and offline['identity'] == resource_manifest['identity']
+                assert re.fullmatch(r'[a-f0-9]{64}', offline['sha256']) and offline['size'] > 0
+                ids = set()
+                for resource in resource_manifest['resources']:
+                    assert resource['id'] == resource['sha256'] and re.fullmatch(r'[a-f0-9]{64}', resource['sha256'])
+                    assert resource['file'] == resource['sha256'] + '.tar.xz' and resource['size'] > 0
+                    assert resource['version'] == resource_manifest['identity'] and resource['id'] not in ids
+                    ids.add(resource['id'])
+                    filename = 'payload/resources/' + resource['file']
+                    assert hashes[filename] == resource['sha256'], 'Every fallback must be inside the FPK'
+                    assert members[filename].size == resource['size']
+                    verified_payloads.add(filename)
+                for name, file in resource_manifest['files'].items():
+                    assert not name.startswith('/') and '..' not in name.split('/') and '\\' not in name
+                    assert file['resource'] in ids and re.fullmatch(r'[a-f0-9]{64}', file['sha256'])
+                for name, host in resource_manifest['host'].items():
+                    assert name in resource_manifest['files'] and host['path'] == '/' + name
+                    if arch == 'arm64':
+                        assert host['kind'] == 'identical' and host['sha256'] == resource_manifest['files'][name]['sha256']
+                assert not resource_manifest['realDeviceAcceptance'], 'Device acceptance is recorded separately from build manifests'
+                assert source_matches(prefix + 'runtime-manifest.json', pathlib.Path(__file__).resolve().parent.parent / '.cache/runtime-bundled' / arch / 'runtime-manifest.json')
+                continue
             if lock.get('payloadFormat') == 3:
                 assert provenance['format'] == 3
                 assert provenance['sources'][arch] == [{'name': item['name'], 'sha256': item['sha256']} for item in original['packages']]
@@ -111,6 +144,11 @@ with tarfile.open(fpk, 'r:*') as package:
                     assert hashes[filename] == expected
                     verified_payloads.add(filename)
         assert set(hashes) == verified_payloads, 'Unreferenced runtime archives must not be packaged'
+        if 'config/build-provenance.json' in contents:
+            assert build_proof['architectures'] == arches
+            assert build_proof['runtimeResourceFiles'] == sorted(pathlib.PurePosixPath(name).name for name in verified_payloads)
+            for name in ['server/runtime-resources.mjs', 'server/extract-runtime-resources.py', 'server/durable-download.mjs', 'config/runtime-compatibility.json', 'config/wechat.json']:
+                assert source_matches(name, pathlib.Path(__file__).resolve().parent.parent / name), name
         for name in ['server/index.mjs', 'server/install-deb.py', 'server/packages.mjs', 'server/progress.mjs', 'public/app.js', 'public/style.css', 'public/backgrounds/mist.jpg']:
             assert name in members
         assert not any(re.search(r'ugos|ugreen|desktop-stream|native-identity|http-desktop', name, re.I) for name in members), 'Removed platform components must not be packaged'

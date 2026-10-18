@@ -1,0 +1,101 @@
+/* QIAPP 2026-10-14 settings composition; shared primitives from @qiapp/ui 0.1.2. */
+#ai-panel .qi-settings-form { box-sizing: border-box; width: min(100%, 760px); max-width: 760px; margin-inline: auto; padding: 24px; gap: 20px; }
+#ai-panel .ai-reference-general.ai-card.qi-settings-form { padding: 24px; }
+#ai-panel .ai-reference-settings.qbx-settings-page { gap: 20px; }
+#ai-panel .ai-reference-general { display: grid; gap: 20px; }
+#ai-panel .ai-reference-general > h4 { margin: 0; padding: 0; }
+#ai-panel .ai-setting-group,
+#ai-panel .ai-takeover-settings,
+#ai-panel .ai-object-timing { min-width: 0; }
+#ai-panel .ai-setting-group > h5 { margin: 0 0 12px; font-size: 14px; }
+#ai-panel .ai-reference-general .ai-timing-fields,
+#ai-panel .ai-object-timing .ai-timing-fields { display: grid; grid-template-columns: minmax(0, 1fr); justify-items: stretch; width: 100%; min-width: 0; gap: 12px; }
+#ai-panel .ai-time-range { display: grid; width: 100%; min-width: 0; margin: 0; padding: 14px; border: 1px solid var(--qi-border); border-radius: 12px; background: var(--qi-surface); }
+#ai-panel .ai-time-range { align-content: start; gap: 8px; height: auto; min-height: 0; }
+#ai-panel .ai-time-range legend { padding: 0 4px; color: var(--qi-text); font-weight: 600; }
+#ai-panel .ai-time-range-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: min(100%, 300px); gap: 12px; }
+#ai-panel .ai-time-range .ai-field { min-width: 0; min-height: 0; gap: 4px; margin: 0; }
+#ai-panel .ai-time-range .ai-field > span:first-child { color: var(--qi-text-secondary); font-size: 12px; line-height: 1.5; }
+#ai-panel .ai-time-range .qi-number-unit,
+#ai-panel .ai-object-timing .qi-number-unit { display: inline-flex; align-items: center; gap: 8px; width: max-content; max-width: 100%; min-width: 0; color: var(--qi-text-secondary); white-space: nowrap; }
+#ai-panel .ai-time-range .qi-number-unit input,
+#ai-panel .ai-object-timing .qi-number-unit input { box-sizing: border-box; flex: 0 0 112px; width: 112px; min-width: 112px; max-width: 100%; }
+#ai-panel .ai-effective-note { margin: 10px 0 0; color: var(--qi-text-secondary); font-size: 12px; line-height: 1.6; }
+#ai-panel .ai-takeover-settings { padding-top: 16px; border-top: 1px solid var(--qi-border); }
+#ai-panel .ai-takeover-settings .ai-takeover-switch { margin: 0; }
+#ai-panel .ai-takeover-settings .ai-takeover-switch.qi-setting-row { grid-template-columns: minmax(0, 1fr) auto; gap: 16px; padding: 8px 0; border-bottom: 0; }
+#ai-panel .ai-takeover-settings .ai-takeover-switch input { justify-self: start; }
+#ai-panel .ai-takeover-settings > [data-takeover-minutes] { max-width: 240px; margin: 12px 0 0; }
+#ai-panel .ai-takeover-settings .ai-help { margin: 8px 0 0; }
+#ai-panel .ai-reference-general .ai-timing-fields .ai-help { margin: 10px 0 0; font-size: 12px; }
+#ai-panel .ai-reference-general > .ai-switch-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+#ai-panel .ai-reference-general > .ai-switch-row > span { display: grid; gap: 4px; min-width: 0; }
+#ai-panel .ai-reference-general > .ai-switch-row small { display: block; }
+#ai-panel .ai-object-timing .ai-inherit-check { margin: 0 0 12px; }
+#ai-panel .ai-object-timing .ai-object-takeover { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--qi-border); }
+#ai-panel .ai-object-timing .ai-inherit-check { display: inline-flex; width: fit-content; max-width: 100%; align-items: center; gap: 10px; margin: 0 0 12px; padding: 6px 0; border: 0; }
+#ai-panel .ai-object-timing .ai-takeover-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
+#ai-panel .ai-object-timing .ai-object-takeover-switch { display: inline-flex; width: fit-content; max-width: 100%; min-height: 42px; align-items: center; gap: 10px; margin: 0; padding: 8px 0; border: 0; border-radius: 0; }
+#ai-panel .ai-object-timing .ai-object-takeover-switch input { appearance: none; position: relative; flex: 0 0 42px; width: 42px; height: 26px; margin: 0; border: 0; border-radius: 999px; background: var(--qi-border-strong); cursor: pointer; }
+#ai-panel .ai-object-timing .ai-object-takeover-switch input::after { content: ''; position: absolute; inset-block-start: 3px; inset-inline-start: 3px; width: 20px; height: 20px; border-radius: 50%; background: var(--qi-surface); box-shadow: 0 1px 3px #0003; transition: inset-inline-start 120ms ease; }
+#ai-panel .ai-object-timing .ai-object-takeover-switch input:checked { background: var(--qi-primary); }
+#ai-panel .ai-object-timing .ai-object-takeover-switch input:checked::after { inset-inline-start: 19px; }
+#ai-panel .ai-object-timing .ai-object-takeover-switch input:focus-visible { outline: 2px solid var(--qi-focus); outline-offset: 3px; }
+#ai-panel .ai-object-timing .ai-object-takeover-switch input:disabled { cursor: not-allowed; opacity: .62; }
+#ai-panel .ai-object-timing .ai-object-takeover-minutes { margin: 0; }
+#ai-panel .ai-object-timing .ai-help { margin: 8px 0 0; }
+#ai-panel .ai-personal-form .ai-personal-section-heading { margin-top: 8px; }
+
+.qiapp-product #ai-panel form.ai-reference-general.qi-settings-form.qbx-settings-group { padding: 24px; }
+.qiapp-product #ai-panel form.ai-reference-general.qi-settings-form.qbx-settings-group > h4 { margin: 0; padding: 0; }
+.qiapp-product #ai-panel form.ai-reference-general.qi-settings-form.qbx-settings-group > .ai-field { margin: 0; }
+.qiapp-product #ai-panel form.ai-reference-general.qi-settings-form.qbx-settings-group > .qbx-setting-row { margin-inline: 0; }
+.qiapp-product #ai-panel form.ai-reference-general.qi-settings-form.qbx-settings-group footer { padding-inline: 0; }
+.qiapp-product #ai-panel form.ai-reference-general.qi-settings-form.qbx-settings-group .ai-takeover-settings { margin-inline: 0; padding-inline: 0; border-inline-start: 0; }
+.qiapp-product #ai-panel form.ai-reference-general.qi-settings-form.qbx-settings-group .ai-takeover-switch { margin-inline: 0; }
+.qiapp-product #ai-panel form.ai-reference-general.qi-settings-form.qbx-settings-group [data-takeover-minutes] { padding-inline: 0; }
+.qiapp-product #ai-panel form.ai-reference-general.qi-settings-form.qbx-settings-group > .ai-help { margin-inline: 0; }
+.qiapp-product #ai-panel .ai-reference-settings.qbx-settings-page > .qbx-settings-config { box-sizing: border-box; width: min(100%, 760px); max-width: 760px; margin-inline: auto; padding: 0 24px; }
+.qiapp-product #ai-panel .ai-reference-settings.qbx-settings-page > .qbx-settings-config > .ai-card-heading { padding-inline: 0; }
+.qiapp-product #ai-panel .ai-reference-settings.qbx-settings-page > .qbx-settings-config > .ai-reference-settings-entries { margin-inline: 0; }
+
+:root[data-qi-theme=dark] #ai-panel:has(.ai-object-timing) .ai-object-detail :is(h1, h2, h3, h4, h5, strong, label, p, small) { color: var(--qi-text); }
+:root[data-qi-theme=dark] #ai-panel:has(.ai-object-timing) .ai-object-detail .ai-time-range { background: var(--qi-surface); border-color: var(--qi-border); }
+:root[data-qi-theme=dark] #ai-panel:has(.ai-object-timing) .ai-object-detail :is(input:not([type=checkbox]):not([type=radio]), select, textarea) { background: var(--qi-surface); color: var(--qi-text); border-color: var(--qi-border-strong); }
+:root[data-qi-theme=dark] #ai-panel:has(.ai-object-timing) .ai-object-detail .ai-object-reference { color: var(--qi-text); }
+:root[data-qi-theme=dark] #ai-panel:has(.ai-object-timing) .ai-object-sidebar { background: var(--qi-surface); border-color: var(--qi-border); }
+:root[data-qi-theme=dark] #ai-panel:has(.ai-object-timing) .ai-object-sidebar .ai-contact-picker-search { background: var(--qi-surface); border-color: var(--qi-border-strong); }
+:root[data-qi-theme=dark] #ai-panel:has(.ai-object-timing) .ai-object-sidebar .ai-contact-picker-search input { background: transparent; color: var(--qi-text); }
+:root[data-qi-theme=dark] #ai-panel:has(.ai-object-timing) .ai-object-sidebar #ai-object-list .ai-object-row { background: var(--qi-surface); color: var(--qi-text); }
+:root[data-qi-theme=dark] #ai-panel:has(.ai-object-timing) .ai-object-sidebar #ai-object-list .ai-object-row:hover { background: var(--qi-surface-muted); }
+:root[data-qi-theme=dark] #ai-panel:has(.ai-object-timing) .ai-object-sidebar #ai-object-list .ai-object-row.selected { background: color-mix(in srgb, var(--qi-primary) 18%, var(--qi-surface)); color: var(--qi-text); }
+:root[data-qi-theme=dark] #ai-panel:has(.ai-object-timing) .ai-object-sidebar .ai-contact-picker-types { background: var(--qi-surface-muted); }
+:root[data-qi-theme=dark] #ai-panel:has(.ai-object-timing) .ai-object-sidebar .ai-contact-picker-types button { color: var(--qi-text-secondary); }
+:root[data-qi-theme=dark] #ai-panel:has(.ai-object-timing) .ai-object-sidebar .ai-contact-picker-types button[aria-pressed=true] { background: var(--qi-surface); color: var(--qi-text); }
+
+@media (max-width: 760px) {
+  #ai-panel .qi-settings-form { padding: 16px; }
+  .qiapp-product #ai-panel form.ai-reference-general.qi-settings-form.qbx-settings-group { padding: 16px; }
+  .qiapp-product #ai-panel .ai-reference-settings.qbx-settings-page > .qbx-settings-config { padding-inline: 16px; }
+  #ai-panel .ai-time-range { padding: 12px; }
+  #ai-panel .ai-object-timing .ai-takeover-controls { align-items: flex-start; gap: 8px; }
+  #ai-panel .ai-object-timing .ai-object-takeover-minutes { max-width: 220px; }
+  #ai-panel .ai-personal-form .ai-personal-card > summary { grid-template-columns: minmax(88px, 30%) minmax(0, 1fr); gap: 6px 10px; }
+  #ai-panel .ai-personal-form .ai-personal-share { grid-column: 2; grid-row: 2; }
+  #ai-panel .ai-personal-form .ai-personal-editor { padding-inline: 8px; }
+}
+
+@media (max-width: 359px) {
+  #ai-panel .ai-time-range-fields { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #ai-panel .ai-object-takeover-switch input::after { transition-duration: 0ms; }
+}
+
+@media (forced-colors: active) {
+  #ai-panel .ai-time-range,
+  #ai-panel .ai-object-takeover-switch { border-color: CanvasText; }
+  #ai-panel .ai-object-takeover-switch input { border: 1px solid ButtonText; }
+  #ai-panel .ai-object-takeover-switch input:checked { background: Highlight; }
+}

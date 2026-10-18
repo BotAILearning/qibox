@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { readFile, writeFile, mkdir, cp, rm, readdir, stat, rename, chmod } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { build } from 'esbuild';
 import sharp from 'sharp';
 import { root, python, run } from './tooling.mjs';
@@ -20,7 +21,7 @@ await rm(path.join(out, 'icon.svg'), { force: true });
 for (const file of ['index.html', 'style.css', 'ai-workspace.css', 'ui-foundation.css', 'qibox-components.css', 'qibox-modules.css', 'icon.png', 'auth-callback.html', 'privacy.html', 'terms.html']) await cp(path.join(root, 'web', file), path.join(out, file));
 await cp(path.join(root, 'web/vendor/qiapp-ui'), path.join(out, 'vendor/qiapp-ui'), { recursive: true });
 await cp(path.join(root, 'web/qiapp-product.css'), path.join(out, 'qiapp-product.css'));
-await writeFile(path.join(out, 'ai-workspace.css'), (await readFile(path.join(out, 'ai-workspace.css'), 'utf8')) + '\n' + (await readFile(path.join(root, 'web/personal-information.css'), 'utf8')));
+await writeFile(path.join(out, 'ai-workspace.css'), (await readFile(path.join(out, 'ai-workspace.css'), 'utf8')) + '\n' + (await readFile(path.join(root, 'web/personal-information.css'), 'utf8')) + '\n' + (await readFile(path.join(root, 'web/settings-composition.css'), 'utf8')));
 for (const file of ['index.html', 'auth-callback.html']) {
   const html = await readFile(path.join(out, file), 'utf8');
   await writeFile(path.join(out, file), html.replaceAll('./icon.png', `./icon.png?v=${iconRevision}`));
@@ -62,7 +63,8 @@ if (!process.argv.includes('--ui-only')) {
   await writeFile(path.join(app, 'package.json'), JSON.stringify({ name: product.appname, version: product.version, type: 'module', private: true }));
   let components = 0;
   await run(python, [path.join(root, 'scripts/prepare-runtime-solid.py')]);
-  const sharedPayload = path.join(app, 'payload/shared'); await mkdir(sharedPayload, { recursive: true });
+  await run(python, [path.join(root, 'scripts/prepare-runtime-supplements.py')]);
+  await run(python, [path.join(root, 'scripts/prepare-runtime-resources.py')]);
   const copiedPayloads = new Set();
   for (const target of targets) {
   const lockName = target.node === 'arm64' ? 'runtime-lock-arm64.json' : 'runtime-lock.json';
@@ -71,17 +73,31 @@ if (!process.argv.includes('--ui-only')) {
   if (lock.wechat || lock.packages.some(x => /wechat/i.test(x.name))) throw new Error('WeChat must never be bundled');
   const payload = path.join(app, 'payload', target.node); await mkdir(payload, { recursive: true });
   await cp(slimLock, path.join(payload, 'runtime-lock.json'));
+  await cp(path.join(root, '.cache/runtime-bundled', target.node, 'runtime-manifest.json'), path.join(payload, 'runtime-manifest.json'));
+  await cp(path.join(root, '.cache/runtime-bundled', target.node, 'runtime-offline.json'), path.join(payload, 'runtime-offline.json'));
+  const resourceManifest = JSON.parse(await readFile(path.join(payload, 'runtime-manifest.json'), 'utf8'));
+  for (const resource of resourceManifest.resources) {
+    await mkdir(path.join(app, 'payload/resources'), { recursive: true });
+    if (!copiedPayloads.has(resource.file)) {
+      await cp(path.join(root, '.cache/runtime-bundled/resources', resource.file), path.join(app, 'payload/resources', resource.file));
+      copiedPayloads.add(resource.file);
+    }
+  }
   for (const entry of runtimeArchives(lock)) {
     if (!/^[a-f0-9]{64}$/.test(entry.payloadSha256) || entry.payloadFile !== `${entry.payloadSha256}-data.tar.xz`) throw new Error('Invalid shared payload reference');
-    const source = path.join(root, '.cache/runtime-solid/shared', entry.payloadFile);
-    if (!copiedPayloads.has(entry.payloadFile)) {
-      if (await hashFile(source) !== entry.payloadSha256) throw new Error(`Hash mismatch: ${entry.file}`);
-      await cp(source, path.join(sharedPayload, entry.payloadFile)); copiedPayloads.add(entry.payloadFile);
-    }
   }
   components += lock.packages.length;
   }
   await cp(path.join(root, '.cache/runtime-solid/provenance.json'), path.join(app, 'payload/provenance.json'));
+  const sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8', windowsHide: true }).trim();
+  if (!/^[a-f0-9]{40}$/.test(sourceCommit)) throw new Error('A committed source revision is required');
+  const changed = execFileSync('git', ['diff', '--name-only', 'HEAD'], { cwd: root, encoding: 'utf8', windowsHide: true }).trim();
+  const untracked = execFileSync('git', ['ls-files', '--others', '--exclude-standard', '--', 'server', 'web', 'config', 'licenses', 'README.md', 'NOTICE.md', 'package.json'], { cwd: root, encoding: 'utf8', windowsHide: true }).trim();
+  if ((changed || untracked) && !process.argv.includes('--stage-only')) throw new Error('Commit source changes before producing a reviewable FPK');
+  await writeFile(path.join(app, 'config/build-provenance.json'), JSON.stringify({ format: 1, sourceCommit,
+    sourceDirty: !!(changed || untracked), buildId: product.buildId, delivery: 'complete-bundled', architectures: targets.map(target => target.node),
+    runtimeResourceFiles: [...copiedPayloads].sort(), ui: { specification: '2026-10-18', settingsCss: '0.1.2', existingBaseCss: '0.1.0' },
+  }, null, 2) + '\n');
   const licenseRoot = path.join(app, 'licenses/npm'); await mkdir(licenseRoot, { recursive: true });
   for (const [name, license] of [['ws', 'LICENSE'], ['@novnc/novnc', 'LICENSE.txt'], ['@trimjs/web-app', 'package.json']]) {
     await mkdir(path.join(licenseRoot, name), { recursive: true });
@@ -118,6 +134,12 @@ if (!process.argv.includes('--ui-only')) {
   const windows = process.platform === 'win32'; const fnpack = path.join(root, '.cache/tools', windows ? 'fnpack.exe' : 'fnpack');
   await download(`https://static2.fnnas.com/fnpack/fnpack-1.2.3-${windows ? 'windows-amd64' : 'linux-amd64'}`, fnpack); if (!windows) await chmod(fnpack, 0o755);
   const dist = product.buildId ? path.join(root, 'dist/releases', product.version, product.buildId) : path.join(root, 'dist'); await mkdir(dist, { recursive: true });
+  const resourcesOut = path.join(dist, 'runtime-offline'); await mkdir(resourcesOut, { recursive: true });
+  for (const target of targets) {
+    const offline = JSON.parse(await readFile(path.join(root, '.cache/runtime-bundled', target.node, 'runtime-offline.json'), 'utf8'));
+    await cp(path.join(root, '.cache/runtime-bundled', offline.file), path.join(resourcesOut, offline.file));
+    await cp(path.join(root, '.cache/runtime-bundled', target.node), path.join(resourcesOut, target.node), { recursive: true });
+  }
   await run(fnpack, ['build', '--directory', directory], { cwd: dist });
   const result = path.join(dist, `${product.appname}-${product.buildId || product.version}-${product.platform}.fpk`);
   if (await stat(result).catch(() => null)) throw new Error('Build already exists; allocate a new build ID');

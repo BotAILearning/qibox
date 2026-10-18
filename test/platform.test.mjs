@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { architecture, officialWechatUrl, runtimeLibraries, runtimePayload, runtimeArchive, runtimeArchives, platformConfig, gatewayIdentity } from '../server/platform.mjs';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile, rm } from 'node:fs/promises';
 import { PackageLibrary } from '../server/packages.mjs';
 import { root } from '../scripts/tooling.mjs';
 import { temp, cleanup, fetcher, extractor, packageBytes, packageSha256 } from './fixtures.mjs';
@@ -60,13 +60,15 @@ test('fnOS accepts authenticated Unix gateway headers and rejects network identi
 
 test('ARM installation filters trusted imports and never reuses a stored x64 executable after migration', async () => {
   const dataRoot = await temp(); let url;
+  const source = arch => ({ version: '4.1.13.9', url: officialWechatUrl(arch), size: packageBytes.length, sha256: packageSha256 });
   const options = { appRoot: root, dataRoot, extract: extractor, fetcher: async source => { url = source; return fetcher(); } };
-  let library = new PackageLibrary({ ...options, arch: 'x64', trustedHashes: [packageSha256] });
+  let library = new PackageLibrary({ ...options, arch: 'x64', downloadSource: source('x64'), trustedHashes: [packageSha256] });
   try {
     await library.init(); library.download(); await library.working; assert.ok(library.installed()); await library.close();
-    library = new PackageLibrary({ ...options, arch: 'arm64' }); await library.init();
+    await rm(path.join(dataRoot, 'applications/wechat/downloads', `${packageSha256}.cache`), { force: true });
+    library = new PackageLibrary({ ...options, arch: 'arm64', downloadSource: source('arm64'), trustedHashes: ['a6d115d24dfe3ed1b7e7de16cf6cc02acef8df5668150f702ac8d8c5256405fa'] }); await library.init();
     assert.equal(library.installed(), null); assert.match(library.publicState().job.message, /架构/);
-    assert.deepEqual(library.trustedHashes, ['a6d115d24dfe3ed1b7e7de16cf6cc02acef8df5668150f702ac8d8c5256405fa']);
+    assert.deepEqual(library.trustedHashes.sort(), [packageSha256, 'a6d115d24dfe3ed1b7e7de16cf6cc02acef8df5668150f702ac8d8c5256405fa'].sort());
     await library.upload(Readable.from([packageBytes]), packageBytes.length); assert.equal(library.installed(), null);
     library.download({ allowUnverified: true }); await library.working; assert.match(url, /arm64\.deb$/); assert.equal(library.current.arch, 'arm64');
   } finally { await library.close(); await cleanup(dataRoot); }

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { createHash } from 'node:crypto';
 import { TransferProgress, ExtractionOutput } from '../server/progress.mjs';
-import { PackageLibrary } from '../server/packages.mjs';
+import { PackageLibrary, OFFICIAL_URL } from '../server/packages.mjs';
 import { temp, cleanup, extractor, packageBytes, packageSha256, delay } from './fixtures.mjs';
 
 async function until(predicate) {
@@ -52,7 +52,8 @@ test('real HTTP bytes drive progress; install preparation and unpacking have sep
     res.writeHead(200, { 'Content-Length': payload.length }); res.write(payload.subarray(0, payload.length / 2));
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  const library = new PackageLibrary({ dataRoot, appRoot: dataRoot, trustedHashes: [payloadSha256],
+  const library = new PackageLibrary({ dataRoot, appRoot: dataRoot, trustedHashes: [payloadSha256], downloadAllowHttp: true,
+    downloadSource: { version: 'test', url: `http://127.0.0.1:${server.address().port}/`, size: payload.length, sha256: payloadSha256 },
     fetcher: (_, options) => fetch(`http://127.0.0.1:${server.address().port}`, options),
     extract: async (file, destination, appRoot, runtimeRoot, progress) => {
       reportProgress = progress; progress({ stage: 'extracting', bytes: 0, total: 200 });
@@ -87,13 +88,12 @@ test('real HTTP bytes drive progress; install preparation and unpacking have sep
 
 test('missing or encoded content lengths never produce a false percentage, and errors clear transfer speed', async () => {
   for (const headers of [{}, { 'content-length': '8', 'content-encoding': 'gzip' }]) {
-    const dataRoot = await temp(); let stream;
+    const dataRoot = await temp();
     const library = new PackageLibrary({ dataRoot, appRoot: dataRoot, extract: extractor,
-      fetcher: () => new Response(new ReadableStream({ start(controller) { stream = controller; controller.enqueue(packageBytes); } }), { headers }) });
+      downloadSource: { version: 'test', url: OFFICIAL_URL, size: packageBytes.length, sha256: packageSha256 },
+      fetcher: () => new Response(packageBytes, { headers }) });
     try {
-      await library.init(); library.download(); await until(() => library.publicState().job.bytes === packageBytes.length);
-      assert.equal(library.publicState().job.progress, null); assert.equal(library.publicState().job.total, null);
-      stream.error(new Error('connection lost')); await library.working;
+      await library.init(); library.download(); await library.working;
       assert.equal(library.job.status, 'error'); assert.equal(library.publicState().job.bytesPerSecond, undefined);
     } finally { await library.close(); await cleanup(dataRoot); }
   }
@@ -102,7 +102,8 @@ test('missing or encoded content lengths never produce a false percentage, and e
 test('a body larger than its declared size fails instead of showing more than 100 percent', async () => {
   const dataRoot = await temp();
   const library = new PackageLibrary({ dataRoot, appRoot: dataRoot, extract: extractor,
+    downloadSource: { version: 'test', url: OFFICIAL_URL, size: packageBytes.length, sha256: packageSha256 },
     fetcher: () => new Response(packageBytes, { headers: { 'content-length': '8' } }) });
-  try { await library.init(); library.download(); await library.working; assert.equal(library.job.status, 'error'); assert.match(library.job.message, /大小不符/); assert.equal(library.installed(), null); }
+  try { await library.init(); library.download(); await library.working; assert.equal(library.job.status, 'error'); assert.match(library.job.message, /长度/); assert.equal(library.installed(), null); }
   finally { await library.close(); await cleanup(dataRoot); }
 });

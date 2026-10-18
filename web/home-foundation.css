@@ -3,3 +3,6 @@
 @import './qiapp-product.css';
 @import './qibox-components.css';
 @import './qibox-modules.css';
+
+@import './vendor/qiapp-ui/settings.css';
+@import './preparation.css';

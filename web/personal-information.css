@@ -1,5 +1,5 @@
-/* QIAPP UI spec 2026-10-14; bundled CSS runtime 0.1.0. Business composition only. */
-#ai-panel .ai-personal-form { max-width: 1120px; margin-inline: auto; }
+/* QIAPP UI spec 2026-10-14; business composition only. */
+#ai-panel .ai-personal-form { width: min(100%, 760px); max-width: 760px; margin-inline: auto; }
 #ai-panel .ai-personal-form .ai-personal-fields { display: flex; flex-direction: column; gap: 0; }
 #ai-panel .ai-personal-form .ai-personal-card { width: 100%; border: 0; border-bottom: 1px solid var(--qi-border); border-radius: 0; background: transparent; box-shadow: none; padding: 0; }
 #ai-panel .ai-personal-form .ai-personal-card > summary { min-height: 56px; padding: 4px 8px; display: grid; grid-template-columns: 108px minmax(0,1fr) 160px; align-items: center; gap: 16px; cursor: pointer; }
@@ -26,20 +26,49 @@
   #ai-panel .ai-timing-fields { grid-template-columns: 1fr; }
 }
 
-:root[data-qi-theme=dark] #ai-panel:has(.ai-personal-form,.qbx-settings-page) { --qi-bg:#17151c; --qi-surface:#201d27; --qi-surface-muted:#292530; --qi-text:#f0ecf5; --qi-text-secondary:#b9b0c5; --qi-text-tertiary:#a297af; --qi-border:#393341; --qi-border-strong:#81768f; --qi-primary:#9bbcff; --qi-primary-hover:#b6ceff; --qi-primary-active:#cbdcff; --qi-on-primary:#182b51; --qi-focus:#9bbcff; --ai-bg:var(--qi-bg); --ai-text:var(--qi-text); --ai-muted:var(--qi-text-secondary); --ai-border:var(--qi-border); --ai-soft:var(--qi-surface-muted); --ai-primary:var(--qi-primary); color:var(--qi-text); background:var(--qi-bg); }
-@media (prefers-color-scheme:dark) { :root[data-qi-theme=system] #ai-panel:has(.ai-personal-form,.qbx-settings-page) { --qi-bg:#17151c; --qi-surface:#201d27; --qi-surface-muted:#292530; --qi-text:#f0ecf5; --qi-text-secondary:#b9b0c5; --qi-text-tertiary:#a297af; --qi-border:#393341; --qi-border-strong:#81768f; --qi-primary:#9bbcff; --qi-primary-hover:#b6ceff; --qi-primary-active:#cbdcff; --qi-on-primary:#182b51; --qi-focus:#9bbcff; --ai-bg:var(--qi-bg); --ai-text:var(--qi-text); --ai-muted:var(--qi-text-secondary); --ai-border:var(--qi-border); --ai-soft:var(--qi-surface-muted); --ai-primary:var(--qi-primary); color:var(--qi-text); background:var(--qi-bg); } }
+:root[data-qi-theme=dark] #ai-panel:has(.ai-personal-form,.qbx-settings-page,.ai-object-timing) { --qi-bg:#17151c; --qi-surface:#201d27; --qi-surface-muted:#292530; --qi-text:#f0ecf5; --qi-text-secondary:#b9b0c5; --qi-text-tertiary:#a297af; --qi-border:#393341; --qi-border-strong:#81768f; --qi-primary:#9bbcff; --qi-primary-hover:#b6ceff; --qi-primary-active:#cbdcff; --qi-on-primary:#182b51; --qi-focus:#9bbcff; --ai-bg:var(--qi-bg); --ai-text:var(--qi-text); --ai-muted:var(--qi-text-secondary); --ai-border:var(--qi-border); --ai-soft:var(--qi-surface-muted); --ai-primary:var(--qi-primary); color:var(--qi-text); background:var(--qi-bg); }
+@media (prefers-color-scheme:dark) { :root[data-qi-theme=system] #ai-panel:has(.ai-personal-form,.qbx-settings-page,.ai-object-timing) { --qi-bg:#17151c; --qi-surface:#201d27; --qi-surface-muted:#292530; --qi-text:#f0ecf5; --qi-text-secondary:#b9b0c5; --qi-text-tertiary:#a297af; --qi-border:#393341; --qi-border-strong:#81768f; --qi-primary:#9bbcff; --qi-primary-hover:#b6ceff; --qi-primary-active:#cbdcff; --qi-on-primary:#182b51; --qi-focus:#9bbcff; --ai-bg:var(--qi-bg); --ai-text:var(--qi-text); --ai-muted:var(--qi-text-secondary); --ai-border:var(--qi-border); --ai-soft:var(--qi-surface-muted); --ai-primary:var(--qi-primary); color:var(--qi-text); background:var(--qi-bg); } }
+:root[data-qi-theme=dark] #ai-panel:has(.ai-object-timing) .ai-object-reference,
+:root[data-qi-theme=dark] #ai-panel:has(.ai-object-timing) .ai-object-detail,
+:root[data-qi-theme=dark] #ai-panel:has(.ai-object-timing) .ai-page-body,
+:root[data-qi-theme=dark] #ai-panel:has(.ai-object-timing) #ai-content { color:var(--qi-text); background:var(--qi-bg); }
+:root[data-qi-theme=dark] #ai-panel:has(.ai-object-timing) .ai-object-reference :is(.ai-card,.ai-reply-module,.ai-person-head,.ai-reference-profile,.ai-reference-style,.ai-reference-memory) { color:var(--qi-text); background:var(--qi-surface); border-color:var(--qi-border); }
 #ai-panel .ai-personal-form, #ai-panel .qbx-settings-page .ai-card { background:var(--qi-surface);color:var(--qi-text); }
 #ai-panel .ai-personal-form textarea, #ai-panel .qbx-settings-page input[type=number], #ai-panel .qbx-settings-page select { background:var(--qi-surface);color:var(--qi-text);border-color:var(--qi-border-strong); }
 #ai-panel .ai-personal-form .ai-help, #ai-panel .qbx-settings-page .ai-help { color:var(--qi-text-secondary); }
 #ai-panel .ai-personal-form button.primary, #ai-panel .qbx-settings-page button.primary { background:var(--qi-primary);color:var(--qi-on-primary); }
-#ai-panel:has(.ai-personal-form,.qbx-settings-page) #ai-content, #ai-panel:has(.ai-personal-form,.qbx-settings-page) .ai-page-body { background:var(--qi-bg); }
+#ai-panel:has(.ai-personal-form,.qbx-settings-page,.ai-object-timing) #ai-content, #ai-panel:has(.ai-personal-form,.qbx-settings-page,.ai-object-timing) .ai-page-body { background:var(--qi-bg); }
 #ai-panel .ai-personal-form .ai-personal-more { background:var(--qi-surface);border-color:var(--qi-border); }
 #ai-panel .ai-personal-form button.primary:hover:not(:disabled), #ai-panel .qbx-settings-page button.primary:hover:not(:disabled) { background:var(--qi-primary-hover); }
 #ai-panel .ai-personal-form button.primary:active:not(:disabled), #ai-panel .qbx-settings-page button.primary:active:not(:disabled) { background:var(--qi-primary-active); }
 #ai-panel .ai-personal-form button:disabled, #ai-panel .qbx-settings-page button:disabled { background:var(--qi-disabled,#efedf2);color:var(--qi-disabled-text,#847b90);opacity:1; }
-#ai-panel[aria-busy=true]:has(.ai-personal-form,.qbx-settings-page) #ai-content { opacity:1; }
-#ai-panel:has(.ai-personal-form,.qbx-settings-page) { --qbx-ink:var(--qi-text);--qbx-muted:var(--qi-text-secondary);--qbx-accent:var(--qi-primary);--qbx-line:var(--qi-border);--qbx-surface:var(--qi-surface);--qbx-canvas:var(--qi-bg);--qbx-module-radius:12px;--qbx-radius:12px;--qbx-module-padding:24px; }
-@media(max-width:767px) { #ai-panel:has(.ai-personal-form,.qbx-settings-page) { --qbx-module-padding:16px; } }
+#ai-panel[aria-busy=true]:has(.ai-personal-form,.qbx-settings-page,.ai-object-timing) #ai-content { opacity:1; }
+#ai-panel:has(.ai-personal-form,.qbx-settings-page,.ai-object-timing) { --qbx-ink:var(--qi-text);--qbx-muted:var(--qi-text-secondary);--qbx-accent:var(--qi-primary);--qbx-line:var(--qi-border);--qbx-surface:var(--qi-surface);--qbx-canvas:var(--qi-bg);--qbx-module-radius:12px;--qbx-radius:12px;--qbx-module-padding:24px; }
+@media(max-width:767px) { #ai-panel:has(.ai-personal-form,.qbx-settings-page,.ai-object-timing) { --qbx-module-padding:16px; } }
+/* The shell header and sticky save bar have legacy white surfaces; keep both
+   readable when the personal-information form opts into dark appearance. */
+:root[data-qi-theme=dark] #ai-panel:has(.ai-personal-form) :is(.ai-panel-heading,.ai-personal-save) { background:var(--qi-surface); color:var(--qi-text); border-color:var(--qi-border); }
+:root[data-qi-theme=dark] #ai-panel:has(.ai-personal-form) .ai-panel-heading { --ai-hint:var(--qi-text-secondary); --ai-muted:var(--qi-text-secondary); }
+:root[data-qi-theme=dark] #ai-panel:has(.ai-personal-form) .ai-panel-heading #ai-close { background:var(--qi-surface); color:var(--qi-text); border-color:var(--qi-border); }
+:root[data-qi-theme=dark] #ai-panel:has(.ai-personal-form) .ai-personal-save button:disabled { background:var(--qi-surface-muted); color:var(--qi-text-tertiary); border-color:var(--qi-border); }
+@media (max-width:860px) {
+  :root[data-qi-theme=dark] #ai-panel:has(.ai-personal-form) .ai-mobile-navigation.qbx-mobile-toolbar { background:var(--qi-surface); border-color:var(--qi-border); }
+  :root[data-qi-theme=dark] #ai-panel:has(.ai-personal-form) .ai-main-tabs.qbx-bottom-nav { background:var(--qi-surface); border-color:var(--qi-border); }
+  :root[data-qi-theme=dark] #ai-panel:has(.ai-personal-form) .ai-main-tabs.qbx-bottom-nav button { color:var(--qi-text-secondary); }
+  :root[data-qi-theme=dark] #ai-panel:has(.ai-personal-form) .ai-main-tabs.qbx-bottom-nav button[aria-current=page] { background:var(--qi-surface-muted); color:var(--qi-primary); }
+}
+@media (prefers-color-scheme:dark) {
+  :root[data-qi-theme=system] #ai-panel:has(.ai-personal-form) :is(.ai-panel-heading,.ai-personal-save) { background:var(--qi-surface); color:var(--qi-text); border-color:var(--qi-border); }
+  :root[data-qi-theme=system] #ai-panel:has(.ai-personal-form) .ai-panel-heading { --ai-hint:var(--qi-text-secondary); --ai-muted:var(--qi-text-secondary); }
+  :root[data-qi-theme=system] #ai-panel:has(.ai-personal-form) .ai-panel-heading #ai-close { background:var(--qi-surface); color:var(--qi-text); border-color:var(--qi-border); }
+  :root[data-qi-theme=system] #ai-panel:has(.ai-personal-form) .ai-personal-save button:disabled { background:var(--qi-surface-muted); color:var(--qi-text-tertiary); border-color:var(--qi-border); }
+  @media (max-width:860px) {
+    :root[data-qi-theme=system] #ai-panel:has(.ai-personal-form) .ai-mobile-navigation.qbx-mobile-toolbar { background:var(--qi-surface); border-color:var(--qi-border); }
+    :root[data-qi-theme=system] #ai-panel:has(.ai-personal-form) .ai-main-tabs.qbx-bottom-nav { background:var(--qi-surface); border-color:var(--qi-border); }
+    :root[data-qi-theme=system] #ai-panel:has(.ai-personal-form) .ai-main-tabs.qbx-bottom-nav button { color:var(--qi-text-secondary); }
+    :root[data-qi-theme=system] #ai-panel:has(.ai-personal-form) .ai-main-tabs.qbx-bottom-nav button[aria-current=page] { background:var(--qi-surface-muted); color:var(--qi-primary); }
+  }
+}
 /* Full-screen desktop/AI views own their scroll containers. Keep the hidden
    homepage's minimum height from creating a second browser scrollbar. */
 html:has(#desktop-view:not([hidden])) { overflow: hidden; }

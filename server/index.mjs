@@ -9,6 +9,7 @@ import { mkdir, rm, lstat } from 'node:fs/promises';
 import { WebSocketServer } from 'ws';
 import { AppError, jsonFile } from './files.mjs';
 import { PackageLibrary } from './packages.mjs';
+import { RuntimeResources } from './runtime-resources.mjs';
 import { Instances } from './instances.mjs';
 import { desktopSocket } from './desktop-socket.mjs';
 import { NasFiles } from './nas-files.mjs';
@@ -33,7 +34,7 @@ async function body(req, limit = 360064) {
   try { const data = JSON.parse(Buffer.concat(chunks).toString()); if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error(); return data; }
   catch { throw new AppError('请求格式错误'); }
 }
-export async function createApplication({ appRoot = moduleRoot, dataRoot = path.join(appRoot, '.dev-data'), dev = false, deferRestore = false, runtimeFactory, fetcher, extract, aiProvider, trustedHashes, nasFiles = new NasFiles(), host = 'fnos', arch = process.arch } = {}) {
+export async function createApplication({ appRoot = moduleRoot, dataRoot = path.join(appRoot, '.dev-data'), dev = false, deferRestore = false, runtimeFactory, preparationFactory, downloadSource, fetcher, extract, aiProvider, trustedHashes, nasFiles = new NasFiles(), host = 'fnos', arch = process.arch } = {}) {
   if (host !== 'fnos') throw new AppError('当前平台不受支持', 403);
   dataRoot = path.resolve(dataRoot); await mkdir(dataRoot, { recursive: true, mode: 0o700 });
   const product = await jsonFile(path.join(appRoot, 'config/product.json')), prefix = product.gatewayPrefix;
@@ -52,12 +53,49 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
     return gatewayIdentity(req, host);
   }
   function check(req, user) { if (req.headers['sec-fetch-site'] === 'cross-site' || !equal(req.headers['x-csrf-token'], token(user.uid))) throw new AppError('页面已过期，请刷新后重试', 403); }
-  const library = new PackageLibrary({ appRoot, dataRoot, dev, fetcher, extract, arch, ...(trustedHashes ? { trustedHashes } : {}) }); await library.init();
+  const library = new PackageLibrary({ appRoot, dataRoot, dev, fetcher, extract, arch, downloadSource: downloadSource || fetcher?.downloadSource?.(arch), deferResume: true, ...(trustedHashes ? { trustedHashes } : {}) }); await library.init();
   const assets = new StaticAssets(path.join(appRoot, 'public'));
   const chunks = await webChunkRoutes(path.join(appRoot, 'public'));
-  const users = new Instances({ appRoot, dataRoot, dev, host, library, runtimeFactory, aiProvider, deferRestore }); await users.init();
+  const preparation = preparationFactory ? preparationFactory({ appRoot, dataRoot, arch, fetcher }) : new RuntimeResources({ appRoot, dataRoot, arch, fetcher });
+  let preparingInitialization = false, preparationInitialization = Promise.resolve();
+  if (preparationFactory || !dev && !runtimeFactory) {
+    if (deferRestore) {
+      // Serve the preparation page while the NAS checks complete runtime trees.
+      // A saved ready marker is never exposed until this check has finished.
+      preparingInitialization = true;
+      preparationInitialization = preparation.init().catch(error => {
+        preparation.state = { ...preparation.state, status: 'error', stage: 'checking', error: error.message, message: '本机环境检查未完成，请重试或导入离线资源' };
+      }).finally(() => { preparingInitialization = false; });
+    } else await preparation.init();
+  }
+  const users = new Instances({ appRoot, dataRoot, dev, host, library, runtimeFactory, aiProvider, deferRestore, resourceManager: preparation }); await users.init();
   library.beforeInstall = async () => { await users.ensureAssets(); if (users.assets.status === 'error') throw new AppError('准备失败，请重新打开栖盒'); };
   library.beforeUninstall = () => users.suspendForUninstall();
+  library.resumePendingDownload?.();
+  const completePreparation = () => {
+    if (!preparation.working) return;
+    void preparation.working.then(() => {
+      if (preparation.state.status === 'ready') {
+        users.assetsTask = null;
+        if (!library.installed()) library.download();
+      }
+    }).catch(() => {});
+  };
+  completePreparation();
+  void preparationInitialization.then(completePreparation);
+  const preparationState = () => preparingInitialization
+    ? { ...preparation.snapshot(), status: 'working', stage: 'checking', message: '正在重新检查 NAS 本机环境，关闭页面不影响后台检查', error: null }
+    : preparation.manifest ? preparation.snapshot() : null;
+  async function restoringState(uid) {
+    const directory = path.join(dataRoot, 'users', uid);
+    const saved = await jsonFile(path.join(directory, 'instances.json'), []);
+    const rows = Array.isArray(saved) ? saved.filter(row => /^[a-f0-9-]{36}$/.test(row?.id || '')) : [];
+    const instances = await Promise.all(rows.filter(row => !row.removedAt).map(async row => ({ ...row,
+      runtime: { status: 'preparing', loginStatus: 'unknown', aiEntryAvailable: false, canConnect: false, message: '正在检查运行环境并恢复已有会话' },
+      schedule: await jsonFile(path.join(directory, 'instances', row.id, 'schedule.json'), { mode: 'manual' }), busy: true,
+    })));
+    return { instances, retained: rows.filter(row => row.removedAt).map(({ id, name, appId, removedAt }) => ({ id, name, appId: appId || 'wechat', removedAt })) };
+  }
   const send = (res, status, value) => { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(value)); };
   const server = http.createServer(async (req, res) => {
     res.setHeader('X-Content-Type-Options', 'nosniff'); res.setHeader('Referrer-Policy', 'no-referrer');
@@ -74,9 +112,18 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
       const webApp = /^\/applications\/([a-f0-9-]{36})(\/.*)$/.exec(route);
       if (webApp) { const space = await users.get(user.uid); space.requireConsent(); return await proxyWebApp(space.get(webApp[1]).runtime, req, res, webApp[2] + url.search); }
       if (route.startsWith('/api/')) {
+        if (req.method === 'GET' && route === '/api/session') {
+          const consent = users.spaces.get(user.uid)?.consent || await jsonFile(path.join(dataRoot, 'users', user.uid, 'consent.json'), { accepted: false });
+          return send(res, 200, { user, product, dev, host, capabilities: { nasPicker: host === 'fnos' }, csrf: token(user.uid), consent });
+        }
+        if (req.method === 'GET' && route === '/api/state' && (preparingInitialization || preparation.manifest && users.pending.has(user.uid))) {
+          return send(res, 200, { catalog: marketState({ wechat: library }), library: library.publicState(), preparation: preparationState(), ...await restoringState(user.uid) });
+        }
+        if (preparingInitialization && route.startsWith('/api/preparation') && req.method === 'POST') {
+          check(req, user); throw new AppError('正在检查本机环境，请检查完成后继续', 409);
+        }
         const space = await users.get(user.uid);
-        if (req.method === 'GET' && route === '/api/session') return send(res, 200, { user, product, dev, host, capabilities: { nasPicker: host === 'fnos' }, csrf: token(user.uid), consent: space.consent });
-        if (req.method === 'GET' && route === '/api/state') return send(res, 200, { catalog: marketState({ wechat: library }), library: library.publicState(), ...space.list() });
+        if (req.method === 'GET' && route === '/api/state') return send(res, 200, { catalog: marketState({ wechat: library }), library: library.publicState(), preparation: preparationState(), ...space.list() });
         const aiMatch = /^\/api\/instances\/([a-f0-9-]{36})\/ai$/.exec(route);
         const aiAvatarMatch = /^\/api\/instances\/([a-f0-9-]{36})\/ai\/avatar\/([a-f0-9]{64})$/.exec(route);
         const aiMasterMatch = /^\/api\/instances\/([a-f0-9-]{36})\/ai\/master$/.exec(route);
@@ -103,6 +150,12 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
         }
         if (req.method !== 'POST') throw new AppError('请求方式不支持', 405);
         check(req, user);
+        if (route === '/api/preparation/import') {
+          space.requireConsent();
+          if (!preparation.manifest) throw new AppError('当前版本无需导入运行组件', 409);
+          if (req.headers['content-type'] !== 'application/octet-stream') throw new AppError('请选择离线资源包', 415);
+          return send(res, 200, await preparation.importResource(req, Number(req.headers['content-length']), req.headers['x-resource-id']));
+        }
         const installMatch = /^\/api\/apps\/([^/]+)\/install\/(upload|uninstall|download|nas)$/.exec(route);
         if (installMatch) { applicationDefinition(installMatch[1]); if (installMatch[1] !== 'wechat') throw new AppError('此应用无需导入安装包', 409); }
         // Keep the original URLs for older open pages during an upgrade.
@@ -175,7 +228,22 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
           if (data.deleteData && data.confirmName !== '确认删除微信') throw new AppError('请输入：确认删除微信');
           return send(res, 200, await library.uninstall({ clearData: data.deleteData ? () => space.clearData() : undefined }));
         }
-        if (installRoute === '/api/install/download') return send(res, 202, await library.download({ allowUnverified: data.allowUnverified === true }));
+        if (route === '/api/preparation') {
+          space.requireConsent();
+          if (!preparation.manifest) throw new AppError('当前安装已包含完整运行组件', 409);
+          if (data.action === 'pause') return send(res, 200, await preparation.pause());
+          if (data.action === 'check') return send(res, 200, await preparation.inspect());
+          if (data.action !== 'start') throw new AppError('准备操作无效');
+          const result = preparation.start();
+          completePreparation();
+          return send(res, 202, result);
+        }
+        if (route === '/api/install/pause') return send(res, 200, await library.pauseDownload());
+        if (route === '/api/install/continue') return send(res, 202, await library.resumeDownload());
+        if (installRoute === '/api/install/download') {
+          if (preparation.manifest && preparation.state.status !== 'ready') throw new AppError('请先完成“准备微信”', 409);
+          return send(res, 202, await library.download({ allowUnverified: data.allowUnverified === true }));
+        }
         if (installRoute === '/api/install/nas') { if (host !== 'fnos') throw new AppError('请从本机上传安装包', 409); return send(res, 202, library.importNas(nasFiles, user.uid, data.path)); }
         if (route === '/api/instances') return send(res, 201, await space.add(data.name, data.appId));
         const match = /^\/api\/instances\/([a-f0-9-]{36})\/(start|stop|rename|settings|delete|restore|desktop|show|login|recheck|clipboard|files)$/.exec(route);
@@ -294,8 +362,8 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
       });
     } catch { socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n'); }
   });
-  return { server, users, library, prefix, devKey, startRecovery: () => users.restore(),
-    async close() { clearInterval(ticketTimer); for (const ws of wss.clients) ws.terminate(); await library.close(); await users.close(); for (const socket of sockets) socket.destroy(); if (server.listening) await new Promise(resolve => server.close(resolve)); wss.close(); } };
+  return { server, users, library, prefix, devKey, startRecovery: async () => { await preparationInitialization; return users.restore(); },
+    async close() { clearInterval(ticketTimer); for (const ws of wss.clients) ws.terminate(); await preparationInitialization; await preparation.close(); await library.close(); await users.close(); for (const socket of sockets) socket.destroy(); if (server.listening) await new Promise(resolve => server.close(resolve)); wss.close(); } };
 }
 
 // One main process per installation owns the desktop session (Xvfb, WeChat and
