@@ -1,5 +1,7 @@
 /* QIAPP UI 0.1.0 product composition. Product state and events stay in qibox. */
 .qiapp-product {
+  min-height: 100vh;
+  min-height: 100dvh;
   --qi-primary: #4058d3;
   --qi-primary-hover: #4055d6;
   --qi-primary-active: #3548bc;
@@ -27,6 +29,53 @@
   --ui-control-gap: var(--qi-space-3);
   color: var(--qi-text);
   background: var(--qi-bg);
+}
+
+/* Product light overrides must not mask the shared dark semantic palette.
+   Keep the blue brand; inherit surfaces, text and borders from QIAPP. */
+:root[data-qi-theme="dark"] .qiapp-product {
+  --qi-primary: #9bbcff;
+  --qi-primary-hover: #bdd2ff;
+  --qi-primary-active: #d3e1ff;
+  --qi-on-primary: #172642;
+  --qi-secondary: inherit;
+  --qi-selected: inherit;
+  --qi-hover: inherit;
+  --qi-active: inherit;
+  --qi-focus: inherit;
+  --qi-bg: inherit;
+  --qi-surface: inherit;
+  --qi-surface-muted: inherit;
+  --qi-border: inherit;
+  --qi-border-strong: inherit;
+  --qi-text: inherit;
+  --qi-text-secondary: inherit;
+  --qi-text-tertiary: inherit;
+  --qi-shadow-subtle: inherit;
+  --qi-shadow-floating: inherit;
+}
+@media (prefers-color-scheme: dark) {
+  :root:is([data-qi-theme="system"], :not([data-qi-theme])) .qiapp-product {
+    --qi-primary: #9bbcff;
+    --qi-primary-hover: #bdd2ff;
+    --qi-primary-active: #d3e1ff;
+    --qi-on-primary: #172642;
+    --qi-secondary: inherit;
+    --qi-selected: inherit;
+    --qi-hover: inherit;
+    --qi-active: inherit;
+    --qi-focus: inherit;
+    --qi-bg: inherit;
+    --qi-surface: inherit;
+    --qi-surface-muted: inherit;
+    --qi-border: inherit;
+    --qi-border-strong: inherit;
+    --qi-text: inherit;
+    --qi-text-secondary: inherit;
+    --qi-text-tertiary: inherit;
+    --qi-shadow-subtle: inherit;
+    --qi-shadow-floating: inherit;
+  }
 }
 
 /* Shared native components are now drawn from the QIAPP scale and tokens. */
@@ -115,6 +164,10 @@ html.mobile .qiapp-product button.qi-btn.mobile-only { display: inline-flex; }
 
 /* AI workspaces use the same tokens while keeping their real business controls. */
 #ai-panel { --ai-primary: var(--qi-primary); --ai-bg: var(--qi-bg); --ai-border: var(--qi-border); --ai-text: var(--qi-text); --ai-muted: var(--qi-text-secondary); --ai-soft: var(--qi-selected); --ai-hint: var(--qi-text-tertiary); --ai-sidebar: var(--qi-sidebar); color: var(--qi-text); font-family: var(--qi-font-family); font-size: var(--qi-font-body); }
+.qiapp-product #ai-panel :is(.ai-panel-heading,.ai-mobile-navigation,.ai-object-save) { background: var(--qi-surface); border-color: var(--qi-border); color: var(--qi-text); }
+@media (min-width:861px) {
+  .qiapp-product #ai-panel .ai-main-tabs button[aria-current="page"] { color: var(--qi-on-primary); }
+}
 #ai-panel .ai-main-tabs { padding: 0 var(--qi-space-4); background: #202a43; }
 #ai-panel .ai-main-tabs button { min-height: var(--qi-control-lg); padding: var(--qi-space-3); border-radius: var(--qi-radius-md); font-size: var(--qi-font-button); }
 #ai-panel .ai-main-tabs button[aria-current=page] { background: var(--qi-primary); box-shadow: none; }

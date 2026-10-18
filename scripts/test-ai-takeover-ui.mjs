@@ -264,6 +264,8 @@ try {
   const settingsSaveClick = page.getByRole('button', { name: '保存设置', exact: true }).click();
   await settingsSaveRequest;
   assert.equal(await page.locator('#ai-panel').getAttribute('aria-busy'), 'true', 'saving state must be real and remain uncommitted until the held request continues');
+  assert.equal(await page.getByRole('button', { name: '保存中…', exact: true }).isDisabled(), true);
+  assert.equal(await page.locator('#ai-takeover-form [name=replyDelay]').isDisabled(), true, 'a pending save must not discard newly edited values');
   await page.screenshot({ path: path.join(output, 'settings-saving-pending.png'), fullPage: true });
   releaseSettingsSave(); await settingsSaveClick;
   await page.unroute('**/*', holdSettingsSave);

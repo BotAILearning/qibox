@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import os from 'node:os';
-import { mkdtemp, mkdir, writeFile, readFile, rm, access, link, stat, rename, realpath } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm, access, link, stat, rename, realpath, symlink, chmod } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 import { createHash } from 'node:crypto';
 import { RuntimeResources, validateRuntimeManifest } from '../server/runtime-resources.mjs';
@@ -24,7 +24,11 @@ async function fixture(t, { failure = false, corrupt = false } = {}) {
   await writeFile(path.join(appRoot, 'payload/resources', `${hash}.tar.xz`), corrupt ? 'wrong-archive' : archive);
   let tested = false;
   const manager = new RuntimeResources({ appRoot, dataRoot, arch: 'x64',
-    command: async (_, args) => { await writeFile(path.join(args[args.indexOf('-C') + 1], 'tool'), content); },
+    command: async (_, args) => {
+      if (!args.includes('-C')) throw Error('Fixture exercises the tar fallback');
+      const tool = path.join(args[args.indexOf('-C') + 1], 'tool');
+      await writeFile(tool, content); await chmod(tool, 0o755);
+    },
     selftest: async root => { tested = true; assert.equal(await readFile(path.join(root, 'tool'), 'utf8'), content.toString()); if (failure) throw Error('injected selftest failure'); } });
   await manager.init();
   return { manager, manifest, appRoot, dataRoot, tested: () => tested };
@@ -44,6 +48,35 @@ test('failed selftest never switches or erases the known-good runtime', async t 
   assert.match(f.manager.snapshot().error, /injected/);
   assert.equal(await readFile(path.join(f.dataRoot, 'runtime/old'), 'utf8'), 'known-good');
 });
+
+test('a symbolic link cannot impersonate a private hard-link alias', async t => {
+  const f = await fixture(t);
+  f.manager.manifest.inventory = { alias: ['1', 0o644, 0, 0, 'tool', 0, null] };
+  f.manager.start(); await f.manager.working;
+  assert.equal(await f.manager.currentValid(), true);
+  const alias = path.join(f.manager.root, 'alias');
+  await rm(alias);
+  try { await symlink(path.join(f.manager.root, 'tool'), alias); }
+  catch (error) { if (process.platform === 'win32' && error.code === 'EPERM') { t.skip('Windows file-symlink privilege unavailable; run on Linux'); return; } throw error; }
+  assert.equal(await f.manager.currentValid(), false);
+});
+
+test('a partial resource retains verified existing files while repairing a missing file', async t => {
+  const f = await fixture(t), kept = path.join(f.manager.root, 'kept');
+  const raw = Buffer.from('verified existing component');
+  await writeFile(kept, raw);
+  f.manager.manifest.files.kept = { sha256: sha(raw), size: raw.length, mode: 0o644, resource: f.manifest.resources[0].id };
+  const original = f.manager.command;
+  f.manager.command = async (bin, args) => {
+    if (args.includes('-C')) assert.deepEqual(await readFile(path.join(args[args.indexOf('-C') + 1], 'kept')), raw);
+    return original(bin, args);
+  };
+  f.manager.start(); await f.manager.working;
+  assert.equal(f.manager.snapshot().status, 'ready', f.manager.snapshot().error);
+  assert.equal(f.manager.existingFiles.has('kept'), true);
+  assert.equal(f.manager.existingResources.size, 0, 'one valid file cannot claim the complete archive');
+  assert.deepEqual(await readFile(path.join(f.manager.root, 'kept')), raw);
+});
 test('missing or corrupted archives cannot enable a fake ready environment', async t => {
   const f = await fixture(t, { corrupt: true }); f.manager.start(); await f.manager.working;
   assert.equal(f.manager.snapshot().status, 'error'); assert.equal(f.tested(), false);
@@ -59,6 +92,7 @@ test('manifest rejects cross-architecture resources, unverified ARM reuse and tr
 test('adopting identical legacy runtime content refreshes the current lock fingerprint', async t => {
   const f = await fixture(t), root = path.join(f.dataRoot, 'runtime');
   await writeFile(path.join(root, 'tool'), 'complete new executable');
+  await chmod(path.join(root, 'tool'), 0o755);
   const oldLock = { platform: 'linux-x64', sourceRevision: 'old' }, nextLock = { platform: 'linux-x64', sourceRevision: 'new' };
   await writeFile(path.join(f.appRoot, 'payload/x64/runtime-lock.json'), JSON.stringify(nextLock));
   await writeFile(path.join(root, 'ready.json'), JSON.stringify({ fingerprint: sha(Buffer.from(JSON.stringify(oldLock))), legacy: true }));
@@ -92,6 +126,7 @@ test('hard-link targets use their fallback before the private archive is expande
   const commandOrder = [];
   const manager = new RuntimeResources({ appRoot, dataRoot, arch: 'x64',
     command: async (_bin, args) => {
+      if (!args.includes('-C')) throw Error('Fixture exercises the tar fallback');
       const staging = args[args.indexOf('-C') + 1], archive = args[1]; commandOrder.push(path.basename(archive));
       if (archive.endsWith(`${fallbackHash}.tar.xz`)) { await mkdir(path.dirname(path.join(staging, target)), { recursive: true }); await writeFile(path.join(staging, target), content); }
       else await link(path.join(staging, target), path.join(staging, 'usr/lib/example/tool-alias'));
@@ -170,16 +205,18 @@ async function legacySupplementFixture(t, { corruptOld = false } = {}) {
   // is present, but the new manifest's small supplement is not yet materialized.
   await mkdir(path.join(root, 'usr/bin'), { recursive: true });
   await writeFile(path.join(root, 'usr/bin/base-tool'), corruptOld ? Buffer.from('modified legacy file') : baseContent);
+  await chmod(path.join(root, 'usr/bin/base-tool'), 0o755);
   await writeFile(path.join(root, 'ready.json'), JSON.stringify({ legacy: true, fingerprint: 'old-lock' }));
 
   const extracted = [];
   const manager = new RuntimeResources({ appRoot, dataRoot, arch: 'x64',
     command: async (_bin, args) => {
+      if (!args.includes('-C')) throw Error('Fixture exercises the tar fallback');
       const archive = path.basename(args[1]), staging = args[args.indexOf('-C') + 1];
       extracted.push(archive);
       assert.equal(archive, `${tinyHash}.tar.xz`, 'only the newly bundled supplement should be extracted');
       const output = path.join(staging, 'usr/bin/new-helper');
-      await mkdir(path.dirname(output), { recursive: true }); await writeFile(output, newContent);
+      await mkdir(path.dirname(output), { recursive: true }); await writeFile(output, newContent); await chmod(output, 0o755);
     },
     selftest: async stage => {
       assert.deepEqual(await readFile(path.join(stage, 'usr/bin/base-tool')), baseContent);

@@ -147,6 +147,9 @@ if (!process.argv.includes('--ui-only')) {
   await run(python, [path.join(root, 'scripts/normalize-fpk.py'), result]);
   await run(python, [path.join(root, 'scripts/verify-fpk.py'), result]);
   await writeFile(`${result}.sha256`, `${await hashFile(result)}  ${path.basename(result)}\n`);
+  // A valid archive is not a successful slimming delivery. Enforce the full
+  // universal-package target on the actual normalized FPK, not staging bytes.
+  if (targets.length === 2) await run(python, [path.join(root, 'scripts/audit-package-budget.py'), result]);
   console.log(`Package: ${result} (${((await stat(result)).size / 1024 ** 2).toFixed(1)} MiB; ${components} runtime components)`);
   }
 }

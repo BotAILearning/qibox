@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { mkdir, writeFile, readdir, readFile } from 'node:fs/promises';
-import { clearRuntimeCache, Runtime } from '../server/runtime.mjs';
+import { mkdir, writeFile, readdir, readFile, rm } from 'node:fs/promises';
+import { clearRuntimeCache, createRuntimeSession, Runtime } from '../server/runtime.mjs';
 import { temp, cleanup } from './fixtures.mjs';
 
 test('protected stale runtime cache is retained outside the next upgrade target', async t => {
@@ -23,4 +23,13 @@ test('unprepared runtime retries preparation and never spawns an undefined displ
   runtime.child = () => { spawned++; throw Error('Must not spawn'); };
   await assert.rejects(runtime.start(), /应用尚未准备好/);
   assert.equal(prepared, 1); assert.equal(spawned, 0);
+});
+
+test('long native environment paths reserve room for D-Bus and audio sockets', { skip: process.platform !== 'linux' }, async t => {
+  const root = await temp(); t.after(() => cleanup(root));
+  for (const parent of [root, path.join(root, 'private-fallback'), path.join(root, '中文'.repeat(35))]) {
+    const session = await createRuntimeSession(path.join(parent, 'runtime'), 'a'.repeat(64));
+    if (session.temporary) t.after(() => rm(session.directory, { recursive: true, force: true }));
+    assert.ok(Buffer.byteLength(path.join(session.directory, 'audio/native')) < 99);
+  }
 });

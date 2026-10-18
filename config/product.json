@@ -1,12 +1,12 @@
 {
   "appname": "qibox",
   "displayName": "栖盒",
-  "version": "0.11.1",
+  "version": "0.11.2",
   "platform": "all",
   "minOSVersion": "1.2.0401",
   "gatewayPrefix": "/app/qibox",
   "publisher": "Bot",
   "email": "bot@qiapp.online",
-  "buildId": "0.11.1-candidate.002",
+  "buildId": "0.11.2-candidate.001",
   "channel": "candidate"
 }

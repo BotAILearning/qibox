@@ -1,8 +1,9 @@
 import path from 'node:path';
 import net from 'node:net';
+import os from 'node:os';
 import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { mkdir, readFile, writeFile, chmod, access, rename, rm, readdir, stat, symlink } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, writeFile, chmod, access, rename, rm, readdir, stat, symlink } from 'node:fs/promises';
 import { createWriteStream } from 'node:fs';
 import { attachRuntimeLog } from './runtime-log.mjs';
 import { AppError, atomicJson, jsonFile, hashFile } from './files.mjs';
@@ -21,6 +22,17 @@ import { prepareXvfb, displayReady } from './x11.mjs';
 import { wechatLibraryPath } from './wechat-libraries.mjs';
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+export async function createRuntimeSession(runtimeRoot, tag) {
+  const parent = path.join(path.dirname(runtimeRoot), 'sessions');
+  // D-Bus has a stricter portable socket limit than Linux's sockaddr_un.
+  // Reserve room for the longest child socket, audio/native, including NUL.
+  const tagLength = Math.min(32, 85 - Buffer.byteLength(parent + path.sep));
+  const temporary = tagLength < 16;
+  const directory = temporary ? await mkdtemp(path.join(os.tmpdir(), 'qibox-session-')) : path.join(parent, tag.slice(0, tagLength));
+  await mkdir(directory, { recursive: true, mode: 0o700 }); await chmod(directory, 0o700);
+  if (Buffer.byteLength(path.join(directory, 'audio/native')) >= 99) throw new Error('Private desktop socket path is too long');
+  return { directory, temporary };
+}
 async function exists(file) { try { await access(file); return true; } catch { return false; } }
 export async function clearRuntimeCache(directory, { remove = rm, move = rename } = {}) {
   const absolute = path.resolve(directory);
@@ -199,8 +211,9 @@ export class Runtime {
       if (!installed) throw new AppError('请先安装微信', 409);
       const applicationRoot = installed.directory;
       // Keep private Unix socket paths below Linux's 108-byte limit.
-      const session = path.join(path.dirname(this.runtimeRoot), 'sessions', this.tag.slice(0, 32));
-      await mkdir(session, { recursive: true, mode: 0o700 }); await chmod(session, 0o700);
+      const sessionState = await createRuntimeSession(this.runtimeRoot, this.tag);
+      const session = sessionState.directory;
+      this.temporarySession = sessionState.temporary ? session : null;
       await rm(path.join(session, 'clipboard-files'), { recursive: true, force: true });
       await rm(path.join(session, 'xkbcomp'), { force: true });
       await symlink(path.join(root, 'usr/bin/xkbcomp'), path.join(session, 'xkbcomp'));
@@ -405,6 +418,7 @@ export class Runtime {
     }
     if (!this.dev) await this.stopTagged(force, deadline);
     if (this.desktopEnv?.TMPDIR) await rm(path.join(this.desktopEnv.TMPDIR, 'clipboard-files'), { recursive: true, force: true });
+    if (this.temporarySession) { await rm(this.temporarySession, { recursive: true, force: true }); this.temporarySession = null; }
     this.processes = []; this.port = null; this.password = null; this.desktopEnv = null;
     if (clean && !force) await this.loginVerifier.stopped();
     else await this.loginVerifier.clear();

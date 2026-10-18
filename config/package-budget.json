@@ -1,0 +1,9 @@
+{
+  "format": 1,
+  "baseline": { "buildId": "0.11.0-stable.003", "fpkBytes": 491603782 },
+  "failedCandidate": { "buildId": "0.11.1-candidate.002", "fpkBytes": 496760810 },
+  "fullUniversalFpkExclusiveLimit": 491603782,
+  "architectures": ["x64", "arm64"],
+  "minimumSystem": "1.2.0401",
+  "boundary": "Complete universal FPK including both private architecture runtimes and offline resources; official WeChat and the official Node application dependency are separate. A size pass does not prove functionality, minimum-system compatibility or device acceptance."
+}

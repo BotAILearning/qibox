@@ -26,12 +26,29 @@ def digest(stream):
     return value.hexdigest()
 
 
-def extract(root, manifest, resources, skip_files=()):
+def extract(root, manifest, resources, skip_files=(), existing_files=()):
     root = pathlib.Path(root).absolute()
     inventory = manifest['inventory']
     skip_files = set(skip_files)
     if not skip_files.issubset(manifest.get('host', {})):
         raise ValueError('Only approved host references may be omitted')
+    existing_files = set(existing_files)
+    if not existing_files.issubset(manifest.get('files', {})):
+        raise ValueError('Existing files must be pinned by the runtime manifest')
+    for name in existing_files:
+        destination = root / canonical(name)
+        # Verify the already copied private bytes independently. A request flag
+        # alone must never skip a missing/corrupt file or a symlink to one.
+        parent = destination.parent
+        while parent != root and parent != parent.parent:
+            if parent.is_symlink():
+                raise ValueError('Symlink parent in existing resource')
+            parent = parent.parent
+        if destination.is_symlink() or not destination.is_file():
+            raise ValueError('Existing resource is not a private regular file')
+        with destination.open('rb') as stream:
+            if digest(stream) != manifest['files'][name]['sha256']:
+                raise ValueError('Existing resource hash differs')
     count = 0
     for resource in resources:
         with open(resource['path'], 'rb') as source:
@@ -43,7 +60,7 @@ def extract(root, manifest, resources, skip_files=()):
                 expected = inventory.get(name)
                 if expected is None or member.type.decode('ascii') != expected[0]:
                     raise ValueError('Unexpected resource member: ' + name)
-                if name in skip_files:
+                if name in skip_files or name in existing_files:
                     if not member.isfile():
                         raise ValueError('Only regular files may be reused')
                     continue
@@ -94,4 +111,4 @@ def extract(root, manifest, resources, skip_files=()):
 
 if __name__ == '__main__':
     request = json.loads(pathlib.Path(sys.argv[1]).read_text('utf8'))
-    print(json.dumps(extract(request['root'], request['manifest'], request['resources'], request.get('skipFiles', ()))))
+    print(json.dumps(extract(request['root'], request['manifest'], request['resources'], request.get('skipFiles', ()), request.get('existingFiles', ()))))

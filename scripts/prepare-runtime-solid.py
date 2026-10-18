@@ -47,6 +47,9 @@ def compression_options(label, preset):
 
 def apply_policy(arch, tree, spool, policy):
     excluded = policy.get(arch, {}).get('excluded', {})
+    for name, expected in policy.get(arch, {}).get('protected', {}).items():
+        if name in excluded or canonical(name) != name or name not in tree or signature(*tree[name]) != expected:
+            raise ValueError('Protected runtime component changed or excluded: ' + name)
     for name, expected in excluded.items():
         if canonical(name) != name or name not in tree or signature(*tree[name]) != expected:
             raise ValueError('Runtime policy source changed: ' + name)

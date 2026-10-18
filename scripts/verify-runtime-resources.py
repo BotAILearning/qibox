@@ -2,6 +2,7 @@
 
 This is architecture-independent archive validation, not runtime execution.
 """
+import argparse
 import hashlib
 import json
 import pathlib
@@ -30,6 +31,9 @@ class Meter:
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--output', type=pathlib.Path, default=ROOT / 'local/runtime-reuse-development-20261018/resource-integrity.json')
+    args = parser.parse_args()
     results = {}
     for arch in ['x64', 'arm64']:
         started = time.monotonic()
@@ -75,7 +79,7 @@ def main():
                          'regularFiles': regular, 'uncompressedFileBytes': payload_bytes,
                          'seconds': round(time.monotonic() - started, 3)}
         print(json.dumps({'arch': arch, **results[arch]}), flush=True)
-    out = ROOT / 'local/runtime-reuse-development-20261018/resource-integrity.json'
+    out = args.output
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(results, indent=2) + '\n', encoding='utf8')
 

@@ -45,7 +45,7 @@ function surface({ without = [] } = {}) {
     dismissFeedback: () => handlers.get('created-button:click')(),
     applyDialog: () => handlers.get('created-dialog:click')({ target: { closest: () => ({ hasAttribute: name => name === 'data-apply' }) } }),
     form: (selector, entries) => {
-      const attributes = new Map(), form = { id: selector.slice(1), entries, isConnected: true, querySelector: () => null,
+      const attributes = new Map(), form = { id: selector.slice(1), entries, isConnected: true, querySelector: () => null, querySelectorAll: () => [],
         setAttribute(name, value) { attributes.set(name, String(value)); },
         getAttribute(name) { return attributes.get(name) ?? null; },
         hasAttribute(name) { return attributes.has(name); },

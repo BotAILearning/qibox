@@ -13,6 +13,31 @@ spec.loader.exec_module(module)
 
 
 class ResourceExtraction(unittest.TestCase):
+    def test_partial_repair_preserves_verified_existing_file_and_extracts_only_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = pathlib.Path(tmp)
+            root = base / 'root'
+            root.mkdir()
+            (root / 'kept').write_bytes(b'correct existing bytes')
+            before = (root / 'kept').stat().st_ino
+            rows = {'kept': b'correct existing bytes', 'missing': b'missing helper'}
+            inventory = {name: ['0', 0o644, 0, 0, '', len(raw), hashlib.sha256(raw).hexdigest()] for name, raw in rows.items()}
+            manifest = {'inventory': inventory, 'files': {name: {'sha256': row[6]} for name, row in inventory.items()}}
+            archive = base / 'partial.tar.xz'
+            with tarfile.open(archive, 'w:xz') as tar:
+                for name, raw in rows.items():
+                    member = tarfile.TarInfo(name)
+                    member.size = len(raw)
+                    tar.addfile(member, io.BytesIO(raw))
+            resource = {'path': str(archive), 'sha256': hashlib.sha256(archive.read_bytes()).hexdigest()}
+            result = module.extract(root, manifest, [resource], existing_files=['kept'])
+            self.assertEqual(result['extractedMembers'], 1)
+            self.assertEqual((root / 'kept').stat().st_ino, before)
+            self.assertEqual((root / 'missing').read_bytes(), rows['missing'])
+            (root / 'kept').write_bytes(b'changed existing bytes')
+            with self.assertRaisesRegex(ValueError, 'Existing resource hash differs'):
+                module.extract(root, manifest, [resource], existing_files=['kept'])
+
     def test_batch_preserves_private_hardlinks_and_rejects_corrupt_archive(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = pathlib.Path(tmp)

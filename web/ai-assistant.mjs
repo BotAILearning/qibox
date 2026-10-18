@@ -584,6 +584,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     const initialState = !state;
     const accountChanged = state && state.account !== result.account;
     if (accountChanged) {
+      finishSave(pendingSave);
       // Invalidate pending reads and discard local edits from the old account,
       // even when both accounts have the same contact ID.
       requestEpoch++;
@@ -663,6 +664,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       drawProactiveRecords();
       drawSkips(); void loadSkipContent();
     }
+    applySaveControls();
     if (state.notice) { const note = $('#ai-state-notice'); if (note) note.textContent = state.notice; }
   }
   function replyContactList() {
@@ -831,6 +833,8 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     textarea.style.height = `${Math.max(textarea.scrollHeight, 42)}px`;
   }
   function resizeStyleSummary(textarea = panel.querySelector('#ai-object-form .ai-reference-style textarea[name="summary"]')) {
+    const object = $('#ai-object-form'), actions = object?.querySelector('.ai-object-save');
+    if (object && actions && !panel.hidden) object.style.setProperty('--ai-object-actions-height', `${Math.ceil(actions.getBoundingClientRect().height)}px`);
     if (!textarea || textarea.closest?.('[hidden]') || panel.hidden) return;
     const content = panel.querySelector('#ai-content'), footer = textarea.form?.querySelector('.ai-object-save');
     if (!content || !footer) return;
@@ -938,6 +942,38 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     const v = manualReplyDrafts.get(contact.id), presets = state.schema.replyPresets || [], profile = selectProfiles().find(p => p.contact === contact.id);
     return `<form id="ai-manual-reply-form" data-contact="${esc(contact.id)}"><div class="ai-page-heading"><button type="button" class="quiet" data-ai-action="back-reply-contacts">${icon('arrow-l')}返回联系人列表</button><h3>${contactName(contact)}的回复风格</h3></div><label class="ai-field">选择风格<select id="ai-reply-preset" name="replyPreset">${presets.map(p => option(p.id, p.label, v.replyPreset === p.id)).join('')}${option('custom', '自定义', v.replyPreset === 'custom')}${learnedProfiles().length ? '<optgroup label="已学习的风格">' + learnedProfiles().map(p => option('learned:' + p.id, p.label, v.replyPreset === 'learned:' + p.id)).join('') + '</optgroup>' : ''}</select></label>${field('summary', '风格说明（可修改）', v.summary || summaryText(v), 6000)}<details class="ai-paste"><summary>注意事项与策略（可选）</summary>${field('customAvoid', '注意事项', v.customAvoid, 1200)}${field('replyGoal', '回复目的与立场', v.replyGoal)}${field('boundaries', '不能擅自决定的事项', v.boundaries)}<label class="ai-field">回复次数上限${replyLimitControl(v.maxRounds, "ai-manual-round-limit")}</label></details><button type="submit" class="primary ai-wide">保存回复风格</button></form>`;
   }
+  let pendingSave = null;
+  function restoreSaveControls(save) {
+    for (const [node, original] of save.controls) {
+      node.disabled = original.disabled;
+      if (original.html !== null) node.innerHTML = original.html;
+    }
+  }
+  function applySaveControls() {
+    if (!pendingSave || pendingSave.generation !== generation) return;
+    const form = panel.querySelector(`#${pendingSave.id}`);
+    if (!form) return;
+    pendingSave.forms.add(form); form.setAttribute('aria-busy', 'true');
+    for (const node of form.querySelectorAll('input,select,textarea,button')) {
+      if (!('disabled' in node)) continue;
+      if (!pendingSave.controls.has(node)) pendingSave.controls.set(node, { disabled: node.disabled, html: node.matches('button[type="submit"]') ? node.innerHTML : null });
+      node.disabled = true;
+      if (pendingSave.controls.get(node).html !== null) node.textContent = '保存中…';
+    }
+  }
+  function formData(form) {
+    // FormData omits disabled controls. Read drafts with their original states.
+    const save = pendingSave;
+    if (save) restoreSaveControls(save);
+    try { return new FormData(form); }
+    finally { if (save === pendingSave) applySaveControls(); }
+  }
+  function finishSave(save) {
+    if (!save || pendingSave !== save) return;
+    restoreSaveControls(save);
+    for (const form of save.forms) form.removeAttribute('aria-busy');
+    pendingSave = null;
+  }
   function rememberDraft() {
     if (!state) return;
     const personal = $('#ai-personal-information-form');
@@ -949,7 +985,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     const object = $('#ai-object-form');
     if (object) {
       if (object.querySelector('[data-ai-dirty]')?.hidden === false) objectDirtyContacts.add(selectedObject);
-      const draft = { ...Object.fromEntries(new FormData(object)) };
+      const draft = { ...Object.fromEntries(formData(object)) };
       for (const key of ['inheritTiming','inheritTakeover','takeoverEnabled']) {
         const input = object.querySelector(`[name=${key}]`); if (input) draft[key] = input.checked;
       }
@@ -1168,6 +1204,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   };
   rail.addEventListener('change', changeMaster);
   panel.addEventListener('change', async event => {
+    resizeStyleSummary();
     if (!state) return;
     try {
       const input = event.target;
@@ -1314,6 +1351,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     } catch (e) { controls(); message(e.message, true); }
   });
   panel.addEventListener('input', event => {
+    resizeStyleSummary();
     if (!state) return;
     if (event.target.name === 'summary' && event.target.closest('#ai-default-style-form')) {
       const form = event.target.form;
@@ -1413,6 +1451,10 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   panel.addEventListener('submit', async event => {
     event.preventDefault(); const form = event.target;
     const data = new FormData(form);
+    const saving = ['ai-takeover-form', 'ai-object-form', 'ai-personal-information-form'].includes(form.id);
+    if (saving && busy) { message('请等待当前保存完成', true); return; }
+    const save = saving ? { id: form.id, generation, controls: new Map(), forms: new Set() } : null;
+    if (save) { rememberDraft(); pendingSave = save; applySaveControls(); }
     try {
       const wiki = form.querySelector('[data-ai-wiki-entities]');
       if (wiki) {
@@ -1567,6 +1609,9 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         }, '风格已保存');
       }
     } catch (e) { message(e.message, true); }
+    finally {
+      finishSave(save);
+    }
   });
   // 运行记录：右键执行记录文本浮现「删除记录」菜单，点击后仍弹确认框二次确认。
   let recordMenu = null;
@@ -2151,6 +2196,6 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         finally { if (current === generation) polling = false; }
       }, 1000);
     },
-    detach() { contactDialog?.close(); analysisQueueToken++; analysisQueueAccount = null; rememberRecords(); proactiveRecordEpoch++; proactiveRecordLoading = false; proactiveHistory = []; proactiveHistoryPage = null; errorEpoch++; errorLoading = false; errorHistory = []; errorPage = null; logEpoch++; analysisDraft = { request: '', from: '', to: '', contacts: [] }; analysisSearch = ''; analysisHistoryReport = null; analysisHistoryEpoch++; resetAnalysisExport(); analysisResult = null; reviewAlert.hidden = true; concealKey(true); modelDraft = null; learningDraft = null; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); objectDirtyContacts.clear(); objectScrollKey = ''; objectScrollTop = 0; personalDraft = null; personalDraftAccount = null; selectedObject = ''; objectSearch = ''; objectKind = 'person'; editingReplyContact = null; providerRevision++; generation++; skipEpoch++; skipLoading = false; skipHistory = []; skipHistoryPage = null; skipPageLoading = false; skipContent.clear(); markReplyStatus.clear(); clearInterval(timer); id = null; setContactAvatarInstance(null); state = null; attaching = false; rail.hidden = true; setPanelVisible(false); panel.querySelector(':scope > .ai-main-tabs')?.remove(); $('#ai-content').replaceChildren(); selectedContacts.clear(); replyProfiles.clear(); proactiveUI.reset(); replyDraft = null; },
+    detach() { finishSave(pendingSave); contactDialog?.close(); analysisQueueToken++; analysisQueueAccount = null; rememberRecords(); proactiveRecordEpoch++; proactiveRecordLoading = false; proactiveHistory = []; proactiveHistoryPage = null; errorEpoch++; errorLoading = false; errorHistory = []; errorPage = null; logEpoch++; analysisDraft = { request: '', from: '', to: '', contacts: [] }; analysisSearch = ''; analysisHistoryReport = null; analysisHistoryEpoch++; resetAnalysisExport(); analysisResult = null; reviewAlert.hidden = true; concealKey(true); modelDraft = null; learningDraft = null; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); objectDirtyContacts.clear(); objectScrollKey = ''; objectScrollTop = 0; personalDraft = null; personalDraftAccount = null; selectedObject = ''; objectSearch = ''; objectKind = 'person'; editingReplyContact = null; providerRevision++; generation++; skipEpoch++; skipLoading = false; skipHistory = []; skipHistoryPage = null; skipPageLoading = false; skipContent.clear(); markReplyStatus.clear(); clearInterval(timer); id = null; setContactAvatarInstance(null); state = null; attaching = false; rail.hidden = true; setPanelVisible(false); panel.querySelector(':scope > .ai-main-tabs')?.remove(); $('#ai-content').replaceChildren(); selectedContacts.clear(); replyProfiles.clear(); proactiveUI.reset(); replyDraft = null; },
   };
 }

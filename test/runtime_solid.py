@@ -112,6 +112,18 @@ class SolidRuntimeTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'Retained ELF needs'):
                 solid.apply_policy('x64', tree, self.spool, policy)
 
+    def test_function_protection_refuses_exclusion_or_source_drift(self):
+        package = self.package('input', [('usr/bin/pinyin', b'INPUT_ENGINE', tarfile.REGTYPE, '')])
+        tree = solid.inventory('x64', {'packages': [package]}, self.spool)
+        expected = solid.signature(*tree['usr/bin/pinyin'])
+        policy = {'x64': {'protected': {'usr/bin/pinyin': expected}, 'excluded': {'usr/bin/pinyin': expected}}}
+        with self.assertRaisesRegex(ValueError, 'Protected runtime component'):
+            solid.apply_policy('x64', tree, self.spool, policy)
+        policy['x64']['excluded'] = {}
+        expected[-1] = 'changed'
+        with self.assertRaisesRegex(ValueError, 'Protected runtime component'):
+            solid.apply_policy('x64', tree, self.spool, policy)
+
 
 if __name__ == '__main__':
     unittest.main()

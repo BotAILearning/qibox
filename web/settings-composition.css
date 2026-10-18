@@ -21,6 +21,8 @@
 #ai-panel .ai-time-range .qi-number-unit input,
 #ai-panel .ai-object-timing .qi-number-unit input { box-sizing: border-box; flex: 0 0 112px; width: 112px; min-width: 112px; max-width: 100%; }
 #ai-panel .ai-effective-note { margin: 10px 0 0; color: var(--qi-text-secondary); font-size: 12px; line-height: 1.6; }
+#ai-panel .ai-object-form-fields { display: grid; gap: 16px; min-width: 0; padding-bottom: calc(var(--ai-object-actions-height, 72px) + 16px); }
+:root[data-qi-theme] .qiapp-product #ai-panel .ai-object-timing .ai-time-range :is(input,select):disabled { background: var(--qi-disabled); color: var(--qi-disabled-text); border-color: var(--qi-border); cursor: not-allowed; }
 #ai-panel .ai-takeover-settings { padding-top: 16px; border-top: 1px solid var(--qi-border); }
 #ai-panel .ai-takeover-settings .ai-takeover-switch { margin: 0; }
 #ai-panel .ai-takeover-settings .ai-takeover-switch.qi-setting-row { grid-template-columns: minmax(0, 1fr) auto; gap: 16px; padding: 8px 0; border-bottom: 0; }

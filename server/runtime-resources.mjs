@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { mkdir, stat, readFile, rename, rm, symlink, lstat, readlink, readdir, copyFile, chmod, link, realpath } from 'node:fs/promises';
+import { mkdir, stat, readFile, rename, rm, symlink, lstat, readlink, readdir, copyFile, chmod, link, realpath, mkdtemp } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { architecture, runtimeLibraries } from './platform.mjs';
@@ -22,6 +22,23 @@ export function runRuntimeCommand(bin, args, env = process.env, timeout = 60000)
     child.on('error', e => { clearTimeout(timer); reject(e); });
     child.on('close', code => { clearTimeout(timer); code === 0 ? resolve(output) : reject(Error(`${path.basename(bin)}: ${output.slice(-1200)}`)); });
   });
+}
+export function validateMediaVersions(ffmpeg, ffprobe) {
+  const libraries = ['libavutil', 'libavcodec', 'libavformat', 'libavdevice', 'libavfilter', 'libswscale', 'libswresample', 'libpostproc'];
+  const parse = (output, tool) => {
+    const version = output.match(new RegExp(`^${tool} version (\\S+)`, 'm'))?.[1];
+    if (!version) throw Error(`${tool}: 无法确认媒体工具版本`);
+    const result = { version };
+    for (const name of libraries) {
+      const row = output.match(new RegExp(`^${name}\\s+(\\d+)\\.\\s*(\\d+)\\.\\s*(\\d+)\\s*/\\s*(\\d+)\\.\\s*(\\d+)\\.\\s*(\\d+)\\s*$`, 'm'));
+      if (!row || row.slice(1, 4).join('.') !== row.slice(4, 7).join('.')) throw Error(`${tool}: ${name} 编译与运行版本不一致`);
+      result[name] = row.slice(1, 4).join('.');
+    }
+    return result;
+  };
+  const first = parse(ffmpeg, 'ffmpeg'), second = parse(ffprobe, 'ffprobe');
+  if (JSON.stringify(first) !== JSON.stringify(second)) throw Error('FFmpeg 与 FFprobe 媒体组件版本不一致');
+  return first;
 }
 export function validateRuntimeManifest(manifest, arch) {
   if (manifest?.format !== 1 || manifest.arch !== architecture(arch).node || !/^[a-f0-9]{64}$/.test(manifest.identity) || !Array.isArray(manifest.resources) || !manifest.resources.length) throw Error('Invalid runtime manifest');
@@ -169,8 +186,8 @@ export class RuntimeResources {
       for (const [name, entry] of Object.entries(this.manifest.inventory || {})) {
         if (entry[0] === '2' && await readlink(inside(root, name)) !== entry[4]) return false;
         if (entry[0] === '1') {
-          const file = await stat(inside(root, name)), target = await stat(inside(root, entry[4]));
-          if (file.ino !== target.ino || file.dev !== target.dev) return false;
+          const file = await lstat(inside(root, name)), target = await lstat(inside(root, entry[4]));
+          if (!file.isFile() || !target.isFile() || file.ino !== target.ino || file.dev !== target.dev) return false;
         }
       }
       return true;
@@ -207,6 +224,7 @@ export class RuntimeResources {
   }
   async selectExisting(ids) {
     this.existingResources = new Set();
+    this.existingFiles = new Set();
     const filesByResource = new Map();
     for (const [name, file] of Object.entries(this.manifest.files)) {
       if (!ids.has(file.resource)) continue;
@@ -216,8 +234,10 @@ export class RuntimeResources {
     for (const [id, files] of filesByResource) {
       let valid = true;
       for (const [name, file] of files) {
-        try { if ((await stat(inside(this.root, name))).size !== file.size || await this.verifiedHash(inside(this.root, name)) !== file.sha256) { valid = false; break; } }
-        catch { valid = false; break; }
+        try {
+          if ((await stat(inside(this.root, name))).size === file.size && await this.verifiedHash(inside(this.root, name)) === file.sha256) this.existingFiles.add(name);
+          else valid = false;
+        } catch { valid = false; }
       }
       if (valid) this.existingResources.add(id);
     }
@@ -227,7 +247,7 @@ export class RuntimeResources {
     // Only runtime component files are copied; user homes/configuration are
     // outside this tree. Recheck before copying to catch concurrent changes.
     for (const [name, file] of Object.entries(this.manifest.files)) {
-      if (!this.existingResources.has(file.resource)) continue;
+      if (!this.existingFiles?.has(name)) continue;
       if (this.reused.has(name)) continue;
       const source = inside(this.root, name), output = inside(staging, name);
       if (await this.verifiedHash(source) !== file.sha256) throw Error('已有运行组件在准备期间发生变化');
@@ -281,7 +301,12 @@ export class RuntimeResources {
     for (const [name, file] of Object.entries(this.manifest.files)) if (!this.reused.has(name)) required.add(file.resource);
     await this.selectExisting(required);
     const total = this.needed.reduce((n, r) => n + r.size, 0);
-    await ensureSpace(this.dataRoot, this.manifest.unpackedBytes + total * 2 + 256 * 1024 ** 2);
+    // Resources already reside in the application or validated offline cache;
+    // preparation streams them directly instead of downloading/copying two
+    // compressed archives. Reserve the actual private staging bytes, keeping
+    // the old runtime in place, plus room for metadata and local selftests.
+    const privateBytes = Object.entries(this.manifest.files).reduce((sum, [name, file]) => sum + (this.reused.has(name) ? 0 : file.size), 0);
+    await ensureSpace(this.dataRoot, privateBytes + 256 * 1024 ** 2);
     const resources = new Map(); let bytes = 0;
     for (const r of this.needed) {
       if (this.cancelled) return;
@@ -302,7 +327,9 @@ export class RuntimeResources {
     }
     if (bootstrap) {
       const request = path.join(this.cache, 'extraction.json');
-      await atomicJson(request, { root: staging, manifest: this.manifest, skipFiles: [...this.reused], resources: ordered.map(r => ({ path: resources.get(r.id), sha256: r.sha256 })) });
+      await atomicJson(request, { root: staging, manifest: this.manifest, skipFiles: [...this.reused],
+        existingFiles: [...this.existingFiles].filter(name => !this.reused.has(name)),
+        resources: ordered.map(r => ({ path: resources.get(r.id), sha256: r.sha256 })) });
       await this.command(bootstrap, [path.join(this.appRoot, 'server/extract-runtime-resources.py'), request], process.env, 600000);
     } else {
       // The fully bundled private Python is always recoverable via tar. When
@@ -353,8 +380,26 @@ export class RuntimeResources {
       if (/not found|undefined symbol/.test(dependencies)) throw Error(`${bin}: 动态依赖缺失`);
     }
     await this.command(path.join(root, 'usr/bin/python3.11'), ['-c', 'import ssl,sqlite3,ctypes,lzma,json,socket; assert sqlite3.connect(":memory:").execute("select 1").fetchone()[0] == 1'], env);
-    await this.command(path.join(root, 'usr/bin/ffmpeg'), ['-version'], env);
-    await this.command(path.join(root, 'usr/bin/ffprobe'), ['-version'], env);
+    const ffmpeg = path.join(root, 'usr/bin/ffmpeg'), ffprobe = path.join(root, 'usr/bin/ffprobe');
+    validateMediaVersions(await this.command(ffmpeg, ['-version'], env), await this.command(ffprobe, ['-version'], env));
+    // Version strings and ldd alone do not exercise codecs or image filters.
+    // Use tiny local samples; no network, account data or model requests.
+    const media = await mkdtemp(path.join(this.cache, 'media-check-'));
+    const audio = path.join(media, 'audio.mp3'), wave = path.join(media, 'decoded.wav');
+    const video = path.join(media, 'video.mp4'), jpeg = path.join(media, 'frame.jpg');
+    const convert = args => this.command(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-y', ...args], env);
+    try {
+      await convert(['-f', 'lavfi', '-i', 'sine=frequency=440:duration=0.2', audio]);
+      await convert(['-i', audio, wave]);
+      const wav = await readFile(wave);
+      if (wav.length < 44 || wav.toString('ascii', 0, 4) !== 'RIFF' || wav.toString('ascii', 8, 12) !== 'WAVE') throw Error('音频解码自检未通过');
+      await convert(['-f', 'lavfi', '-i', 'color=c=blue:s=32x32:d=0.2', '-c:v', 'mpeg4', video]);
+      const metadata = JSON.parse(await this.command(ffprobe, ['-v', 'error', '-show_streams', '-of', 'json', video], env));
+      if (metadata.streams?.[0]?.width !== 32 || metadata.streams[0].height !== 32) throw Error('视频元信息自检未通过');
+      await convert(['-i', video, '-vf', 'scale=16:16', '-frames:v', '1', jpeg]);
+      const frame = await readFile(jpeg);
+      if (frame.length < 4 || frame[0] !== 0xff || frame[1] !== 0xd8 || frame.at(-2) !== 0xff || frame.at(-1) !== 0xd9) throw Error('图片处理自检未通过');
+    } finally { await rm(media, { recursive: true, force: true }); }
   }
   async pause() { this.cancelled = true; await this.working; await this.save({ status: 'paused', message: '已暂停，已保留随包资源和原环境' }); return this.snapshot(); }
   async close() { this.cancelled = true; this.importController?.abort(); await this.working; await this.importTask?.catch(() => {}); }
