@@ -360,6 +360,25 @@ test('a saved host reference must match the pinned host hash as well as the syml
   const readyPath = path.join(f.dataRoot, 'runtime/ready.json'), ready = JSON.parse(await readFile(readyPath));
   ready.host = { tool: { sha256: hash } }; await writeFile(readyPath, JSON.stringify(ready));
   assert.equal(await f.manager.currentValid(), true);
+  assert.equal(f.manager.snapshot().details.reusedFiles, 1, 'restart reports the verified persisted system references');
   ready.host.tool.sha256 = '0'.repeat(64); await writeFile(readyPath, JSON.stringify(ready));
   assert.equal(await f.manager.currentValid(), false);
+});
+
+test('restart reuses authenticated hashes only for unchanged file signatures and rejects modified cache proofs', async t => {
+  const f = await fixture(t); f.manager.start(); await f.manager.working;
+  assert.equal(await f.manager.currentValid(), true);
+  let hashes = 0;
+  const options = { appRoot: f.appRoot, dataRoot: f.dataRoot, arch: 'x64', command: f.manager.command, selftest: f.manager.selftest,
+    hash: async file => { hashes++; return sha(await readFile(file)); } };
+  const resumed = new RuntimeResources(options); await resumed.init();
+  assert.equal(resumed.snapshot().status, 'ready'); assert.equal(hashes, 0, 'only metadata needs reading for an authenticated unchanged target');
+  const tool = path.join(f.dataRoot, 'runtime/tool'), original = await readFile(tool);
+  await writeFile(tool, Buffer.alloc(original.length, 0x57));
+  assert.equal(await resumed.currentValid(), false); assert.ok(hashes > 0, 'changed inode metadata must force a real content hash');
+  const file = path.join(f.dataRoot, 'runtime-cache/verification.json'), saved = JSON.parse(await readFile(file));
+  saved.body.hashes[0][1].sha256 = 'f'.repeat(64); await writeFile(file, JSON.stringify(saved), { mode: 0o600 });
+  hashes = 0; const tampered = new RuntimeResources(options); await tampered.init();
+  assert.notEqual(tampered.snapshot().status, 'ready'); assert.ok(hashes > 0, 'invalid authentication cannot reuse the saved hash');
+  assert.equal(await tampered.currentValid(), false);
 });

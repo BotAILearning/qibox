@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import { architecture, runtimeLibraries } from './platform.mjs';
 import { atomicJson, jsonFile, hashFile, AppError, ensureSpace } from './files.mjs';
 import { hashRuntimeFile } from './runtime-hash.mjs';
+import { verificationCacheKey, loadVerificationCache, saveVerificationCache } from './runtime-verification-cache.mjs';
 
 const exists = async p => !!await stat(p).catch(() => null);
 // Bound filesystem work rather than serializing tens of thousands of reads.
@@ -113,6 +114,7 @@ export class RuntimeResources {
           const after = await this.fileSignature(file);
           if (after.key !== before.key) throw Error('运行组件在校验期间发生变化');
           this.verifiedHashes.set(before.canonical, { signature: before.signature, sha256 });
+          this.hashCacheDirty = true;
           return sha256;
         })();
         this.hashesInFlight.set(before.key, pending);
@@ -135,6 +137,10 @@ export class RuntimeResources {
     this.hardlinkTargets = new Set(Object.values(this.manifest.inventory || {}).filter(row => row[0] === '1').map(row => path.posix.normalize(row[4])));
     this.offline = await jsonFile(path.join(this.appRoot, 'payload', this.arch, 'runtime-offline.json'), null);
     await mkdir(this.cache, { recursive: true, mode: 0o700 });
+    this.hashCacheKey = await verificationCacheKey(this.cache);
+    const verification = await loadVerificationCache(this.cache, this.hashCacheKey, this.manifest.identity, this.arch);
+    this.verifiedHashes = new Map(verification.hashes); this.resolvedSignatures = new Map(verification.resolved);
+    this.hashCacheDirty = false;
     for (const item of await readdir(this.cache, { withFileTypes: true })) {
       if (item.isFile() && /^(?:offline|[a-f0-9]{64})\.import$/.test(item.name)) await rm(path.join(this.cache, item.name));
     }
@@ -206,7 +212,7 @@ export class RuntimeResources {
         return true;
       });
       if (!filesValid) return false;
-      return await everyRuntimeEntry(Object.entries(this.manifest.inventory || {}), async ([name, entry]) => {
+      const inventoryValid = await everyRuntimeEntry(Object.entries(this.manifest.inventory || {}), async ([name, entry]) => {
         if (entry[0] === '2' && await readlink(inside(root, name)) !== entry[4]) return false;
         if (entry[0] === '1') {
           const file = await lstat(inside(root, name)), target = await lstat(inside(root, entry[4]));
@@ -214,6 +220,14 @@ export class RuntimeResources {
         }
         return true;
       });
+      if (inventoryValid && root === this.root) { this.reused = new Set(Object.keys(ready.host || {})); this.needed = []; }
+      if (inventoryValid && root === this.root && this.hashCacheDirty) {
+        // Only a complete successful active-tree check may update the proof.
+        // Every resumed check still stats every file and verifies links/system.
+        this.hashCacheSave = (this.hashCacheSave || Promise.resolve()).catch(() => {}).then(() => saveVerificationCache(this.cache, this.hashCacheKey, this.manifest.identity, this.arch, this.verifiedHashes, this.resolvedSignatures));
+        await this.hashCacheSave.catch(() => {}); this.hashCacheDirty = false;
+      }
+      return inventoryValid;
     } catch { return false; }
   }
   async inspect() {
