@@ -150,17 +150,24 @@ export class DurableDownload {
     if (!this.resource) throw new Error('请先调用 init(resource)');
     if (this.closed) throw new Error('下载器已关闭');
     if (this.state.status === 'complete' || this.working) return this.snapshot();
-    this.abortController = new AbortController();
+    const controller = this.abortController = new AbortController();
     void this.setState('downloading', this.meta.checkpoint, null).catch(error => { this.lastError = error.message; });
-    const work = this.run(this.abortController.signal).catch(async error => {
-      if (this.abortController?.signal.aborted) {
+    const work = this.run(controller.signal).catch(async error => {
+      if (controller.signal.aborted) {
         if (!this.closed && this.state.status !== 'paused') await this.setState('paused', this.meta.checkpoint, null);
         else if (this.closed) await this.persist();
       } else {
         await rm(this.chunkPath, { force: true }).catch(() => {});
         await this.setState('error', this.meta.checkpoint, error?.message || '下载失败');
       }
-    }).finally(() => { if (this.working === work) this.working = null; });
+    }).finally(async () => {
+      // An abort after a fully received chunk can end run() normally instead
+      // of throwing. Publish pause before resolving working, so an enclosing
+      // installer cannot observe downloading and start another transfer.
+      if (controller.signal.aborted && !this.closed && this.state.status !== 'complete')
+        await this.setState('paused', this.meta.checkpoint, null);
+      if (this.working === work) this.working = null;
+    });
     this.working = work;
     return this.snapshot();
   }

@@ -12,6 +12,41 @@ import { temp, cleanup, fetcher, extractor, packageBytes, packageSha256, delay }
 const testDownloadSource = { version: '4.1.13.9', url: OFFICIAL_URL, size: packageBytes.length, sha256: packageSha256 };
 const library = options => new PackageLibrary({ downloadSource: testDownloadSource, ...options });
 
+test('pause at a fully committed chunk cannot let the installer restart the downloader', async () => {
+  const dataRoot = await temp(), payload = Buffer.alloc(3 * 1024 * 1024 + 11); Buffer.from('!<arch>\n').copy(payload);
+  const sha256 = createHash('sha256').update(payload).digest('hex'); let requests = 0, pausePromise, pauseStarted = false, announced;
+  const pauseRequested = new Promise(resolve => { announced = resolve; });
+  const server = createServer((req, res) => {
+    requests++;
+    const match = /^bytes=(\d+)-(\d+)$/.exec(req.headers.range || ''), start = Number(match?.[1] || 0), end = Number(match?.[2] || payload.length - 1);
+    res.writeHead(206, { 'content-range': `bytes ${start}-${end}/${payload.length}`, 'content-length': end - start + 1 }); res.end(payload.subarray(start, end + 1));
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const source = { version: 'fixture', url: `http://127.0.0.1:${server.address().port}/wechat.deb`, size: payload.length, sha256 };
+  const instance = library({ dataRoot, appRoot: dataRoot, downloadSource: source, downloadAllowHttp: true, fetcher: (url, init) => fetch(url, init), extract: extractor, trustedHashes: [sha256] });
+  const make = instance.makeDownloader.bind(instance);
+  instance.makeDownloader = resource => {
+    const downloader = make(resource), observe = downloader.onChange;
+    downloader.onChange = async state => {
+      await observe(state);
+      if (!pauseStarted && downloader.meta.checkpoint === 1024 * 1024) {
+        pauseStarted = true; pausePromise = instance.pauseDownload(); announced();
+      }
+    };
+    return downloader;
+  };
+  try {
+    await instance.init(); instance.download(); await pauseRequested; await pausePromise;
+    // Await any accidentally restarted work: a correct pause has no such work.
+    await instance.transfer?.working; await new Promise(resolve => setImmediate(resolve));
+    assert.equal(requests, 1, 'no new HTTP request is allowed until explicit Continue');
+    assert.equal(instance.publicState().job.status, 'paused');
+    assert.equal(instance.publicState().job.bytes, 1024 * 1024);
+    instance.resumeDownload(); await instance.working;
+    assert.equal(instance.job.status, 'complete');
+  } finally { await instance.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); await cleanup(dataRoot); }
+});
+
 test('concurrent install requests download once and reuse the installed program after restart', async () => {
   const dataRoot = await temp(); let downloads = 0;
   const instance = library({ dataRoot, appRoot: dataRoot, fetcher: async (url, options) => { downloads++; assert.equal(url, OFFICIAL_URL); assert.equal(options.redirect, 'manual'); await delay(20); return fetcher(); }, extract: extractor, trustedHashes: [packageSha256] });
