@@ -1919,7 +1919,7 @@ export class AIAssistant {
         replyWatchSince: previous?.replyWatchSince || previous?.replyConfiguredAt || this.now(), replyConfiguredAt: this.now(), replyStyleSource: 'manual', locked: [], paused: previous?.paused || false, rounds: previous?.rounds || 0 });
       const profile = this.data.profiles[id];
       if (resolvedMemory) Object.assign(profile, resolvedMemory);
-      if (options) profile.replyOptions = { ...this.replyOptions(profile), ...options };
+      if (options) profile.replyOptions = { ...profile.replyOptions, ...options };
       if (resolvedGroup) {
         const before = profile.groupOptions || groupDefaults();
         for (const trigger of ['atMe','atAll','realtime']) if (resolvedGroup[trigger] && !before[trigger]) { profile.groupBaselines ||= {}; profile.groupBaselines[trigger] = this.cursors.get(id)?.last; }
@@ -1934,11 +1934,11 @@ export class AIAssistant {
           this.replyControllers.get(id)?.abort(); this.replyControllers.delete(id); this.followUps.delete(id);
           if (replyEnabled) profile.replyWatchSince = this.now();
           else this.cursors.delete(id);
-          profile.replyOptions = { ...this.replyOptions(profile), enabled: replyEnabled };
+          profile.replyOptions = { ...profile.replyOptions, enabled: replyEnabled };
           if (replyEnabled) this.data.replyTargets = [...new Set([...this.data.replyTargets, id])];
           else this.data.replyTargets = this.data.replyTargets.filter(x => x !== id);
         }
-        profile.replyOptions = { ...this.replyOptions(profile), enabled: replyEnabled };
+        profile.replyOptions = { ...profile.replyOptions, enabled: replyEnabled };
       } else if (!preserveSwitches) { this.data.replyTargets = [...new Set([...this.data.replyTargets, id])]; this.data.settings.reply = true; }
       this.data.profiles[id].replyStyleSet = styleSet ?? true;
       delete this.data.profiles[id].pendingStyle;

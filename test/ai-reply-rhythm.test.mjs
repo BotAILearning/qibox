@@ -58,6 +58,49 @@ test('mixed legacy timing, takeover, and replyOptions.multiTurn read through unc
   assert.equal(persisted.rhythm, undefined, 'read-through and unrelated saves must not silently migrate the profile');
 });
 
+test('saving legacy profile options preserves inherited multiTurn and only its own timing or takeover override', async t => {
+  for (const override of ['timing', 'takeover']) await t.test(`${override}-only profile`, async t => {
+    const savedProfile = {
+      replyOptions: { enabled: true, judgeReply: true },
+      ...(override === 'timing' ? { timing: { replyDelay: 33, segmentDelayMin: 3 } } : { takeover: { enabled: true, minutes: 12 } }),
+    };
+    const f = await fixture(t, { saved: {
+      settings: { ...legacyTiming, takeover: { enabled: true, minutes: 6 }, multiTurn: false },
+      profile: savedProfile,
+    } });
+    let { a, profile } = f;
+    assert.equal(Object.hasOwn(profile.replyOptions, 'multiTurn'), false);
+    assert.equal(a.replyOptions(profile).multiTurn, false);
+
+    await a.saveReplyProfile({ contact: profile.contact, style: profile.style, strategy, preserveSwitches: true,
+      options: { judgeReply: false }, replyEnabled: true });
+    assert.equal(Object.hasOwn(profile.replyOptions, 'multiTurn'), false,
+      'saving judgeReply and the unchanged replyEnabled value must not materialize an inherited option');
+    assert.equal(a.replyOptions(profile).multiTurn, false);
+
+    await a.settings({ multiTurn: true, replyDelay: 27, segmentDelayMax: 70, takeover: { enabled: true, minutes: 8 } });
+    assert.equal(a.replyOptions(profile).multiTurn, true, 'legacy profile must continue to inherit the global multiTurn switch');
+    const effective = a.publicState().profiles.find(row => row.id === profile.id);
+    assert.equal(effective.effectiveTiming.replyDelay, override === 'timing' ? 33 : 27);
+    assert.equal(effective.effectiveTiming.segmentDelayMax, 70);
+    assert.equal(effective.effectiveTakeover.minutes, override === 'takeover' ? 12 : 8);
+
+    await a.close(); a = new AIAssistant(f.options); await a.init();
+    profile = a.profiles().find(row => row.contact === f.bridge.contacts[0].id);
+    assert.equal(Object.hasOwn(profile.replyOptions, 'multiTurn'), false);
+    assert.equal(a.replyOptions(profile).multiTurn, true);
+    const restartState = a.publicState().profiles.find(row => row.id === profile.id);
+    assert.equal(restartState.effectiveTiming.replyDelay, override === 'timing' ? 33 : 27);
+    assert.equal(restartState.effectiveTakeover.minutes, override === 'takeover' ? 12 : 8);
+
+    await a.saveReplyProfile({ contact: profile.contact, style: profile.style, strategy, preserveSwitches: true,
+      options: { judgeReply: true }, replyEnabled: true });
+    assert.equal(Object.hasOwn(profile.replyOptions, 'multiTurn'), false,
+      'a repeated save after restart must preserve inheritance');
+    assert.equal(a.replyOptions(profile).multiTurn, true);
+  });
+});
+
 test('legacy profile with multiTurn false still permits split replies and makes no follow-up request', async t => {
   const f = await fixture(t, { saved: {
     settings: { ...legacyTiming, takeover: { enabled: true, minutes: 7 }, multiTurn: true },
