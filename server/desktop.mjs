@@ -33,7 +33,14 @@ export async function restoreWechatWindow(options) {
 export async function activateWechatWindow(options) {
   const windows = (await wechatWindows(options)).filter(window => window.visible);
   const tool = `${options.root}/usr/bin/xdotool`;
-  const active = (await options.command(tool, ['getactivewindow'], options.env, 5000)).trim();
+  // A freshly restarted desktop can have no active X window yet. Select only
+  // an independently verified owned window, then require focus verification.
+  let active;
+  try { active = (await options.command(tool, ['getactivewindow'], options.env, 5000)).trim(); }
+  catch (error) {
+    if (!/XGetWindowProperty\[_NET_ACTIVE_WINDOW\].*failed|xdo_get_active_window reported an error/.test(error.message)) throw error;
+    active = '';
+  }
   // Detached chats are owned NORMAL windows too. Reconnecting should preserve
   // the user's current chat instead of rejecting the whole desktop as ambiguous.
   if (windows.some(window => Number(active) === Number(window.id))) return false;

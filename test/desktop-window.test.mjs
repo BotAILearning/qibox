@@ -97,3 +97,20 @@ test('chat open reuses a recent verified visible window without another X scan',
   const runtime = { isWechat: true, status: 'running', desktopEnv: {}, windowState: { state: () => true } };
   assert.equal(await Runtime.prototype.showWindow.call(runtime), false);
 });
+
+
+test('fresh desktop without an active X window can activate only a verified owned window', async () => {
+  let active = null, reads = 0; const activated = [];
+  const options = { root: '/runtime', env: {}, pid: 100, command: async (bin,args) => {
+    if(bin.endsWith('xdotool')) {
+      if(args[0]==='getactivewindow') { reads++; if(active===null) throw Error('xdotool: XGetWindowProperty[_NET_ACTIVE_WINDOW] failed (code=1)'); return active; }
+      activated.push(args); active=String(Number(args[2])); return '';
+    }
+    if(args[0]==='--root') return '_NET_CLIENT_LIST(WINDOW) = 0x123, 333\n';
+    return `WM_CLASS(STRING) = "wechat", "wechat"\nWM_STATE(WM_STATE) = 1, 0\n_NET_WM_WINDOW_TYPE(ATOM) = _NET_WM_WINDOW_TYPE_NORMAL\n_NET_WM_PID(CARDINAL) = ${args[1]==='333'?200:100}\n`;
+  }};
+  assert.equal(await activateWechatWindow(options),true);
+  assert.deepEqual(activated,[['windowactivate','--sync','0x123']]); assert.equal(reads,2);
+  options.command = async (bin,args)=>{if(args[0]==='--root')return '_NET_CLIENT_LIST(WINDOW) = 0x123\n';if(bin.endsWith('xdotool'))throw Error('permission denied');return 'WM_CLASS(STRING) = "wechat", "wechat"\nWM_STATE(WM_STATE) = 1, 0\n_NET_WM_PID(CARDINAL) = 100\n';};
+  await assert.rejects(activateWechatWindow(options),/permission denied/);
+});
