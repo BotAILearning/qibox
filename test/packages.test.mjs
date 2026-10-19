@@ -181,10 +181,16 @@ test('restart removes only disposable interrupted install directories', async ()
   try { await mkdir(job, { recursive: true }); await writeFile(path.join(job, 'partial'), 'data'); await mkdir(path.join(root, 'keep-me')); const instance = library({ dataRoot, appRoot: dataRoot }); await instance.init(); await assert.rejects(access(job)); await access(path.join(root, 'keep-me')); }
   finally { await cleanup(dataRoot); }
 });
-test('unverified uploaded executables cannot become the shared application', async () => {
+test('an integrity-checked unknown WeChat version installs without a version or normal_key warning', async () => {
   const dataRoot = await temp(); let extracted = false;
   const instance = library({ dataRoot, appRoot: dataRoot, extract: async () => { extracted = true; return { version: '4.1.13.9' }; } });
-  try { await instance.init(); await instance.upload(Readable.from(packageBytes), packageBytes.length); assert.equal(instance.current, null); assert.equal(extracted, true); assert.match(instance.job.message, /与栖盒适配的版本结构差异较大/); }
+  try {
+    await instance.init(); await instance.upload(Readable.from(packageBytes), packageBytes.length);
+    assert.equal(extracted, true); assert.equal(instance.job.status, 'complete'); assert.ok(instance.current);
+    assert.equal(instance.publicState().installed.adapted, false);
+    assert.equal('support' in instance.publicState().installed, false);
+    assert.equal('runningUnadapted' in instance.publicState(), false);
+  }
   finally { await instance.close(); await cleanup(dataRoot); }
 });
 

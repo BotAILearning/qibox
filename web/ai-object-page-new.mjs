@@ -1,5 +1,6 @@
+import { replyRhythm, inheritsReplyRhythm } from '../server/ai-reply-rhythm.mjs';
 import { timingDefaults } from '../server/ai-timing-fields.mjs';
-import { timingFields, timingEffectiveSummary } from './ai-settings-view.mjs';
+import { rhythmFields, rhythmSummary } from './ai-settings-view.mjs';
 import { objectStyleTabs } from './ai-account-settings.mjs';
 import { memoryFields, memoryHistoryMarkup, personMemoryTypes, groupMemoryTypes } from './ai-memory-view.mjs';
 import { styleChoice, styleSummary } from './ai-style-view.mjs';
@@ -15,28 +16,30 @@ const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;
 const avatar = contact => contactPickerAvatar(contact);
 const toggle = (key, title, hint, checked, disabled = false, main = false) => `<div class="ai-reference-toggle ${main ? 'main ai-reply-module-heading' : ''} ${disabled ? 'dim' : ''}"><div class="ai-reference-toggle-copy">${main ? `<h4>${title}</h4>` : `<b>${title}</b>`}<small>${hint}</small></div><input type="checkbox" name="${key}" role="switch" data-object-option="${key}" ${key === 'atMe' || key === 'atAll' || key === 'realtime' ? 'data-group-option' : ''} aria-label="${title}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}></div>`;
 const tab = (id, title, current) => `<button type="button" data-ai-object-section="${id}" class="${current === id ? 'active' : ''}" aria-current="${current === id ? 'page' : 'false'}">${title}</button>`;
+export function objectRhythmDraft(form) {
+  const box = form?.querySelector('[data-rhythm-personal]');
+  if (!box) return {};
+  const inherited = !!form.elements.inheritRhythm?.checked;
+  const personal = box.dataset.showingInherited === 'true' ? JSON.parse(box.dataset.rhythmPersonal) : {
+    timing: Object.fromEntries(Object.keys(timingDefaults).map(key => [key, Number(form.elements[key].value)])),
+    takeover: { enabled: form.elements.takeoverEnabled.checked, minutes: Number(form.elements.takeoverMinutes.value) },
+    segmentReplies: form.elements.segmentReplies.checked, followUpEnabled: form.elements.followUpEnabled.checked,
+  };
+  return { __rhythmPersonal: personal, inheritRhythm: inherited, __rhythmChanged: box.dataset.changed === 'true' };
+}
 export function refreshObjectTiming(form, state) {
-  if (!form) return;
-  const profile = (state.profiles || []).find(item => item.contact === form.dataset.contact);
-  const inherited = form.querySelector('[name=inheritTiming]')?.checked;
-  for (const key of Object.keys(timingDefaults)) {
-    const input = form.querySelector(`[name=${key}]`); if (!input) continue;
-    input.disabled = !!inherited;
-    if (inherited) input.value = state.settings?.[key] ?? timingDefaults[key];
+  const box = form?.querySelector('[data-rhythm-personal]'); if (!box) return;
+  const inherited = !!form.elements.inheritRhythm?.checked;
+  const personal = JSON.parse(box.dataset.rhythmPersonal);
+  const value = inherited ? replyRhythm(state.settings) : personal;
+  for (const [key, val] of Object.entries({ ...value.timing, takeoverEnabled: value.takeover.enabled, takeoverMinutes: value.takeover.minutes, segmentReplies: value.segmentReplies, followUpEnabled: value.followUpEnabled })) {
+    const input = form.elements[key]; if (!input) continue;
+    input.disabled = inherited;
+    if (input.type === 'checkbox') input.checked = val; else input.value = val;
   }
-  const inheritedTakeover = form.querySelector('[name=inheritTakeover]')?.checked;
-  const rule = state.settings?.takeover || {enabled:true,minutes:5};
-  for (const key of ['takeoverEnabled','takeoverMinutes']) {
-    const input = form.querySelector(`[name=${key}]`); if (!input) continue;
-    input.disabled = !!inheritedTakeover;
-    if (inheritedTakeover) { if (key === 'takeoverEnabled') input.checked = rule.enabled; else input.value = rule.minutes; }
-  }
-  const effective = form.querySelector('[data-effective-timing]');
-  const currentTiming = profile?.effectiveTiming || { ...timingDefaults, ...state.settings, ...(profile?.timing || {}) };
-  if (effective) effective.textContent = `当前执行值（${profile?.timing ? '此对象独立设置' : '继承全局设置'}）：${timingEffectiveSummary(currentTiming)}`;
-  const takeoverEffective = form.querySelector('[data-effective-takeover]');
-  const currentTakeover = profile?.effectiveTakeover || profile?.takeover || rule;
-  if (takeoverEffective) takeoverEffective.textContent = `当前执行值（${profile?.takeover ? '此对象独立设置' : '继承全局设置'}）：${currentTakeover.enabled ? `开启，${Number(currentTakeover.minutes) || 5} 分钟` : '关闭'}。`;
+  box.dataset.showingInherited = String(inherited);
+  box.querySelector('[data-followup-waits]').hidden = !value.followUpEnabled;
+  box.querySelector('[data-takeover-minutes]').hidden = !value.takeover.enabled;
 }
 export function objectExecutionStatus(state, contactId) {
   const profile = state.profiles.find(p => p.contact === contactId);
@@ -77,14 +80,12 @@ export function objectPage(state, view) {
   const realtimeModes = `<fieldset class="ai-reference-realtime-modes ai-reply-module-body"><legend class="sr-only">实时回复模式</legend><div class="ai-reference-mode-options"><label><input type="radio" name="realtimeMode" value="normal" ${realtimeMode === 'normal' ? 'checked' : ''}><span><b>正常回复</b><small>有合适话题时可以插入回复</small></span></label><label><input type="radio" name="realtimeMode" value="proactive" ${realtimeMode === 'proactive' ? 'checked' : ''}><span><b>积极主动</b><small>积极参与，尽量回复</small></span></label></div></fieldset>`;
   const replyChoices = isGroup
     ? `<div class="ai-reference-dependency ai-reference-group-dependency"><section class="ai-reference-mention-block ai-reply-module"><h4 class="ai-reference-group-title ai-reply-module-heading">提及回复</h4><div class="ai-reference-group-options ai-reply-module-body">${toggle('atMe', '@我时回复', '被 @我 必须回复', group.atMe)}${toggle('atAll', '@所有人时回复', '根据内容判断是否回复', group.atAll)}${limit}</div></section><section class="ai-reference-realtime-block ai-reply-module ${group.realtime ? 'on' : 'off'}">${toggle('realtime', '群聊实时参与', '处理未提及的群消息', group.realtime, false, true)}${group.realtime ? realtimeModes : ''}</section></div>`
-    : `<section class="ai-reference-dependency ai-reply-module ${opts.enabled ? 'on' : 'off'}">${toggle('enabled', '自动回复', '新消息到达时处理', opts.enabled, false, true)}<div class="ai-reference-children" ${opts.enabled ? '' : 'hidden'}><div class="ai-reference-child-grid">${toggle('multiTurn', '多轮交流', '自然延续对话', opts.multiTurn)}${toggle('judgeReply', '智能判断是否回复', '避免过度打扰', opts.judgeReply)}${limit}</div></div></section>`;
-  const timing = { ...timingDefaults, ...state.settings, ...(profile?.effectiveTiming || profile?.timing), ...Object.fromEntries(Object.keys(timingDefaults).filter(key => view.draft?.[key] !== undefined).map(key => [key, view.draft[key]])) };
-  const takeover = profile?.takeover || state.settings.takeover || { enabled: true, minutes: 5 };
-  const currentTakeover = profile?.effectiveTakeover || takeover;
-  const takeoverInherited = view.draft?.inheritTakeover === undefined ? !profile?.takeover : !!view.draft.inheritTakeover;
-  const timingSource = profile?.timing ? '此对象独立设置' : '继承全局设置';
-  const takeoverSource = profile?.takeover ? '此对象独立设置' : '继承全局设置';
-  const waits = `<section class="ai-reply-module ai-object-timing qi-settings-group"><h4 class="ai-reply-module-heading">回复快慢与人工接管</h4><div class="ai-reply-module-body"><label class="ai-check ai-inherit-check qi-setting-row"><input type="checkbox" name="inheritTiming" ${view.draft?.inheritTiming === undefined ? !profile?.timing ? 'checked' : '' : view.draft.inheritTiming ? 'checked' : ''}>继承全局回复快慢</label><div class="ai-timing-fields qi-setting-controls">${timingFields(timing)}</div><p class="ai-effective-note qi-setting-effective" data-effective-timing>当前执行值（${timingSource}）：${timingEffectiveSummary(profile?.effectiveTiming || { ...timingDefaults, ...state.settings, ...(profile?.timing || {}) })}</p><div class="ai-object-takeover qi-setting-dependent"><label class="ai-check ai-inherit-check qi-setting-row"><input type="checkbox" name="inheritTakeover" ${takeoverInherited ? 'checked' : ''}>继承全局人工接管设置</label><div class="ai-takeover-controls"><label class="ai-check ai-object-takeover-switch qi-setting-row"><input type="checkbox" name="takeoverEnabled" role="switch" aria-label="手动回复后自动恢复" ${view.draft?.takeoverEnabled === undefined ? takeover.enabled ? 'checked' : '' : view.draft.takeoverEnabled ? 'checked' : ''}>手动回复后自动恢复</label><label class="ai-field ai-object-takeover-minutes">恢复等待<span class="ai-number-unit qi-number-unit"><input type="number" name="takeoverMinutes" min="1" max="10080" value="${view.draft?.takeoverMinutes ?? takeover.minutes}"><span>分钟</span></span></label></div><p class="ai-effective-note qi-setting-effective" data-effective-takeover>当前执行值（${takeoverSource}）：${currentTakeover.enabled ? `开启，${Number(currentTakeover.minutes) || 5} 分钟` : '关闭'}。</p><p class="ai-help">你手动回复后，从对方下一条新消息开始独立计时；同轮后续来信不延长等待，不受消息合并和发送间隔影响。关闭自动恢复后，手动回复将关闭该对象自动回复。</p></div></div></section>`;
+    : `<section class="ai-reference-dependency ai-reply-module ${opts.enabled ? 'on' : 'off'}">${toggle('enabled', '自动回复', '新消息到达时处理', opts.enabled, false, true)}<div class="ai-reference-children" ${opts.enabled ? '' : 'hidden'}><div class="ai-reference-child-grid">${toggle('judgeReply', '智能判断是否回复', '避免过度打扰', opts.judgeReply)}${limit}</div></div></section>`;
+  const savedRhythm = replyRhythm(state.settings, profile);
+  const personalRhythm = view.draft?.__rhythmPersonal || profile?.rhythm?.personal || savedRhythm;
+  const inheritRhythm = view.draft?.inheritRhythm ?? inheritsReplyRhythm(profile);
+  const displayedRhythm = inheritRhythm ? replyRhythm(state.settings) : personalRhythm;
+  const waits = `<details class="ai-reply-module ai-reply-rhythm ai-object-timing qi-settings-group" data-ai-optional="object-rhythm"><summary class="ai-reply-module-heading"><h4>回复节奏与接管</h4><span>${esc(rhythmSummary(savedRhythm))}</span></summary><div class="ai-reply-module-body"><label class="ai-check ai-inherit-check qi-setting-row"><span>继承全局设置</span><input type="checkbox" name="inheritRhythm" ${inheritRhythm ? 'checked' : ''}></label>${profile && !profile.rhythm && !inheritsReplyRhythm(profile) ? '<p class="ai-help">旧版混合继承保持原执行规则；修改本组后统一使用此对象设置。</p>' : ''}<p class="ai-effective-note">${inheritRhythm ? '继承已保存的全局设置' : '此对象设置'}：${esc(rhythmSummary(displayedRhythm))}</p><div data-rhythm-personal="${esc(JSON.stringify(personalRhythm))}" data-changed="${view.draft?.__rhythmChanged === true}" data-showing-inherited="${inheritRhythm}">${rhythmFields(displayedRhythm)}</div></div></details>`;
   const reply = `<section class="ai-reference-panel ai-reference-reply-panel" data-ai-object-panel="reply" ${section !== 'reply' ? 'hidden' : ''}><div class="ai-reference-reply-main">${replyChoices}</div><div data-ai-object-execution="${esc(contact.id)}">${objectExecutionStatus(state, contact.id)}</div><div class="ai-reference-reply-settings" ${!isGroup && !opts.enabled ? 'hidden' : ''}>${strategy}${waits}<section class="ai-reference-multimodal ai-reply-module"><h4 class="ai-reply-module-heading">多模态回复</h4><div class="ai-reply-module-body">${toggle('sendImages', '图片输出', '对方提出需要时，允许生成并发送图片', opts.sendImages)}${toggle('sendAudio', '原生语音输出', '允许将回复合成为微信原生语音', opts.sendAudio)}<p class="ai-help">需要模型服务支持对应生成能力，并具有媒体接口权限。栖盒负责兼容发送；不支持或生成失败时保留文字回复。语音使用普通 AI 合成声音，通过微信录音发送。单条时长受微信限制，长回复保留文字。</p>${opts.sendAudio && state.capabilities?.nativeVoiceOutput === false ? '<p class="ai-help">微信原生语音输入尚未准备好，请重新打开该微信后重试。</p>' : ''}${state.capabilities?.mediaOutput ? '' : '<p class="ai-help">当前模型服务或微信通道未确认支持媒体输出，勾选后仍按可用能力处理。</p>'}</div></section></div></section>`;
   const style = `<section class="ai-reference-panel ai-reference-style" data-ai-object-panel="style" ${section !== 'style' ? 'hidden' : ''}><div class="ai-reference-style-head"><h4>聊天风格</h4><div class="ai-actions"><button type="button" class="secondary" data-ai-style-command="add">＋自定义风格</button>${value.styleId && value.styleId !== 'learned' ? '<button type="button" class="quiet" data-ai-style-command="rename">重命名</button>' : ''}${value.styleId ? '<button type="button" class="quiet danger-link" data-ai-style-command="delete">删除</button>' : ''}</div></div><div class="ai-reference-style-body"><div class="ai-style-pills" role="group" aria-label="选择聊天风格">${styles.map(p => `<button type="button" data-ai-style="${esc(p.id)}" aria-pressed="${value.styleId === p.id}">${esc(p.label)}</button>`).join('')}</div><input type="hidden" name="styleId" value="${esc(value.styleId)}"><label class="ai-field"><span>风格说明</span><textarea name="summary" maxlength="6000" rows="6">${esc(value.summary)}</textarea></label>${value.styleId ? '' : `<p class="ai-help">当前跟随账号默认风格。<button type="button" class="quiet" data-ai-nav="default-style">学习默认风格</button></p>`}</div></section>`;
   const memoryTypes = isGroup ? [...groupMemoryTypes, ...(profile?.memory?.entries?.some(entry => ['name','addressing','phone','birthday','date','school','household','residence','workplace','employer','shipping'].includes(entry.field)) ? [['legacy','旧版记忆']] : [])] : personMemoryTypes;

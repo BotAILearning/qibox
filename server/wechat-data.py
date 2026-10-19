@@ -15,6 +15,7 @@ import gc
 import hmac
 import importlib.util
 import json
+import errno
 import os
 import pathlib
 import re
@@ -93,7 +94,8 @@ FAILURE_STAGES = {'message too long': 'message-too-long', 'unsupported message t
                   # Databases / keys: WeChat loads these on demand, so a missing
                   # key is a "not loaded yet" state, not a broken session.
                   'database key unavailable': 'key-unavailable', 'key scan limit': 'limit',
-                  'unsupported encryption': 'encryption', 'database path changed': 'database-changed',
+                  'unsupported encryption': 'encryption', 'database file incomplete': 'not-ready',
+                  'database path changed': 'database-changed',
                   # Account / directory identity.
                   'active account unavailable': 'account-unavailable', 'account identity unavailable': 'account-unavailable',
                   'ambiguous account': 'account-unavailable', 'duplicate contact identity': 'contact-unavailable',
@@ -113,6 +115,18 @@ FAILURE_STAGES = {'message too long': 'message-too-long', 'unsupported message t
 # loop should try again, and only if every attempt fails does the app explain it.
 TRANSIENT_STAGES = {'database changing': 'database-changed', 'WAL changing': 'database-changed',
                     'WAL commit changing': 'database-changed', 'database set changing': 'database-changed'}
+
+
+def failure_stage(error):
+    """Return a public capability failure without exposing paths or SQL details."""
+    if isinstance(error, PermissionError):
+        return 'permission'
+    if isinstance(error, BlockingIOError) or (isinstance(error, OSError) and error.errno in (errno.EAGAIN, errno.EBUSY, errno.ETXTBSY)):
+        return 'database-busy'
+    if isinstance(error, FileNotFoundError):
+        return 'not-ready'
+    return FAILURE_STAGES.get(str(error)) or TRANSIENT_STAGES.get(str(error)) or (
+        'timeout' if isinstance(error, TimeoutError) else 'message-format' if isinstance(error, ET.ParseError) else None)
 
 
 def resident_segments(fd, address, size):
@@ -275,7 +289,9 @@ def discover_keys(pid, memory, files, check, known=None):
     for file in files:
         with file.open('rb') as stream:
             first = stream.read(sql.PAGE)
-        if len(first) != sql.PAGE or first.startswith(sql.HEADER):
+        if len(first) != sql.PAGE:
+            raise ValueError('database file incomplete')
+        if first.startswith(sql.HEADER):
             raise ValueError('unsupported encryption')
         first_pages[first[:16]] = first
     # `known` is the working set and is updated in place, so a caller that passes
@@ -1322,16 +1338,20 @@ def execute(request, pid, home, check, cache=None):
                 raise ValueError('contact uid unavailable')
             if request['action'] == 'read-dates':
                 days = set()
+                readable_shards = 0
                 table = 'Msg_' + hashlib.md5(target['username'].encode()).hexdigest()
                 for file in files[1:]:
                     shard = database(file)
                     if shard is None:
                         continue
+                    readable_shards += 1
                     try:
                         if shard.query("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,)):
                             for (day,) in shard.query(f'SELECT DISTINCT CAST((create_time + 28800) / 86400 AS INTEGER) FROM [{table}] WHERE create_time >= 0'):
                                 if type(day) is int and 0 <= day <= 120000: days.add(day)
                     finally: shard.close()
+                if not readable_shards:
+                    raise ValueError('chat messages not loaded')
                 result = {'account': account, 'contact': target['id'], 'days': sorted(days)}
             else:
                 # Select globally by metadata before decoding bodies. Irrelevant old
@@ -1620,8 +1640,7 @@ def main():
                     cancelled = False; soft = False
                 else:
                     if cache is not None: cache.invalidate(error)
-                    stage = FAILURE_STAGES.get(str(error)) or TRANSIENT_STAGES.get(str(error)) or (
-                        'timeout' if isinstance(error, TimeoutError) else 'message-format' if isinstance(error, ET.ParseError) else None)
+                    stage = failure_stage(error)
                     result = {'error': 'data-unavailable', **({'stage': stage} if stage else {})}
             if cancelled: break
             published_chars = publish(result)

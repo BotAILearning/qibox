@@ -25,7 +25,7 @@ function safeNativeOpenDiagnostic(value) {
   if (!nativeOpenPhases.has(phase) || !nativeOpenCodes.has(code)) return null;
   return { phase, code };
 }
-const readFailure = stage => {
+const readFailure = (stage, action) => {
   // Every stage the private reader can report is named here. An unmapped stage
   // used to fall through to the generic "暂时无法读取微信数据" message, which
   // told the user nothing and looked like a lost WeChat session even when the
@@ -43,11 +43,16 @@ const readFailure = stage => {
     'contact-uid-unavailable': '该联系人缺少微信内部身份，当前只能按微信号区分，暂无法读取聊天记录',
     'account-unavailable': '当前微信账号数据暂不可用，请确认微信已登录后重试',
     'database-changed': '微信聊天数据库正在写入，请稍后重试',
-    schema: '当前微信版本的聊天数据库结构暂不支持读取',
-    'schema-ordering': '当前微信版本的聊天排序结构暂不支持读取',
+    'database-busy': '微信聊天数据库正被占用，请稍后重试',
+    permission: '当前没有权限读取微信数据，请检查栖盒与微信的数据访问权限',
+    'not-ready': '微信数据文件尚未准备好，请确认微信已完成登录和初始化后重试',
+    schema: ['contacts', 'identity', 'account'].includes(action)
+      ? '已确认当前通讯录数据库结构不兼容，暂无法在栖盒读取联系人；仍可在微信官方窗口手动查看和操作'
+      : '已确认当前聊天记录数据库结构不兼容，暂无法在栖盒读取历史；仍可在微信官方窗口手动查看和操作',
+    'schema-ordering': '已确认当前聊天记录排序结构不兼容，暂无法在栖盒读取历史；仍可在微信官方窗口手动查看和操作',
     identity: '聊天记录中存在无法确认归属的消息，已停止读取',
     limit: '微信进程内存过大，密钥扫描超出预算，请稍后重试',
-    encryption: '微信数据库加密方式暂不支持',
+    encryption: '已确认当前微信数据库加密格式不兼容，暂无法在栖盒读取数据；仍可在微信官方窗口手动查看和操作',
     request: '读取请求无效',
     timeout: '读取聊天记录超时，请稍后重试',
     'analysis-range': '分析时间范围或分页位置无效',
@@ -306,7 +311,7 @@ export class DataChatBridge extends NativeChatBridge {
       if (result?.error === 'account-changed' || args.account && result?.account && result.account !== args.account) {
         this.clear(); throw new AppError('微信账号已变化，请重新获取联系人', 409, 'ai_account_changed');
       }
-      if (!result || result.error || !key(result.account)) throw readFailure(result?.stage);
+      if (!result || result.error || !key(result.account)) throw readFailure(result?.stage, action);
       // Authenticated current-process data also establishes login when native
       // accessibility is slow (often the second WeChat instance). Malformed,
       // failed, changed-account or cancelled reads never establish login.

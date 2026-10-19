@@ -23,7 +23,9 @@ test('frequent switches precede configuration while saved off states and waiting
   assert.match(html, /name="master"[^>]*>/);
   assert.doesNotMatch(html, /name="master"[^>]*checked/);
   assert.doesNotMatch(html, /name="enabled"[^>]*checked/);
-  assert.match(html, /name="minutes"[^>]*value="17"[^>]*disabled/);
+  assert.match(html, /name="minutes"[^>]*value="17"/);
+  assert.match(html, /data-takeover-minutes hidden/);
+  assert.doesNotMatch(html, /name="appearance"/);
   assert.match(html, /name="acknowledgeAI"[^>]*checked/);
 });
 

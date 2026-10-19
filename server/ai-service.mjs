@@ -1,3 +1,4 @@
+import { replyRhythm } from './ai-reply-rhythm.mjs';
 import { initDefaultStyleAccounts, rememberDefaultStyle, switchDefaultStyleAccount, verifyDefaultStyleAccount, saveDefaultStyleChange } from './ai-default-style-scope.mjs';
 import { mediaCapability, mediaOutputPrompt, generateMediaOutput } from './ai-media-output.mjs';
 import { readableMediaInput } from './ai-media-input.mjs';
@@ -1804,7 +1805,7 @@ export class AIAssistant {
         if (value.settingsToken !== currentToken) throw new AppError('AI 设置已在其他页面更新，请重新读取后再操作', 409, 'AI_SETTINGS_CHANGED');
       }
       const next = { ...this.data.settings, ...timingValue(value, effectiveTiming(this.data.settings)) };
-      for (const key of ['enabled', 'proactive', 'reply', 'judgeReply', 'autoLearning', 'multiTurn', 'acknowledgeAI']) if (value[key] !== undefined) { if (typeof value[key] !== 'boolean') throw new AppError('开关设置无效'); next[key] = value[key]; }
+      for (const key of ['enabled', 'proactive', 'reply', 'judgeReply', 'autoLearning', 'multiTurn', 'segmentReplies', 'followUpEnabled', 'acknowledgeAI']) if (value[key] !== undefined) { if (typeof value[key] !== 'boolean') throw new AppError('开关设置无效'); next[key] = value[key]; }
       if (value.updateStyle !== undefined && value.autoLearning === undefined && value.updateStyle !== next.autoLearning) throw new AppError('请使用系统设置中的自动学习总开关');
       next.updateStyle = next.autoLearning;
       if (next.autoLearning !== this.data.settings.autoLearning) {
@@ -1879,7 +1880,7 @@ export class AIAssistant {
       await this.save(); return { ...this.publicState(), appliedReplyLimit: { kind, maxRounds, count: [...this.contacts.values()].filter(target => target.kind === kind).length, configuredCount: count } };
     });
   }
-  async saveReplyProfile({ contact, style: value, strategy: reply, preserveSwitches = false, replyEnabled, styleSet, styleId, applyCombinedLearning = false, combinedLearningId, inheritStrategy, group, options, memory, timing, takeover } = {}) {
+  async saveReplyProfile({ contact, style: value, strategy: reply, preserveSwitches = false, replyEnabled, styleSet, styleId, applyCombinedLearning = false, combinedLearningId, inheritStrategy, group, options, memory, timing, takeover, rhythm } = {}) {
     return this.exclusive(async () => {
       const target = this.contacts.get(contact);
       if (!this.available || !this.data.account || !['person', 'group'].includes(target?.kind)) throw new AppError('请先获取并选择联系人或群聊');
@@ -1889,6 +1890,11 @@ export class AIAssistant {
       if (styleSet !== undefined && typeof styleSet !== 'boolean') throw new AppError('风格设置状态无效');
       if (!strategyReady(replyStrategy, 'reply')) throw new AppError('请填写回复目的和不能擅自决定的事项');
       const id = digest(`${this.data.account}\0${contact}`), previous = this.data.profiles[id];
+      let savedRhythm = previous?.rhythm;
+      if (rhythm !== undefined) {
+        if (!rhythm || typeof rhythm.inherit !== 'boolean' || !rhythm.personal || typeof rhythm.personal.segmentReplies !== 'boolean' || typeof rhythm.personal.followUpEnabled !== 'boolean') throw new AppError('回复节奏设置无效');
+        savedRhythm = { inherit: rhythm.inherit, personal: { timing: timingValue(rhythm.personal.timing || {}, effectiveTiming(this.data.settings, previous)), takeover: takeoverValue(rhythm.personal.takeover), segmentReplies: rhythm.personal.segmentReplies, followUpEnabled: rhythm.personal.followUpEnabled } };
+      }
       const savedTiming = timing === undefined ? previous?.timing : timing === null ? null : timingValue(timing, effectiveTiming(this.data.settings));
       const savedTakeover = takeover === undefined ? previous?.takeover : takeover === null ? null : takeoverValue(takeover);
       let learnedMemoryChange = null;
@@ -1907,7 +1913,7 @@ export class AIAssistant {
       const wasEnabled = previous ? this.replySelected(previous) : false;
       for (const [key, controller] of this.replyControllers) if (key === id || key.startsWith(id + ':')) controller.abort();
       this.data.profiles[id] = Object.assign(previous || {}, { id, account: this.data.account, contact, label: target.label, kind: target.kind,
-        ...resolvedStyle, timing: savedTiming || undefined, takeover: savedTakeover || undefined, customStyles: styleDraft.customStyles, styleNames: styleDraft.styleNames, hiddenStyleIds: styleDraft.hiddenStyleIds, presetSnapshots: styleDraft.presetSnapshots, replyStrategy, ...(inheritStrategy === undefined ? {} : { inheritReplyStrategy: inheritStrategy }), source: previous?.source || 'manual', preparedAt: previous?.preparedAt || this.now(),
+        ...resolvedStyle, rhythm: savedRhythm, timing: savedTiming || undefined, takeover: savedTakeover || undefined, customStyles: styleDraft.customStyles, styleNames: styleDraft.styleNames, hiddenStyleIds: styleDraft.hiddenStyleIds, presetSnapshots: styleDraft.presetSnapshots, replyStrategy, ...(inheritStrategy === undefined ? {} : { inheritReplyStrategy: inheritStrategy }), source: previous?.source || 'manual', preparedAt: previous?.preparedAt || this.now(),
         learnedAt: applyCombinedLearning ? this.now() : previous?.learnedAt || null,
         ...(applyCombinedLearning ? { learnedStyle: structuredClone(previous.pendingStyle), source: previous.source === 'paste' ? 'paste' : 'learned' } : {}),
         replyWatchSince: previous?.replyWatchSince || previous?.replyConfiguredAt || this.now(), replyConfiguredAt: this.now(), replyStyleSource: 'manual', locked: [], paused: previous?.paused || false, rounds: previous?.rounds || 0 });
@@ -3042,6 +3048,7 @@ export class AIAssistant {
   }
   multiTurn(profile, mode, strategy = this.strategy(profile, mode)) {
     if (mode === 'proactive') return strategy.sendMode === 'segments';
+    if (profile?.rhythm || typeof this.data.settings.followUpEnabled === 'boolean') return replyRhythm(this.data.settings, profile).followUpEnabled;
     if (typeof profile?.replyOptions?.multiTurn === 'boolean') return profile.replyOptions.multiTurn;
     return this.continuing(profile) ? strategy.sendMode === 'segments' : this.replyOptions(profile).multiTurn;
   }
@@ -3130,7 +3137,7 @@ export class AIAssistant {
     const strategy = this.strategy(profile, mode), continuation = mode === 'reply' && this.continuing(profile);
     const groupState = profile.kind === 'group' ? { trigger, triggerMessages: burst?.messages?.map(message => withSpeaker(message, profile)), now: this.now(), recentActions: this.data.events.filter(e => e.target === profile.id && this.now() - e.at <= 600000).map(({ code, at }) => ({ code, at })), lastManualAt: profile.groupPauseReason === 'manual' ? profile.groupPausedUntil - 600000 : null } : undefined;
     const multiTurn = this.multiTurn(profile, mode, strategy);
-    const allowSegments = mode === 'reply' || multiTurn;
+    const allowSegments = mode === 'reply' ? replyRhythm(this.data.settings, profile).segmentReplies : multiTurn;
     if (followUp && !multiTurn) return;
     const cappedRounds = profile.rounds || 0;
     if (mode === 'reply' && strategy.maxRounds !== 'unlimited' && cappedRounds >= strategy.maxRounds) {
@@ -3257,8 +3264,8 @@ export class AIAssistant {
         const sendImages = this.replyOptions(profile).sendImages && mediaReady, sendAudio = this.replyOptions(profile).sendAudio && mediaReady && this.bridge.supportsNativeVoiceOutput === true;
         result = onlyImages && !images.length && profile.kind !== 'group' ? { action: 'skip', mediaSkipped: true } : await this.provider.complete(
           this.modelFor('chat'),
-          `${replyFixedRules}${learningEnabled(this) ? learningRules : ' 自动学习已关闭，不提取或返回本人资料、风格更新和聊天记忆更新。'}${contextualStylePrompt}${speakerIdentityPrompt}${personalContextPrompt}${presentTimePrompt}${learningEnabled(this) ? chatMemoryPrompt : ''}${profile.kind === 'group' ? groupMemoryInstruction : ' 单聊中，对方姓名写入 name；只有用户确实直接这样称呼对方且对象明确时，才把称呼写入 addressing。'}${identityPrompt(allowIdentity)}${conversationPrompt}${replySummaryContext} ${mediaOutputPrompt} 只能发送文字和capabilities明确允许的生成图片或微信原生语音，不能读取或下载任意文件，不能拨打或接听电话，仅能理解实际附带的图片；未附带的图片与未转写的语音直接略过，不回复这些内容，不要求重发或转文字，不猜测内容；只回应本轮可读取的文字、微信转写或实际附带的图片。${groupTriggerInstruction}${groupBatch?.sender ? ` 本轮只回复成员ID ${groupBatch.sender} 对应的消息 ${groupBatch.ids.join(',')}，其余成员的消息仅作背景。需要称呼时仅使用members中该ID对应的真实称呼，不编造姓名。` : ''}${profile.groupContextWait?.trigger === 'atMe' ? ' 上轮已等待补充信息，本次必须回复；信息仍不足时用一句简短问题澄清，不能再次wait。' : ''}${currentTask}${currentStyle}${profile.kind === 'group' ? groupPrompt(trigger, allowSegments, profile.groupOptions?.realtimeMode) : ''}${generationProtocol({ multiTurn, allowSegments, group: profile.kind === 'group', followUpAllowed: profile.kind !== 'group' && !followUp, updateStyle: this.automaticStyleAllowed(profile, modelMessages), memoryUpdates: learningEnabled(this), allowSkip: !mustReply, allowStop: true })}${reflectiveReplyPrompt}${currentTimeAnchor(time)}${mode === 'reply' && !followUp ? ' 本轮只回应conversation.pendingIncomingMessages列出的来信；其中excerpt=true时按ID查阅messages全文。messages中pending=false的旧问题和已发回复只作背景，不能再补答。' : ''}${replySafetyPrompt}${naturalAttributionPrompt}${safetyCorrection}`,
-          { identityPolicy: { asked: identityAsked, allowDisclosure: !!allowIdentity }, images: images, onlyImages: onlyImages, capabilityConcern: reason, mode, continuation, multiTurn, allowSegments, followUp, followUpAllowed: profile.kind !== 'group' && !followUp, kind: profile.kind, replyPerspective: replyPerspective(profile), roleAnchor: replyRoleAnchor(profile), conversation, addressing, memory: replyMemory, ...time, myInformation: replyFacts, groupState, capabilities: { sendText: true, wechatVoiceText: true, files: false, calls: false, executeExternalActions: false, sendImages, sendAudio, receiveImages: images.length > 0, sendMedia: sendImages || sendAudio }, strategy, style, contextualStyle: contextualReplyStyle(modelMessages), styleOwner: 'self', ...(learningEnabled(this) ? {styleLearningMessageIds: this.automaticStyleSamples(profile, modelMessages).map(row=>row.id)} : {}), judgeReply: profile.kind === 'group' ? trigger !== 'atMe' : followUp || this.replyOptions(profile).judgeReply, updateStyle: this.automaticStyleAllowed(profile, modelMessages), messages: annotateChatTimes(modelMessages, this.now(), time.timezone).map(message => ({ ...withSpeaker(message, profile), pending: conversation.pendingIncomingIds.includes(message.id), aiGenerated: message.aiGenerated === true || (profile.generatedIds || []).includes(message.id) })) }, signal, { validate: value => validateCurrentTimeReply(validateReplyResult(value, { multiTurn, allowSegments, group: profile.kind === 'group' }), time) }
+          `${replyFixedRules}${learningEnabled(this) ? learningRules : ' 自动学习已关闭，不提取或返回本人资料、风格更新和聊天记忆更新。'}${contextualStylePrompt}${speakerIdentityPrompt}${personalContextPrompt}${presentTimePrompt}${learningEnabled(this) ? chatMemoryPrompt : ''}${profile.kind === 'group' ? groupMemoryInstruction : ' 单聊中，对方姓名写入 name；只有用户确实直接这样称呼对方且对象明确时，才把称呼写入 addressing。'}${identityPrompt(allowIdentity)}${conversationPrompt}${replySummaryContext} ${mediaOutputPrompt} 只能发送文字和capabilities明确允许的生成图片或微信原生语音，不能读取或下载任意文件，不能拨打或接听电话，仅能理解实际附带的图片；未附带的图片与未转写的语音直接略过，不回复这些内容，不要求重发或转文字，不猜测内容；只回应本轮可读取的文字、微信转写或实际附带的图片。${groupTriggerInstruction}${groupBatch?.sender ? ` 本轮只回复成员ID ${groupBatch.sender} 对应的消息 ${groupBatch.ids.join(',')}，其余成员的消息仅作背景。需要称呼时仅使用members中该ID对应的真实称呼，不编造姓名。` : ''}${profile.groupContextWait?.trigger === 'atMe' ? ' 上轮已等待补充信息，本次必须回复；信息仍不足时用一句简短问题澄清，不能再次wait。' : ''}${currentTask}${currentStyle}${profile.kind === 'group' ? groupPrompt(trigger, allowSegments, profile.groupOptions?.realtimeMode) : ''}${generationProtocol({ multiTurn, allowSegments, group: profile.kind === 'group', followUpAllowed: profile.kind !== 'group' && !followUp && multiTurn, updateStyle: this.automaticStyleAllowed(profile, modelMessages), memoryUpdates: learningEnabled(this), allowSkip: !mustReply, allowStop: true })}${reflectiveReplyPrompt}${currentTimeAnchor(time)}${mode === 'reply' && !followUp ? ' 本轮只回应conversation.pendingIncomingMessages列出的来信；其中excerpt=true时按ID查阅messages全文。messages中pending=false的旧问题和已发回复只作背景，不能再补答。' : ''}${replySafetyPrompt}${naturalAttributionPrompt}${safetyCorrection}`,
+          { identityPolicy: { asked: identityAsked, allowDisclosure: !!allowIdentity }, images: images, onlyImages: onlyImages, capabilityConcern: reason, mode, continuation, multiTurn, allowSegments, followUp, followUpAllowed: profile.kind !== 'group' && !followUp && multiTurn, kind: profile.kind, replyPerspective: replyPerspective(profile), roleAnchor: replyRoleAnchor(profile), conversation, addressing, memory: replyMemory, ...time, myInformation: replyFacts, groupState, capabilities: { sendText: true, wechatVoiceText: true, files: false, calls: false, executeExternalActions: false, sendImages, sendAudio, receiveImages: images.length > 0, sendMedia: sendImages || sendAudio }, strategy, style, contextualStyle: contextualReplyStyle(modelMessages), styleOwner: 'self', ...(learningEnabled(this) ? {styleLearningMessageIds: this.automaticStyleSamples(profile, modelMessages).map(row=>row.id)} : {}), judgeReply: profile.kind === 'group' ? trigger !== 'atMe' : followUp || this.replyOptions(profile).judgeReply, updateStyle: this.automaticStyleAllowed(profile, modelMessages), messages: annotateChatTimes(modelMessages, this.now(), time.timezone).map(message => ({ ...withSpeaker(message, profile), pending: conversation.pendingIncomingIds.includes(message.id), aiGenerated: message.aiGenerated === true || (profile.generatedIds || []).includes(message.id) })) }, signal, { validate: value => validateCurrentTimeReply(validateReplyResult(value, { multiTurn, allowSegments, group: profile.kind === 'group' }), time) }
         );
         if (result?.action === 'send') {
           const violation = replySafetyViolation(messageSegments(result, { multiTurn, allowSegments }), { allowIdentity, identityAsked, audioText: sendAudio && result.media?.[0]?.type === 'audio' ? result.media[0].text : '' });

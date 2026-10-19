@@ -69,7 +69,19 @@ test('ARM installation filters trusted imports and never reuses a stored x64 exe
     library = new PackageLibrary({ ...options, arch: 'arm64', downloadSource: source('arm64'), trustedHashes: ['a6d115d24dfe3ed1b7e7de16cf6cc02acef8df5668150f702ac8d8c5256405fa'] }); await library.init();
     assert.equal(library.installed(), null); assert.match(library.publicState().job.message, /架构/);
     assert.deepEqual(library.trustedHashes.sort(), [packageSha256, 'a6d115d24dfe3ed1b7e7de16cf6cc02acef8df5668150f702ac8d8c5256405fa'].sort());
-    await library.upload(Readable.from([packageBytes]), packageBytes.length); assert.equal(library.installed(), null);
-    library.download({ allowUnverified: true }); await library.working; assert.match(url, /arm64\.deb$/); assert.equal(library.current.arch, 'arm64');
+    await library.upload(Readable.from([packageBytes]), packageBytes.length);
+    assert.equal(library.installed().arch, 'arm64'); assert.equal(library.publicState().installed.adapted, false);
+    await library.uninstall();
+    library.download(); await library.working; assert.match(url, /arm64\.deb$/); assert.equal(library.current.arch, 'arm64');
+  } finally { await library.close(); await cleanup(dataRoot); }
+});
+
+test('ARM installation still rejects a package whose extracted architecture is x64', async () => {
+  const dataRoot = await temp();
+  const library = new PackageLibrary({ appRoot: root, dataRoot, arch: 'arm64',
+    extract: async () => ({ version: '4.1.13.9', arch: 'amd64' }) });
+  try {
+    await library.init(); await library.upload(Readable.from([packageBytes]), packageBytes.length);
+    assert.equal(library.installed(), null); assert.match(library.job.message, /架构不符/);
   } finally { await library.close(); await cleanup(dataRoot); }
 });

@@ -1,4 +1,4 @@
-import { applyAppearance } from './appearance.mjs';
+import { replyRhythm } from '../server/ai-reply-rhythm.mjs';
 import { productDialog as platformProductDialog } from './dialogs.mjs';
 import { personalInformationPage, personalEntriesFromForm, personalDraftFromForm, updatePersonalInformationForm, globalReplyStrategyPage, objectStyleTabs } from './ai-account-settings.mjs';
 import { retiredPersonalFields } from '../server/ai-personal-fields.mjs';
@@ -8,7 +8,7 @@ import { settingsPage } from './ai-settings-view.mjs';
 import { icon, iconSprite, logoIcon } from './ai-icons.mjs';
 import { keyIcon } from './ai-key-icon.mjs';
 import { memoryFields, pendingMemoryFields, wikiEntryMarkup, sameWikiEntries, degreeOptions } from './ai-memory-view.mjs';
-import { objectPage, objectList, objectExecutionStatus, refreshObjectTiming, objectWindow, OBJECT_ROW_HEIGHT } from './ai-object-view.mjs';
+import { objectPage, objectList, objectExecutionStatus, refreshObjectTiming, objectRhythmDraft, objectWindow, OBJECT_ROW_HEIGHT } from './ai-object-view.mjs';
 import { replyLimitControl, syncReplyLimitControl, parseReplyLimit, replyLimitManualMax } from './ai-reply-limit.mjs';
 import { styleChoice, styleSummary as styleSummaryText } from './ai-style-view.mjs';
 import { learnedObjectDraft } from './ai-learning-draft.mjs';
@@ -986,7 +986,8 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     if (object) {
       if (object.querySelector('[data-ai-dirty]')?.hidden === false) objectDirtyContacts.add(selectedObject);
       const draft = { ...Object.fromEntries(formData(object)) };
-      for (const key of ['inheritTiming','inheritTakeover','takeoverEnabled']) {
+      Object.assign(draft, objectRhythmDraft(object));
+      for (const key of ['takeoverEnabled']) {
         const input = object.querySelector(`[name=${key}]`); if (input) draft[key] = input.checked;
       }
       for (const key of ['replyDelay','replyMaxWait','segmentDelayMin','segmentDelayMax','followUpDelayMin','followUpDelayMax','takeoverMinutes']) {
@@ -1254,10 +1255,12 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         if (target && wikiRow.parentElement !== target) target.append(wikiRow);
         return;
       }
-      if (input.closest('#ai-takeover-form') && input.name === 'enabled') {
-        const minutes = input.closest('#ai-takeover-form').querySelector('[data-takeover-minutes]');
+      const rhythmBox = input.closest('#ai-object-form')?.querySelector('[data-rhythm-personal]');
+      if (rhythmBox && (input.closest('.ai-reply-rhythm'))) rhythmBox.dataset.changed = 'true';
+      if (input.closest('#ai-takeover-form') && ['followUpEnabled','enabled'].includes(input.name)) {
+        const minutes = input.closest('#ai-takeover-form').querySelector(input.name === 'enabled' ? '[data-takeover-minutes]' : '[data-followup-waits]');
         minutes.hidden = !input.checked;
-        minutes.querySelector('[name="minutes"]').disabled = !input.checked;
+
       }
       if (proactiveUI.change(input)) return;
       if (input.name === 'default-perspective') { defaultStylePerspective = input.value; return; }
@@ -1281,7 +1284,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         $('#ai-analysis-form button[type=submit] span').textContent = `开始分析 · ${checked.length} 位`;
         rememberDraft();
       }
-      if (input.closest('#ai-object-form') && ['inheritTiming','inheritTakeover'].includes(input.name)) {
+      if (input.closest('#ai-object-form') && ['inheritRhythm','segmentReplies','followUpEnabled','takeoverEnabled'].includes(input.name)) {
         rememberDraft(); render(); if ($('[data-ai-dirty]')) $('[data-ai-dirty]').hidden = false; return;
       }
       if (input.dataset.objectOption) {
@@ -1351,6 +1354,8 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     } catch (e) { controls(); message(e.message, true); }
   });
   panel.addEventListener('input', event => {
+    const rhythmBox = event.target.closest('#ai-object-form')?.querySelector('[data-rhythm-personal]');
+    if (rhythmBox && event.target.closest('.ai-reply-rhythm')) rhythmBox.dataset.changed = 'true';
     resizeStyleSummary();
     if (!state) return;
     if (event.target.name === 'summary' && event.target.closest('#ai-default-style-form')) {
@@ -1463,7 +1468,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         data.set('memorySummary', JSON.stringify(entries));
       }
       if (form.id === 'ai-log-filter') { if (data.get('from') && data.get('to') && data.get('from') > data.get('to')) throw new Error('开始日期不能晚于结束日期'); logFilters = { ...logFilters, ...Object.fromEntries(data), page: 0 }; const refreshed = await call(); if (refreshed) { logLoading = logFilters.source === 'reply'; logRequestScope = ''; proactiveHistoryPage = null; proactiveRecordEpoch++; proactiveRecordLoading = false; render(); await Promise.all([loadActivity(), loadProactiveRecords()]); } return; }
-            if (form.id === 'ai-takeover-form') { await execute('settings', {value:{...Object.fromEntries(['replyDelay','replyMaxWait','segmentDelayMin','segmentDelayMax','followUpDelayMin','followUpDelayMax'].map(key=>[key,Number(data.get(key))])),autoLearning:data.has('autoLearning'),enabled:data.has('master'),acknowledgeAI:data.has('acknowledgeAI'),takeover:{enabled:data.get('enabled')==='on',minutes:Number(data.get('minutes') ?? form.elements.minutes.value ?? 5)}}}, '设置已保存'); applyAppearance(data.get('appearance'),true); render(); return; }
+            if (form.id === 'ai-takeover-form') { await execute('settings', {value:{...Object.fromEntries(['replyDelay','replyMaxWait','segmentDelayMin','segmentDelayMax','followUpDelayMin','followUpDelayMax'].map(key=>[key,Number(data.get(key))])),...(data.has('segmentReplies') !== replyRhythm(state.settings).segmentReplies ? {segmentReplies:data.has('segmentReplies')} : {}),...(data.has('followUpEnabled') !== replyRhythm(state.settings).followUpEnabled ? {followUpEnabled:data.has('followUpEnabled')} : {}),autoLearning:data.has('autoLearning'),enabled:data.has('master'),acknowledgeAI:data.has('acknowledgeAI'),takeover:{enabled:data.get('enabled')==='on',minutes:Number(data.get('minutes') ?? form.elements.minutes.value ?? 5)}}}, '设置已保存'); render(); return; }
       if (form.id === 'ai-analysis-form') {
         rememberDraft();
         if (!analysisDraft.contacts.length) throw new Error('请至少选择一位联系人');
@@ -1543,7 +1548,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
           atMe: profile?.groupOptions?.atMe ?? false, atAll: profile?.groupOptions?.atAll ?? false, realtime: profile?.groupOptions?.realtime ?? false,
         };
         const optionChecked = key => !!form.elements.namedItem(key)?.checked;
-        const switchKeys = kind === 'group' ? ['atMe','atAll','realtime'] : ['enabled','multiTurn','judgeReply'];
+        const switchKeys = kind === 'group' ? ['atMe','atAll','realtime'] : ['enabled','judgeReply'];
         const changedSwitch = switchKeys.some(key => optionChecked(key) !== (replyDefaults[key] === true));
         const changedRealtimeMode = kind === 'group' && String(data.get('realtimeMode') || 'normal') !== (profile?.groupOptions?.realtimeMode || 'normal');
         const currentStyle = styleChoice(profile);
@@ -1553,9 +1558,9 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         const hasReplySettings = !!profile?.replyStrategy || ['replyGoal','boundaries'].some(key => String(data.get(key) || '').trim()) || changedSwitch || changedRealtimeMode || changedStyle || String(strategy.maxRounds) !== String(profile?.replyStrategy?.maxRounds ?? state.replyRoundLimits?.[kind] ?? state.replyStrategy?.maxRounds ?? 50);
         const memoryEntries = JSON.parse(String(data.get('memorySummary') || '[]'));
         await execute('reply-profile', { value: { contact, preserveSwitches: true, styleSet: !!summary, styleId, style, strategy,
-          timing: data.has('inheritTiming') ? null : Object.fromEntries(['replyDelay','replyMaxWait','segmentDelayMin','segmentDelayMax','followUpDelayMin','followUpDelayMax'].map(key=>[key,Number(data.get(key))])), takeover: data.has('inheritTakeover') ? null : {enabled:data.has('takeoverEnabled'),minutes:Number(data.get('takeoverMinutes'))}, inheritStrategy: data.has('inheritStrategy'), options: { multiTurn: optionChecked('multiTurn'), judgeReply: optionChecked('judgeReply'), sendImages: optionChecked('sendImages'), sendAudio: optionChecked('sendAudio') },
+          ...(objectRhythmDraft(form).__rhythmChanged ? { rhythm: { inherit: data.has('inheritRhythm'), personal: objectRhythmDraft(form).__rhythmPersonal } } : {}), inheritStrategy: data.has('inheritStrategy'), options: { judgeReply: optionChecked('judgeReply'), sendImages: optionChecked('sendImages'), sendAudio: optionChecked('sendAudio') },
           ...(kind === 'group' ? { group: { atMe: data.has('atMe'), atAll: data.has('atAll'), realtime: data.has('realtime'), realtimeMode: data.get('realtimeMode') || 'normal', ...(realtimeConfirmed ? { confirmRealtime: true } : {}) } }
-            : { replyEnabled: data.has('enabled'), options: { multiTurn: optionChecked('multiTurn'), judgeReply: optionChecked('judgeReply'), sendImages: optionChecked('sendImages'), sendAudio: optionChecked('sendAudio') } }),
+            : { replyEnabled: data.has('enabled'), options: { judgeReply: optionChecked('judgeReply'), sendImages: optionChecked('sendImages'), sendAudio: optionChecked('sendAudio') } }),
           ...(!sameWikiEntries(memoryEntries, profile?.memory?.entries || []) && !profile?.memory?.unavailable ? { memory: { entries: memoryEntries } } : {})
         } }, '设置已保存');
         objectDrafts.delete(contact); objectDirtyContacts.delete(contact); render(); return;

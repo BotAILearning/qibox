@@ -66,6 +66,37 @@ test('persistent, permanent, cancelled and replaced-account reads never retry in
   }
 });
 
+test('data capability failures keep login, readiness, permission, occupancy and schema distinct', async () => {
+  const cases = [
+    ['not-ready', 'ai_data_not_ready', /尚未准备好/],
+    ['permission', 'ai_data_permission', /没有权限/],
+    ['database-busy', 'ai_data_database_busy', /正被占用/],
+    ['schema', 'ai_data_schema', /通讯录数据库结构不兼容.*微信官方窗口/],
+  ];
+  for (const [stage, code, message] of cases) {
+    const { bridge } = fixture(action => action === 'contacts' ? { error: 'data-unavailable', stage } : undefined);
+    await assert.rejects(bridge.scan(), error => error.code === code && message.test(error.message));
+  }
+  const { bridge, runtime } = fixture();
+  runtime.loginState = { refresh: async () => {}, loggedOut: () => true };
+  await assert.rejects(bridge.scan(), { code: 'ai_wechat_logged_out' });
+});
+
+test('confirmed history schema and encryption failures retain the official-window manual path', async () => {
+  for (const [stage, code, message] of [
+    ['schema', 'ai_data_schema', /聊天记录数据库结构不兼容.*手动查看/],
+    ['schema-ordering', 'ai_data_schema_ordering', /聊天记录排序结构不兼容.*手动查看/],
+    ['encryption', 'ai_data_encryption', /已确认.*加密格式不兼容.*手动查看/],
+  ]) {
+    const { bridge } = fixture(action => action === 'read' ? { error: 'data-unavailable', stage } : undefined);
+    await bridge.scan();
+    await assert.rejects(bridge.read({ account, contact }), error => error.code === code && message.test(error.message));
+  }
+  const { bridge } = fixture(action => action === 'read' ? { error: 'data-unavailable', stage: 'key-unavailable' } : undefined);
+  await bridge.scan();
+  await assert.rejects(bridge.read({ account, contact }), error => error.code === 'ai_data_key_unavailable' && /密钥暂不可用/.test(error.message) && !/加密.*不兼容/.test(error.message));
+});
+
 async function receiptFixture({ status = 'uncertain', response, unsafe = false, throws = false, committed = true } = {}) {
   const { bridge, runtime } = fixture();
   bridge.receiptDelay = async () => {};

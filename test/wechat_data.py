@@ -1,5 +1,6 @@
 import ctypes as c
 import hashlib
+import errno
 import hmac
 import importlib.util
 import io
@@ -95,6 +96,14 @@ def wal_bytes(pages, commit=True):
 
 
 class DataTest(unittest.TestCase):
+    def test_capability_failures_are_classified_without_becoming_empty_data(self):
+        self.assertEqual(data.failure_stage(PermissionError('private path')), 'permission')
+        self.assertEqual(data.failure_stage(BlockingIOError(errno.EAGAIN, 'busy')), 'database-busy')
+        self.assertEqual(data.failure_stage(FileNotFoundError('not created')), 'not-ready')
+        self.assertEqual(data.failure_stage(ValueError('database file incomplete')), 'not-ready')
+        self.assertEqual(data.failure_stage(ValueError('unsupported contacts schema')), 'schema')
+        self.assertEqual(data.failure_stage(ValueError('database changing')), 'database-changed')
+
     def test_snapshot_cache_has_a_byte_budget_and_keeps_recent_small_reads(self):
         cache = data.SessionCache()
         with patch.object(data, 'SNAPSHOT_CACHE_MAX_BYTES', 10000):
@@ -524,6 +533,8 @@ class DataTest(unittest.TestCase):
                 base = {'account': scan['account'], 'contact': scan['contacts'][0]['id']}
                 with self.assertRaisesRegex(ValueError, 'chat messages not loaded'):
                     data.execute({'action': 'read', **base}, 42, directory, lambda: None)
+                with self.assertRaisesRegex(ValueError, 'chat messages not loaded'):
+                    data.execute({'action': 'read-dates', **base}, 42, directory, lambda: None)
 
     def test_read_keeps_loaded_shard_messages_even_when_other_shards_are_unopened(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -15,33 +15,6 @@ export const MAX_PACKAGE = 1024 ** 3;
 export function supportedVersions(library) {
   return [...new Set(library.importVersions || [])].join('、') || '暂无';
 }
-// A rebuild moves every RVA, so we cannot fingerprint builds we have never
-// seen. What does survive a rebuild is the source-level literal the session
-// reader anchors on, unless the class itself was rewritten. Finding it turns
-// "unknown build" into "almost certainly drivable", which is what keeps a
-// first-time install possible when no adapted copy exists locally yet.
-const SESSION_ANCHOR = Buffer.from('normal_key');
-export async function countSessionAnchor(file) {
-  let handle;
-  try {
-    handle = await open(file, 'r');
-    const chunk = Buffer.allocUnsafe(8 * 1024 ** 2);
-    const window = Buffer.allocUnsafe(chunk.length + SESSION_ANCHOR.length);
-    let position = 0, carry = 0, found = 0;
-    for (;;) {
-      const { bytesRead } = await handle.read(chunk, 0, chunk.length, position);
-      if (!bytesRead) break;
-      chunk.copy(window, carry, 0, bytesRead);
-      const total = carry + bytesRead;
-      let index = 0;
-      while ((index = window.indexOf(SESSION_ANCHOR, index)) >= 0) { found += 1; index += 1; }
-      carry = Math.min(SESSION_ANCHOR.length - 1, total);
-      window.copy(window, 0, total - carry, total);
-      position += bytesRead;
-    }
-    return found;
-  } catch { return 0; } finally { await handle?.close(); }
-}
 export async function extractDeb(file, destination, appRoot, runtimeRoot, onProgress, signal) {
   if (process.platform !== 'linux') throw new AppError('请在 NAS 中安装微信', 409);
   signal?.throwIfAborted();
@@ -190,9 +163,9 @@ export class PackageLibrary {
     const job = this.job ? { ...this.job, ...(transfer ? { bytes: transfer.bytes, total: transfer.total,
       progress: transfer.total ? Math.floor(transfer.bytes / transfer.total * 100) : null,
       ...(transfer.status ? { status: transfer.status === 'verifying' ? 'downloading' : transfer.status } : {}), ...(meter ? { bytesPerSecond: meter.bytesPerSecond } : {}) } : {}) } : null;
-    const installed = this.current ? { version: this.current.version, installedAt: this.current.installedAt, sha256: this.current.sha256, adapted: (this.adaptedHashes || []).includes(this.current.sha256), support: (this.adaptedHashes || []).includes(this.current.sha256) ? 'adapted' : this.current.compatible === false ? 'unknown' : 'compatible' } : null;
+    const installed = this.current ? { version: this.current.version, installedAt: this.current.installedAt, sha256: this.current.sha256, adapted: (this.adaptedHashes || []).includes(this.current.sha256) } : null;
     const remainingDownloadSize = this.current ? 0 : transfer ? Math.max(0, transfer.total - transfer.bytes) : this.downloadReusableBytes ?? (this.pooledCacheAvailable ? 0 : this.downloadSource?.size ?? null);
-    return { installed, job, sourceUrl: this.sourceUrl, downloadSize: this.downloadSource?.size ?? null, remainingDownloadSize, architecture: this.arch.label, importVersions: this.importVersions, supported: supportedVersions(this), ...(this.unverified ? { runningUnadapted: this.unverified } : {}) };
+    return { installed, job, sourceUrl: this.sourceUrl, downloadSize: this.downloadSource?.size ?? null, remainingDownloadSize, architecture: this.arch.label, importVersions: this.importVersions, supported: supportedVersions(this) };
   }
   uninstall({ clearData } = {}) {
     if (this.working) throw new AppError('正在处理微信，请稍候', 409);
@@ -214,14 +187,13 @@ export class PackageLibrary {
     return this.working;
   }
   assertCanInstall() { if (this.dev && this.extract === extractDeb) throw new AppError('请将栖盒安装到 NAS 后下载安装微信', 409); }
-  download({ allowUnverified = false } = {}) {
+  download(_options = {}) {
     if (this.current || this.working) return this.publicState();
     if (this.transfer && this.downloadResource) return this.resumeDownload();
     this.assertCanInstall();
     // Launch synchronously: callers await this.working and rely on it being set
     // by the time download() returns, and the working guard above must be able
     // to stop a second call. An awaited lookup before launch would defer both.
-    this.allowUnverified = allowUnverified === true;
     this.launch('download', (file, signal) => this.obtainDownload(file, signal));
     return this.publicState();
   }
@@ -375,19 +347,6 @@ export class PackageLibrary {
       signal.throwIfAborted();
       if (metadata.arch && metadata.arch !== this.arch.deb) throw new AppError('安装包与设备架构不符');
       if (!/^\d+(?:\.\d+){1,5}$/.test(metadata.version)) throw new AppError('无法识别微信版本');
-      const adapted = this.adaptedHashes.includes(sha256);
-      let anchored = 0;
-      if (!adapted) {
-        // An install the owner asked for must not be blocked merely because the
-        // build is newer than our fingerprint file; Tencent only ever serves the
-        // newest one, so refusing would strand every fresh install. Only a build
-        // that no longer carries the anchor is genuinely unknown, and that is
-        // the single case worth stopping on.
-        anchored = await countSessionAnchor(path.join(extracted, 'opt/wechat/wechat'));
-        if (!anchored && !this.allowUnverified)
-          throw new AppError(`微信 ${metadata.version} 与栖盒适配的版本结构差异较大（已适配版本：${supportedVersions(this)}），自动发送、语音转文字、当前会话识别可能无法使用。`, 409);
-        this.unverified = { version: metadata.version, sha256, compatible: anchored > 0 };
-      }
       stage('finalizing', '正在完成安装');
       const versions = path.join(this.root, 'versions'); await mkdir(versions, { recursive: true, mode: 0o700 });
       const destination = within(versions, path.join(versions, sha256));
@@ -395,7 +354,11 @@ export class PackageLibrary {
       try { await access(destination); await rm(destination, { recursive: true, force: true }); } catch (e) { if (e.code !== 'ENOENT') throw e; }
       await rename(extracted, destination);
       await rename(file, path.join(destination, 'installer.deb'));
-      const current = { version: metadata.version, sha256, arch: this.arch.node, installedAt: new Date().toISOString(), ...(adapted ? {} : { compatible: anchored > 0 }) };
+      // Package integrity, architecture and version metadata are the install
+      // boundary. Runtime capabilities are detected by their own readers; a
+      // new build must not be rejected or warned about because its hash or a
+      // private implementation literal is absent from an old allow-list.
+      const current = { version: metadata.version, sha256, arch: this.arch.node, installedAt: new Date().toISOString() };
       await atomicJson(path.join(this.root, 'current.json'), current); this.current = current;
       this.job = { id, status: 'complete', progress: 100, message: '微信已安装' };
       if (source === 'download') { await this.downloadPersistQueue; await rm(this.downloadStateFile, { force: true }); }
@@ -408,7 +371,7 @@ export class PackageLibrary {
         this.job = { id, source, status: 'error', progress: 0, message: error instanceof AppError ? error.message : signal.aborted ? '安装已中断，请重试' : '安装未完成，请检查网络或安装包后重试' };
       }
       this.lastError = String(error.stack || error);
-    } finally { if (timer) clearTimeout(timer); this.allowUnverified = false; await rm(folder, { recursive: true, force: true }); }
+    } finally { if (timer) clearTimeout(timer); await rm(folder, { recursive: true, force: true }); }
     return this.publicState();
   }
   async close() {

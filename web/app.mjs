@@ -382,7 +382,7 @@ function renderMarket(app) {
       : `<button ${id('download')} data-market-action="download" class="primary" ${pending ? 'disabled' : ''}>下载安装${esc(app.name)}</button><button ${id('import-open')} data-market-action="import" class="quiet" ${pending ? 'disabled' : ''}>导入安装包</button>`;
   }
   part('status').textContent = pending ? job.message
-    : installed ? `已安装 · ${installed.version}${installed.support === 'unknown' ? ' · 版本未适配' : ''}`
+    : installed ? `已安装 · ${installed.version}`
       : app.edition;
   part('retained').hidden = !retainedFor(app.id).length;
   part('uninstall').hidden = app.id !== 'wechat' || !installed || !session.user.isAdmin;
@@ -403,20 +403,7 @@ function renderMarket(app) {
     if (controls.innerHTML !== mark) controls.innerHTML = mark;
   }
 }
-async function unsupportedVersion(error) {
-  const message = String(error?.message || error || '');
-  // Only a genuinely unknown structure earns a confirmation. Every other failure
-  // is reported as-is, so a real error never gets buried behind a "continue"
-  // button. A merely newer build is not that case: it installs without asking.
-  if (!/结构差异较大/.test(message)) {
-    dialog('安装未完成', `<p>${esc(message)}</p>`, '<button type="button" data-close class="secondary">关闭</button>');
-    return;
-  }
-  const supported = definition(marketAppId)?.library?.supported || '暂无';
-  dialog('微信版本差异较大',
-    `<p>${esc(message)}</p><p>栖盒已适配的版本：${esc(supported)}。可以继续安装；如果自动发送、语音转文字或当前会话识别不可用，换回已适配的版本即可恢复。</p>`,
-    '<button type="button" data-close class="secondary">取消</button><button type="button" id="install-anyway" class="primary">仍要安装</button>');
-}
+async function unsupportedVersion(error) { throw error; }
 function render() {
   if (!state) return;
   const catalogMarkup = state.catalog.map(app => {
@@ -593,7 +580,7 @@ async function restoreInstance(item, button) {
   } finally { button.disabled = false; }
 }
 function importDialog() {
-  dialog('导入微信安装包', `<p>选择从官网下载的 ${esc(definition(marketAppId).architecture)} 版微信 .deb 安装包。当前支持 ${esc((state.library.importVersions || []).join('、'))}。</p><div class="import-options"><button type="button" id="import-local" class="secondary"><strong>从本机上传</strong><span>选择这台设备上的安装包</span></button>${session.capabilities?.nasPicker ? '<button type="button" id="import-nas" class="secondary"><strong>从 NAS 选择</strong><span>选择已经保存到 NAS 的安装包</span></button>' : ''}</div>`, '');
+  dialog('导入微信安装包', `<p>选择从官网下载的 ${esc(definition(marketAppId).architecture)} 版微信 .deb 安装包。安装后按实际能力检测，版本号仅用于诊断。</p><div class="import-options"><button type="button" id="import-local" class="secondary"><strong>从本机上传</strong><span>选择这台设备上的安装包</span></button>${session.capabilities?.nasPicker ? '<button type="button" id="import-nas" class="secondary"><strong>从 NAS 选择</strong><span>选择已经保存到 NAS 的安装包</span></button>' : ''}</div>`, '');
 }
 let pickerPromise;
 async function loadPicker() {

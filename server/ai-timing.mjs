@@ -1,3 +1,4 @@
+import { replyRhythm } from './ai-reply-rhythm.mjs';
 import { AppError } from './files.mjs';
 import { timingDefaults } from './ai-timing-fields.mjs';
 export { timingDefaults, timingLabels } from './ai-timing-fields.mjs';
@@ -10,5 +11,5 @@ export function timingValue(value, base = timingDefaults) {
   if (next.replyMaxWait < next.replyDelay || next.segmentDelayMax < next.segmentDelayMin || next.followUpDelayMax < next.followUpDelayMin) throw new AppError('最长等待不能小于最短等待');
   return next;
 }
-export function effectiveTiming(settings, profile) { return { ...timingDefaults, ...Object.fromEntries(Object.keys(timingDefaults).map(key => [key, profile?.timing?.[key] ?? settings[key] ?? timingDefaults[key]])) }; }
+export function effectiveTiming(settings, profile) { return replyRhythm(settings, profile).timing; }
 export const mergeDueAt = (cursor, timing) => Math.min(cursor.changedAt + timing.replyDelay * 1000, (cursor.pendingSince ?? cursor.changedAt) + timing.replyMaxWait * 1000);
