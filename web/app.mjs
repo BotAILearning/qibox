@@ -1,4 +1,3 @@
-import { preparationMarkup } from './preparation-view.mjs';
 import { restoreAppearance } from './appearance.mjs';
 import { desktopLoader } from './desktop-loader.mjs';
 import { nativeInput } from './native-input.mjs';
@@ -358,48 +357,45 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 window.addEventListener('focus', () => renderMobileAI());
 window.addEventListener('online', () => { for (const id of mobileAISettings.keys()) mobileAISettings.delete(id); mobileAIReadErrors.clear(); renderMobileAI(); });
 let marketAppId = 'wechat', lastCatalogMarkup = '';
-let preparationImporting = false, preparationImportError = '';
+let libraryUpdatePreview = null;
 function renderMarket(app) {
   const card = document.querySelector(`[data-market-app="${app.id}"]`);
   const part = name => card.querySelector(`[data-part="${name}"]`);
-  const installed = app.library.installed, job = app.library.job;
-  if (app.id === 'wechat') {
-    let panel = card.querySelector('[data-preparation-panel]');
-    if (!panel) { panel = document.createElement('div'); panel.dataset.preparationPanel = ''; part('actions').before(panel); }
-    const mark = preparationMarkup(state.preparation, app.library, { importing: preparationImporting, importError: preparationImportError });
-    if (panel.dataset.mark !== mark) { const open = !!panel.querySelector('details[open]'); panel.innerHTML = mark; if (open) panel.querySelector('details')?.setAttribute('open', ''); panel.dataset.mark = mark; }
-  }
-  const pending = job && !['complete', 'error'].includes(job.status);
+  const installed = app.library.installed, job = app.library.job, manualUpdate = app.library.manualUpdate;
+  const jobPending = job && !['complete', 'error'].includes(job.status);
+  const manualBusy = manualUpdate && ['downloading', 'verifying', 'installing'].includes(manualUpdate.status);
+  const pending = jobPending || manualBusy;
   const actions = part('actions');
   part('format').hidden = !!installed;
-  part('actions').hidden = app.id === 'wechat' && !!state.preparation && state.preparation.status !== 'ready';
     const id = value => app.id === 'wechat' ? `id="${value}"` : '';
-  const signature = `${!!installed}/${!!pending}/${!!session?.user.isAdmin}`;
+  const signature = `${!!installed}/${!!pending}/${!!session?.user.isAdmin}/${manualUpdate?.status || ''}`;
   if (actions.dataset.state !== signature) {
     actions.dataset.state = signature;
     actions.innerHTML = installed
-      ? `<button ${id('add-instance')} data-market-action="add" class="primary pc-only" ${pending ? 'disabled' : ''}>添加到桌面</button><button data-market-action="add" class="primary mobile-only" ${pending ? 'disabled' : ''}>添加实例</button>`
+      ? `<button ${id('add-instance')} data-market-action="add" class="primary pc-only" ${pending ? 'disabled' : ''}>添加到桌面</button><button data-market-action="add" class="primary mobile-only" ${pending ? 'disabled' : ''}>添加实例</button>${app.id === 'wechat' ? `<button data-market-action="update" class="quiet" ${manualBusy || jobPending ? 'disabled' : ''}>${manualUpdate?.status === 'paused' ? '继续更新' : manualUpdate?.status === 'error' ? '重试更新' : '手动更新'}</button>` : ''}`
       : `<button ${id('download')} data-market-action="download" class="primary" ${pending ? 'disabled' : ''}>下载安装${esc(app.name)}</button><button ${id('import-open')} data-market-action="import" class="quiet" ${pending ? 'disabled' : ''}>导入安装包</button>`;
   }
-  part('status').textContent = pending ? job.message
+  part('status').textContent = manualUpdate && !['complete'].includes(manualUpdate.status) ? manualUpdate.message
+    : pending ? job.message
     : installed ? `已安装 · ${installed.version}`
       : app.edition;
   part('retained').hidden = !retainedFor(app.id).length;
   part('uninstall').hidden = app.id !== 'wechat' || !installed || !session.user.isAdmin;
   part('uninstall').disabled = !!pending;
-  part('progress').hidden = !job || job.status === 'complete';
-  if (job) {
-    part('message').textContent = job.message;
-    part('percent').textContent = pending && job.progress != null ? `${job.progress}%` : '';
-    part('bar').hidden = job.status === 'error';
-    if (job.progress == null) part('bar').removeAttribute('value'); else part('bar').value = job.progress;
+  const visibleJob = manualUpdate && manualUpdate.status !== 'complete' ? manualUpdate : job;
+  part('progress').hidden = !visibleJob || visibleJob.status === 'complete';
+  if (visibleJob) {
+    part('message').textContent = visibleJob.message;
+    part('percent').textContent = visibleJob.progress != null ? `${visibleJob.progress}%` : '';
+    part('bar').hidden = visibleJob.status === 'error';
+    if (visibleJob.progress == null) part('bar').removeAttribute('value'); else part('bar').value = visibleJob.progress;
     const size = value => value >= 1024 ** 2 ? `${(value / 1024 ** 2).toFixed(1)} MB` : value >= 1024 ? `${(value / 1024).toFixed(1)} KB` : `${Math.round(value)} B`;
-    const transferred = job.bytes != null ? job.total ? `${size(job.bytes)} / ${size(job.total)}` : `已下载 ${size(job.bytes)}` : '';
-    const speed = job.bytesPerSecond != null ? `${size(job.bytesPerSecond)}/s` : '';
+    const transferred = visibleJob.bytes != null ? visibleJob.total ? `${size(visibleJob.bytes)} / ${size(visibleJob.total)}` : `已处理 ${size(visibleJob.bytes)}` : '';
+    const speed = visibleJob.bytesPerSecond != null ? `${size(visibleJob.bytesPerSecond)}/s` : '';
     part('detail').textContent = [transferred, speed].filter(Boolean).join(' · ');
     let controls = card.querySelector('[data-download-controls]');
     if (!controls) { controls = document.createElement('div'); controls.dataset.downloadControls = ''; part('progress').append(controls); }
-    const mark = job.status === 'downloading' ? '<button type="button" class="secondary" data-download-command="pause">暂停下载</button>' : ['paused', 'error'].includes(job.status) ? '<button type="button" class="primary" data-download-command="continue">'+(job.status === 'paused' ? '继续下载' : '重试下载')+'</button>' : '';
+    const mark = manualUpdate ? (manualUpdate.status === 'downloading' ? '<button type="button" class="secondary" data-update-command="pause">暂停更新</button>' : manualUpdate.status === 'paused' ? '<button type="button" class="primary" data-update-command="resume">继续更新</button>' : '') : (job.status === 'downloading' ? '<button type="button" class="secondary" data-download-command="pause">暂停下载</button>' : ['paused', 'error'].includes(job.status) ? '<button type="button" class="primary" data-download-command="continue">'+(job.status === 'paused' ? '继续下载' : '重试下载')+'</button>' : '');
     if (controls.innerHTML !== mark) controls.innerHTML = mark;
   }
 }
@@ -581,6 +577,38 @@ async function restoreInstance(item, button) {
 }
 function importDialog() {
   dialog('导入微信安装包', `<p>选择从官网下载的 ${esc(definition(marketAppId).architecture)} 版微信 .deb 安装包。安装后按实际能力检测，版本号仅用于诊断。</p><div class="import-options"><button type="button" id="import-local" class="secondary"><strong>从本机上传</strong><span>选择这台设备上的安装包</span></button>${session.capabilities?.nasPicker ? '<button type="button" id="import-nas" class="secondary"><strong>从 NAS 选择</strong><span>选择已经保存到 NAS 的安装包</span></button>' : ''}</div>`, '');
+}
+async function uploadLibraryUpdate(file, updateToken) {
+  if (!file || !file.name.toLowerCase().endsWith('.deb')) throw new Error('请选择微信 .deb 安装包');
+  if (file.size > 1024 ** 3) throw new Error('请选择 1 GB 以内的安装包');
+  const authentication = await hostHeaders();
+  await new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open('POST', `${prefix}/api/wechat-update/upload`);
+    request.setRequestHeader('Content-Type', 'application/octet-stream');
+    request.setRequestHeader('X-CSRF-Token', session.csrf);
+    request.setRequestHeader('X-Wechat-Update-Token', updateToken);
+    for (const [name, value] of Object.entries(authentication)) request.setRequestHeader(name, value);
+    request.timeout = 20 * 60 * 1000;
+    request.onload = () => { try { const result = JSON.parse(request.responseText || '{}'); if (request.status >= 400 || result.status === 'error') throw new Error(result.error || result.message || '更新包上传失败'); resolve(result); } catch (error) { reject(error); } };
+    request.onerror = request.ontimeout = () => reject(new Error('上传中断，请检查网络后重试'));
+    request.send(file);
+  });
+}
+const sourceError = preview => preview?.sourceError ? `官方版本暂不可用：${preview.sourceError}，可导入已有安装包` : '';
+async function openLibraryUpdate() {
+  const preview = await api('/wechat-update', { action: 'preview' });
+  libraryUpdatePreview = preview;
+  const resume = state?.catalog?.find(app => app.id === 'wechat')?.library?.manualUpdate?.status === 'paused';
+  const affected = (preview.affected || []).map(item => `<li><strong>${esc(item.name)}</strong><span>${item.running ? '运行中，更新时会停止' : '已停止'}</span></li>`).join('');
+  const source = preview.source || {};
+  const sourceText = sourceError(preview) || (source.size ? `官方包约 ${Math.round(source.size / 1024 / 1024)} MB` : '从官方渠道获取可用版本');
+  dialog('手动更新微信', `<p>当前版本：<strong>${esc(preview.current?.version || preview.current || definition('wechat')?.library?.installed?.version || '未知')}</strong></p>${affected ? `<section class="update-impact"><h4>将受影响的微信实例</h4><ul>${affected}</ul><p>更新期间实例会暂时停止，完成后请手动重新打开；已有数据会保留。版本回退需要完整数据备份。</p></section>` : '<p>暂未发现会受影响的微信实例。</p>'}<fieldset class="update-source"><legend>选择更新来源</legend><label class="choice"><input type="radio" name="source" value="official" checked ${source.url ? '' : 'disabled'}><span><strong>官方下载</strong><small>${esc(sourceText)}</small></span></label><label class="choice"><input type="radio" name="source" value="upload"><span><strong>导入 .deb 安装包</strong><small>选择与 NAS 架构匹配的官方微信安装包</small></span></label><label class="field" id="library-update-file-field" hidden>安装包<input type="file" name="package" accept=".deb"></label><label class="choice"><input type="checkbox" name="confirmImpact" required><span><strong>我确认更新会暂时影响上述实例</strong></span></label></fieldset>`, '<button type="button" data-close class="secondary">取消</button><button type="submit" class="primary">确认并开始更新</button>', async form => {
+    const source = form.get('source');
+    if (source === 'upload') await uploadLibraryUpdate(form.get('package'), preview.token);
+    else await api('/wechat-update', { action: resume ? 'resume' : 'download', token: preview.token });
+    await refresh(); notify('微信更新已开始');
+  });
 }
 let pickerPromise;
 async function loadPicker() {
@@ -764,23 +792,21 @@ document.addEventListener('change', e => {
   if (e.target.name === 'deleteData') $('#delete-confirm').hidden = e.target.value !== 'yes';
   if (e.target.matches('[data-mobile-ai-master]')) void changeMobileAIMaster(e.target);
   if (e.target.id === 'package-file') { upload(e.target.files[0]).catch(err => notify(err.message)); e.target.value = ''; }
+  if (e.target.name === 'source' && e.target.closest('.update-source')) $('#library-update-file-field').hidden = e.target.value !== 'upload';
 });
 document.addEventListener('click', async event => {
   const button = event.target.closest('button'); if (!button || button.disabled) return;
   try {
     if (button.hasAttribute('data-close')) return closeModal();
     if (button.dataset.downloadCommand) { button.disabled = true; try { await api('/install/' + button.dataset.downloadCommand, {}); } finally { button.disabled = false; await refresh(); } return; }
-    if (button.dataset.preparation === 'offline') {
-      const input = document.createElement('input'); input.type = 'file'; input.accept = '.qir';
-      input.onchange = async () => {
-        const file = input.files[0]; if (!file) return; preparationImporting = true; preparationImportError = ''; render();
-        try {
-          const response = await fetch(`${prefix}/api/preparation/import`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'X-CSRF-Token': session.csrf, 'X-Resource-Id': 'offline' }, body: file });
-          const result = await response.json(); if (!response.ok) throw Error(result.message || result.error || '离线导入失败'); notify('离线资源已校验，可开始准备微信');
-        } catch (error) { preparationImportError = error.message; } finally { preparationImporting = false; await refresh(); }
-      }; input.click(); return;
+    if (button.dataset.updateCommand) {
+      button.disabled = true;
+      try {
+        if (button.dataset.updateCommand === 'resume') await openLibraryUpdate();
+        else await api('/wechat-update', { action: 'pause' });
+      } finally { button.disabled = false; await refresh(); }
+      return;
     }
-    if (button.dataset.preparation) { button.disabled = true; try { await api('/preparation', { action: button.dataset.preparation }); } finally { button.disabled = false; await refresh(); } return; }
     if (button.id === 'about-qibox') { dialog('关于栖盒', '<p>栖盒 '+esc(session?.product?.version || '')+'</p><h3>NAS 登录微信</h3><p>运行官方微信客户端，支持自动登录及在线期间可获取消息的实时同步，具体范围遵循官方客户端能力。</p><h3>AI 辅助</h3><p>使用你自己的模型 API，提供学习、总结、分析和自动回复等功能。</p><h3>闲时备份</h3><p>与在线同步分开调度，可设置时间段及负载、网络、内存阈值。计划启动的微信低优先级运行，检测到繁忙时退让，支持暂停恢复。避让取决于可检测的整机指标，不能保证零影响。</p><p>开发者：Bot · <a href="mailto:bot@qiapp.online">bot@qiapp.online</a></p>', '<button type="button" data-close class="secondary">关闭</button>'); return; }
     if (button.dataset.idleCommand) { await api('/instances/'+button.dataset.instanceId+'/settings',{command:button.dataset.idleCommand});closeModal();await refresh();notify('闲时备份设置已更新');return; }
       if (button.dataset.mobileAiOpen) { await openAIEntry(button.dataset.mobileAiOpen); return; }
@@ -809,6 +835,7 @@ document.addEventListener('click', async event => {
       if (action === 'import') importDialog();
       if (action === 'uninstall') uninstallDialog();
       if (action === 'retained') retainedDialog();
+      if (action === 'update') { button.disabled = true; try { await openLibraryUpdate(); } finally { button.disabled = false; } }
       if (action === 'download') { button.disabled = true; try { try { await api(`/apps/${marketAppId}/install/download`, {}); } catch (error) { await unsupportedVersion(error); } } finally { button.disabled = false; await refresh(); } }
       return;
     }
@@ -860,7 +887,7 @@ async function init() {
 }
 const stateRefresh = visibleRefresh({ document, window,
   refresh: () => session ? refresh() : init(),
-  interval: () => stateRefreshDelay({ ready: !!session, busy: desktopConnecting || busyIds.size > 0, job: state?.library?.job, instances: state?.instances }),
+  interval: () => stateRefreshDelay({ ready: !!session, busy: desktopConnecting || busyIds.size > 0, job: state?.library?.manualUpdate || state?.library?.job, instances: state?.instances }),
 });
 window.addEventListener('offline', () => connectionNotice.show('网络连接已中断，当前显示最近的状态；恢复连接后将自动更新', true, { repeat: false }));
 stateRefresh.start();

@@ -26,10 +26,9 @@ export async function extractDeb(file, destination, appRoot, runtimeRoot, onProg
     });
     const output = new ExtractionOutput(onProgress);
     let outputError = null, err = '';
-    const timer = setTimeout(() => child.kill('SIGKILL'), 180000);
     const abort = () => child.kill('SIGKILL');
     signal?.addEventListener('abort', abort, { once: true });
-    const cleanup = () => { clearTimeout(timer); signal?.removeEventListener('abort', abort); };
+    const cleanup = () => { signal?.removeEventListener('abort', abort); };
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', x => {
       if (outputError) return;
@@ -37,11 +36,11 @@ export async function extractDeb(file, destination, appRoot, runtimeRoot, onProg
     });
     child.stderr.on('data', x => { err = (err + x).slice(-2000); });
     child.on('error', e => { cleanup(); reject(e); });
-    child.on('close', code => {
+    child.on('close', (code, terminationSignal) => {
       cleanup();
       if (signal?.aborted) return reject(signal.reason);
       if (outputError) return reject(new AppError('无法识别安装进度，请重试'));
-      if (code !== 0) return reject(new AppError(/请选择|安装包|无法识别/.test(err) ? err.trim().slice(0, 160) : '安装未完成，请重新下载后重试'));
+      if (code !== 0) return reject(new AppError(`微信解压未完成（${terminationSignal || code}）：${err.trim().slice(-1000) || '子进程退出且未返回错误详情，请检查系统资源与服务日志'}`));
       try { resolve(output.finish()); } catch { reject(new AppError('无法识别安装结果，请重试')); }
     });
   });
@@ -165,9 +164,10 @@ export class PackageLibrary {
       ...(transfer.status ? { status: transfer.status === 'verifying' ? 'downloading' : transfer.status } : {}), ...(meter ? { bytesPerSecond: meter.bytesPerSecond } : {}) } : {}) } : null;
     const installed = this.current ? { version: this.current.version, installedAt: this.current.installedAt, sha256: this.current.sha256, adapted: (this.adaptedHashes || []).includes(this.current.sha256) } : null;
     const remainingDownloadSize = this.current ? 0 : transfer ? Math.max(0, transfer.total - transfer.bytes) : this.downloadReusableBytes ?? (this.pooledCacheAvailable ? 0 : this.downloadSource?.size ?? null);
-    return { installed, job, sourceUrl: this.sourceUrl, downloadSize: this.downloadSource?.size ?? null, remainingDownloadSize, architecture: this.arch.label, importVersions: this.importVersions, supported: supportedVersions(this) };
+    return { installed, job, ...(this.manualUpdate ? { manualUpdate: this.manualUpdate() } : {}), sourceUrl: this.sourceUrl, downloadSize: this.downloadSource?.size ?? null, remainingDownloadSize, architecture: this.arch.label, importVersions: this.importVersions, supported: supportedVersions(this) };
   }
   uninstall({ clearData } = {}) {
+    if (this.updating) throw new AppError('正在更新微信，请稍候', 409);
     if (this.working) throw new AppError('正在处理微信，请稍候', 409);
     this.uninstalling = true; this.job = { status: 'uninstalling', message: '正在卸载微信', progress: null };
     this.working = Promise.resolve().then(async () => {
@@ -270,6 +270,7 @@ export class PackageLibrary {
     return this.publicState();
   }
   upload(stream, size) {
+    if (this.updating) throw new AppError('正在更新微信，请稍候', 409);
     if (this.current) throw new AppError('微信已安装，可以直接添加微信', 409);
     if (this.working) throw new AppError('正在安装，请稍候', 409);
     this.assertCanInstall();
@@ -321,13 +322,11 @@ export class PackageLibrary {
   }
   async perform(id, obtain, signal) {
     const folder = within(this.root, path.join(this.root, 'jobs', id));
-    let timer = null;
     let source = this.job?.source;
     try {
       await mkdir(folder, { recursive: true, mode: 0o700 });
       const file = path.join(folder, 'wechat.deb');
       await obtain(file, signal); signal.throwIfAborted();
-      timer = setTimeout(() => this.controller?.abort(new Error('安装超时')), 180000);
       source = this.job.source; this.transfer = null;
       const stage = (name, message) => { this.job = { id, source, status: 'installing', stage: name, progress: null, message }; };
       const measured = (bytes, total) => { this.job.bytes = bytes; this.job.total = total; this.job.progress = total ? Math.floor(bytes / total * 100) : null; };
@@ -371,7 +370,7 @@ export class PackageLibrary {
         this.job = { id, source, status: 'error', progress: 0, message: error instanceof AppError ? error.message : signal.aborted ? '安装已中断，请重试' : '安装未完成，请检查网络或安装包后重试' };
       }
       this.lastError = String(error.stack || error);
-    } finally { if (timer) clearTimeout(timer); await rm(folder, { recursive: true, force: true }); }
+    } finally { await rm(folder, { recursive: true, force: true }); }
     return this.publicState();
   }
   async close() {

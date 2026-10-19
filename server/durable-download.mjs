@@ -8,14 +8,16 @@ const CHUNK_SIZE = 1024 * 1024;
 const MAX_SIZE = 2 * 1024 * 1024 * 1024;
 const REQUEST_TIMEOUT = 30_000;
 const hashPattern = /^[a-f\d]{64}$/i;
+const md5Pattern = /^[a-f\d]{32}$/i;
+const checksum = resource => resource.sha256 || resource.md5;
 
 function digest(data) { return createHash('sha256').update(data).digest('hex'); }
 function safeSize(value) { return Number.isSafeInteger(value) && value >= 0 && value <= MAX_SIZE; }
 function header(response, name) { return response.headers?.get?.(name) ?? null; }
 export function resourcePaths(resource) {
-  if (!resource || typeof resource.id !== 'string' || typeof resource.version !== 'string' || !hashPattern.test(resource.sha256 || '')) throw new TypeError('resource id/version/sha256 invalid');
-  const key = digest(`${resource.id}\0${resource.version}\0${resource.sha256.toLowerCase()}`);
-  return { cache: `${resource.sha256.toLowerCase()}.cache`, part: `${key}.part`, chunk: `${key}.chunk`, state: `${key}.state.json` };
+  if (!resource || typeof resource.id !== 'string' || typeof resource.version !== 'string' || !(hashPattern.test(resource.sha256 || '') || md5Pattern.test(resource.md5 || ''))) throw new TypeError('resource id/version/checksum invalid');
+  const key = digest(`${resource.id}\0${resource.version}\0${checksum(resource).toLowerCase()}`);
+  return { cache: `${checksum(resource).toLowerCase()}.cache`, part: `${key}.part`, chunk: `${key}.chunk`, state: `${key}.state.json` };
 }
 
 async function syncFile(path) {
@@ -49,12 +51,13 @@ async function streamBounded(response, destination, limit, signal, onProgress) {
 }
 
 export class DurableDownload {
-  constructor({ directory, fetcher = fetch, allowHttp = false, onChange } = {}) {
+  constructor({ directory, fetcher = fetch, allowHttp = false, onChange, autoResume = true } = {}) {
     if (!directory) throw new TypeError('directory is required');
     this.directory = resolve(directory);
     this.fetcher = fetcher;
     this.allowHttp = allowHttp;
     this.onChange = onChange;
+    this.autoResume = autoResume;
     this.resource = null;
     this.state = { status: 'idle', bytes: 0, total: 0, error: null };
     this.working = null;
@@ -73,16 +76,16 @@ export class DurableDownload {
 
   validate(resource) {
     if (!resource || typeof resource !== 'object') throw new TypeError('resource is required');
-    const { id, version, url, size, sha256 } = resource;
+    const { id, version, url, size, sha256, md5 } = resource;
     if (typeof id !== 'string' || !id.trim() || id.length > 512 || typeof version !== 'string' || !version.trim() || version.length > 256) throw new TypeError('resource id/version invalid');
     if (!safeSize(size) || size === 0) throw new TypeError('resource size invalid');
-    if (typeof sha256 !== 'string' || !hashPattern.test(sha256)) throw new TypeError('resource sha256 invalid');
+    if (!(hashPattern.test(sha256 || '') || !sha256 && md5Pattern.test(md5 || ''))) throw new TypeError('resource checksum invalid');
     let parsed;
     try { parsed = new URL(url); } catch { throw new TypeError('resource URL invalid'); }
     const localhost = ['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname.toLowerCase());
     if (parsed.protocol !== 'https:' && !(this.allowHttp && parsed.protocol === 'http:' && localhost)) throw new TypeError('下载地址必须使用 HTTPS');
     if (parsed.username || parsed.password) throw new TypeError('下载 URL 不能包含凭据');
-    return { id, version, url: parsed.href, size, sha256: sha256.toLowerCase() };
+    return { id, version, url: parsed.href, size, ...(sha256 ? { sha256: sha256.toLowerCase() } : { md5: md5.toLowerCase() }) };
   }
 
   async init(resource) {
@@ -95,7 +98,7 @@ export class DurableDownload {
     this.statePath = join(this.directory, paths.state);
     this.meta = { checkpoint: 0, etag: null, lastModified: null };
     const cache = await stat(this.cachePath).catch(() => null);
-    if (cache?.isFile() && cache.size === this.resource.size && await this.hashFile(this.cachePath) === this.resource.sha256) {
+    if (cache?.isFile() && cache.size === this.resource.size && await this.hashFile(this.cachePath) === checksum(this.resource)) {
       await rm(this.partPath, { force: true });
       this.meta.checkpoint = this.resource.size;
       await this.setState('complete', this.resource.size, null, false);
@@ -105,7 +108,7 @@ export class DurableDownload {
     if (cache) await rm(this.cachePath, { force: true });
     const saved = await readFile(this.statePath, 'utf8').then(JSON.parse).catch(() => null);
     if (saved && saved.resource?.id === this.resource.id && saved.resource?.version === this.resource.version &&
-      saved.resource?.url === this.resource.url && saved.resource?.size === this.resource.size && saved.resource?.sha256 === this.resource.sha256) {
+      saved.resource?.url === this.resource.url && saved.resource?.size === this.resource.size && checksum(saved.resource) === checksum(this.resource)) {
       this.meta = {
         checkpoint: Number.isSafeInteger(saved.meta?.checkpoint) ? saved.meta.checkpoint : 0,
         etag: typeof saved.meta?.etag === 'string' ? saved.meta.etag : null,
@@ -118,7 +121,7 @@ export class DurableDownload {
       } else if (actual.size > this.meta.checkpoint) await truncate(this.partPath, this.meta.checkpoint);
       this.state = { status, bytes: this.meta.checkpoint, total: this.resource.size, error: status === 'error' ? String(saved.state?.error ?? '下载失败') : null };
       await this.notify();
-      if (status === 'downloading' || status === 'verifying') this.start();
+      if (this.autoResume && (status === 'downloading' || status === 'verifying')) this.start();
     } else {
       await rm(this.partPath, { force: true });
       await this.setState('idle', 0, null);
@@ -289,9 +292,9 @@ export class DurableDownload {
     }
     if (signal.aborted) return;
     await this.setState('verifying', this.resource.size, null);
-    if (await this.hashFile(this.partPath) !== this.resource.sha256) {
+    if (await this.hashFile(this.partPath) !== checksum(this.resource)) {
       await rm(this.partPath, { force: true }); this.meta.checkpoint = 0; this.meta.etag = null; this.meta.lastModified = null;
-      throw new Error('下载文件 SHA-256 校验失败');
+      throw new Error(`下载文件 ${this.resource.sha256 ? 'SHA-256' : 'MD5'} 校验失败`);
     }
     await rename(this.partPath, this.cachePath);
     const dirHandle = await open(dirname(this.cachePath), 'r').catch(() => null);
@@ -301,7 +304,7 @@ export class DurableDownload {
   }
 
   async hashFile(path) {
-    const hash = createHash('sha256');
+    const hash = createHash(this.resource?.sha256 ? 'sha256' : 'md5');
     for await (const chunk of createReadStream(path)) hash.update(chunk);
     return hash.digest('hex');
   }
@@ -313,14 +316,14 @@ export class DurableDownload {
     if (!source) throw new TypeError('导入文件路径无效');
     const info = await stat(source);
     if (!info.isFile() || info.size !== this.resource.size) throw new Error('导入文件大小与资源不符');
-    const temp = join(this.directory, `${this.resource.sha256}.${randomUUID()}.import`);
+    const temp = join(this.directory, `${checksum(this.resource)}.${randomUUID()}.import`);
     try {
       await pipeline(createReadStream(source), createWriteStream(temp, { flags: 'wx', mode: 0o600 }));
       await syncFile(temp);
-      if (await this.hashFile(temp) !== this.resource.sha256) throw new Error('导入文件 SHA-256 校验失败');
+      if (await this.hashFile(temp) !== checksum(this.resource)) throw new Error(`导入文件 ${this.resource.sha256 ? 'SHA-256' : 'MD5'} 校验失败`);
       const existing = await stat(this.cachePath).catch(() => null);
       if (existing) {
-        if (existing.isFile() && existing.size === this.resource.size && await this.hashFile(this.cachePath) === this.resource.sha256) { await rm(temp, { force: true }); return this.cachePath; }
+        if (existing.isFile() && existing.size === this.resource.size && await this.hashFile(this.cachePath) === checksum(this.resource)) { await rm(temp, { force: true }); return this.cachePath; }
         throw new Error('目标缓存已存在且内容不匹配');
       }
       await rename(temp, this.cachePath);

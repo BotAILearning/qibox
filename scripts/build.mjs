@@ -123,7 +123,31 @@ if (!process.argv.includes('--ui-only')) {
   await writeFile(path.join(directory, 'manifest'), Object.entries(manifest).map(([k, v]) => `${k}=${v}`).join('\n') + '\n');
   await mkdir(path.join(directory, 'wizard'), { recursive: true });
   for (const name of ['install_init', 'config_init', 'config_callback', 'uninstall_callback']) await writeFile(path.join(directory, 'cmd', name), '#!/bin/bash\nexit 0\n');
-  for (const name of ['install_callback', 'upgrade_callback']) await writeFile(path.join(directory, 'cmd', name), '#!/bin/bash\nset -eu\nexport PATH="/var/apps/nodejs_v22/target/bin:/usr/local/bin:/usr/bin:/bin"\n: "${TRIM_APPDEST:?}"\nnode "${TRIM_APPDEST}/server/app-assets.mjs"\n');
+  for (const name of ['install_callback', 'upgrade_callback']) await writeFile(path.join(directory, 'cmd', name), `#!/bin/bash
+set -euo pipefail
+export PATH="/var/apps/nodejs_v22/target/bin:/usr/local/bin:/usr/bin:/bin"
+log_file="\${TRIM_TEMP_LOGFILE:-}"
+log() {
+  if [ -n "\$log_file" ]; then printf '[qibox] %s\\n' "\$*" | tee -a "\$log_file" >&2; else printf '[qibox] %s\\n' "\$*" >&2; fi
+}
+if [ -z "\${TRIM_APPDEST:-}" ]; then log 'TRIM_APPDEST is required by the fnOS lifecycle callback'; exit 1; fi
+node_bin="/var/apps/nodejs_v22/target/bin/node"
+if [ ! -x "\$node_bin" ]; then log "nodejs_v22 dependency is unavailable: \$node_bin"; exit 1; fi
+if ! node_version="\$("\$node_bin" --version 2>&1)"; then log "nodejs_v22 failed --version: \$node_version"; exit 1; fi
+log "using \$node_bin (\$node_version)"
+script="\${TRIM_APPDEST}/server/app-assets.mjs"
+[ -f "\$script" ] || { log "missing asset preparation script: \$script"; exit 1; }
+log "preparing application assets for ${name}"
+if [ -n "\$log_file" ]; then
+  set +e
+  "\$node_bin" "\$script" 2>&1 | tee -a "\$log_file"
+  pipeline_status=("\${PIPESTATUS[@]}")
+  set -e
+  if [ "\${pipeline_status[0]}" -ne 0 ]; then exit "\${pipeline_status[0]}"; fi
+  exit "\${pipeline_status[1]}"
+fi
+exec "\$node_bin" "\$script"
+`);
   for (const name of ['upgrade_init', 'uninstall_init']) await writeFile(path.join(directory, 'cmd', name), '#!/bin/bash\nset -eu\nSCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"\n"${SCRIPT_DIR}/main" stop\n');
   for (const name of await readdir(path.join(directory, 'cmd'))) {
     const file = path.join(directory, 'cmd', name); await writeFile(file, (await readFile(file, 'utf8')).replaceAll('\r\n', '\n')); await chmod(file, 0o755);

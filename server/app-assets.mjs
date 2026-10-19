@@ -3,13 +3,21 @@ import { fileURLToPath } from 'node:url';
 import { createHash, randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { createReadStream } from 'node:fs';
-import { readFile, writeFile, mkdir, mkdtemp, lstat, rename, rm } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, mkdtemp, lstat, rename, rm, readdir } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 const execute = promisify(execFile);
 const pending = new Map();
 const folders = ['fonts', 'node_modules'];
+const modesSupported = process.platform !== 'win32';
+const commandTimeout = (() => {
+  const raw = process.env.QIBOX_ASSET_COMMAND_TIMEOUT_MS;
+  if (raw === undefined || raw === '') return 0;
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < 0) throw new Error('Invalid QIBOX_ASSET_COMMAND_TIMEOUT_MS');
+  return value;
+})();
 const owned = (root, name) => {
   const target = path.resolve(root, name);
   if (!target.startsWith(path.resolve(root) + path.sep)) throw new Error('Application asset path escaped its root');
@@ -45,7 +53,7 @@ async function matches(root, manifest, hash) {
   await Promise.all(Array.from({ length: Math.min(8, entries.length) }, async () => {
     while (valid && next < entries.length) {
       const [name, item] = entries[next++], file = owned(root, name), info = await lstat(file).catch(() => null);
-      if (!info || info.isSymbolicLink() || (item ? !info.isFile() || info.size !== item.bytes : !info.isDirectory())) { valid = false; return; }
+      if (!info || info.isSymbolicLink() || (item ? !info.isFile() || info.size !== item.bytes || (modesSupported && (info.mode & 0o777) !== item.mode) : !info.isDirectory() || (modesSupported && (info.mode & 0o777) !== 0o755))) { valid = false; return; }
       if (item && hash && await fileHash(file) !== item.sha256) { valid = false; return; }
     }
   }));
@@ -53,21 +61,43 @@ async function matches(root, manifest, hash) {
 }
 
 async function assetLock(root) {
-  const lock = owned(root, '.prepare-lock'), deadline = Date.now() + 180000;
-  while (Date.now() < deadline) {
+  const lock = owned(root, '.prepare-lock'), staleAfter = 60000;
+  const processStartTime = async pid => {
+    if (process.platform !== 'linux') return null;
+    const text = await readFile(`/proc/${pid}/stat`, 'utf8').catch(() => null);
+    if (!text) return null;
+    const close = text.lastIndexOf(')');
+    return close < 0 ? null : text.slice(close + 2).trim().split(/\s+/)[19] || null;
+  };
+  const ownStartTime = await processStartTime(process.pid);
+  const acquiredAt = Date.now();
+  while (true) {
     try {
       await mkdir(lock, { mode: 0o700 });
-      try { await writeFile(owned(lock, 'owner'), String(process.pid), { mode: 0o600 }); }
+      try {
+        const owner = () => JSON.stringify({ pid: process.pid, startTime: ownStartTime, acquiredAt, heartbeatAt: Date.now() }) + '\n';
+        await writeFile(owned(lock, 'owner'), owner(), { mode: 0o600 });
+        const heartbeat = setInterval(() => writeFile(owned(lock, 'owner'), owner(), { mode: 0o600 }).catch(() => {}), 10000);
+        heartbeat.unref?.();
+        return async () => { clearInterval(heartbeat); await rm(lock, { recursive: true, force: true }); };
+      }
       catch (error) { await rm(lock, { recursive: true, force: true }); throw error; }
-      return async () => rm(lock, { recursive: true, force: true });
     } catch (error) {
       if (error.code !== 'EEXIST') throw error;
-      const pid = Number(await readFile(owned(lock, 'owner'), 'utf8').catch(() => ''));
+      const owner = await readFile(owned(lock, 'owner'), 'utf8').catch(() => '');
+      let pid = Number(owner), startTime = null, acquiredAt = 0;
+      try { ({ pid, startTime, acquiredAt } = JSON.parse(owner)); } catch {}
       let stale = false;
       if (Number.isInteger(pid) && pid > 1) {
-        try { process.kill(pid, 0); } catch (error) { stale = error.code === 'ESRCH'; }
+        try {
+          process.kill(pid, 0);
+          const currentStartTime = startTime && await processStartTime(pid);
+          // A live PID with a different Linux starttime is a recycled PID.
+          // If /proc is unavailable, keep waiting rather than stealing a lock.
+          stale = Boolean(startTime && currentStartTime && startTime !== currentStartTime);
+        } catch (error) { stale = error.code === 'ESRCH'; }
       } else {
-        const info = await lstat(lock).catch(() => null); stale = info && Date.now() - info.mtimeMs > 60000;
+        const info = await lstat(lock).catch(() => null); stale = info && Date.now() - Math.max(info.mtimeMs, acquiredAt || 0) > staleAfter;
       }
       if (stale) {
         const abandoned = owned(root, '.abandoned-' + randomUUID());
@@ -76,19 +106,54 @@ async function assetLock(root) {
       await delay(100);
     }
   }
-  throw new Error('Application assets are still being prepared');
+}
+
+async function recoverInterrupted(appRoot, assetRoot, marker) {
+  const names = await readdir(assetRoot).catch(() => []);
+  const staging = names.filter(name => name.startsWith('.prepare-'));
+  if (!staging.length) return;
+  // A process may be killed after moving an old folder to its staging backup.
+  // Restore those backups before accepting the next install attempt.
+  await rm(marker, { force: true });
+  for (const name of staging) {
+    const folder = owned(assetRoot, name);
+    const folderInfo = await lstat(folder);
+    if (!folderInfo.isDirectory() || folderInfo.isSymbolicLink()) { await rm(folder, { force: true }); continue; }
+    for (const asset of folders) {
+      const backup = owned(folder, `.previous-${asset}`), target = owned(appRoot, asset);
+      const backupInfo = await lstat(backup).catch(() => null);
+      if (backupInfo?.isDirectory() && !backupInfo.isSymbolicLink()) {
+        await rm(target, { recursive: true, force: true });
+        await rename(backup, target);
+      }
+    }
+    await rm(folder, { recursive: true, force: true });
+  }
 }
 
 async function extractTar(archive, staging, manifest) {
-  const tar = process.platform === 'win32' ? 'tar.exe' : '/bin/tar';
-  const options = { windowsHide: true, timeout: 180000, maxBuffer: 8 * 1024 * 1024 };
-  const { stdout: names } = await execute(tar, ['-tf', archive], options);
-  const listed = names.trimEnd().split('\n').map(name => name.replace(/\r$/, '').replace(/\/$/, ''));
+  const tar = process.env.QIBOX_ASSET_TAR || (process.platform === 'win32' ? 'tar.exe' : '/bin/tar');
+  // fnOS callback time limits vary with archive size and available storage;
+  // leave the command uncapped by default and let tar report real failures.
+  const options = { windowsHide: true, timeout: commandTimeout, maxBuffer: 8 * 1024 * 1024 };
+  // The archive is already authenticated by its manifest SHA-256. One verbose
+  // listing supplies both names and entry types; the extracted tree is still
+  // checked byte-for-byte below, so removing the separate -tf pass does not
+  // weaken validation.
+  const runTar = async args => {
+    try { return await execute(tar, args, options); }
+    catch (error) {
+      const detail = typeof error.stderr === 'string' && error.stderr.trim() ? `: ${error.stderr.trim()}` : '';
+      if (detail && !error.message.includes(detail)) error.message += detail;
+      throw error;
+    }
+  };
+  const { stdout: listing } = await runTar(['-tvf', archive]);
+  const lines = listing.trimEnd().split('\n').map(line => line.replace(/\r$/, '')).filter(Boolean);
+  const listed = lines.map(line => line.trim().split(/\s+/).at(-1).replace(/\/$/, ''));
   const expected = new Set([...manifest.directories, ...Object.keys(manifest.files)]);
-  if (listed.length !== expected.size || new Set(listed).size !== listed.length || listed.some(name => !expected.has(name))) throw new Error('Application asset archive entries differ');
-  const { stdout: types } = await execute(tar, ['-tvf', archive], options);
-  if (types.trimEnd().split('\n').some(line => !['-', 'd'].includes(line[0]))) throw new Error('Application asset archive cannot contain links');
-  await execute(tar, ['-xf', archive, '-C', staging, '--no-same-owner', '--same-permissions'], options);
+  if (lines.some(line => !['-', 'd'].includes(line[0])) || listed.length !== expected.size || new Set(listed).size !== listed.length || listed.some(name => !expected.has(name))) throw new Error('Application asset archive entries or types differ');
+  await runTar(['-xf', archive, '-C', staging, '--no-same-owner', '--same-permissions']);
 }
 
 async function prepare(appRoot, { extract = extractTar, move = rename } = {}) {
@@ -104,6 +169,7 @@ async function prepare(appRoot, { extract = extractTar, move = rename } = {}) {
   await mkdir(assetRoot, { recursive: true });
   const release = await assetLock(assetRoot);
   try {
+  await recoverInterrupted(appRoot, assetRoot, marker);
   if (await matches(appRoot, manifest, true)) {
     await mkdir(assetRoot, { recursive: true }); await writeFile(marker, fingerprint, { mode: 0o600 });
     return { packed: true, reused: true, files: Object.keys(manifest.files).length };

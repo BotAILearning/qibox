@@ -12,7 +12,8 @@ const downloadBytes = Buffer.alloc(4 * 1024 ** 2); packageBytes.copy(downloadByt
 let downloadStream, downloads = 0, extractions = 0, preparations = 0, reportExtraction;
 const preparation = Promise.withResolvers(), extraction = Promise.withResolvers();
 const app = await createApplication({ appRoot: root, dataRoot, dev: true, runtimeFactory,
-  fetcher: () => ++downloads === 1 ? new Response(new ReadableStream({ start(controller) { downloadStream = controller; controller.enqueue(downloadBytes.subarray(0, 2 * 1024 ** 2)); } }), { headers: { 'content-length': String(downloadBytes.length) } }) : fetcher(),
+  downloadSource: { version: '4.1.13.9', url: 'https://dldir1v6.qq.com/weixin/Universal/Linux/WeChatLinux_x86_64.deb', size: downloadBytes.length, sha256: createHash('sha256').update(downloadBytes).digest('hex') },
+  fetcher: () => ++downloads === 1 ? new Response(new ReadableStream({ start(controller) { downloadStream = controller; controller.enqueue(downloadBytes.subarray(0, 2 * 1024 ** 2)); } }), { headers: { 'content-length': String(downloadBytes.length) } }) : new Response(downloadBytes, { headers: { 'content-length': String(downloadBytes.length) } }),
   extract: async (file, destination, appRoot, runtimeRoot, progress) => {
     if (++extractions === 1) { reportExtraction = progress; await extraction.promise; }
     return extractor(file, destination);

@@ -9,6 +9,7 @@ import { mkdir, rm, lstat } from 'node:fs/promises';
 import { WebSocketServer } from 'ws';
 import { AppError, jsonFile } from './files.mjs';
 import { PackageLibrary } from './packages.mjs';
+import { WechatUpdate } from './wechat-update.mjs';
 import { RuntimeResources } from './runtime-resources.mjs';
 import { Instances } from './instances.mjs';
 import { desktopSocket } from './desktop-socket.mjs';
@@ -68,8 +69,27 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
       }).finally(() => { preparingInitialization = false; });
     } else await preparation.init();
   }
-  const users = new Instances({ appRoot, dataRoot, dev, host, library, runtimeFactory, aiProvider, deferRestore, resourceManager: preparation }); await users.init();
-  library.beforeInstall = async () => { await users.ensureAssets(); if (users.assets.status === 'error') throw new AppError('准备失败，请重新打开栖盒'); };
+  const users = new Instances({ appRoot, dataRoot, dev, host, library, runtimeFactory, aiProvider, deferRestore, resourceManager: preparation });
+  const updater = new WechatUpdate({ library, users, dataRoot, fetcher, validateProgram: async (directory, metadata, work) => {
+    if (dev || runtimeFactory) throw new AppError('新程序需在 NAS 中验证后才能切换', 409);
+    const { Runtime } = await import('./runtime.mjs');
+    const home = path.join(work, 'validation-home'); await mkdir(home, { mode: 0o700 });
+    const runtime = new Runtime({ appRoot, dataRoot: path.join(work, 'validation'), runtimeRoot: library.runtimeRoot, resourceManager: preparation,
+      store: { active: async () => ({ home }) }, application: () => ({ ...metadata, directory }) });
+    try { await runtime.prepare(); await runtime.start(); if (runtime.status !== 'running') throw new AppError('新程序未通过隔离启动验证'); }
+    finally { await runtime.stop(); }
+  } });
+  await updater.init();
+  await users.init();
+  library.beforeInstall = async () => {
+    await preparationInitialization;
+    if (preparation.manifest && preparation.state.status !== 'ready') {
+      preparation.start(); await preparation.working;
+      if (preparation.state.status !== 'ready') throw new AppError(preparation.state.error || '运行环境自检失败，请重试');
+      users.assetsTask = null;
+    }
+    await users.ensureAssets(); if (users.assets.status === 'error') throw new AppError('准备失败，请重新打开栖盒');
+  };
   library.beforeUninstall = () => users.suspendForUninstall();
   library.resumePendingDownload?.();
   const completePreparation = () => {
@@ -150,6 +170,11 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
         }
         if (req.method !== 'POST') throw new AppError('请求方式不支持', 405);
         check(req, user);
+        if (route === '/api/wechat-update/upload') {
+          space.requireConsent(); if (!user.isAdmin) throw new AppError('请由 NAS 管理员更新共享微信程序', 403);
+          if (req.headers['content-type'] !== 'application/octet-stream') throw new AppError('请选择官方微信 deb 包', 415);
+          return send(res, 200, await updater.upload(req.headers['x-wechat-update-token'], req, Number(req.headers['content-length'])));
+        }
         if (route === '/api/preparation/import') {
           space.requireConsent();
           if (!preparation.manifest) throw new AppError('当前版本无需导入运行组件', 409);
@@ -174,6 +199,14 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
           return send(res, 200, await item.runtime.fileChooser.upload(fileUpload[2], req.headers['x-file-client'], fileUpload[3], req, Number(req.headers['content-length'])));
         }
         const data = await body(req, /^\/api\/instances\/[a-f0-9-]{36}\/clipboard$/.test(route) ? 29 * 1024 * 1024 : 360064);
+        if (route === '/api/wechat-update') {
+          space.requireConsent(); if (!user.isAdmin) throw new AppError('请由 NAS 管理员更新共享微信程序', 403);
+          if (data.action === 'preview') return send(res, 200, await updater.preview());
+          if (data.action === 'download' || data.action === 'resume') return send(res, 202, await updater.download(data.token));
+          if (data.action === 'pause') return send(res, 200, await updater.pause());
+          if (data.action === 'nas') return send(res, 202, await updater.importNas(data.token, nasFiles, user.uid, data.path));
+          throw new AppError('更新操作无效');
+        }
         if (route === '/api/consent') return send(res, 200, await space.setConsent(data.accepted));
         space.requireConsent();
         if (aiReportExportMatch) {
@@ -241,7 +274,8 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
         if (route === '/api/install/pause') return send(res, 200, await library.pauseDownload());
         if (route === '/api/install/continue') return send(res, 202, await library.resumeDownload());
         if (installRoute === '/api/install/download') {
-          if (preparation.manifest && preparation.state.status !== 'ready') throw new AppError('请先完成“准备微信”', 409);
+          // The original install entry also drives backend preparation; the
+          // complex preparation panel is not a prerequisite user workflow.
           return send(res, 202, await library.download({ allowUnverified: data.allowUnverified === true }));
         }
         if (installRoute === '/api/install/nas') { if (host !== 'fnos') throw new AppError('请从本机上传安装包', 409); return send(res, 202, library.importNas(nasFiles, user.uid, data.path)); }
@@ -363,7 +397,7 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
     } catch { socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n'); }
   });
   return { server, users, library, prefix, devKey, startRecovery: async () => { await preparationInitialization; return users.restore(); },
-    async close() { clearInterval(ticketTimer); for (const ws of wss.clients) ws.terminate(); await preparationInitialization; await preparation.close(); await library.close(); await users.close(); for (const socket of sockets) socket.destroy(); if (server.listening) await new Promise(resolve => server.close(resolve)); wss.close(); } };
+    async close() { clearInterval(ticketTimer); for (const ws of wss.clients) ws.terminate(); await preparationInitialization; await updater.close(); await preparation.close(); await library.close(); await users.close(); for (const socket of sockets) socket.destroy(); if (server.listening) await new Promise(resolve => server.close(resolve)); wss.close(); } };
 }
 
 // One main process per installation owns the desktop session (Xvfb, WeChat and

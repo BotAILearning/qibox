@@ -62,6 +62,7 @@ export class Instances {
   start(runtime) {
     const task = this.starts.then(async () => {
       if (this.closing) throw new AppError('栖盒正在退出', 503);
+      if ((!runtime.definition || runtime.definition.id === 'wechat') && (this.library.updating || this.library.updateHolds?.has(runtime.dataRoot))) throw new AppError('微信更新已关闭此实例，请在更新完成后手动打开', 409);
       if ((!runtime.definition || runtime.definition.id === 'wechat') && (!this.library.installed() || this.library.uninstalling)) throw new AppError('请先完成微信安装', 409);
       if (this.resourceManager?.manifest) {
         if (runtime.status === 'running') return;
@@ -76,6 +77,19 @@ export class Instances {
     await Promise.all(this.pending.values());
     for (const space of this.spaces.values()) await space.mutate(async () => {
       for (const item of space.instances.values()) if (item.meta.appId === 'wechat') await space.stop(item.meta.id);
+    });
+  }
+  async stopForUpdate() {
+    await this.starts; await Promise.all(this.pending.values());
+    for (const space of this.spaces.values()) await space.mutate(async () => {
+      for (const item of space.instances.values()) if (item.meta.appId === 'wechat') {
+        // Cancel in-flight automation without changing enabled/configuration,
+        // queue policy, takeover timers or the user's startup schedule.
+        item.ai.invalidate?.();
+        await item.scheduler.working;
+        await item.loginRecovery;
+        await item.exclusive(() => item.runtime.stop());
+      }
     });
   }
   async close({ deadline = Infinity } = {}) {
@@ -100,7 +114,7 @@ class UserInstances {
     }
   }
   requireConsent() { if (!this.consent.accepted) throw new AppError('请先阅读并同意栖盒用户协议和隐私政策', 403); }
-  requireInstalled(appId = 'wechat') { applicationDefinition(appId, this.appCatalog); if (appId === 'wechat' && (!this.library.installed() || this.library.uninstalling)) throw new AppError('请先安装微信，再打开或恢复数据', 409); }
+  requireInstalled(appId = 'wechat') { applicationDefinition(appId, this.appCatalog); if (appId === 'wechat' && this.library.updating) throw new AppError('正在更新微信，请稍候', 409); if (appId === 'wechat' && (!this.library.installed() || this.library.uninstalling)) throw new AppError('请先安装微信，再打开或恢复数据', 409); }
   mutate(action) { const task = this.queue.then(action); this.queue = task.catch(() => {}); return task; }
   async setConsent(accepted) {
     if (typeof accepted !== 'boolean') throw new AppError('请选择是否同意');
@@ -134,12 +148,12 @@ class UserInstances {
     }
     const [{ WechatScheduler, scheduleWindow }, { AIAssistant }, { DataChatBridge }] = await Promise.all([import('./scheduler.mjs'), import('./ai-service.mjs'), import('./ai-data.mjs')]);
     const scheduler = new WechatScheduler({ dataRoot, runtime,
-      ready: () => !this.owner.closing && !meta.removedAt && !instance.busy && this.consent.accepted && !!this.library.installed() && !this.library.uninstalling,
+      ready: () => !this.owner.closing && !meta.removedAt && !instance.busy && this.consent.accepted && !!this.library.installed() && !this.library.uninstalling && !this.library.updating && !this.library.updateHolds?.has(dataRoot),
       start: () => instance.exclusive(async () => { await instance.preparing; await this.owner.start(runtime); }),
       stop: () => instance.exclusive(() => runtime.stop()) });
     await scheduler.init(); instance.scheduler = scheduler;
     instance.ai = new AIAssistant({ dataRoot, bridge: runtime.aiBridge || new DataChatBridge(runtime), provider: this.aiProvider,
-      ready: () => !this.owner.closing && !meta.removedAt && this.consent.accepted && runtime.status === 'running' });
+      ready: () => !this.owner.closing && !meta.removedAt && this.consent.accepted && runtime.status === 'running' && !this.library.updating && !this.library.updateHolds?.has(dataRoot) });
     runtime.manualInput = event => instance.ai.manualInput(event);
     await instance.ai.init(); instance.ai.begin();
     this.instances.set(meta.id, instance);
@@ -199,6 +213,8 @@ class UserInstances {
     this.requireConsent();
     const item = this.get(id);
     this.requireInstalled(item.meta.appId);
+    if (this.library.updating) throw new AppError('正在更新微信，请稍候', 409);
+    await this.library.releaseUpdateHold?.(item.dataRoot);
     await item.scheduler.interact();
     return item.exclusive(async () => { this.get(id); this.requireConsent(); await item.preparing; await this.owner.start(item.runtime); return item.runtime.publicState(); });
   }
@@ -218,6 +234,7 @@ class UserInstances {
     if (typeof deleteData !== 'boolean') throw new AppError('请选择是否保留数据');
     return this.mutate(async () => {
       const meta = this.catalog.find(x => x.id === id); if (!meta || !validId(id)) throw new AppError('应用不存在', 404);
+      if (meta.appId === 'wechat' && this.library.updating) throw new AppError('正在更新微信，请稍候', 409);
       if (deleteData && confirmName !== `确认删除${meta.name}`) throw new AppError(`请输入：确认删除${meta.name}`);
       if (!meta.removedAt) {
         const item = this.get(id); await this.stop(id); await item.ai.close(); await item.scheduler.close(); await item.tail;

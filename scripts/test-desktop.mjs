@@ -38,6 +38,8 @@ try {
       await page.locator('#download').click();
     }
     await page.locator('#package-status').filter({ hasText: '已安装' }).waitFor();
+    assert.equal(await page.getByRole('button', { name: '手动更新', exact: true }).count(), 1, 'installed WeChat keeps a compact manual update entry');
+    assert.equal(await page.locator('[data-preparation-panel]').count(), 0, 'install card does not render the preparation workflow panel');
     if (hasTouch) await page.locator('[data-action=open]').first().click();
     else {
       await page.locator('#add-instance').click();

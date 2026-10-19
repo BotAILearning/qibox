@@ -73,6 +73,24 @@ test('a missing file in a ready cache is repaired; simultaneous callers perform 
   assert.deepEqual(await readFile(path.join(f.root, 'fonts/Noto.otf')), f.data['fonts/Noto.otf']);
 }));
 
+test('an interrupted publication is recovered before the next restore', () => run(async f => {
+  await f.extract(null, f.root);
+  const crash = path.join(f.root, 'assets', '.prepare-crash');
+  await mkdir(crash);
+  await rename(path.join(f.root, 'fonts'), path.join(crash, '.previous-fonts'));
+  await assert.rejects(readFile(path.join(f.root, 'fonts/Noto.otf')));
+  await prepareAppAssets(f.root, { extract: f.extract });
+  assert.deepEqual(await readFile(path.join(f.root, 'fonts/Noto.otf')), f.data['fonts/Noto.otf']);
+  assert.deepEqual((await readdir(path.join(f.root, 'assets'))).filter(x => x.startsWith('.prepare-')), []);
+}));
+
+test('a recycled PID owner record is reclaimed on Linux', { skip: process.platform !== 'linux' }, () => run(async f => {
+  const lock = path.join(f.root, 'assets', '.prepare-lock'); await mkdir(lock);
+  await writeFile(path.join(lock, 'owner'), JSON.stringify({ pid: process.pid, startTime: 'definitely-not-this-process', acquiredAt: Date.now() }));
+  await prepareAppAssets(f.root, { extract: f.extract });
+  assert.deepEqual(await readFile(path.join(f.root, 'fonts/Noto.otf')), f.data['fonts/Noto.otf']);
+}));
+
 test('an unsafe manifest cannot write outside the application root', () => run(async f => {
   f.manifest.files['fonts/../../escaped'] = Object.values(f.manifest.files)[0]; await f.save();
   await assert.rejects(prepareAppAssets(f.root, { extract: () => assert.fail('must not extract') }), /Invalid.*file/);
