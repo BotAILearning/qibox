@@ -20,6 +20,9 @@ try {
       await page.locator('html').evaluate((n,t) => n.dataset.qiTheme=t,theme);
       await page.evaluate(() => document.fonts.ready);
       await page.waitForTimeout(100);
+      // Theme changes can still be transitioning at 100ms. Capture the settled
+      // product state, retaining infinite activity indicators when applicable.
+      await page.evaluate(() => Promise.all(document.getAnimations().filter(a => a.effect?.getComputedTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))));
       const file = `${name}-${width}-${theme}.png`;
       await page.screenshot({path:path.join(out,file)});
       const geometry = await page.evaluate(() => ({
