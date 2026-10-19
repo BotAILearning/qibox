@@ -62,8 +62,11 @@ try{
  // App-bar return exits each root tab; bottom tabs perform peer navigation.
  await page.setViewportSize({width:375,height:812});
  for(const key of ['settings','proactive','activity','analysis','overview']){await nav(key);assert.equal(await back.getAttribute('aria-label'),'返回栖盒');await back.click();await page.locator('#ai-panel').waitFor({state:'hidden'});await page.locator('[data-mobile-ai-open]').first().click();await page.locator('#ai-panel').waitFor({state:'visible'});}
- await page.setViewportSize({width:1280,height:800});await nav('settings');await page.locator('[data-ai-nav="global-reply"]').click();
- assert.equal(await page.locator('.ai-mobile-navigation').isVisible(),false);assert.equal(await page.locator('.ai-page-heading [data-ai-nav="settings"]').isVisible(),true);
+ for(const width of [861,1024,1280]){
+  await page.setViewportSize({width,height:800});await nav('settings');await page.locator('[data-ai-nav="global-reply"]').click();
+  assert.equal(await page.locator('.ai-mobile-navigation').isVisible(),false);assert.equal(await page.locator('.ai-page-heading [data-ai-nav="settings"]').isVisible(),true);
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
+ }
  assert.equal(f.provider.calls.length,calls);assert.deepEqual(report.errors,[]);
  report.checks=['single contextual return on mobile; desktop retains content return','nested parent navigation and explicit root exit','failed/unsaved draft retained across app-bar return','task filtering separated from list maintenance','44px hit target and uncropped titles at320/375/639/640/768/860','instance context visible','zero upstream generation or real delivery'];report.passed=true;
 }catch(e){report.failure=e.stack;process.exitCode=1;await page?.screenshot({path:path.join(out,'failure.png')}).catch(()=>{});}
