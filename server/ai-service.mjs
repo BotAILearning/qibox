@@ -32,7 +32,7 @@ import { setTimeout as wait } from 'node:timers/promises';
 import { AppError, atomicJson, jsonFile } from './files.mjs';
 import { AIProvider, SecretStore, providerValue, providerFingerprint } from './ai-provider.mjs';
 import { unsupportedPersonalAnswer, unsupportedChatTime, personalQuestionClarification, knownDateCorrection } from './ai-personal-answer.mjs';
-import { categories, styleOptions, avoidOptions, defaultStyle, styleSchema, styleValue, strategyValue, replyStrategyValue, replyLimitValue, strategyReady, textField } from './ai-schema.mjs';
+import { categories, styleOptions, avoidOptions, defaultStyle, styleSchema, styleValue, strategyValue, replyStrategyValue, replyLimitValue, validReplyLimit, strategyReady, textField } from './ai-schema.mjs';
 import { providerPresets, goalPresets, replyPresets } from './ai-presets.mjs';
 import { unsupportedTextAction, promisesMedia } from './ai-capabilities.mjs';
 import { parseSchedule, advanceSchedule } from './ai-schedule.mjs';
@@ -200,12 +200,12 @@ export class AIAssistant {
     this.data.modelTested ??= {};
     this.migrateErrorLog();
     this.data.replyTargets ??= [...this.data.targets]; this.data.proactiveTargets ??= [...this.data.targets]; this.syncTargets();
-    this.data.strategy = strategyValue(this.data.strategy);
-    this.data.replyStrategy = replyStrategyValue(this.data.replyStrategy || this.data.strategy);
+    this.data.strategy = strategyValue(this.data.strategy, { stored: true });
+    this.data.replyStrategy = replyStrategyValue(this.data.replyStrategy || this.data.strategy, { stored: true });
     this.data.replyRoundLimits = { person: null, group: null, ...(this.data.replyRoundLimits || {}) };
     for (const kind of ['person', 'group']) if (this.data.replyRoundLimits[kind] !== null) {
       try { this.data.replyRoundLimits[kind] = replyLimitValue(this.data.replyRoundLimits[kind]); }
-      catch { this.data.replyRoundLimits[kind] = null; }
+      catch { /* Preserve legacy limits; execution remains blocked until a valid save. */ }
     }
     for (const profile of Object.values(this.data.profiles)) {
       // Older versions persisted model-selected group wait durations. They are
@@ -213,8 +213,8 @@ export class AIAssistant {
       if (profile.groupWait?.kind === 'model') delete profile.groupWait;
       profile.source ||= profile.account === 'paste' ? 'paste' : profile.learnedAt ? 'learned' : 'manual';
       migrateLearnedStyle(profile); migrateObjectStyles(profile);
-      if (profile.strategy) profile.strategy = strategyValue(profile.strategy);
-      if (profile.replyStrategy) profile.replyStrategy = replyStrategyValue(profile.replyStrategy);
+      if (profile.strategy) profile.strategy = strategyValue(profile.strategy, { stored: true });
+      if (profile.replyStrategy) profile.replyStrategy = replyStrategyValue(profile.replyStrategy, { stored: true });
       // Keep the historical mention metric; all group triggers use rounds.
       if (profile.kind === 'group' && !Number.isSafeInteger(profile.mentionRounds)) profile.mentionRounds = 0;
       // Retire legacy human-verification gates while preserving an audit state.
@@ -738,14 +738,14 @@ export class AIAssistant {
       // Personal reply goals and limits still apply, but the ongoing proactive
       // conversation must retain the facts and boundaries the user launched it with.
       replyGoal: profile.replyStrategy.replyGoal,
-    } : {}), maxRounds: profile.replyStrategy?.maxRounds === 'unlimited' || Number.isSafeInteger(profile.replyStrategy?.maxRounds)
+    } : {}), maxRounds: profile.replyStrategy?.maxRounds != null
       ? profile.replyStrategy.maxRounds
-      : this.data.replyRoundLimits?.[profile.kind] || profile.continuation.strategy.maxRounds };
+      : this.data.replyRoundLimits?.[profile.kind] ?? profile.continuation.strategy.maxRounds };
     // Independent replies receive only their reply configuration, never another
     // conversation's proactive purpose, opening content, persona or style source.
-    const base = replyStrategyValue(this.globalReplyStrategy());
-    const result = strategyValue({ ...base, ...(profile?.inheritReplyStrategy ? {} : profile?.replyStrategy) });
-    result.maxRounds = profile?.replyStrategy?.maxRounds === 'unlimited' || Number.isSafeInteger(profile?.replyStrategy?.maxRounds) ? profile.replyStrategy.maxRounds : this.data.replyRoundLimits?.[profile?.kind] || result.maxRounds;
+    const base = replyStrategyValue(this.globalReplyStrategy(), { stored: true });
+    const result = strategyValue({ ...base, ...(profile?.inheritReplyStrategy ? {} : profile?.replyStrategy) }, { stored: true });
+    result.maxRounds = profile?.replyStrategy?.maxRounds != null ? profile.replyStrategy.maxRounds : this.data.replyRoundLimits?.[profile?.kind] ?? result.maxRounds;
     return result;
   }
   styleProfile(strategy) {
@@ -1017,12 +1017,12 @@ export class AIAssistant {
   }
   publicProfile(profile) {
     const { groupInbox, generatedIds, sentMessages, replyCursor, memoryHistory, ...view } = profile;
-    return { ...view, effectiveTiming: effectiveTiming(this.data.settings, profile), effectiveTakeover: effectiveTakeover(this.data.settings, profile), generatedIds, sentMessages: sentMessages?.map(({ body, ...row }) => row), memoryHistory: (memoryHistory || []).map(row => ({ id: row.id, at: row.at })), memory: readMemory(this.vault, profile), pendingMemory: this.pendingMemoryOf(profile), memoryMerge: profile.memoryMerge || null, pendingMemoryAt: profile.pendingMemoryAt || null, pendingMemorySource: profile.pendingMemorySource || null, memorySuggestion: profile.memorySuggestion ? readMemory(this.vault, profile, 'memorySuggestion') : null };
+    return { ...view, replyLimitNeedsReview: !validReplyLimit(this.strategy(profile, 'reply').maxRounds), effectiveTiming: effectiveTiming(this.data.settings, profile), effectiveTakeover: effectiveTakeover(this.data.settings, profile), generatedIds, sentMessages: sentMessages?.map(({ body, ...row }) => row), memoryHistory: (memoryHistory || []).map(row => ({ id: row.id, at: row.at })), memory: readMemory(this.vault, profile), pendingMemory: this.pendingMemoryOf(profile), memoryMerge: profile.memoryMerge || null, pendingMemoryAt: profile.pendingMemoryAt || null, pendingMemorySource: profile.pendingMemorySource || null, memorySuggestion: profile.memorySuggestion ? readMemory(this.vault, profile, 'memorySuggestion') : null };
   }
   publicLiveState(contact) {
     const skipped = this.skipRecords(), errors = this.errorRecords({ limit: 20 });
     const profiles = this.profiles().map(profile => ({
-      id: profile.id, paused: !!profile.paused, rounds: profile.rounds || 0, pauseReason: profile.pauseReason || null, replyFlow: profile.replyFlow || null,
+      id: profile.id, replyLimitNeedsReview: !validReplyLimit(this.strategy(profile, 'reply').maxRounds), paused: !!profile.paused, rounds: profile.rounds || 0, pauseReason: profile.pauseReason || null, replyFlow: profile.replyFlow || null,
       manualWait: profile.manualWait || null, groupOptions: profile.groupOptions || null, replyOptions: profile.replyOptions || null, mentionRounds: profile.mentionRounds || 0,
       delivery: profile.delivery ? { ...profile.delivery, body: undefined } : null,
       groupReplyLimitBlocked: !!profile.groupReplyLimitBlocked, groupWait: profile.groupWait || null, groupContextWait: profile.groupContextWait || null,
@@ -3443,6 +3443,7 @@ export class AIAssistant {
     await this.save();
   }
   canDeliver(profile, mode, revision, signal) {
+    if (mode === 'reply' && !validReplyLimit(this.strategy(profile, mode).maxRounds)) return false;
     if (mode === 'reply' && this.now() < this.manualWaitUntil(profile)) return false;
     const active = mode === 'reply' ? this.data.settings.reply && this.replySelected(profile) || this.continuing(profile) : this.data.settings.proactive;
     return revision === this.revision && !signal.aborted && this.data.settings.enabled && this.modelReady() && strategyReady(this.strategy(profile, mode), mode) && active && this.selected(profile, mode) && !profile.paused && (!Number.isFinite(profile.stopUntil) || this.now() >= profile.stopUntil) && this.available && this.ready() && !this.manualHolds.size && this.now() >= (this.userBusyUntil || 0) && this.now() >= Math.max(this.sendBlockedUntil || 0, profile.sendRetryAt || 0);
@@ -3483,6 +3484,7 @@ export class AIAssistant {
       await this.save(); return sent ? 'partial' : 'cancelled';
     };
     for (const rawText of segments) {
+      if (mode === 'reply' && (!validReplyLimit(this.strategy(profile, mode).maxRounds) || (profile.rounds || 0) >= this.strategy(profile, mode).maxRounds)) return interrupted();
       const mediaFile = typeof rawText === 'object' ? rawText : null;
       const text = mediaFile ? `[${mediaFile.mediaType === 'image' ? '图片' : 'AI合成语音'}] ${mediaFile.description}` : guardTimeGreeting(rawText, currentChatTime(this.now(), selfContext(this, profile.kind)));
       if (!this.canDeliver(profile, mode, revision, signal)) return interrupted();
@@ -3504,7 +3506,7 @@ export class AIAssistant {
       if (item) { item.status = 'sending'; item.segmentsSent = sent; item.segmentsTotal = segments.length; }
       if (mode === 'reply' && !sent) this.replyStage(profile, 'sending');
       profile.delivery = { operationId, body: this.vault.seal({ text }), baseline: fresh.messages.at(-1)?.id, status: 'sending', at: this.now(), source: mode === 'reply' ? 'reply' : 'proactive', ...(mode === 'reply' ? { replyRoundVersion } : {}), segmentsSent: sent, segmentsTotal: segments.length, ...(groupBatch ? { replyTo: groupBatch.ids, recipient: groupBatch.sender } : {}) }; await this.save();
-      if (!this.canDeliver(profile, mode, revision, signal)) {
+      if (!this.canDeliver(profile, mode, revision, signal) || mode === 'reply' && (profile.rounds || 0) >= this.strategy(profile, mode).maxRounds) {
         profile.delivery.status = sent ? 'sent' : 'cancelled'; profile.delivery.interrupted = sent > 0;
         if (item?.status === 'sending') item.status = sent ? 'done' : this.selected(profile, mode) ? 'pending' : 'skipped';
         this.pruneQueueTargets(); await this.save(); return sent ? 'partial' : 'cancelled';

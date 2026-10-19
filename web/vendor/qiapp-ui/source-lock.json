@@ -1,0 +1,15 @@
+{
+  "package": "@qiapp/ui",
+  "version": "0.2.0",
+  "revision": "2026-10-19.2",
+  "files": {
+    "styles.css": "96a136a6a71aa427fb262a9b2ff3cd38bb0112452b4655f1f7254b4dc7272577",
+    "tokens.css": "afd9ff825db5c4d9980e178a0efc9f20917725683411299e251d0af8acfc0e05",
+    "brands.css": "1000d35b2896a4f99145dd57028a6b370cbd12c9ee39f2d2df34514eea9edba1",
+    "base.css": "fa19a04ffac881ca2ff181a98fb56e825b9467ea6362f5596653e56c0f82405f",
+    "components.css": "3df2d6bade617d2070766ac68b1c564bf680cff11973eabf818a2a9c8d3fdc39",
+    "settings.css": "10f692734c9ec9085b85ebfa1973f374ec9bada5d2cffaedd59874480d97372b",
+    "ai.css": "825a6adcb1a38443fbaa97a5020e6bd96b1d5e78bb8ec4d308cd53222942ed53",
+    "composition.css": "631b232411f7e59feae62248646e83f70e243564f533e84e6f71e217a869ac75"
+  }
+}

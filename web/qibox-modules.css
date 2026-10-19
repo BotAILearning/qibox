@@ -1,6 +1,6 @@
 /* Shared module contract, including the older workspace views. */
 .qiapp-product {
-  --qbx-module-padding: 20px;
+  --qbx-module-padding: 16px;
   --qbx-module-radius: 12px;
   --qbx-module-gap: 16px;
   --qbx-module-title-size: 16px;

@@ -1,6 +1,6 @@
 import { randomUUID, createHash } from 'node:crypto';
 import { AppError } from './files.mjs';
-import { replyStrategyValue, styleValue, defaultStyle as fallbackStyle } from './ai-schema.mjs';
+import { replyStrategyValue, validReplyLimit, styleValue, defaultStyle as fallbackStyle } from './ai-schema.mjs';
 import { replyPresets } from './ai-presets.mjs';
 import { recordSource, isDeletedActivityRecord } from './ai-activity-records.mjs';
 import { personalFields, retiredPersonalFields, normalizePersonalField } from './ai-personal-fields.mjs';
@@ -144,7 +144,11 @@ export async function accountConfiguration(a, value) {
       a.data.personalInformation[a.data.account] = a.vault.seal(information);
       a.invalidate();
     } else if (type === 'global-reply-strategy') {
-      const strategy = replyStrategyValue(value.strategy);
+      const previousLimit = a.globalReplyStrategy()?.maxRounds;
+      // Editing requirements does not count as confirming an old limit. Keep
+      // the exact existing value and leave its execution gate closed.
+      const stored = !validReplyLimit(previousLimit) && previousLimit != null && value.strategy?.maxRounds === previousLimit;
+      const strategy = replyStrategyValue(value.strategy, { stored });
       a.data.globalReplyStrategies ||= {}; a.data.globalReplyStrategies[a.data.account] = strategy;
       a.invalidate();
     } else if (type === 'style') {

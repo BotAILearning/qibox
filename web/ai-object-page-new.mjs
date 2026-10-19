@@ -48,8 +48,8 @@ export function objectExecutionStatus(state, contactId) {
   const labels = { waiting: '等待汇总', summarizing: '汇总上下文', requesting: 'AI 请求中', generating: 'AI 请求中', sending: '发送中', confirming: '核实发送结果', unconfirmed: '核验已结束', sent: '已发送', failed: '发送失败', partial: '部分已发送', skipped: '本轮不回复', cancelled: '已取消' };
   const phase = live?.phase || 'idle';
   const replyOn = state.settings?.enabled !== false && state.settings?.reply !== false && !profile?.manualWait && (profile?.kind === 'group' ? ['realtime','atMe','atAll'].some(key => profile.groupOptions?.[key]) : personReplyEnabled(state, profile));
-  const label = unavailable ? !state.available ? '正在恢复微信读取' : '等待微信或模型配置' : replyOn && profile?.groupReplyLimitBlocked ? '已达到回复次数上限' : phase === 'waiting' && live?.canRetry ? '等待重试' : phase === 'waiting' && live?.reason === '等待补充信息' ? '等待补充信息' : labels[phase] || '等待新消息';
-  const detail = unavailable ? state.available === false ? (state.notice || '微信聊天暂不可读取，正在自动重试') : (state.requirements?.reply || '自动回复暂缓，正在恢复运行')
+  const label = profile?.replyLimitNeedsReview ? '需确认回复上限' : unavailable ? !state.available ? '正在恢复微信读取' : '等待微信或模型配置' : replyOn && profile?.groupReplyLimitBlocked ? '已达到回复次数上限' : phase === 'waiting' && live?.canRetry ? '等待重试' : phase === 'waiting' && live?.reason === '等待补充信息' ? '等待补充信息' : labels[phase] || '等待新消息';
+  const detail = profile?.replyLimitNeedsReview ? '旧回复上限已保留，保存 1–2000 的有效上限后才能恢复自动回复' : unavailable ? state.available === false ? (state.notice || '微信聊天暂不可读取，正在自动重试') : (state.requirements?.reply || '自动回复暂缓，正在恢复运行')
     : live?.reason || (phase === 'sent' ? '微信已确认发送' : '当前没有正在执行的自动回复');
   const skip = state.settings?.enabled && state.settings?.reply && state.waiting !== true && profile && !profile.paused;
   const flow = !unavailable && profile ? replyFlowMarkup(profile, live, { allowSkip: skip }) : '';
@@ -71,7 +71,7 @@ export function objectPage(state, view) {
   const styles = [...(profile?.learnedStyle ? [{ id: 'learned', label: '已学习的风格' }] : []), { id: '', label: '默认风格' }, ...objectStyleTabs(state, profile)];
   const savedGroup = profile?.groupOptions || {};
   const savedReplyActive = isGroup ? savedGroup.realtime || savedGroup.atMe || savedGroup.atAll : personReplyEnabled(state, profile);
-  const status = profile?.paused ? '已暂停' : isGroup ? savedGroup.realtime ? '实时回复已开启' : savedGroup.atMe || savedGroup.atAll ? '提及时回复' : '群聊回复已关闭' : savedReplyActive ? '自动回复已开启' : '自动回复已关闭';
+  const status = profile?.replyLimitNeedsReview ? '需确认回复上限' : profile?.paused ? '已暂停' : isGroup ? savedGroup.realtime ? '实时回复已开启' : savedGroup.atMe || savedGroup.atAll ? '提及时回复' : '群聊回复已关闭' : savedReplyActive ? '自动回复已开启' : '自动回复已关闭';
   const side = `<aside class="ai-object-sidebar">${contactPickerTabs(state.contacts, view.kind, 'data-ai-kind')}${contactPickerSearch({ id: 'ai-object-search', value: view.search, label: '搜索对象' })}<div id="ai-object-list">${objectList(state, view)}</div><div class="ai-contact-footer"><button type="button" class="quiet" data-ai-nav="learning">批量学习</button><button type="button" class="quiet" data-ai-action="scan">${icon('refresh')}刷新列表</button></div></aside>`;
   if (!contact) return `<div class="ai-object-workspace ai-object-reference">${side}<section class="ai-object-detail"><div class="ai-object-empty">${icon('chat')}<h3>选择联系人或群聊</h3></div></section></div>`;
 

@@ -1,7 +1,5 @@
-@import './ui-foundation.css';
+@import './ui-foundation.css' layer(qibox-legacy);
 @import './vendor/qiapp-ui/styles.css';
 @import './qiapp-product.css';
-@import './qibox-components.css';
-@import './qibox-modules.css';
-
-@import './vendor/qiapp-ui/settings.css';
+@import './qibox-components.css' layer(qibox-legacy);
+@import './qibox-modules.css' layer(qibox-legacy);

@@ -292,17 +292,16 @@ test('batch reply limits require the confirmed contact range and preserve new ob
  assert.equal(result.appliedReplyLimit.count,4);assert.equal(a.data.replyRoundLimits.person,13);
  assert.equal(a.data.replyRoundLimits.group,null);
 });
-test('unlimited bulk setting reaches the selected type without showing a limit badge',async t=>{
+test('bulk unlimited is rejected without changing any type or object limits',async t=>{
  const {a,bridge}=await fixture(t),contact=bridge.contacts[0];
  await a.saveReplyProfile({contact:contact.id,style:a.publicState().schema.defaultStyle,strategy:{maxRounds:50}});
- const result=await a.applyReplyLimitToKind('person','unlimited');
- assert.equal(result.replyRoundLimits.person,'unlimited');assert.equal(result.appliedReplyLimit.count,3);
- const profile=a.profiles().find(p=>p.contact===contact.id);profile.rounds=10000;
- assert.equal(a.strategy(profile,'reply').maxRounds,'unlimited');
- const row=objectList({...a.publicState(),profiles:[profile],contacts:[contact]},{search:'',kind:'person'});
- assert.doesNotMatch(row,/已达自动回复上限/);
- assert.equal(a.data.replyRoundLimits.group,null);
+ const before=structuredClone(a.data.replyRoundLimits),profile=a.profiles().find(p=>p.contact===contact.id);
+ await assert.rejects(a.applyReplyLimitToKind('person','unlimited'),/1到2000/);
+ assert.deepEqual(a.data.replyRoundLimits,before);assert.equal(profile.replyStrategy.maxRounds,50);
+ const result=await a.applyReplyLimitToKind('person',2000);
+ assert.equal(result.replyRoundLimits.person,2000);assert.equal(result.appliedReplyLimit.count,3);assert.equal(a.data.replyRoundLimits.group,null);
 });
+
 test('analysis omits unreadable bodies but keeps database errors visible',async t=>{
  const {a,bridge,provider}=await fixture(t);let fail=false;
  bridge.readRange=async args=>{assert.equal(args.skipUnparsed,true);if(fail)throw Error('database unavailable');return {account:args.account,contact:args.contact,messages:[{id:'bad',text:'',timestamp:args.from},{id:'ok',text:'有效信息',timestamp:args.from+1}]};};

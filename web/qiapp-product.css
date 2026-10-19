@@ -1,4 +1,4 @@
-/* QIAPP UI 0.1.0 product composition. Product state and events stay in qibox. */
+/* QIAPP UI 0.2.0 product brand and business composition. Product state and events stay in qibox. */
 .qiapp-product {
   min-height: 100vh;
   min-height: 100dvh;
@@ -19,14 +19,12 @@
   --qi-text: #202d47;
   --qi-text-secondary: #54627b;
   --qi-text-tertiary: #576680;
-  --qi-radius-md: 8px;
-  --qi-radius-lg: 16px;
   --qi-shadow-subtle: none;
   --qi-shadow-floating: 0 10px 32px #1b2b5a14;
-  --ui-control-height: var(--qi-control-md);
+  --ui-control-height: var(--qi-control-height);
   --ui-control-height-touch: var(--qi-touch-target);
-  --ui-control-radius: var(--qi-radius-md);
-  --ui-control-gap: var(--qi-space-3);
+  --ui-control-radius: var(--qi-radius-sm);
+  --ui-control-gap: var(--qi-space-2);
   color: var(--qi-text);
   background: var(--qi-bg);
 }
@@ -78,53 +76,9 @@
   }
 }
 
-/* Shared native components are now drawn from the QIAPP scale and tokens. */
-.qiapp-product button.qi-btn,
-#ai-panel button.qi-btn {
-  min-height: var(--qi-control-md);
-  padding: var(--qi-space-2) var(--qi-space-4);
-  border: 1px solid transparent;
-  border-radius: var(--qi-radius-md);
-  background: var(--qi-primary);
-  color: var(--qi-on-primary);
-  font-size: var(--qi-font-button);
-  font-weight: var(--qi-weight-button);
-  line-height: var(--qi-line-button);
-  box-shadow: none;
-}
-.qiapp-product button.qi-btn:hover:not(:disabled),
-#ai-panel button.qi-btn:hover:not(:disabled) { background: var(--qi-primary-hover); color: var(--qi-on-primary); }
-.qiapp-product button.qi-btn[data-variant="secondary"],
-#ai-panel button.qi-btn[data-variant="secondary"] { border-color: var(--qi-border); background: var(--qi-surface); color: var(--qi-text); }
-.qiapp-product button.qi-btn[data-variant="secondary"]:hover:not(:disabled),
-#ai-panel button.qi-btn[data-variant="secondary"]:hover:not(:disabled) { background: var(--qi-hover); color: var(--qi-primary); }
-.qiapp-product button.qi-btn:is([data-variant="text"],[data-variant="ghost"]),
-#ai-panel button.qi-btn:is([data-variant="text"],[data-variant="ghost"]) { border-color: transparent; background: transparent; color: var(--qi-primary); }
-.qiapp-product button.qi-btn:is([data-variant="text"],[data-variant="ghost"]):hover:not(:disabled),
-#ai-panel button.qi-btn:is([data-variant="text"],[data-variant="ghost"]):hover:not(:disabled) { background: var(--qi-hover); color: var(--qi-primary-hover); }
-.qiapp-product button.qi-btn[data-variant="danger"],
-#ai-panel button.qi-btn[data-variant="danger"] { background: var(--qi-error); color: #fff; }
-.qiapp-product button.qi-btn[data-icon],
-#ai-panel button.qi-btn[data-icon] { width: var(--qi-control-md); min-width: var(--qi-control-md); height: var(--qi-control-md); padding: 0; }
-.qiapp-product button.qi-btn:disabled,
-#ai-panel button.qi-btn:disabled { background: var(--qi-disabled); border-color: var(--qi-border); color: var(--qi-disabled-text); opacity: 1; }
-.qiapp-product button.qi-btn.mobile-only { display: none; }
-html.mobile .qiapp-product button.qi-btn.mobile-only { display: inline-flex; }
-.qiapp-product :is(input.qi-input,select.qi-input,textarea.qi-input),
-#ai-panel :is(input.qi-input,select.qi-input,textarea.qi-input) {
-  border-color: var(--qi-border-strong);
-  border-radius: var(--qi-radius-md);
-  background: var(--qi-surface);
-  color: var(--qi-text);
-  font-size: var(--qi-font-body);
-}
-.qiapp-product :is(input.qi-input,select.qi-input):not([hidden]),
-#ai-panel :is(input.qi-input,select.qi-input):not([hidden]) { height: var(--qi-control-md); min-height: var(--qi-control-md); }
-.qiapp-product :is(input.qi-input,select.qi-input,textarea.qi-input):focus-visible,
-#ai-panel :is(input.qi-input,select.qi-input,textarea.qi-input):focus-visible { border-color: var(--qi-primary); outline: 2px solid var(--qi-focus); outline-offset: 1px; box-shadow: none; }
-.qiapp-product label.qi-field,
-#ai-panel label.qi-field { display: flex; flex-direction: column; gap: var(--qi-space-2); font-size: var(--qi-font-label); font-weight: var(--qi-weight-label); line-height: var(--qi-line-label); }
-.qiapp-product :is(.qi-btn,.qi-input):focus-visible { outline: 2px solid var(--qi-focus); outline-offset: 2px; }
+/* Native control appearance, density and states come from the pinned library. */
+.qiapp-product button.mobile-only { display: none; }
+html.mobile .qiapp-product button.mobile-only { display: inline-flex; }
 .qiapp-product :is(.modal-actions,.file-transfer-actions),
 #ai-panel :is(.ai-actions,.ai-wizard-actions,.ai-analysis-submit-row) { gap: var(--qi-space-3); }
 .qiapp-product .qi-progress { height: 8px; accent-color: var(--qi-primary); }
@@ -132,23 +86,23 @@ html.mobile .qiapp-product button.qi-btn.mobile-only { display: inline-flex; }
 /* Page structure shares the library's 64px header, 248px sidebar and 24px spacing. */
 .qiapp-product .topbar { height: var(--qi-header); min-height: var(--qi-header); border-color: var(--qi-border); background: var(--qi-surface); }
 .qiapp-product .content { max-width: var(--qi-content-max); padding: var(--qi-space-8); }
-.qiapp-product .workspace { grid-template-columns: var(--qi-sidebar) minmax(0,1fr); gap: var(--qi-space-6); }
+.qiapp-product .workspace { grid-template-columns: minmax(0,1fr) 280px; gap: var(--qi-space-6); }
 .qiapp-product .market-panel { align-self: start; }
 .qiapp-product :is(.market-panel,.desktop-panel) { padding: var(--qi-space-6); border-color: var(--qi-border); border-radius: var(--qi-radius-lg); background: var(--qi-surface); box-shadow: none; }
 .qiapp-product :is(.store-card,.mobile-ai-card) { padding: var(--qi-space-4); border-color: var(--qi-border); border-radius: var(--qi-radius-md); background: var(--qi-surface-muted); box-shadow: none; }
 .qiapp-product .panel-heading { margin-bottom: var(--qi-space-6); }
 .qiapp-product .panel-heading h2 { color: var(--qi-text); font-size: var(--qi-font-h4); font-weight: var(--qi-weight-h4); }
 .qiapp-product .catalog-list { gap: var(--qi-space-4); }
-.qiapp-product .store-card :is(.primary,.secondary) { min-height: var(--qi-control-md); font-size: var(--qi-font-button); }
-.qiapp-product .store-card .install-actions { display: grid; grid-template-columns: minmax(0,1fr); }
-.qiapp-product .store-card .install-actions button { width: 100%; min-width: 0; flex: none; white-space: normal; line-height: 1.35; }
+
+.qiapp-product .store-card .install-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.qiapp-product .store-card .install-actions button { width: fit-content; min-width: 0; flex: none; white-space: normal; line-height: 1.35; }
 .qiapp-product .store-card .install-actions button[data-market-action="import"] { width: max-content; max-width: 100%; justify-self: start; padding-inline: 0; }
 .qiapp-product .market-tools { gap: var(--qi-space-3); }
 .qiapp-product .empty-state { color: var(--qi-text-secondary); }
 .qiapp-product :is(.status,.app-description,.install-format,.field-help) { color: var(--qi-text-secondary); font-size: var(--qi-font-small); }
 
 /* Modal headers, bodies and actions keep one inset and one control height. */
-.qiapp-product dialog.qiapp-dialog { width: min(560px,calc(100vw - 32px)); max-height: min(85dvh,850px); padding: var(--qi-space-6); border: 1px solid var(--qi-border); border-radius: var(--qi-radius-lg); background: var(--qi-surface); color: var(--qi-text); box-shadow: var(--qi-shadow-modal); }
+.qiapp-product dialog.qiapp-dialog { width: min(560px,calc(100vw - 32px)); max-height: min(85dvh,850px); padding: var(--qi-space-6); border: 1px solid var(--qi-border); border-radius: var(--qi-radius-dialog); background: var(--qi-surface); color: var(--qi-text); box-shadow: var(--qi-shadow-modal); }
 .qiapp-product dialog.qiapp-dialog::backdrop { background: var(--qi-overlay); }
 .qiapp-product .modal-heading { margin-bottom: var(--qi-space-4); }
 .qiapp-product .modal-heading h2 { color: var(--qi-text); font-size: var(--qi-font-h3); }
@@ -178,7 +132,7 @@ html.mobile .qiapp-product button.qi-btn.mobile-only { display: inline-flex; }
 #ai-panel :is(.ai-page-heading h3,.ai-analysis-intro h4) { color: var(--qi-text); }
 #ai-panel .ai-page-heading h3 { font-size: var(--qi-font-h3); }
 #ai-panel h4 { font-size: var(--qi-font-h4); }
-#ai-panel :is(.ai-help,small) { color: var(--qi-text-secondary); font-size: var(--qi-font-caption); }
+#ai-panel :is(.ai-help,small) { color: var(--qi-text-secondary); font-size: var(--qi-font-small); }
 #ai-panel .ai-empty { color: var(--qi-text-tertiary); }
 #ai-panel .ai-contact-footer button.qi-btn { padding-inline: var(--qi-space-2); }
 #ai-panel .ai-analysis-selection { background: var(--qi-surface); }
@@ -187,7 +141,7 @@ html.mobile .qiapp-product button.qi-btn.mobile-only { display: inline-flex; }
 #ai-panel .ai-contact-picker-dialog>footer { gap: var(--qi-space-3); border-color: var(--qi-border); }
 #ai-panel .ai-contact-picker-dialog .ai-contact-picker-row { border-radius: var(--qi-radius-md); }
 #ai-panel .ai-analysis-presets button { border-radius: var(--qi-radius-full); }
-#ai-panel button.ai-analysis-add.qi-btn { min-height: var(--qi-touch-target); height: var(--qi-touch-target); }
+
 
 @media(max-width:860px) {
   .qiapp-product #ai-panel .ai-mobile-navigation.qbx-mobile-toolbar,
@@ -196,18 +150,12 @@ html.mobile .qiapp-product button.qi-btn.mobile-only { display: inline-flex; }
   .qiapp-product #ai-panel .ai-main-tabs.qbx-bottom-nav button[aria-current="page"] { background: var(--qi-selected); color: var(--qi-primary); }
   .qiapp-product .content { padding: var(--qi-space-4); }
   .qiapp-product .workspace { grid-template-columns: minmax(0,1fr); }
-  .qiapp-product button.qi-btn,
-  #ai-panel button.qi-btn { min-height: var(--qi-touch-target); }
-  .qiapp-product button.qi-btn[data-icon],
-  #ai-panel button.qi-btn[data-icon] { width: var(--qi-touch-target); min-width: var(--qi-touch-target); height: var(--qi-touch-target); }
-  .qiapp-product :is(input.qi-input,select.qi-input):not([hidden]),
-  #ai-panel :is(input.qi-input,select.qi-input):not([hidden]) { min-height: var(--qi-touch-target); height: var(--qi-touch-target); font-size: 16px; }
   #ai-panel { --ai-sidebar: 64px; }
   #ai-panel .ai-main-tabs { padding: var(--qi-space-2) var(--qi-space-3); }
   #ai-panel :is(.ai-card.qi-card,.ai-task-card.qi-card) { padding: var(--qi-space-4); }
 }
 @media(max-width:760px) {
-  .qiapp-product button.qi-btn.mobile-only { display: inline-flex; }
+  .qiapp-product button.mobile-only { display: inline-flex; }
   #ai-panel { --ai-sidebar: 0px; }
 }
 @media(max-width:560px) {
@@ -215,3 +163,59 @@ html.mobile .qiapp-product button.qi-btn.mobile-only { display: inline-flex; }
   .qiapp-product .modal-actions { flex-wrap: wrap; }
   #ai-panel .ai-contact-picker-dialog :is(header,footer,.ap-picker-tools,.ap-picker-list) { padding-inline: var(--qi-space-4); }
 }
+
+/* Product composition only: bounded forms, normal-flow actions and readable content. */
+.qiapp-product .content { padding: 24px; }
+.qiapp-product .content { container: qibox-home / inline-size; }
+.qiapp-product :is(.market-panel,.desktop-panel) { border-radius: var(--qi-radius-panel); }
+.qiapp-product .market-panel .store-card { padding: 0; border: 0; background: transparent; }
+#ai-panel .ai-page-body { padding: 24px; }
+#ai-panel .ai-reference-settings.qbx-settings-page { max-width: 760px; margin-inline: 0; gap: 24px; }
+#ai-panel .ai-reference-settings > .qi-settings-form { margin-inline: 0; padding: 16px; gap: 16px; }
+#ai-panel .qbx-settings-config { padding: 16px; }
+#ai-panel .ai-reply-rhythm { border: 0; border-block: 1px solid var(--qi-border); border-radius: 0; background: transparent; }
+#ai-panel .ai-reply-rhythm > summary { padding: 12px 0; }
+#ai-panel .ai-reply-rhythm > .ai-reply-module-body { padding: 0 0 16px; }
+#ai-panel .ai-time-range { border: 0; border-top: 1px solid var(--qi-border); border-radius: 0; padding: 16px 0; }
+#ai-panel .ai-time-range-fields { width: min(100%,360px); }
+#ai-panel .ai-object-form-fields { padding-bottom: 0; }
+#ai-panel .ai-object-reference .ai-object-save { position: static; min-height: 0; box-shadow: none; border: 0; border-top: 1px solid var(--qi-border); border-radius: 0; padding: 16px 0; }
+#ai-panel :is(.ai-help,.ai-effective-note,.ai-reply-rhythm > summary > span) { font-size: 13px; line-height: 1.6; }
+#ai-panel .ai-reference-general > h4 { font-size: 16px; line-height: 24px; }
+#ai-panel .ai-reference-general footer { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+#ai-panel .ai-reference-general footer .qi-btn { margin-left: auto; }
+@media(max-width:639px) {
+  .qiapp-product .content, #ai-panel .ai-page-body { padding: 16px; }
+}
+
+#ai-panel .ai-reference-general .qbx-setting-row { margin: 0; min-height: 0; padding: 12px 0; border-bottom: 0; }
+#ai-panel .ai-reference-general .ai-switch-row::after { content: none; }
+@container qibox-home (max-width:880px) { .qiapp-product .workspace { grid-template-columns: minmax(0,1fr); } }
+
+/* Fixed dark navigation uses its own brand ink in both product themes. */
+#ai-panel .ai-nav-caption, #ai-panel .ai-nav-brand small { color: #a7b1c8; }
+#ai-panel .ai-reference-general { border-color: var(--qi-border); }
+#ai-panel .ai-reference-settings-entries { grid-template-columns: minmax(0,1fr); gap: 0; }
+#ai-panel .ai-reference-settings-entries .ai-settings-entry { box-shadow: none; border: 0; border-bottom: 1px solid var(--qi-border); border-radius: 0; padding: 16px 0; }
+#ai-panel .ai-reference-settings-entries .ai-settings-entry:last-child { border-bottom: 0; }
+
+#ai-panel .ai-account-form { width: 100%; max-width: 760px; margin-inline: 0; }
+#ai-panel .ai-time-range .qi-number-unit { width: min(100%,144px); grid-template-columns: minmax(80px,112px) auto; }
+#ai-panel .ai-reference-reply-panel .qi-error-text { flex-basis: 100%; white-space: normal; overflow-wrap: anywhere; }
+#ai-panel .ai-reference-strategy-fields { grid-template-columns: minmax(0,1fr); }
+@container qbx-object (min-width:584px) { #ai-panel .ai-reference-reply-panel .ai-reference-strategy-fields { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+
+/* Source choices keep their description in the text track at every container width. */
+#ai-panel .ai-default-source-tabs { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,240px),1fr)); }
+#ai-panel .ai-default-source-tabs button { display: grid; grid-template-columns: 24px minmax(0,1fr); grid-template-areas: "icon title" "icon description"; width: 100%; min-width: 0; }
+#ai-panel .ai-default-source-tabs button .ai-icon { grid-area: icon; }
+#ai-panel .ai-default-source-tabs button strong { grid-area: title; }
+#ai-panel .ai-default-source-tabs button small { grid-area: description; font-size: 13px; line-height: 1.6; }
+#ai-panel .ai-panel-heading h2 { font-size: 20px; line-height: 28px; font-weight: 600; }
+@media(max-width:860px) {
+  #ai-panel .qbx-bottom-nav { gap: 0; padding-inline: 0; }
+  #ai-panel .qbx-bottom-nav button { min-width: 0; flex: 1 1 0; padding-inline: 4px; }
+  #ai-panel .qbx-bottom-nav button > span { font-size: 14px; white-space: normal; word-break: keep-all; }
+}
+
+#ai-panel .ai-reference-general .ai-switch-row small { margin: 0; }

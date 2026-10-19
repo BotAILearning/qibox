@@ -1,6 +1,6 @@
 // Bind QIAPP's native control patterns to the existing product DOM. Product
 // handlers keep ownership of state, validation, network requests and dialogs.
-const controls = 'button.primary, button.secondary, button.danger, button.quiet, button.icon-button, button.ai-soft-button';
+const controls = 'button.primary, button.secondary, button.danger, button.quiet, button.icon-button, button.ai-soft-button, button.mobile-ai-open';
 const fields = 'input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=hidden]), select, textarea:not(#native-input)';
 const surfaces = '.market-panel, .desktop-panel, .store-card, .mobile-ai-card, #ai-panel .ai-card, #ai-panel .ai-task-card';
 const modules = '.market-panel, .desktop-panel, #ai-panel .ai-card, #ai-panel .ai-task-card, #ai-panel .ap-form-card, #ai-panel .ap-table-panel, #ai-panel .ai-object-sidebar, #ai-panel .ai-model-sidebar:not(.ai-model-editing), #ai-panel .ai-analysis-request, #ai-panel .ai-reference-profile, #ai-panel .ai-reference-panel:not(.ai-reference-reply-panel), #ai-panel .ai-reply-module, #ai-panel .qbx-record-section';
@@ -13,7 +13,7 @@ export function adoptQiUI(root) {
   };
   visit(controls, node => {
     node.classList.add('qi-btn');
-    if (node.matches('.secondary, .ai-soft-button')) node.dataset.variant = 'secondary';
+    if (node.matches('.secondary, .ai-soft-button, .mobile-ai-open')) node.dataset.variant = 'secondary';
     else if (node.matches('.quiet')) node.dataset.variant = 'text';
     else if (node.matches('.danger')) node.dataset.variant = 'danger';
     else if (node.matches('.icon-button')) { node.dataset.variant = 'ghost'; node.setAttribute('data-icon', ''); }

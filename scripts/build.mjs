@@ -21,7 +21,10 @@ await rm(path.join(out, 'icon.svg'), { force: true });
 for (const file of ['index.html', 'style.css', 'ai-workspace.css', 'ui-foundation.css', 'qibox-components.css', 'qibox-modules.css', 'icon.png', 'auth-callback.html', 'privacy.html', 'terms.html']) await cp(path.join(root, 'web', file), path.join(out, file));
 await cp(path.join(root, 'web/vendor/qiapp-ui'), path.join(out, 'vendor/qiapp-ui'), { recursive: true });
 await cp(path.join(root, 'web/qiapp-product.css'), path.join(out, 'qiapp-product.css'));
-await writeFile(path.join(out, 'ai-workspace.css'), (await readFile(path.join(out, 'ai-workspace.css'), 'utf8')) + '\n' + (await readFile(path.join(root, 'web/personal-information.css'), 'utf8')) + '\n' + (await readFile(path.join(root, 'web/settings-composition.css'), 'utf8')));
+// The shared library owns controls and states. Keep historical product styles
+// below it instead of fighting their ID selectors with new global overrides.
+await writeFile(path.join(out, 'style.css'), '@layer qibox-legacy {\n' + await readFile(path.join(out, 'style.css'), 'utf8') + '\n}\n');
+await writeFile(path.join(out, 'ai-workspace.css'), '@layer qibox-legacy {\n' + (await readFile(path.join(out, 'ai-workspace.css'), 'utf8')) + '\n' + (await readFile(path.join(root, 'web/personal-information.css'), 'utf8')) + '\n' + (await readFile(path.join(root, 'web/settings-composition.css'), 'utf8')) + '\n}\n');
 for (const file of ['index.html', 'auth-callback.html']) {
   const html = await readFile(path.join(out, file), 'utf8');
   await writeFile(path.join(out, file), html.replaceAll('./icon.png', `./icon.png?v=${iconRevision}`));

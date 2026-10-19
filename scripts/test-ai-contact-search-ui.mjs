@@ -13,7 +13,7 @@ try {
   await page.goto(fixture.url);
   await page.locator(`[data-instance="${fixture.instance.id}"] summary`).click();
   await page.locator('[data-action="ai"]').click();
-  await page.locator('#ai-open').click();
+  await page.locator('#ai-panel').waitFor({state:'visible'});
 
   await page.locator('[data-ai-nav="learning"]').click();
   await page.locator('[data-ai-action="open-contact-picker"]').click();

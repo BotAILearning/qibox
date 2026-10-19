@@ -52,7 +52,7 @@ export function styleValue(value, { manual = false } = {}) {
   result.customAvoid = manual ? textField(value.customAvoid || '', 500) : '';
   return result;
 }
-export function strategyValue(value) {
+export function strategyValue(value, { stored = false } = {}) {
   if (!value || typeof value !== 'object') throw new AppError('请先制定策略');
   const result = {};
   for (const key of ['purpose', 'content', 'persona', 'replyGoal', 'facts', 'boundaries']) result[key] = textField(value[key] || '', key === 'facts' ? 4000 : 1200);
@@ -62,20 +62,25 @@ export function strategyValue(value) {
   if (!['manual', 'learned', 'paste'].includes(result.styleSource)) throw new AppError('请选择风格来源');
   result.styleProfileId = textField(value.styleProfileId || '', 64);
   if (result.styleProfileId && !/^[a-f0-9]{64}$/.test(result.styleProfileId)) throw new AppError('请选择已学习的风格');
-  result.maxRounds = replyLimitValue(value.maxRounds);
+  // Reading historical state must not silently replace or enable an old limit.
+  // Only mutation paths use strict validation; the delivery gate rejects old values.
+  result.maxRounds = stored && value.maxRounds != null ? value.maxRounds : replyLimitValue(value.maxRounds);
   return result;
 }
 export function replyLimitValue(value) {
-  if (value === 'unlimited') return 'unlimited';
-  const number = Number(value ?? 50);
-  if (!Number.isSafeInteger(number) || number < 1 || number > 99999) throw new AppError('回复次数上限应为1到99999或不限');
+  if (value !== undefined && !(typeof value === 'number' || typeof value === 'string' && /^\d+$/.test(value.trim()))) throw new AppError('回复次数上限应为1到2000的整数');
+  const number = Number(value === undefined ? 50 : value);
+  if (!Number.isSafeInteger(number) || number < 1 || number > 2000) throw new AppError('回复次数上限应为1到2000的整数');
   return number;
+}
+export function validReplyLimit(value) {
+  return Number.isSafeInteger(value) && value >= 1 && value <= 2000;
 }
 export function strategyReady(value, mode) {
   return mode === 'proactive' ? !!value?.purpose && !!value?.content : true;
 }
-export function replyStrategyValue(value) {
-  const normalized = strategyValue(value);
+export function replyStrategyValue(value, options) {
+  const normalized = strategyValue(value, options);
   return Object.fromEntries(['replyGoal', 'facts', 'boundaries', 'maxRounds'].map(key => [key, normalized[key]]));
 }
 export const defaultStyle = { category: 'unknown', roles: ['暂未确定'], formality: '自然', warmth: '适度', length: '简短', directness: '委婉', emoji: '少量', humor: '偶尔', avoid: ['擅自承诺'], customTone: '', customAvoid: '' };

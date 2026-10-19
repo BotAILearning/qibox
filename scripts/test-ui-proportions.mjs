@@ -21,9 +21,8 @@ const output = path.resolve(root, process.argv[2] || 'reports/ui-proportions');
 await mkdir(output, { recursive: true });
 const desktopWidths = [1180, 1200, 1280, 1366, 1440, 1920];
 const report = { scope: 'Disposable local app, WeChat and model fixtures; browser geometry only.', checks: [], errors: [], widths: [320, 390, 1024, ...desktopWidths], desktopWidths, geometry: { analysis: [] } };
-// The supported phone surface is the lightweight instance/master-switch list;
-// crossing into it intentionally detaches the desktop workspace. Its scope is
-// exercised by test-mobile-scope-ui.mjs instead of forcing hidden AI forms open.
+// The user confirmed the complete mobile workspace on 2026-10-19.
+// This geometry suite and test-mobile-scope-ui.mjs cover its actual entry separately.
 const workspaceWidths = [1024, ...desktopWidths];
 let browser;
 try {
@@ -73,7 +72,8 @@ try {
     await page.setViewportSize({ width, height: 900 });
     const utility = await size('[data-market-action=import]', '.store-card');
     assert.ok(utility.ratio < .7, `${width}px: package import occupies ${utility.ratio.toFixed(2)} of card`);
-    assert.ok(utility.height >= 40, `${width}px: package import touch target is too short`);
+    const touch = await page.evaluate(()=>matchMedia('(max-width:639px), (any-pointer:coarse)').matches);
+    assert.ok(utility.height >= (touch?44:32), `${width}px: import violates locked compact/touch density`);
     await noOverflow(`${width}px store`);
     if (width === 390 || width === 1440) await page.screenshot({ path: path.join(output, `store-${width}.png`) });
   }
@@ -126,6 +126,7 @@ try {
   assertReadable(await textGeometry('.ai-reference-child-grid b,.ai-reference-child-grid small', '.ai-reference-toggle'), '1280px object child settings');
   const save = page.locator('#ai-object-form button[type=submit]');
   assert.equal(await save.isVisible(), true, '1280px object: save action is missing');
+  await save.focus();
   const saveGeometry = await save.evaluate(node => {
     const rect = node.getBoundingClientRect(), clip = node.closest('.ai-object-detail').getBoundingClientRect();
     const center = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
@@ -164,7 +165,8 @@ try {
     const action = await size('[data-ai-analysis-pick]', '.ai-analysis-request');
     const heading = await size('.ai-analysis-create-heading', '.ai-analysis-request');
     assert.ok(action.ratio < .72, `${width}px: add-contact occupies ${action.ratio.toFixed(2)} of card`);
-    assert.ok(action.height >= 43.5, `${width}px: add-contact touch target is too short: ${JSON.stringify(action)}`);
+    const actionTouch = await page.evaluate(()=>matchMedia('(max-width:639px), (any-pointer:coarse)').matches);
+    assert.ok(action.height >= (actionTouch?44:32), `${width}px: add-contact violates compact/touch density: ${JSON.stringify(action)}`);
     assert.ok(heading.height < 140, `${width}px: creation heading too tall (${heading.height}px)`);
     if (width <= 390) {
       const fold = await page.evaluate(() => ({ toolbar: document.querySelector('.qbx-mobile-toolbar').getBoundingClientRect().height, actionTop: document.querySelector('[data-ai-analysis-pick]').getBoundingClientRect().top, reportTop: document.querySelector('.ai-analysis-request').getBoundingClientRect().top }));
@@ -222,15 +224,16 @@ try {
     assert.ok(settings.gaps.every(gap => gap >= 0 && gap <= 30), `${width}px: settings group gap is excessive: ${JSON.stringify(settings)}`);
     if (width <= 390) assert.ok(settings.groupTop < 100, `${width}px: settings start too low: ${JSON.stringify(settings)}`);
     const switches = await page.locator('input[role=switch]:visible').evaluateAll(nodes => nodes.map(node => {
-      const track = getComputedStyle(node), before = getComputedStyle(node, '::before'), thumb = getComputedStyle(node, '::after');
-      return { width: parseFloat(track.width), height: parseFloat(track.height), before: before.content, thumb: thumb.content, left: parseFloat(thumb.left), top: parseFloat(thumb.top), thumbWidth: parseFloat(thumb.width), thumbHeight: parseFloat(thumb.height), transform: thumb.transform };
+      const touch=matchMedia('(max-width:639px), (any-pointer:coarse)').matches;
+      const track=getComputedStyle(node),before=getComputedStyle(node,'::before'),after=getComputedStyle(node,'::after'),thumb=touch?after:before;
+      return {touch,width:parseFloat(track.width),height:parseFloat(track.height),before:before.content,after:after.content,thumbWidth:parseFloat(thumb.width),thumbHeight:parseFloat(thumb.height),railWidth:parseFloat(before.width),railHeight:parseFloat(before.height)};
     }));
     assert.ok(switches.length >= 3, `${width}px: settings switches missing`);
-    for (const sw of switches) {
-      assert.equal(sw.before, 'none', `${width}px: a second switch thumb is visible`);
-      assert.equal(sw.width, 48); assert.equal(sw.height, 28);
-      assert.equal(sw.top, 4); assert.equal(sw.left, 4);
-      assert.equal(sw.thumbWidth, 20); assert.equal(sw.thumbHeight, 20);
+    for(const sw of switches){
+      assert.equal(sw.width,sw.touch?44:40);assert.equal(sw.height,sw.touch?44:24);
+      assert.equal(sw.thumbWidth,20);assert.equal(sw.thumbHeight,20);
+      if(sw.touch){assert.equal(sw.railWidth,40);assert.equal(sw.railHeight,24);assert.notEqual(sw.after,'none');}
+      else{assert.notEqual(sw.before,'none');assert.equal(sw.after,'none','No residual legacy second thumb');}
     }
     if (width === 390 || width === 1440) await page.screenshot({ path: path.join(output, `settings-${width}.png`) });
     await noOverflow(`${width}px settings`);
@@ -241,12 +244,12 @@ try {
   // Wait for the actual thumb endpoint; an immediate style read can catch the
   // first frame of its transition and report a false failure.
   await page.waitForFunction(({ selector, checked }) => {
-    const node = document.querySelector(selector), track = getComputedStyle(node), thumb = getComputedStyle(node, '::after');
-    const travel = parseFloat(track.width) - parseFloat(thumb.width) - 2 * parseFloat(thumb.left);
+    const node = document.querySelector(selector), touch=matchMedia('(max-width:639px), (any-pointer:coarse)').matches, thumb = getComputedStyle(node, touch?'::after':'::before');
+    const travel = 16;
     const shift = thumb.transform === 'none' ? 0 : new DOMMatrixReadOnly(thumb.transform).m41;
     return Math.abs(shift - (checked ? travel : 0)) < .5;
   }, { selector: '.qbx-settings-group input[name=acknowledgeAI]', checked: !beforeToggle });
-  const changedThumb = await toggle.evaluate(node => getComputedStyle(node, '::after').transform);
+  const changedThumb = await toggle.evaluate(node => getComputedStyle(node, matchMedia('(max-width:639px), (any-pointer:coarse)').matches?'::after':'::before').transform);
   assert.equal(changedThumb === 'none' || changedThumb === 'matrix(1, 0, 0, 1, 0, 0)', beforeToggle, 'switch thumb must travel to the opposite end when state changes');
   await toggle.evaluate((node, checked) => { node.checked = checked; }, beforeToggle);
   await page.setViewportSize({ width: 1024, height: 900 });

@@ -26,8 +26,9 @@ export function objectList(state, view) {
   const rows = contacts.slice(start, end).map((c, index) => {
     const i = start + index;
     const profile = profiles.get(c.id), modes = replyModes(c), on = modes.length > 0;
-    const replyLabel = on ? modes.map(([, label]) => label).join(' · ') : '自动回复未开启';
     const maxRounds = profile?.replyStrategy?.maxRounds ?? state.replyRoundLimits?.[c.kind] ?? profile?.strategy?.maxRounds ?? state.replyStrategy?.maxRounds ?? state.strategy?.maxRounds ?? 50;
+    const needsReview = profile?.replyLimitNeedsReview || !Number.isSafeInteger(maxRounds) || maxRounds < 1 || maxRounds > 2000;
+    const replyLabel = needsReview ? '需确认回复上限' : on ? modes.map(([, label]) => label).join(' · ') : '自动回复未开启';
     const rounds = profile?.rounds || 0;
     const limited = on && state.settings?.enabled !== false && state.settings?.reply !== false && !profile?.manualWait && maxRounds !== 'unlimited' && rounds >= maxRounds;
     const nickname = nicknameOf(c), plainName = String(c.label || c.name || '') + (nickname ? `（${nickname}）` : '');

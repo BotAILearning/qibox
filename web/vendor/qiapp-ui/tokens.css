@@ -10,7 +10,7 @@
   --qi-surface: #ffffff;
   --qi-surface-muted: #f4f2f7;
   --qi-border: #e5e1eb;
-  --qi-border-strong: #aaa2b7;
+  --qi-border-strong: #8c829d;
   --qi-text: #252130;
   --qi-text-secondary: #655d73;
   --qi-text-tertiary: #766d84;
@@ -47,7 +47,7 @@
   --qi-surface: #201d27;
   --qi-surface-muted: #292530;
   --qi-border: #393341;
-  --qi-border-strong: #6d637e;
+  --qi-border-strong: #81768f;
   --qi-text: #f0ecf5;
   --qi-text-secondary: #b9b0c5;
   --qi-text-tertiary: #a297af;
@@ -85,7 +85,7 @@
   --qi-surface: #201d27;
   --qi-surface-muted: #292530;
   --qi-border: #393341;
-  --qi-border-strong: #6d637e;
+  --qi-border-strong: #81768f;
   --qi-text: #f0ecf5;
   --qi-text-secondary: #b9b0c5;
   --qi-text-tertiary: #a297af;
@@ -189,12 +189,16 @@
   --qi-weight-button: 550;
   --qi-line-button: 1.4;
   --qi-tracking-button: 0;
-  --qi-font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-  --qi-font-mono: "SFMono-Regular", Consolas, monospace;
   --qi-control-sm: 32px;
   --qi-control-md: 40px;
   --qi-control-lg: 48px;
-  --qi-touch-target: 44px;
+  --qi-control-touch: 44px;
+  --qi-density-compact: 32px;
+  --qi-density-comfortable: 40px;
+  --qi-density-touch: 44px;
+  --qi-font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --qi-font-mono: "SFMono-Regular", Consolas, monospace;
+  --qi-touch-target: var(--qi-control-touch);
   --qi-duration-fast: 120ms;
   --qi-duration-normal: 180ms;
   --qi-duration-slow: 240ms;

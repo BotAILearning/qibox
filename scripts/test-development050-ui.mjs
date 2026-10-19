@@ -84,7 +84,8 @@ try {
   if (await page.locator('#ai-object-form [name=enabled]').isChecked()) await page.locator('#ai-object-form [name=enabled]').uncheck();
   assert.equal(await page.locator('.ai-reference-strategy').isVisible(), false, '自动回复关闭时收起回复策略');
   assert.equal(await page.locator('#ai-object-form [name=facts]').count(), 0);
-  assert.equal(await page.locator('.ai-reference-children .ai-reference-toggle').count(), 2);
+  assert.equal(await page.locator('.ai-reference-children .ai-reference-toggle').count(), 1, '0.11.4将分段与续聊移入统一节奏组，子项保留智能判断');
+  assert.equal(await page.locator('[data-ai-optional=object-rhythm]').count(), 1, '统一节奏组必须存在，不能通过移除能力通过旧快照检查');
   assert.equal(await page.locator('.ai-reference-children .ai-reference-limit').count(), 1, '连续回复上限属于自动回复的第三个子项');
   assert.equal(await page.locator('.ai-reference-children').isVisible(), false, '自动回复关闭时收起子项');
   assert.equal(await page.locator('.ai-reference-reply-main > h4').count(), 0, '联系人回复设置不显示回复方式标题');
@@ -95,7 +96,7 @@ try {
   const strategyBoxes = await page.locator('.ai-reference-strategy-fields textarea').evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect()));
   assert.equal(strategyBoxes.length, 2); assert.ok(strategyBoxes[1].left > strategyBoxes[0].left, '回复要求与边界左右并排');
   const childLayout = await page.locator('.ai-reference-child-grid').evaluate(node => ({ grid: node.getBoundingClientRect(), items: [...node.children].map(child => child.getBoundingClientRect()) }));
-  assert.equal(childLayout.items.length, 3);
+  assert.equal(childLayout.items.length, 2, '0.11.4现有子项为智能判断与上限；分段及续聊由独立节奏组验收');
   const cardsFit = ({ grid, items }) => grid.width > 0 && grid.height > 0 && items.every((item, index) => item.width > 0 && item.height > 0 && item.left >= grid.left - 1 && item.right <= grid.right + 1 && item.top >= grid.top - 1 && item.bottom <= grid.bottom + 1 && items.slice(index + 1).every(other => item.right <= other.left + 1 || other.right <= item.left + 1 || item.bottom <= other.top + 1 || other.bottom <= item.top + 1));
   assert.ok(cardsFit(childLayout), `三个自动回复子项完整排列且不重叠或溢出：${JSON.stringify(childLayout)}`);
   const limitControls = await page.locator('.ai-reference-limit').evaluate(node => ({ label: node.querySelector('label').getBoundingClientRect(), input: node.querySelector('.ai-reply-limit-control select').getBoundingClientRect(), button: node.querySelector('button').getBoundingClientRect(), text: node.querySelector('button').textContent }));
@@ -104,7 +105,7 @@ try {
   const childTitleSizes = await page.locator('.ai-reference-child-grid > *').evaluateAll(nodes => nodes.map(node => parseFloat(getComputedStyle(node.querySelector('b, label')).fontSize)));
   assert.ok(new Set(childTitleSizes).size === 1 && childTitleSizes.every(size => size >= 12), `三个自动回复子项标题字号一致且可读：${JSON.stringify(childTitleSizes)}`);
   assert.equal(await page.locator('#ai-reply-round-limit').inputValue(), '50', '未修改时默认 50');
-  assert.deepEqual(await page.locator('#ai-reply-round-limit option').evaluateAll(nodes => nodes.map(node => node.textContent)), ['20','50','100','200','500','不限','自定义']);
+  assert.deepEqual(await page.locator('#ai-reply-round-limit option').evaluateAll(nodes => nodes.map(node => node.textContent)), ['20','50','100','200','500','自定义']);
   await page.locator('#ai-reply-round-limit').selectOption('custom');
   assert.equal(await page.locator('[data-ai-reply-limit-custom]').getAttribute('placeholder'), '请输入', '自定义输入框显示请输入提示');
   assert.equal(await page.locator('[data-ai-reply-limit-custom]').evaluate(input => document.activeElement === input), true, '选择自定义后焦点进入输入框');
@@ -133,19 +134,20 @@ try {
   assert.equal(await page.locator('#ai-reply-round-limit').inputValue(), 'custom');
   assert.equal(ai.publicState().profiles.find(p => p.contact === bridge.contacts[0].id)?.replyStrategy?.maxRounds, 8, '弹窗选择不自动保存');
   assert.equal(await page.locator('[data-ai-reply-limit-custom]').evaluate(input => input.checkValidity()), false, '清空手动上限后不能保存');
-  await page.locator('[data-ai-reply-limit-custom]').fill('99999');
+  for(const invalid of ['2001','99999']) {
+    await page.locator('[data-ai-reply-limit-custom]').fill(invalid);
+    assert.equal(await page.locator('dialog[open]').count(),0,'Warning threshold must remain independent from valid range');
+    await page.getByRole('button',{name:'保存设置',exact:true}).click();
+    await page.getByText('回复次数上限须为 1–2000 的整数',{exact:true}).waitFor();
+    assert.equal(ai.publicState().profiles.find(p=>p.contact===bridge.contacts[0].id).replyStrategy.maxRounds,8,'Rejected limit preserves effective value');
+    assert.equal(await page.locator('[data-ai-reply-limit-custom]').inputValue(),invalid,'Rejected limit preserves input');
+  }
+  await page.locator('[data-ai-reply-limit-custom]').fill('2000');
   await page.getByRole('button', { name: '保存设置', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('.ai-object-save-notice')?.hidden === true);
-  assert.equal(ai.publicState().profiles.find(p => p.contact === bridge.contacts[0].id)?.replyStrategy?.maxRounds, 99999, '边界值可保存');
-  await page.locator('[data-ai-reply-limit-custom]').fill('100000');
-  await page.getByRole('dialog').getByRole('button', { name: '那我选（不限）吧' }).click();
-  await page.waitForFunction(() => document.querySelector('#ai-reply-round-limit')?.value === 'unlimited');
-  assert.equal(await page.locator('#ai-reply-round-limit').inputValue(), 'unlimited', '选择不限后切换下拉框');
-  assert.equal(ai.publicState().profiles.find(p => p.contact === bridge.contacts[0].id)?.replyStrategy?.maxRounds, 99999, '切换下拉框后仍需保存');
-  await page.getByRole('button', { name: '保存设置', exact: true }).click();
-  await page.waitForFunction(() => document.querySelector('#ai-reply-round-limit')?.value === 'unlimited' && document.querySelector('.ai-object-save-notice')?.hidden === true);
-  assert.equal(ai.publicState().profiles.find(p => p.contact === bridge.contacts[0].id)?.replyStrategy?.maxRounds, 'unlimited');
-  await page.screenshot({ path: path.join(output, 'reply-limit-unlimited.png') });
+  assert.equal(ai.publicState().profiles.find(p => p.contact === bridge.contacts[0].id)?.replyStrategy?.maxRounds, 2000, '合法上界2000可保存');
+  assert.equal(await page.locator('#ai-reply-round-limit option[value=unlimited]').count(),0,'Removed unlimited cannot be selected');
+  await page.screenshot({ path: path.join(output, 'reply-limit-2000.png') });
   await page.locator('[data-ai-kind=group]').click();
   await page.locator(`[data-ai-object="${groupContact.id}"]`).click();
   assert.equal(await page.locator('.ai-reference-group-options .ai-reference-limit').count(), 1, '群聊上限是两种提及回复旁的第三项');
@@ -277,17 +279,14 @@ try {
     await page.locator('.ai-reference-memory-content').evaluate(el=>{
       const spacer=document.createElement('div');spacer.className='sticky-test-content';spacer.style.height='1800px';spacer.textContent='长记忆内容';el.append(spacer);
     });
-    for(const ratio of [0,.5,1]) {
-      await page.locator('#ai-content,.ai-object-detail').evaluateAll((nodes,ratio)=>nodes.forEach(el=>el.scrollTop=(el.scrollHeight-el.clientHeight)*ratio),ratio);
-      await page.waitForTimeout(50);
-      const b=await page.locator('.ai-object-save').boundingBox();
-      const c=await page.locator('#ai-content').boundingBox();
-      assert.ok(b.y>=c.y && b.y+b.height<=c.y+c.height+1,width+' actions must remain visible at '+ratio+': '+JSON.stringify({b,c}));
-    }
+    assert.equal(await page.locator('.ai-object-save').evaluate(el=>getComputedStyle(el).position),'static','Current UI spec keeps actions in normal flow');
+    await page.locator('.ai-object-save button').last().focus();
+    const b=await page.locator('.ai-object-save').boundingBox(),c=await page.locator('#ai-content').boundingBox();
+    assert.ok(b.y>=c.y && b.y+b.height<=c.y+c.height+1,width+' normal-flow actions must scroll fully into view for keyboard access');
     await page.screenshot({path:path.join(output,'sticky-actions-'+width+'.png')});
     await page.locator('.sticky-test-content').evaluate(el=>el.remove());
   }
-  report.checks.push('Object save and learning actions visible at start, middle and end of long content on compact and wide desktop layouts; phone scope is verified separately');
+  report.checks.push('Normal-flow object actions remain keyboard-reachable after long content at compact and wide sizes; no fixed footer overlays the content');
   assert.deepEqual(report.errors, []); report.passed = true;
 } catch (error) { report.failure = error.stack; throw error; }
 finally { await writeFile(path.join(output, 'report.json'), JSON.stringify(report, null, 2)); await browser?.close(); await app.close(); await peer.close(); await chooser.close(); await cleanup(dataRoot); }

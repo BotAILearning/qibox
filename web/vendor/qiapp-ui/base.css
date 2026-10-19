@@ -20,11 +20,12 @@
 .qi-btn[data-variant="tertiary"] { background:var(--qi-secondary); color:var(--qi-primary); }
 .qi-btn:is([data-variant="ghost"],[data-variant="text"]) { background:transparent; color:var(--qi-text-secondary); }
 .qi-btn[data-variant="text"] { color:var(--qi-primary); padding-inline:var(--qi-space-2); }
-.qi-btn:is([data-variant="secondary"],[data-variant="tertiary"],[data-variant="ghost"],[data-variant="text"]):hover:not(:disabled) { background:var(--qi-hover); color:var(--qi-primary); }
-.qi-btn:is([data-variant="secondary"],[data-variant="tertiary"],[data-variant="ghost"],[data-variant="text"]):active:not(:disabled) { background:var(--qi-active); }
+.qi-btn:is([data-variant="secondary"],[data-variant="tertiary"],[data-variant="ghost"],[data-variant="text"]):hover:not(:disabled,[aria-disabled="true"]) { background:var(--qi-hover); color:var(--qi-primary); }
+.qi-btn:is([data-variant="secondary"],[data-variant="tertiary"],[data-variant="ghost"],[data-variant="text"]):active:not(:disabled,[aria-disabled="true"]) { background:var(--qi-active); }
 .qi-btn[data-variant="danger"] { background:var(--qi-error); color:var(--qi-surface); }
-.qi-btn[data-variant="danger"]:hover:not(:disabled) { background:var(--qi-error); filter:brightness(.92); }
+.qi-btn[data-variant="danger"]:hover:not(:disabled,[aria-disabled="true"]) { background:var(--qi-error); filter:brightness(.92); }
 .qi-btn:disabled,.qi-btn[aria-disabled="true"] { background:var(--qi-disabled); color:var(--qi-disabled-text); border-color:var(--qi-border); box-shadow:none; cursor:not-allowed; }
+.qi-btn[aria-busy="true"] { cursor:progress; }
 .qi-btn[data-size="sm"] { min-height:var(--qi-control-sm); padding:var(--qi-space-1) var(--qi-space-3); font-size:var(--qi-font-small); border-radius:var(--qi-radius-sm); }
 .qi-btn[data-size="lg"] { min-height:var(--qi-control-lg); padding-inline:var(--qi-space-6); }
 .qi-btn[data-icon] { aspect-ratio:1; padding:var(--qi-space-2); min-width:var(--qi-control-md); }
@@ -56,6 +57,7 @@ input.qi-input[data-size="lg"],select.qi-input[data-size="lg"] { height:var(--qi
 .qi-switch::before { content:""; display:block; width:20px; height:20px; border-radius:var(--qi-radius-full); background:var(--qi-surface); transition:transform var(--qi-duration-normal); }
 .qi-switch:checked { background:var(--qi-primary); }
 .qi-switch:checked::before { transform:translateX(16px); background:var(--qi-on-primary); }
+.qi-switch:dir(rtl):checked::before { transform:translateX(-16px); }
 .qi-switch:disabled { opacity:.5; cursor:not-allowed; }
 .qi-range { width:100%; min-height:var(--qi-control-md); accent-color:var(--qi-primary); }
 .qi-card { background:var(--qi-surface); border:1px solid var(--qi-border); border-radius:var(--qi-radius-lg); padding:var(--qi-space-6); }
@@ -136,3 +138,18 @@ input.qi-input[data-size="lg"],select.qi-input[data-size="lg"] { height:var(--qi
 @media (pointer:coarse) { .qi-btn,.qi-btn[data-size="sm"],.qi-input,.qi-input[data-size="sm"],.qi-chip { min-height:var(--qi-touch-target); } .qi-check { min-height:var(--qi-touch-target); } }
 @media (max-width:639px) { .qi-template-metrics { grid-template-columns:1fr 1fr; } .qi-template-meta { grid-template-columns:84px 1fr; } .qi-template-chart .qi-between { flex-direction:column; align-items:flex-start; gap:0; } }
 @media (prefers-reduced-motion:reduce) { .qi-spinner,.qi-skeleton,.qi-btn[aria-busy="true"]::before { animation:none; } .qi-root *, .qi-root *::before, .qi-root *::after { scroll-behavior:auto!important; } }
+@media (forced-colors:active) {
+  .qi-btn,.qi-chip,.qi-input,.qi-switch { border:1px solid ButtonText; }
+  .qi-btn:disabled,.qi-btn[aria-disabled="true"],.qi-input:disabled { color:GrayText; border-color:GrayText; }
+  .qi-switch { background:Canvas; }
+  .qi-switch::before { background:ButtonText; }
+  .qi-switch:checked { background:Highlight; }
+  .qi-switch:checked::before { background:HighlightText; }
+  .qi-root :focus-visible { outline-color:Highlight; }
+  .qi-input[aria-invalid="true"] { border-style:dashed; }
+  .qi-progress { forced-color-adjust:none; background:Canvas; }
+  .qi-progress::-webkit-progress-bar { background:Canvas; }
+  .qi-progress::-webkit-progress-value { background:Highlight; }
+  .qi-progress::-moz-progress-bar { background:Highlight; }
+  .qi-spinner,.qi-btn[aria-busy="true"]::before { border-color:ButtonText; border-right-color:transparent; }
+}

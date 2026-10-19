@@ -406,11 +406,11 @@ textarea:not(#native-input) {
 
 /* One visual rhythm for the home screen, dialogs, and AI workspace. */
 :root {
-  --ui-ink: #1d293d;
-  --ui-muted: #617087;
-  --ui-line: #e0e6f0;
-  --ui-surface: #fff;
-  --ui-canvas: #f6f8fc;
+  --ui-ink: var(--qi-text);
+  --ui-muted: var(--qi-text-secondary);
+  --ui-line: var(--qi-border);
+  --ui-surface: var(--qi-surface);
+  --ui-canvas: var(--qi-bg);
   --ui-shadow: 0 10px 30px rgb(24 39 70 / 5%);
 }
 
@@ -623,7 +623,7 @@ dialog {
 }
 
 #ai-panel .ai-object-search {
-  background: #fff;
+  background:var(--qi-surface);
   border-color: #d7dfeb;
 }
 
@@ -644,7 +644,7 @@ dialog {
 #ai-panel .ai-activity-page .ap-table-scroll {
   border: 1px solid var(--ui-line);
   border-radius: 16px;
-  background: #fff;
+  background:var(--qi-surface);
   box-shadow: var(--ui-shadow);
 }
 
@@ -704,7 +704,7 @@ dialog {
   flex: 0 0 auto;
   min-width: 64px;
   border: 1px solid var(--ui-line);
-  background: #fff;
+  background:var(--qi-surface);
   padding-inline: 14px;
 }
 
@@ -876,7 +876,7 @@ dialog {
     padding: 14px 18px;
     border: 1px solid var(--ui-line);
     border-radius: 14px;
-    background: #fff;
+    background:var(--qi-surface);
     box-shadow: var(--ui-shadow);
   }
 
@@ -958,7 +958,7 @@ dialog {
     padding: 12px 16px;
     border: 1px solid var(--ui-line);
     border-radius: 12px;
-    background: #fff;
+    background:var(--qi-surface);
   }
 
   #ai-panel .ap-table-panel .ap-task-table td,
@@ -1018,18 +1018,18 @@ dialog {
 /* Phone workspace: one navigation bar, continuous sections, native-sized controls. */
 #ai-mobile-back,#ai-panel .ap-mobile-task-toggle{display:none}
 @media(max-width:860px){
- #ai-panel .ai-panel-heading{order:0;min-height:52px;background:#fff;gap:12px;border-bottom:1px solid var(--ai-border)}
+ #ai-panel .ai-panel-heading{order:0;min-height:52px;background:var(--qi-surface);gap:12px;border-bottom:1px solid var(--ai-border)}
  #ai-panel #ai-mobile-back{display:inline-flex;min-height:44px;flex:none;padding:8px 0;color:var(--ai-primary)}
  #ai-panel .ai-heading-actions,#ai-panel .ai-header-master,#ai-panel #ai-close,#ai-panel .ai-nav-master{display:none!important}
- #ai-panel #ai-content{order:1;flex:1;min-height:0;background:#fff;scroll-padding-bottom:24px}
+ #ai-panel #ai-content{order:1;flex:1;min-height:0;background:var(--qi-surface);scroll-padding-bottom:24px}
  #ai-panel #ai-feedback,#ai-panel #ai-operation,#ai-panel #ai-manual-recovery{order:1;margin:0}
- #ai-panel .ai-main-tabs{order:2;background:#fff;border-top:1px solid var(--ai-border);padding:4px 4px calc(4px + env(safe-area-inset-bottom));gap:0;overflow-x:auto;min-height:62px}
+ #ai-panel .ai-main-tabs{order:2;background:var(--qi-surface);border-top:1px solid var(--ai-border);padding:4px 4px calc(4px + env(safe-area-inset-bottom));gap:0;overflow-x:auto;min-height:62px}
  #ai-panel .ai-main-tabs button{flex:1;min-width:56px;width:auto;color:var(--ai-muted);border-radius:0;font-size:11px;padding:5px 2px;min-height:52px}
  #ai-panel .ai-main-tabs button[aria-current=page]{background:#f2f4ff;color:var(--ai-primary);box-shadow:none}
  #ai-panel .ai-main-tabs button>span{display:block}
- #ai-panel .ai-page-body{background:#fff;padding:16px 16px 28px;max-width:none}
+ #ai-panel .ai-page-body{background:var(--qi-surface);padding:16px 16px 28px;max-width:none}
  #ai-panel .ai-page-heading h3,#ai-panel .ai-activity-page>.ai-page-heading,#ai-panel .ai-provider-page-heading .ai-badge{display:none}
- #ai-panel :is(.ai-card,.ai-model-sidebar,.ai-task-card,.ai-object-sidebar,.ai-object-detail,.ap-form-card,.ap-table-panel,.ai-analysis-selection,.ai-analysis-request,.ai-default-material-head,.ai-reference-profile,.ai-reference-panel){box-shadow:none;border-radius:0;border:0;background:#fff;padding:16px 0;margin:0}
+ #ai-panel :is(.ai-card,.ai-model-sidebar,.ai-task-card,.ai-object-sidebar,.ai-object-detail,.ap-form-card,.ap-table-panel,.ai-analysis-selection,.ai-analysis-request,.ai-default-material-head,.ai-reference-profile,.ai-reference-panel){box-shadow:none;border-radius:0;border:0;background:var(--qi-surface);padding:16px 0;margin:0}
  #ai-panel :is(.ai-card,.ap-form-card,.ai-analysis-selection,.ai-analysis-request,.ai-reference-panel)+:is(.ai-card,.ap-form-card,.ai-analysis-request,.ai-reference-panel){border-top:1px solid var(--ai-border)}
  #ai-panel .ai-model-workspace,#ai-panel .ai-default-style-layout,#ai-panel .ai-reference-learning-shell{display:flex;flex-direction:column;gap:12px}
  #ai-panel .ai-model-workspace>*,#ai-panel .ai-default-style-layout>*,#ai-panel .ai-reference-learning-shell>*{width:100%;min-width:0}
@@ -1069,7 +1069,7 @@ dialog {
  #ai-panel .ap-reference-task>.ap-reference-cell{display:none}
  #ai-panel .ap-reference-task.mobile-expanded>.ap-reference-cell{display:block;padding:8px 0}
  #ai-panel .ap-reference-task.mobile-expanded>.ap-reference-cell:nth-child(2){display:none}
- #ai-panel .ap-mobile-task-toggle{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;width:100%;text-align:left;justify-content:stretch;border:0;border-radius:0;background:#fff;padding:16px 0}
+ #ai-panel .ap-mobile-task-toggle{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;width:100%;text-align:left;justify-content:stretch;border:0;border-radius:0;background:var(--qi-surface);padding:16px 0}
  #ai-panel .ap-mobile-task-toggle strong{font-size:15px;overflow-wrap:anywhere}
  #ai-panel .ap-mobile-task-toggle small{white-space:normal;text-align:left}
  #ai-panel .ap-mobile-task-toggle>span:last-child{font-size:12px;color:var(--ai-primary)}
@@ -1081,8 +1081,8 @@ dialog {
  dialog.ai-confirm-dialog,dialog.ap-dialog{max-width:calc(100vw - 24px);max-height:85dvh;overflow:auto}
 }
 @media(max-width:860px){
- #ai-panel .ai-main-tabs{position:static;flex-shrink:0;box-shadow:none;background:#fff;border-top:1px solid #e5e7f0}
- #ai-panel .ai-main-tabs button[aria-current="page"]{background:#eef1ff;color:#5061cf;box-shadow:none}
+ #ai-panel .ai-main-tabs{position:static;flex-shrink:0;box-shadow:none;background:var(--qi-surface);border-top:1px solid #e5e7f0}
+ #ai-panel .ai-main-tabs button[aria-current="page"]{background:#eef1ff;color:var(--qi-primary);box-shadow:none}
  #ai-panel .ai-main-tabs button>span{color:inherit}
  #ai-panel #ai-content{padding-bottom:0}
  #ai-panel .ai-reference-settings-entries .ai-settings-entry{border-radius:0;border:0;border-bottom:1px solid #e5e7f0;box-shadow:none;padding:14px 0}
@@ -1101,19 +1101,19 @@ dialog {
  #ai-panel .ap-reference-toolbar{padding:8px 0;background:none}
  #ai-panel .ap-table-head{padding:12px 0}
  #ai-panel .ai-reference-style-body,#ai-panel .ai-reference-reply-settings{padding:12px 0}
- #ai-panel .ai-object-save{position:static;padding:14px 0;margin:0;background:#fff}
+ #ai-panel .ai-object-save{position:static;padding:14px 0;margin:0;background:var(--qi-surface)}
  #ai-panel .ai-object-save>.primary{min-height:48px;flex:1}
 }
 @media(max-width:860px){
  /* Mobile detail cards use natural height; the content pane owns their scroll. */
  #ai-panel[data-page=overview].object-selected #ai-content{overflow-x:hidden;overflow-y:auto;-webkit-overflow-scrolling:touch}
- #ai-panel .ai-object-reference .ai-reference-profile,#ai-panel .ai-object-reference .ai-reference-panel{border:0;border-radius:0;box-shadow:none;overflow:visible;background:#fff}
+ #ai-panel .ai-object-reference .ai-reference-profile,#ai-panel .ai-object-reference .ai-reference-panel{border:0;border-radius:0;box-shadow:none;overflow:visible;background:var(--qi-surface)}
  #ai-panel .ai-object-reference .ai-reference-profile{border-bottom:1px solid var(--ai-border);padding-bottom:10px}
  #ai-panel .ai-object-reference .ai-object-detail{overflow:visible;max-height:none;flex:none;min-height:0}
  #ai-panel .ai-object-workspace.ai-object-reference{height:auto;min-height:0;max-height:none;padding:16px;overflow:visible}
  #ai-panel .ai-object-reference #ai-object-form{gap:12px}
  #ai-panel .ai-object-reference .ai-reference-memory{display:block}
- #ai-panel .ai-reference-memory-categories{display:flex;gap:6px;overflow-x:auto;padding:8px 0;background:#fff}
+ #ai-panel .ai-reference-memory-categories{display:flex;gap:6px;overflow-x:auto;padding:8px 0;background:var(--qi-surface)}
  #ai-panel .ai-reference-memory-categories button{flex:0 0 auto;width:auto;min-width:64px;padding:9px 12px;font-size:14px;white-space:nowrap}
  #ai-panel .ai-reference-memory-categories button span{width:auto;text-align:left;text-align-last:auto}
  #ai-panel .ai-reference-memory-content{padding:14px 0;min-width:0}
@@ -1132,7 +1132,7 @@ dialog {
 }
 /* Keep object actions visible while the settings body scrolls. */
 #ai-panel .ai-object-reference .ai-object-save{
- position:sticky;bottom:0;z-index:5;margin:0;background:#fff;
+ position:sticky;bottom:0;z-index:5;margin:0;background:var(--qi-surface);
  border-top:1px solid var(--ai-border);box-shadow:0 -6px 16px #252b4510;
 }
 #ai-panel .ai-object-reference #ai-object-form{scroll-padding-bottom:100px}
@@ -1144,7 +1144,7 @@ dialog {
 }
 
 @media(max-width:600px){
- #ai-panel .ai-page-body:has(>.ai-analysis-setup) :is(.ai-analysis-selection,.ai-analysis-request){border:1px solid #e2e8f3;border-radius:18px;background:#fff;box-shadow:0 8px 24px #1b2b5a0a;margin:0}
+ #ai-panel .ai-page-body:has(>.ai-analysis-setup) :is(.ai-analysis-selection,.ai-analysis-request){border:1px solid #e2e8f3;border-radius:18px;background:var(--qi-surface);box-shadow:0 8px 24px #1b2b5a0a;margin:0}
  #ai-panel .ai-page-body:has(>.ai-analysis-setup) .ai-analysis-selection{padding:0}
  #ai-panel .ai-page-body:has(>.ai-analysis-setup) .ai-analysis-request{padding:20px 18px 18px}
  #ai-panel .ai-page-body:has(>.ai-analysis-setup) .ai-analysis-report-grid>.ai-card{padding:18px;border:1px solid #e2e8f3;border-radius:16px;box-shadow:0 8px 24px #1b2b5a0a}
