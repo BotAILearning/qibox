@@ -40,6 +40,13 @@ try {
   assert.equal(await page.locator('[name=appearance]').count(),0);
   const alignment=await page.locator('.qbx-settings-page > .ai-card').evaluateAll(ns=>ns.map(n=>{const r=n.getBoundingClientRect();return{x:r.x,width:r.width};}));
   assert.equal(alignment.length,2);assert.ok(Math.abs(alignment[0].x-alignment[1].x)<=1,'settings cards must share the same left edge');assert.ok(Math.abs(alignment[0].width-alignment[1].width)<=1,'settings cards must share width');
+  for(const theme of ['light','dark']) {
+    await page.locator('html').evaluate((n,t)=>n.dataset.qiTheme=t,theme);await page.waitForTimeout(250);
+    const colors=await page.locator('.qbx-settings-page').evaluate(n=>{const entry=n.querySelector('.ai-settings-entry'),text=entry.querySelector('strong');return{bg:getComputedStyle(entry).backgroundColor,fg:getComputedStyle(text).color,surface:getComputedStyle(n.querySelector('.ai-card')).backgroundColor};});
+    assert.equal(colors.bg,colors.surface,'navigation entry must adapt to the page surface');
+    const luminance=color=>{const values=color.match(/[\d.]+/g).slice(0,3).map(Number).map(v=>{v/=255;return v<=0.04045?v/12.92:((v+0.055)/1.055)**2.4;});return values[0]*0.2126+values[1]*0.7152+values[2]*0.0722;};const fg=luminance(colors.fg),bg=luminance(colors.bg);assert.ok((Math.max(fg,bg)+0.05)/(Math.min(fg,bg)+0.05)>=4.5,`entry contrast ${theme}`);
+    await page.screenshot({path:path.join(output,`settings-entries-${theme}.png`)});
+  }
   const rhythm=page.locator('[data-ai-optional=global-rhythm]');
   assert.equal(await rhythm.getAttribute('open'),null);
   await rhythm.locator('summary').click();

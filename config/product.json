@@ -7,6 +7,6 @@
   "gatewayPrefix": "/app/qibox",
   "publisher": "Bot",
   "email": "bot@qiapp.online",
-  "buildId": "0.11.4-candidate.004",
+  "buildId": "0.11.4-candidate.005",
   "channel": "candidate"
 }

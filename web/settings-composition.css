@@ -70,8 +70,8 @@
 .qiapp-product #ai-panel form.ai-reference-general.qi-settings-form.qbx-settings-group { padding: 24px; }
 .qiapp-product #ai-panel form.ai-reference-general.qi-settings-form.qbx-settings-group > h4 { margin: 0; padding: 0; }
 .qiapp-product #ai-panel form.ai-reference-general.qi-settings-form.qbx-settings-group > .ai-field { margin: 0; }
-.qiapp-product #ai-panel form.ai-reference-general.qi-settings-form.qbx-settings-group > .qbx-setting-row { margin-inline: 0; }
-.qiapp-product #ai-panel form.ai-reference-general.qi-settings-form.qbx-settings-group footer { margin: 0; padding-inline: 0; }
+.qiapp-product #ai-panel form.ai-reference-general.qi-settings-form.qbx-settings-group > .qbx-setting-row { margin-inline: 0; border-color: var(--qi-border); }
+.qiapp-product #ai-panel form.ai-reference-general.qi-settings-form.qbx-settings-group footer { margin: 0; padding-inline: 0; border-color: var(--qi-border); }
 .qiapp-product #ai-panel form.ai-reference-general.qi-settings-form.qbx-settings-group .ai-takeover-settings { margin-inline: 0; padding-inline: 0; border-inline-start: 0; }
 .qiapp-product #ai-panel form.ai-reference-general.qi-settings-form.qbx-settings-group .ai-takeover-switch { margin-inline: 0; }
 .qiapp-product #ai-panel form.ai-reference-general.qi-settings-form.qbx-settings-group [data-takeover-minutes] { padding-inline: 0; }
@@ -79,6 +79,12 @@
 .qiapp-product #ai-panel .ai-reference-settings.qbx-settings-page > .qbx-settings-config { box-sizing: border-box; width: min(100%, 760px); max-width: 760px; margin-inline: auto; padding: 0 24px; }
 .qiapp-product #ai-panel .ai-reference-settings.qbx-settings-page > .qbx-settings-config > .ai-card-heading { padding-inline: 0; }
 .qiapp-product #ai-panel .ai-reference-settings.qbx-settings-page > .qbx-settings-config > .ai-reference-settings-entries { margin-inline: 0; }
+
+.qiapp-product #ai-panel .qbx-settings-page .ai-settings-entry { background: var(--qi-surface); color: var(--qi-text); border-color: var(--qi-border); }
+.qiapp-product #ai-panel .qbx-settings-page .ai-settings-entry:hover { background: var(--qi-hover); }
+.qiapp-product #ai-panel .qbx-settings-page .ai-settings-entry strong { color: var(--qi-text); }
+.qiapp-product #ai-panel .qbx-settings-page .ai-settings-entry small { color: var(--qi-text-secondary); }
+.qiapp-product #ai-panel .qbx-settings-page .ai-settings-entry-icon { background: var(--qi-surface-muted); color: var(--qi-text-secondary); }
 
 :root[data-qi-theme=dark] #ai-panel:has(.ai-object-timing,.ai-reply-rhythm) .ai-object-detail :is(h1, h2, h3, h4, h5, strong, label, p, small) { color: var(--qi-text); }
 :root[data-qi-theme=dark] #ai-panel:has(.ai-object-timing,.ai-reply-rhythm) .ai-object-detail .ai-time-range { background: var(--qi-surface); border-color: var(--qi-border); }
