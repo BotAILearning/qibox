@@ -36,6 +36,8 @@ export class Instances {
   }
   async ensureAssets() {
     if (this.runtimeFactory) return;
+    await this.preparationReady?.();
+    await this.ensureEnvironment();
     if (this.assets.status === 'error') { await this.assetsTask; this.assetsTask = null; }
     this.assetsTask ??= (async () => {
       const { Runtime } = await import('./runtime.mjs');
@@ -43,6 +45,16 @@ export class Instances {
       this.preparing = this.assets.prepare(); await this.preparing;
     })();
     await this.assetsTask;
+  }
+  async ensureEnvironment({ inspect = false } = {}) {
+    await this.preparationReady?.();
+    if (!this.resourceManager?.manifest) return;
+    const state = inspect ? await this.resourceManager.inspect() : this.resourceManager.state;
+    if (state.status === 'ready') return;
+    this.resourceManager.start(); await this.resourceManager.working;
+    if (this.resourceManager.state.status !== 'ready') throw new AppError(`运行环境恢复失败：${this.resourceManager.state.error || this.resourceManager.state.message || '自检未通过，请重试'}`, 409);
+    this.assetsTask = null;
+    return true;
   }
   async get(uid) {
     if (!validUserKey(uid, this)) throw new AppError('请重新登录飞牛', 401);
@@ -66,8 +78,10 @@ export class Instances {
       if ((!runtime.definition || runtime.definition.id === 'wechat') && (!this.library.installed() || this.library.uninstalling)) throw new AppError('请先完成微信安装', 409);
       if (this.resourceManager?.manifest) {
         if (runtime.status === 'running') return;
-        const prepared = await this.resourceManager.inspect();
-        if (prepared.status !== 'ready') throw new AppError('系统运行组件已变化，请先重新准备微信；已有资料会保留', 409);
+        const repaired = await this.ensureEnvironment({ inspect: true });
+        // A repaired tree replaces generated desktop files as well. Prepare
+        // the pinned desktop executable again before opening this instance.
+        if (repaired && 'xvfb' in runtime) runtime.xvfb = null;
       }
       return runtime.start();
     });

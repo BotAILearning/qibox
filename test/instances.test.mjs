@@ -58,10 +58,11 @@ test('a running restored desktop is visible while cached-login verification rema
 
 test('opening an existing running process does not repeat validation, but starting a stopped one still validates', async () => {
   let inspections = 0;
-  const users = new Instances({ library: { installed: () => ({}) }, resourceManager: { manifest: {}, inspect: async () => { inspections++; return { status: 'error' }; } } });
+  const resourceManager = { manifest: {}, state: { status: 'error', error: '自检失败' }, inspect: async () => { inspections++; return { status: 'error' }; }, start() { this.working = Promise.resolve(); } };
+  const users = new Instances({ library: { installed: () => ({}) }, resourceManager });
   const runtime = { status: 'running', start: async () => { throw Error('Must not start twice'); } };
   await users.start(runtime); assert.equal(inspections, 0);
-  runtime.status = 'stopped'; await assert.rejects(users.start(runtime), /系统运行组件已变化/); assert.equal(inspections, 1);
+  runtime.status = 'stopped'; await assert.rejects(users.start(runtime), /自检失败/); assert.equal(inspections, 1);
 });
 test('catalog survives process restart; installation is shared without migrating external data', async () => {
   const dataRoot = await temp(), library = { installed: () => ({ version: '4.1.13.9' }) };

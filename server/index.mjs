@@ -69,7 +69,7 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
       }).finally(() => { preparingInitialization = false; });
     } else await preparation.init();
   }
-  const users = new Instances({ appRoot, dataRoot, dev, host, library, runtimeFactory, aiProvider, deferRestore, resourceManager: preparation });
+  const users = new Instances({ appRoot, dataRoot, dev, host, library, runtimeFactory, aiProvider, deferRestore, resourceManager: preparation, preparationReady: () => preparationInitialization });
   const updater = new WechatUpdate({ library, users, dataRoot, fetcher, validateProgram: async (directory, metadata, work) => {
     if (dev || runtimeFactory) throw new AppError('新程序需在 NAS 中验证后才能切换', 409);
     const { Runtime } = await import('./runtime.mjs');
