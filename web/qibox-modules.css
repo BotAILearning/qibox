@@ -161,3 +161,24 @@
 .update-impact li span { color: var(--qi-text-secondary); }
 .update-source { display: grid; gap: 10px; margin: 16px 0 0; padding: 0; border: 0; }
 .update-source legend { margin-bottom: 2px; font-weight: 600; }
+
+/* The restored installation layout uses the shared semantic palette in both
+   themes. Legacy desktop/choice ink tokens must not mask dark text/surfaces. */
+.qiapp-product :is(.market-panel,.desktop-panel).qbx-module {
+  --qbx-ink: var(--qi-text); --qbx-muted: var(--qi-text-secondary);
+  --qbx-line: var(--qi-border); --qbx-surface: var(--qi-surface);
+}
+.qiapp-product :is(.desktop-icon h3,.store-card-main h3) { color: var(--qi-text); }
+.qiapp-product .market-panel .store-card { background: var(--qi-surface-muted); border-color: var(--qi-border); }
+.qiapp-product .mobile-instance-card { background: var(--qi-surface); border-color: var(--qi-border); color: var(--qi-text); }
+.qiapp-product .store-card-main p { color: var(--qi-text-secondary); }
+.qiapp-product .install-format strong { color: var(--qi-text); }
+.qiapp-product .install-format a { color: var(--qi-primary); }
+.qiapp-product #modal-body .update-source .choice { color: var(--qi-text); }
+.qiapp-product #modal-body .update-source .choice :is(span,strong) { color: inherit; }
+.qiapp-product #modal-body .update-source .choice small,
+.qiapp-product #modal-body .update-impact p { color: var(--qi-text-secondary); }
+.qiapp-product #modal-body>p,
+.qiapp-product .install-progress p,
+.qiapp-product>footer { color: var(--qi-text-secondary); }
+.qiapp-product>footer a { color: var(--qi-primary); }
