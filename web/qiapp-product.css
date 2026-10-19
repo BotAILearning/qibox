@@ -219,3 +219,8 @@ html.mobile .qiapp-product button.mobile-only { display: inline-flex; }
 }
 
 #ai-panel .ai-reference-general .ai-switch-row small { margin: 0; }
+
+#ai-panel .ap-task-cleanup :is(select,button) { height: var(--qi-control-sm); min-height: var(--qi-control-sm); }
+@media(max-width:860px), (pointer:coarse) {
+  #ai-panel .ap-task-cleanup :is(select,button) { height: var(--qi-control-touch); min-height: var(--qi-control-touch); }
+}

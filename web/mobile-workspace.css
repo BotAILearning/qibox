@@ -1,0 +1,53 @@
+/* Qibox mobile composition. Shared components retain their public contracts;
+   this file only arranges product navigation, identity and contextual actions. */
+#ai-panel .ap-mobile-filter { display: none; }
+@media (max-width: 860px) {
+  /* Return is represented once by the app bar, with the same business handler. */
+  #ai-panel .qbx-content-return,
+  #ai-panel .qbx-return-only { display: none !important; }
+  #ai-panel .ai-provider-page-heading { position: static; padding: 0; margin: 0 0 16px; }
+  #ai-panel .ai-provider-page-heading h3,
+  #ai-panel .ai-reference-learning-top h3,
+  #ai-panel .ap-heading h3 { display: none; }
+  #ai-panel .ai-reference-learning-top:has(>.qbx-content-return) { display: none; }
+  #ai-panel .ai-page-body { gap: 16px; padding: 16px; }
+  #ai-panel .ai-page-heading { margin: 0 0 16px; gap: 12px; }
+  #ai-panel .ai-page-heading p { margin: 0; font-size: 13px; line-height: 20px; }
+
+  /* Each toolbar has one job: primary action, object selection, or filtering. */
+  #ai-panel .ap-heading { display: flex; flex-direction: column; align-items: start; gap: 12px; margin-bottom: 16px; }
+  #ai-panel .ap-heading p { margin: 0; font-size: 13px; line-height: 20px; }
+  #ai-panel .ap-heading > button { align-self: start; margin: 0; }
+  #ai-panel .ap-reference-list { display: flex; flex-direction: column; padding: 0; }
+  #ai-panel .ap-reference-toolbar { display: contents; }
+  #ai-panel .ap-filters { display: none; }
+  #ai-panel .ap-mobile-filter { order: 0; display: flex; align-items: center; flex: none; gap: 16px; padding: 16px; margin: 0; font-size: 14px; }
+  #ai-panel .ap-mobile-filter > span { flex: none; }
+  #ai-panel .ap-mobile-filter select { flex: 1; min-width: 0; }
+  #ai-panel .ap-table-head { order: 1; padding: 12px 16px; border-top: 1px solid var(--qi-border); }
+  #ai-panel .ap-reference-task, #ai-panel .ap-reference-list > .ap-empty { order: 2; }
+  #ai-panel .ap-task-cleanup { order: 3; display: flex; flex: none; flex-wrap: wrap; width: auto; min-width: 0; margin: 0; padding: 16px; gap: 8px; border-top: 1px solid var(--qi-border); }
+  #ai-panel .ap-task-cleanup select { flex: 1 1 160px; width: auto; min-width: 0; }
+  #ai-panel .ap-task-cleanup button { flex: 0 0 auto; }
+
+  #ai-panel .ai-reference-learning-tools { display: flex; flex-wrap: wrap; gap: 8px; }
+  #ai-panel .ai-reference-learning-tools > button { flex: 0 1 auto; max-width: 100%; white-space: normal; }
+  #ai-panel .ai-reference-learning-tools > .primary { flex-basis: auto; }
+  #ai-panel .ai-person-head { gap: 12px; }
+  #ai-panel .ai-reference-tabs { display: flex; gap: 0; padding: 0; }
+  #ai-panel .ai-reference-tabs > button { flex: 1 1 0; min-width: 0; padding: 10px 8px; font-size: 14px; }
+  #ai-panel .ai-object-reference { padding: 16px; }
+  #ai-panel .ai-object-form-fields > .ai-reference-profile { margin-top: 0; }
+
+  /* The picker owns its section insets; no second inset around the dialog. */
+  #ai-panel .ai-contact-picker-dialog { padding: 0; width: calc(100vw - 32px); max-width: 400px; }
+  #ai-panel .ai-contact-picker-dialog > header { padding: 16px; gap: 12px; align-items: start; }
+  #ai-panel .ai-contact-picker-dialog > header h3 { font-size: 20px; line-height: 28px; }
+  #ai-panel .ai-contact-picker-dialog .ap-picker-tools { padding: 0 16px 8px; gap: 8px; }
+  #ai-panel .ai-contact-picker-dialog .ap-picker-tools .ai-contact-picker-search { border: 0; padding: 0; gap: 8px; background: transparent; }
+  #ai-panel .ai-contact-picker-dialog .ap-picker-summary { display: flex; flex-direction: column; align-items: stretch; padding: 0 16px 8px; gap: 4px; font-size: 13px; }
+  #ai-panel .ai-contact-picker-dialog .ap-picker-summary > span:last-child { display: flex; flex-wrap: wrap; gap: 8px; }
+  #ai-panel .ai-contact-picker-dialog .ap-picker-summary button { font-size: 14px; }
+  #ai-panel .ai-contact-picker-dialog .ap-picker-list { padding-inline: 16px; }
+  #ai-panel .ai-contact-picker-dialog > footer { padding: 16px; gap: 8px; }
+}

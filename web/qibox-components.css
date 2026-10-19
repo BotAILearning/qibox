@@ -66,8 +66,8 @@
 
 @media(max-width:860px) {
   #ai-panel .ai-mobile-navigation.qbx-mobile-toolbar {
-    display: grid; grid-template-columns: 44px minmax(0,1fr) 44px; align-items: center;
-    gap: 8px; height: 56px; min-height: 56px; padding: 6px 14px;
+    display: grid; grid-template-columns: 44px minmax(0,1fr); align-items: start;
+    gap: 8px; height: auto; min-height: 64px; padding: 10px 16px;
     background:var(--qi-surface); border-bottom: 1px solid var(--qbx-line);
   }
   #ai-panel .qbx-mobile-toolbar #ai-mobile-back {
@@ -77,11 +77,13 @@
   }
   #ai-panel .qbx-mobile-toolbar #ai-mobile-back svg { width: 24px; height: 24px; padding: 0; background: transparent; }
   #ai-panel .qbx-mobile-toolbar #ai-mobile-back .sr-only { display: none; }
+  #ai-panel .qbx-mobile-heading { display: flex; flex-direction: column; justify-content: center; min-width: 0; min-height: 44px; gap: 2px; }
   #ai-panel .qbx-mobile-toolbar #ai-mobile-title {
-    overflow: hidden; color: var(--qbx-ink); font-size: 17px; line-height: 1.35;
-    font-weight: 700; text-align: center; text-overflow: ellipsis; white-space: nowrap;
+    color: var(--qbx-ink); font-size: 20px; line-height: 28px;
+    font-weight: 600; text-align: left; white-space: normal; overflow-wrap: anywhere;
   }
-  #ai-panel .qbx-toolbar-balance { width: 44px; height: 44px; }
+  #ai-panel #ai-mobile-context { color: var(--qi-text-secondary); font-size: 13px; line-height: 20px; overflow-wrap: anywhere; }
+  #ai-panel #ai-mobile-context:empty { display: none; }
   #ai-panel .ai-main-tabs.qbx-bottom-nav {
     display: flex; align-items: stretch; min-height: 66px; padding: 4px 4px calc(4px + env(safe-area-inset-bottom));
     gap: 2px; border-top: 1px solid var(--qi-border); background:var(--qi-surface);

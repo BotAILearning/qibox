@@ -108,6 +108,7 @@ async function openAIEntry(id) {
     await syncAssistant(id);
     if (operation !== desktopOperation) return;
     $('#ai-account-label').textContent = '当前微信：' + entry.name;
+    $('#ai-mobile-context').textContent = '实例：' + entry.name;
     $('#ai-close').setAttribute('aria-label', '返回栖盒'); $('#ai-close span').textContent = '返回栖盒';
     assistant.show(); syncDesktopInteraction(); return;
   }
@@ -148,7 +149,7 @@ function expireHostSession(message) {
   inputDrafts.clear(); busyIds.clear(); renderMobileAI();
   for (const selector of ['#instances', '#mobile-instance-list', '#catalog-list', '#modal-body', '#modal-actions']) $(selector).replaceChildren();
   lastInstancesMarkup = lastMobileInstancesMarkup = lastCatalogMarkup = '';
-  for (const selector of ['#desktop-count', '#ai-account-label', '#mobile-login-instance']) $(selector).textContent = '';
+  for (const selector of ['#desktop-count', '#ai-account-label', '#ai-mobile-context', '#mobile-login-instance']) $(selector).textContent = '';
   $('#native-input').value = ''; $('#input-recovery-text').value = ''; $('#input-recovery').hidden = true;
   $('#empty-state').hidden = true; $('#mobile-instance-empty').hidden = true;
   clearTimeout(toastTimer); $('#toast').hidden = true; $('#toast').textContent = '';
@@ -670,6 +671,7 @@ async function openDesktop(id, start = true, login = false, allowMobile = false,
   if (isWechat) sound = desktopAudio({ surface: $('#desktop-screen'), endpoint: `${prefix}/api/instances/${id}/audio`,
     headers: async () => ({ ...await hostHeaders(), 'X-CSRF-Token': session.csrf }), notify });
   $('#ai-account-label').textContent = '当前微信：' + (entry?.name || '微信');
+  $('#ai-mobile-context').textContent = '实例：' + (entry?.name || '微信');
   $('#desktop-name').textContent = state.instances.find(x => x.id === id)?.name || '微信';
   $('#desktop-view').hidden = false; render(); renderDesktop();
   try {

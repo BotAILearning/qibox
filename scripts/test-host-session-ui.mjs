@@ -54,6 +54,8 @@ try {
   assert.equal(report.expiredOpenView.instanceCards,0);
   assert.equal(report.expiredOpenView.reportText,0);
   assert.equal(report.expiredOpenView.desktopVisible,false);
+  assert.equal(await page.locator('#ai-mobile-context').textContent(),'');
+  assert.equal(await page.locator('#ai-account-label').textContent(),'');
   report.checks.push('A confirmed expired session clears the open report, instance list and remote desktop.');
   await page.route('**/api/session',route=>route.fulfill({status:200,contentType:'text/plain',body:'invalid token'}));
   await page.reload();

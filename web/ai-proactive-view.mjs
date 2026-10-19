@@ -234,6 +234,11 @@ export function createProactiveUI({ panel, getState, context, isBusy, mutate, re
     return true;
   }
   function change(input) {
+    if (input.hasAttribute?.('data-proactive-filter-select')) {
+      if (!['all', ...Object.keys(statuses)].includes(input.value)) return false;
+      view.filter = input.value; view.menu = ''; refresh(true);
+      panel.querySelector('[data-proactive-filter-select]')?.focus({ preventScroll: true }); return true;
+    }
     if (input.hasAttribute?.('data-proactive-cleanup-scope')) {
       view.cleanupScope = input.value; refresh(true);
       panel.querySelector('[data-proactive-cleanup-scope]')?.focus({ preventScroll: true }); return true;

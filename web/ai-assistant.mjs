@@ -1075,6 +1075,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     for (const textarea of $('#ai-content').querySelectorAll('.ai-wiki-bubble textarea[aria-label="信息内容"]')) resizeWikiTextarea(textarea);
     if ($('#ai-object-list')) { $('#ai-object-list').scrollTop = objectScroll; drawObjectList(); }
     panel.classList.toggle('object-selected', !!selectedObject && tab === 'overview');
+    updateMobileNavigation();
     for (const node of panel.querySelectorAll('#ai-content details')) {
       if (node.hasAttribute('data-ai-record-expand') || node.hasAttribute('data-ai-skip-messages')) continue;
       const previous = disclosureStates.find(item => item.label === (node.dataset.aiOptional || node.querySelector('summary')?.textContent));
@@ -1208,13 +1209,31 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     panel.hidden ? show() : hide();
   };
   $('#ai-close').onclick = hide;
-  const goBack = () => {
-    if (['personal-info', 'global-reply'].includes(tab)) { void navigate('settings'); return; }
+  // The app bar owns mobile navigation. Content retains the same return actions
+  // on desktop; each mobile replacement delegates to that exact business action.
+  function mobileReturnAction() {
     const content = $('#ai-content');
-    const candidate = ['[data-ai-action="model-cancel"]', '[data-proactive-back]', '[data-ai-object-back]', '[data-ai-action="back-learning"]', '[data-ai-action="back-reply-contacts"]', '.ai-learning-back', '.ai-sticky-back button', '.ai-reference-learning-top [data-ai-nav]'].map(selector => content.querySelector(selector)).find(Boolean);
-    if (candidate && (!candidate.hasAttribute('data-ai-object-back') || selectedObject)) candidate.click();
-    else if (tab !== 'overview') void navigate('overview');
-    else hide();
+    const candidate = ['[data-ai-action="model-cancel"]', '[data-proactive-back]', '[data-ai-object-back]', '[data-ai-action="back-learning"]', '[data-ai-action="back-reply-contacts"]', '.ai-learning-back', '[data-ai-history-back]', '.ai-reference-learning-top [data-ai-nav]', '.ai-page-heading > [data-ai-nav="settings"]'].map(selector => content.querySelector(selector)).find(node => typeof node?.hasAttribute === 'function' && (!node.hasAttribute('data-ai-object-back') || selectedObject));
+    if (candidate) return { label: candidate.getAttribute('aria-label') || candidate.textContent.trim(), run: () => candidate.click(), source: candidate };
+    if (['personal-info', 'global-reply', 'provider'].includes(tab)) return { label: '返回系统设置', run: () => void navigate('settings') };
+    return { label: '返回栖盒', run: hide };
+  }
+  function updateMobileNavigation() {
+    const action = mobileReturnAction(), back = $('#ai-mobile-back');
+    back.setAttribute('aria-label', action.label); back.title = action.label;
+    if (action.source) {
+      action.source.classList.add('qbx-content-return');
+      const heading = action.source.closest('.ai-page-heading, .ai-reference-learning-top');
+      if (heading && heading.children.length === 1 && heading.firstElementChild === action.source) heading.classList.add('qbx-return-only');
+    }
+    const detailTitle = $('#ai-content').querySelector('.ap-editor-heading h3')?.textContent;
+    if (detailTitle) $('#ai-mobile-title').textContent = detailTitle;
+    else if (tab === 'overview' && selectedObject) $('#ai-mobile-title').textContent = '对象设置';
+    else if (tab === 'analysis' && analysisHistoryReport) $('#ai-mobile-title').textContent = '报告详情';
+    panel.dataset.mobileView = tab === 'overview' && selectedObject ? 'object' : tab;
+  }
+  const goBack = () => {
+    mobileReturnAction().run();
   };
   $('#ai-mobile-back').onclick = goBack;
   panel.addEventListener('input', event => { if (event.target.tagName === 'TEXTAREA') mobileLayout(); });
