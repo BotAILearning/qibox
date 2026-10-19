@@ -1,7 +1,7 @@
 /* QIAPP 2026-10-18 settings composition; shared primitives from @qiapp/ui 0.1.2. */
 #ai-panel .qi-settings-form { box-sizing: border-box; width: min(100%, 760px); max-width: 760px; margin-inline: auto; padding: 24px; gap: 20px; }
 #ai-panel .ai-reference-general.ai-card.qi-settings-form { padding: 24px; }
-#ai-panel .ai-reference-settings.qbx-settings-page { gap: 20px; }
+.qiapp-product #ai-panel .ai-reference-settings.qbx-settings-page { box-sizing: border-box; width: min(100%, 760px); max-width: 760px; margin-inline: auto; gap: 20px; }
 #ai-panel .ai-reference-general { display: grid; gap: 20px; }
 #ai-panel .ai-reference-general > h4 { margin: 0; padding: 0; }
 #ai-panel .ai-setting-group,
@@ -33,7 +33,7 @@
 #ai-panel .ai-takeover-settings .ai-help { margin: 8px 0 0; }
 #ai-panel .ai-reference-general .ai-timing-fields .ai-help { margin: 10px 0 0; font-size: 12px; }
 #ai-panel .ai-reply-rhythm > summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; min-width: 0; }
-#ai-panel .ai-reply-rhythm > summary h4 { flex: 0 1 auto; min-width: 0; margin: 0; color: var(--qi-text); font-size: 16px; font-weight: 650; line-height: 1.5; }
+#ai-panel .ai-reply-rhythm > summary h4 { flex: 0 1 auto; min-width: 0; margin: 0; padding: 0; border: 0; color: var(--qi-text); font-size: 16px; font-weight: 650; line-height: 1.5; }
 #ai-panel .ai-reply-rhythm > summary > span { flex: 1 1 240px; min-width: 0; color: var(--qi-text-secondary); font-size: 12px; font-weight: 400; line-height: 1.6; overflow-wrap: anywhere; }
 #ai-panel .ai-reply-rhythm[open] > .ai-reply-module-body { padding-top: 0; }
 #ai-panel .ai-object-timing .ai-time-range-fields,
@@ -71,7 +71,7 @@
 .qiapp-product #ai-panel form.ai-reference-general.qi-settings-form.qbx-settings-group > h4 { margin: 0; padding: 0; }
 .qiapp-product #ai-panel form.ai-reference-general.qi-settings-form.qbx-settings-group > .ai-field { margin: 0; }
 .qiapp-product #ai-panel form.ai-reference-general.qi-settings-form.qbx-settings-group > .qbx-setting-row { margin-inline: 0; }
-.qiapp-product #ai-panel form.ai-reference-general.qi-settings-form.qbx-settings-group footer { padding-inline: 0; }
+.qiapp-product #ai-panel form.ai-reference-general.qi-settings-form.qbx-settings-group footer { margin: 0; padding-inline: 0; }
 .qiapp-product #ai-panel form.ai-reference-general.qi-settings-form.qbx-settings-group .ai-takeover-settings { margin-inline: 0; padding-inline: 0; border-inline-start: 0; }
 .qiapp-product #ai-panel form.ai-reference-general.qi-settings-form.qbx-settings-group .ai-takeover-switch { margin-inline: 0; }
 .qiapp-product #ai-panel form.ai-reference-general.qi-settings-form.qbx-settings-group [data-takeover-minutes] { padding-inline: 0; }

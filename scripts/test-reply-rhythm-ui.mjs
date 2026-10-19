@@ -38,6 +38,8 @@ try {
   await page.locator('#ai-open').click();
   await page.getByRole('button', { name: '系统设置', exact: true }).click();
   assert.equal(await page.locator('[name=appearance]').count(),0);
+  const alignment=await page.locator('.qbx-settings-page > .ai-card').evaluateAll(ns=>ns.map(n=>{const r=n.getBoundingClientRect();return{x:r.x,width:r.width};}));
+  assert.equal(alignment.length,2);assert.ok(Math.abs(alignment[0].x-alignment[1].x)<=1,'settings cards must share the same left edge');assert.ok(Math.abs(alignment[0].width-alignment[1].width)<=1,'settings cards must share width');
   const rhythm=page.locator('[data-ai-optional=global-rhythm]');
   assert.equal(await rhythm.getAttribute('open'),null);
   await rhythm.locator('summary').click();
