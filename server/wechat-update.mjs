@@ -71,10 +71,16 @@ export class WechatUpdate {
       warning: '更新会关闭下列所有用户的微信实例，完成后请手动打开。账号、聊天记录与设置保留。旧程序保留；新程序使用过数据后不能直接回退，需兼容的数据备份。' };
   }
   async confirm(token) {
-    const affected = await this.affected(), value = this.confirmations.get(token);
     if (this.working || this.library.working || this.library.updating || this.library.uninstalling || this.reserved) throw new AppError('正在处理微信，请稍候', 409);
-    if (!value || value.expires < Date.now() || value.current !== this.library.current?.sha256 || value.keys !== affected.map(x => x.key).join(',')) throw new AppError('更新确认已过期或受影响实例已变化，请重新确认', 409);
-    this.confirmations.delete(token); this.reserved = true; this.library.updating = true; return value;
+    // Reserve before the asynchronous instance scan. A later scan can finish
+    // first, but must not steal the first request's update transaction.
+    this.reserved = true;
+    try {
+      const affected = await this.affected(), value = this.confirmations.get(token);
+      if (this.working || this.library.working || this.library.updating || this.library.uninstalling) throw new AppError('正在处理微信，请稍候', 409);
+      if (!value || value.expires < Date.now() || value.current !== this.library.current?.sha256 || value.keys !== affected.map(x => x.key).join(',')) throw new AppError('更新确认已过期或受影响实例已变化，请重新确认', 409);
+      this.confirmations.delete(token); this.library.updating = true; return value;
+    } catch (error) { this.reserved = false; throw error; }
   }
   async downloader() {
     if (!this.transfer) {

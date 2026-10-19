@@ -71,6 +71,32 @@ test('download and upload reservations reject concurrent update transactions', a
   } finally { release?.(); await ctx.updater.close(); await cleanup(ctx.dataRoot); }
 });
 
+test('the first update reserves before a delayed instance scan; failure releases only its reservation', async () => {
+  const ctx = await context(); let release;
+  const hold = new Promise(resolve => { release = resolve; });
+  try {
+    await ctx.updater.init(); const preview = await ctx.updater.preview();
+    const affected = ctx.updater.affected.bind(ctx.updater); let scans = 0;
+    ctx.updater.affected = async () => { scans++; await hold; return affected(); };
+    const first = ctx.updater.confirm(preview.token);
+    await assert.rejects(ctx.updater.confirm(preview.token), /正在处理/);
+    assert.equal(scans, 1); release(); await first;
+    assert.equal(ctx.updater.reserved, true);
+    assert.equal(ctx.library.updating, true);
+  } finally { release?.(); ctx.updater.reserved = false; ctx.library.updating = false; await ctx.updater.close(); await cleanup(ctx.dataRoot); }
+  const failed = await context();
+  try {
+    await failed.updater.init(); const preview = await failed.updater.preview();
+    const affected = failed.updater.affected.bind(failed.updater);
+    failed.updater.affected = async () => { throw new Error('隔离扫描失败'); };
+    await assert.rejects(failed.updater.confirm(preview.token), /隔离扫描失败/);
+    assert.equal(failed.updater.reserved, false); assert.equal(!!failed.library.updating, false);
+    failed.updater.affected = affected;
+    await failed.updater.confirm(preview.token);
+    assert.equal(failed.updater.reserved, true);
+  } finally { failed.updater.reserved = false; failed.library.updating = false; await failed.updater.close(); await cleanup(failed.dataRoot); }
+});
+
 test('self-test failure leaves old current and does not stop instances; newer uploaded version is accepted', async () => {
   const ctx = await context({ extractVersion: '4.2.1.0', validateProgram: async () => { throw new Error('隔离自检失败'); } });
   try {
