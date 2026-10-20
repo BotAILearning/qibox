@@ -2930,7 +2930,7 @@ export class AIAssistant {
     if (!this.ready()) { this.available = false; this.notice = '等待微信登录后继续'; return; }
     this.ticking = true; this.tickFinished = Promise.withResolvers(); const revision = this.revision, signal = this.controller.signal;
     try {
-      const rescan = this.now() >= (this.scanRetryAt || 0) && (!this.available || this.bridge.stableMessageIds && this.data.settings.replyScope === 'all' && this.now() - (this.lastScanAt || 0) >= 15 * 60000);
+      const rescan = this.now() >= (this.scanRetryAt || 0) && (!this.available || this.bridge.requiresContactScan === true || this.bridge.stableMessageIds && this.data.settings.replyScope === 'all' && this.now() - (this.lastScanAt || 0) >= 15 * 60000);
       if (!urgentReplyId && rescan && !this.activeRuns.size) { await this.scan(); return; }
       if (!this.available) return;
       if (!this.modelReady() && !(learningEnabled(this) && this.modelFor('learning')?.consent)) { this.notice = '请先配置模型'; return; }

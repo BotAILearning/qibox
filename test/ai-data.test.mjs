@@ -741,3 +741,42 @@ test('a discovered layout stays in the private delivery hint and never leaks int
   await bridge.read({ account,contact });
   assert.equal(bridge.bindings.get(contact).sessionHint, null);
 });
+
+test('a new WeChat process rebuilds verified contact bindings before the next background read', async t => {
+  const root=await temp(), {bridge,runtime,calls}=fixture(), provider=new AIModelFixture();
+  const assistant=new AIAssistant({dataRoot:root,bridge,provider,now:()=>1000000});
+  await assistant.init(); t.after(async()=>{await assistant.close();await cleanup(root);});
+  clearInterval(assistant.timer);clearInterval(assistant.warmupTimer);
+  await assistant.configure(modelConfig);await assistant.scan();await assistant.settings({enabled:true,replyScope:'all'});
+  const initial=calls.filter(x=>x.action==='contacts').length;
+  runtime.processes[0].process={pid:456};
+  await assistant.tick();
+  assert.equal(calls.filter(x=>x.action==='contacts').length,initial+1,'process replacement must authenticate current contacts immediately');
+  assert.equal(assistant.available,true);assert.equal(bridge.pid,456);assert.equal(bridge.account,account);
+  assert.ok(bridge.bindings.has(contact));assert.equal(provider.calls.length,0,'binding recovery must not call a model');
+  const verified=await bridge.read({account,contact});assert.equal(verified.contact,contact);
+  await assistant.tick();assert.equal(calls.filter(x=>x.action==='contacts').length,initial+1,'no recurring full scan after recovery');
+});
+
+test('contact recovery accepts a verified empty address book and keeps existing failure backoff', async t => {
+  const root=await temp();let fail=false;
+  const {bridge,calls,runtime}=fixture(async action=>{if(action==='contacts'){if(fail)throw new AppError('读取失败',409);return{available:true,account,contacts:[]};}});
+  const assistant=new AIAssistant({dataRoot:root,bridge,now:()=>1000000});await assistant.init();
+  t.after(async()=>{await assistant.close();await cleanup(root);});clearInterval(assistant.timer);clearInterval(assistant.warmupTimer);
+  await assistant.configure(modelConfig);await assistant.scan();await assistant.settings({enabled:true,replyScope:'all'});
+  assert.equal(bridge.requiresContactScan,false);await assistant.tick();assert.equal(calls.filter(x=>x.action==='contacts').length,1);
+  runtime.processes[0].process={pid:789};fail=true;
+  await assistant.tick();assert.equal(calls.filter(x=>x.action==='contacts').length,2);
+  await assistant.tick();assert.equal(calls.filter(x=>x.action==='contacts').length,2,'failed recovery retains the existing retry deadline');
+});
+
+test('process recovery cannot reuse old bindings or enable automatic execution on a different account', async t => {
+  const root=await temp();let activeAccount=account;
+  const {bridge,runtime}=fixture(async action=>action==='contacts'?{available:true,account:activeAccount,contacts:[person]}:undefined);
+  const assistant=new AIAssistant({dataRoot:root,bridge,now:()=>1000000});await assistant.init();
+  t.after(async()=>{await assistant.close();await cleanup(root);});clearInterval(assistant.timer);clearInterval(assistant.warmupTimer);
+  await assistant.configure(modelConfig);await assistant.scan();await assistant.settings({enabled:true,replyScope:'all'});
+  activeAccount=key('replacement-account');runtime.processes[0].process={pid:987};await assistant.tick();
+  assert.equal(assistant.data.account,activeAccount);assert.equal(assistant.data.settings.enabled,false);
+  await assert.rejects(bridge.read({account,contact}));
+});

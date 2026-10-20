@@ -112,6 +112,12 @@ export class DataChatBridge extends NativeChatBridge {
     this.invokePrepared = invokePrepared || (options.invoke ? null : ((route, text, context, verify) => preparedSend(this, route, text, context, verify)));
   }
   get supportsNativeVoiceOutput() { return this.supportsMediaOutput && this.runtime.audioVoiceReady === true; }
+  get requiresContactScan() {
+    const process = this.runtime.processes.find(x => x.name === 'wechat')?.process;
+    // Saved AI contacts do not authenticate bindings in a replacement process.
+    // A verified empty address book has an account and needs no repeated scan.
+    return !this.account || this.process !== process || this.pid !== process?.pid;
+  }
   clearContext() {
     super.clearContext();
     this.voiceTexts?.clear();
