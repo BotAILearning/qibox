@@ -191,3 +191,35 @@ test('controller reset discards another instance draft; failed edit retains unsa
   await ui.click(button({ proactiveCommand: 'edit', taskId: 'task-1' }));
   ui.reset(); s = state(); assert.doesNotMatch(ui.page(), /项目跟进|ai-proactive-form/);
 });
+
+test('task editor opens at top and back/cancel restore the originating list position', async () => {
+  const host = { scrollTop: 145 };
+  const ui = createProactiveUI({ panel: { querySelector: selector => selector === '#ai-content' ? host : null }, getState: () => state(), context: () => 1, isBusy: () => false, render: () => { host.scrollTop = 900; }, showRecords: async () => {}, refreshContacts: async () => {}, mutate: async () => {} });
+  const button = key => ({ dataset: {}, attributes: [{ name: 'data-proactive-' + key }], hasAttribute: name => name === 'data-proactive-' + key, closest: () => ({}) });
+  await ui.click(button('new'));
+  assert.equal(host.scrollTop, 0, 'new editor starts at its heading');
+  host.scrollTop = 800;
+  await ui.click(button('back'));
+  assert.equal(host.scrollTop, 145, 'back restores the list, not the editor offset');
+  await ui.click(button('new'));
+  assert.equal(host.scrollTop, 0);
+  host.scrollTop = 1100;
+  await ui.click(button('cancel'));
+  assert.equal(host.scrollTop, 145, 'cancel restores the same originating list offset');
+  ui.reset(); host.scrollTop = 0;
+  await ui.click(button('new')); host.scrollTop = 500;
+  await ui.click(button('cancel'));
+  assert.equal(host.scrollTop, 0, 'reset cannot retain a prior instance list offset');
+});
+
+test('failed task save keeps editor position; successful save restores its original list', async () => {
+  const host = { scrollTop: 245 }; let fail = true;
+  const ui = createProactiveUI({ panel: { querySelector: selector => selector === '#ai-content' ? host : null }, getState: () => state({ proactiveTasks: [task()] }), context: () => 1, isBusy: () => false, render: () => {}, showRecords: async () => {}, refreshContacts: async () => {}, mutate: async (value, saved) => { if (fail) throw new Error('原条件保存失败'); saved(); host.scrollTop = 999; } });
+  await ui.click({ dataset: { proactiveCommand: 'edit', taskId: 'task-1' }, attributes: [{ name: 'data-proactive-command' }], hasAttribute: () => false, closest: () => ({}) });
+  host.scrollTop = 610;
+  await assert.rejects(ui.submit(), /原条件保存失败/);
+  assert.equal(host.scrollTop, 610, 'failed save keeps the editor and its position');
+  assert.match(ui.page(), /ai-proactive-form/);
+  fail = false; await ui.submit();
+  assert.equal(host.scrollTop, 245, 'successful save restores the originating list');
+});

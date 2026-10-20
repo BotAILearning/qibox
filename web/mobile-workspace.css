@@ -50,4 +50,12 @@
   #ai-panel .ai-contact-picker-dialog .ap-picker-summary button { font-size: 14px; }
   #ai-panel .ai-contact-picker-dialog .ap-picker-list { padding-inline: 16px; }
   #ai-panel .ai-contact-picker-dialog > footer { padding: 16px; gap: 8px; }
+  #ai-panel .ai-contact-picker-dialog[open] {
+    top: calc(var(--qbx-dialog-viewport-top,0px) + 14px); bottom: auto; margin: 0 auto;
+    height: min(780px,calc(var(--qbx-dialog-viewport-height,100dvh) - 28px));
+    max-height: calc(var(--qbx-dialog-viewport-height,100dvh) - 28px);
+  }
+  #ai-panel .ai-contact-picker-dialog[data-compact-viewport="true"] { display: block; overflow: auto; }
+  #ai-panel .ai-contact-picker-dialog[data-compact-viewport="true"] .ap-picker-list { min-height: 120px; max-height: none; overflow: visible; }
+  #ai-panel .ai-contact-picker-dialog[data-compact-viewport="true"] > footer { position: sticky; bottom: 0; z-index: 1; background: var(--qi-surface); }
 }

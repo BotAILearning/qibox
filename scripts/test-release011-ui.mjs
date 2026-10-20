@@ -16,7 +16,7 @@ const space=await app.users.get('development');await space.setConsent(true);app.
 const meta=await space.add('本地隔离验收');await space.start(meta.id);const ai=space.get(meta.id).ai;clearInterval(ai.timer);await ai.configure(modelConfig);await ai.scan();
 await ai.saveReplyProfile({contact:bridge.contacts[0].id,style:{summary:'隔离对象风格'},strategy,replyEnabled:true});
 await ai.configuration({type:'personal-information',entries:[{field:'name',text:'仅测试私密姓名',allowGroup:false},{field:'addressing',text:'仅测试公开昵称',allowGroup:true},{field:'occupation',text:'测试职业内容',allowGroup:false}]});
-const output=path.join(root,'local/acceptance-011/browser');await mkdir(output,{recursive:true});const report={scope:'Local isolated application browser acceptance, not NAS acceptance',errors:[],checks:[]};let browser, page;
+const output=path.join(root,process.argv[2]||'local/acceptance-011/browser');await mkdir(output,{recursive:true});const report={scope:'Local isolated application browser acceptance, not NAS acceptance',errors:[],checks:[]};let browser, page;
 try {
  browser=await chromium.launch({channel:'msedge',headless:true});page=await browser.newPage({viewport:{width:1440,height:1000}});page.on('pageerror',e=>report.errors.push(e.message));page.setDefaultTimeout(15000);
  await page.goto(`http://127.0.0.1:${app.server.address().port}${app.prefix}/?dev=${app.devKey}`);await page.locator('[data-action=open]').first().click();await page.locator('#ai-open').click();
@@ -29,22 +29,23 @@ try {
  const rows=ai.publicState().personalInformation.entries.filter(row=>row.field==='addressing');assert.equal(rows.length,2);assert.equal(rows.filter(row=>row.allowGroup).length,1);
  await page.locator('[data-personal-field=occupation] summary').click();
  await page.setViewportSize({width:1440,height:1000});await page.getByRole('button',{name:'返回系统设置',exact:true}).click();
- await page.locator('[name=autoLearning]').check();await page.locator('[name=replyDelay]').fill('9');await page.locator('[name=replyMaxWait]').fill('25');await page.locator('#ai-takeover-form button[type=submit]').click();await page.waitForFunction(()=>document.querySelector('#ai-panel')?.getAttribute('aria-busy')==='false');
+ await page.locator('[name=autoLearning]').check();await page.locator('[data-ai-optional=global-rhythm] summary').click();await page.locator('[name=replyDelay]').fill('9');await page.locator('[name=replyMaxWait]').fill('25');await page.locator('#ai-takeover-form button[type=submit]').click();await page.waitForFunction(()=>document.querySelector('#ai-panel')?.getAttribute('aria-busy')==='false');
  await page.locator('[data-ai-nav="personal-info"]').click();await page.getByRole('button',{name:'返回系统设置',exact:true}).click();assert.equal(await page.locator('[name=autoLearning]').isChecked(),true);assert.equal(await page.locator('[name=replyDelay]').inputValue(),'9');
  await page.locator('[name=autoLearning]').uncheck();await page.locator('#ai-takeover-form button[type=submit]').click();await page.waitForFunction(()=>document.querySelector('#ai-panel')?.getAttribute('aria-busy')==='false');assert.equal(ai.data.settings.autoLearning,false);
 
  await page.getByRole('button',{name:'自动回复',exact:true}).click();await page.locator(`[data-ai-object="${bridge.contacts[0].id}"]`).click();
- const object=page.locator('#ai-object-form');assert.equal(await object.locator('[name=inheritTiming]').isChecked(),true);assert.equal(await object.locator('[name=replyDelay]').isDisabled(),true);
- await object.locator('[data-ai-optional=reply-strategy] summary').click();await object.locator('[name=replyGoal]').fill('异步更新时保留这份草稿');
+ const object=page.locator('#ai-object-form');assert.equal(await object.locator('[name=inheritRhythm]').isChecked(),true);assert.equal(await object.locator('[name=replyDelay]').isDisabled(),true);
+ await object.locator('[data-ai-optional=object-rhythm] summary').click();
+ await object.locator('[data-ai-optional=reply-strategy] summary').click();await object.locator('[name=inheritStrategy]').uncheck();await object.locator('[name=replyGoal]').fill('异步更新时保留这份草稿');
  await ai.settings({replyDelay:14,replyMaxWait:30,takeover:{enabled:true,minutes:7}});
  await page.waitForFunction(()=>document.querySelector('#ai-object-form [name=replyDelay]')?.value==='14'&&document.querySelector('#ai-object-form [name=takeoverMinutes]')?.value==='7');
  assert.equal(await object.locator('[name=replyGoal]').inputValue(),'异步更新时保留这份草稿');
- await object.locator('[name=inheritTiming]').uncheck();await object.locator('[name=replyDelay]').fill('11');await object.locator('[name=replyMaxWait]').fill('26');
- await object.locator('[name=inheritTakeover]').uncheck();await object.locator('[name=takeoverEnabled]').uncheck();await object.locator('[name=takeoverMinutes]').fill('6');
+ await object.locator('[name=inheritRhythm]').uncheck();await object.locator('[name=replyDelay]').fill('11');await object.locator('[name=replyMaxWait]').fill('26');
+ await object.locator('[name=takeoverMinutes]').fill('6');await object.locator('[name=takeoverEnabled]').uncheck();
  await object.locator('button[type=submit]').click();await page.waitForFunction(()=>document.querySelector('#ai-panel')?.getAttribute('aria-busy')==='false');
- let saved=ai.profiles().find(row=>row.contact===bridge.contacts[0].id);assert.equal(saved.timing.replyDelay,11);assert.deepEqual(saved.takeover,{enabled:false,minutes:6});
- await object.locator('[name=inheritTiming]').check();await object.locator('[name=inheritTakeover]').check();await object.locator('button[type=submit]').click();await page.waitForFunction(()=>document.querySelector('#ai-panel')?.getAttribute('aria-busy')==='false');
- saved=ai.profiles().find(row=>row.contact===bridge.contacts[0].id);assert.equal(saved.timing,undefined);assert.equal(saved.takeover,undefined);assert.equal(await object.locator('[name=replyDelay]').inputValue(),'14');assert.equal(await object.locator('[name=takeoverMinutes]').inputValue(),'7');assert.equal(await object.locator('[name=takeoverEnabled]').isDisabled(),true);
+ let saved=ai.profiles().find(row=>row.contact===bridge.contacts[0].id);assert.equal(saved.rhythm.inherit,false);assert.equal(saved.rhythm.personal.timing.replyDelay,11);assert.deepEqual(saved.rhythm.personal.takeover,{enabled:false,minutes:6});
+ await object.locator('[name=inheritRhythm]').check();await object.locator('button[type=submit]').click();await page.waitForFunction(()=>document.querySelector('#ai-panel')?.getAttribute('aria-busy')==='false');
+ saved=ai.profiles().find(row=>row.contact===bridge.contacts[0].id);assert.equal(saved.timing,undefined);assert.equal(saved.takeover,undefined);assert.equal(saved.rhythm.inherit,true);assert.equal(saved.rhythm.personal.timing.replyDelay,11,'personal cache survives restoring inheritance');assert.equal(await object.locator('[name=replyDelay]').inputValue(),'14');assert.equal(await object.locator('[name=takeoverMinutes]').inputValue(),'7');assert.equal(await object.locator('[name=takeoverEnabled]').isDisabled(),true);
  report.checks.push('inherited timing/takeover reflect live global changes without overwriting drafts; overrides and restoring inheritance persist');
  await page.getByRole('button',{name:'系统设置',exact:true}).click();
 
@@ -53,8 +54,8 @@ try {
   await page.setViewportSize({width,height:1000});await page.locator('#ai-personal-information-form').waitFor({state:'visible'});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,`overflow ${width}`);
   await page.screenshot({path:path.join(output,`personal-${width}.png`),fullPage:true});
  }
- await page.getByRole('button',{name:'返回系统设置',exact:true}).click();await page.locator('[name=appearance]').selectOption('dark');await page.locator('#ai-takeover-form button[type=submit]').click();await page.waitForFunction(()=>document.documentElement.dataset.qiTheme==='dark'&&document.querySelector('#ai-panel')?.getAttribute('aria-busy')==='false');
- await page.locator('[data-ai-nav="personal-info"]').click();assert.equal(await page.locator('.ai-personal-title').evaluate(el=>getComputedStyle(el).fontSize),'32px');assert.equal(await page.locator('#ai-personal-information-form').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(32, 29, 39)');await page.screenshot({path:path.join(output,'personal-dark-320.png'),fullPage:true});
+ await page.getByRole('button',{name:'返回系统设置',exact:true}).click();await page.emulateMedia({colorScheme:'dark'});
+ await page.locator('[data-ai-nav="personal-info"]').click();assert.equal(await page.locator('.ai-personal-title').evaluate(el=>getComputedStyle(el).fontSize),'20px');assert.equal(await page.locator('#ai-personal-information-form').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(32, 29, 39)');await page.screenshot({path:path.join(output,'personal-dark-320.png'),fullPage:true});
  const phone=await browser.newPage({viewport:{width:375,height:844}}),phoneRequests=[];phone.on('request',request=>{if(request.method()==='POST'&&request.url().endsWith('/desktop'))phoneRequests.push(request.url());});
  await phone.goto(`http://127.0.0.1:${app.server.address().port}${app.prefix}/?dev=${app.devKey}`);await phone.locator('[data-mobile-ai-open]').click();await phone.locator('[data-ai-nav=settings]').click();await phone.locator('[data-ai-nav="personal-info"]').click();await phone.locator('#ai-personal-information-form').waitFor({state:'visible'});assert.equal(await phone.locator('[data-personal-field]').count(),12);assert.equal(phoneRequests.length,0,'Mobile AI settings must not open or grab the native desktop');
  await phone.locator('[data-personal-field=city] summary strong').click();await phone.locator('[name=city]').fill('手机端编辑后的测试城市');await phone.getByRole('button',{name:'保存我的信息',exact:true}).click();await phone.waitForFunction(()=>document.querySelector('#ai-panel')?.getAttribute('aria-busy')==='false');assert.equal(ai.publicState().personalInformation.entries.find(row=>row.field==='city').text,'手机端编辑后的测试城市');await phone.screenshot({path:path.join(output,'mobile-entry-edit.png'),fullPage:true});await phone.close();

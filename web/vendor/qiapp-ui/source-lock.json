@@ -1,6 +1,6 @@
 {
   "package": "@qiapp/ui",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "revision": "2026-10-19.2",
   "files": {
     "styles.css": "96a136a6a71aa427fb262a9b2ff3cd38bb0112452b4655f1f7254b4dc7272577",
@@ -10,6 +10,8 @@
     "components.css": "3df2d6bade617d2070766ac68b1c564bf680cff11973eabf818a2a9c8d3fdc39",
     "settings.css": "10f692734c9ec9085b85ebfa1973f374ec9bada5d2cffaedd59874480d97372b",
     "ai.css": "825a6adcb1a38443fbaa97a5020e6bd96b1d5e78bb8ec4d308cd53222942ed53",
-    "composition.css": "631b232411f7e59feae62248646e83f70e243564f533e84e6f71e217a869ac75"
-  }
+    "composition.css": "6a36705eeb016272a3ac4e3c4713728d521d0e401139551eb2c0f56317e204ab"
+  },
+  "packageArchive": "qiapp-ui-0.2.1.tgz",
+  "packageArchiveSha256": "512f4a8dbf676d45151da191ba156e003fed6fa5f72b7e204f63a1339ebca018"
 }

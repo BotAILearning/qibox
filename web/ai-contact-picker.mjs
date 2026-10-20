@@ -1,5 +1,6 @@
 import { icon } from './ai-icons.mjs';
 import { contactName, contactSearch, nicknameOf, esc } from './ai-contact-name.mjs';
+import { bindDialogViewport } from './dialog-viewport.mjs';
 
 let avatarInstance = null;
 const failedAvatars = new Set();
@@ -52,7 +53,7 @@ export function contactPickerMatches(contacts, kind, query) {
 export function openContactPickerDialog({ parent, getContacts, selected = [], kinds = ['person'], title = '选择联系人', description = '', onConfirm, onRefresh, onClose = () => {}, detail = () => '', maxSelected = Infinity }) {
   const allowed = new Set(kinds), retained = new Map(selected.filter(c => allowed.has(c.kind || 'person')).map(c => [c.id, c]));
   const ids = new Set(retained.keys());
-  let kind = kinds[0], query = '', closed = false;
+  let kind = kinds[0], query = '', closed = false, releaseViewport = () => {};
   const focusBefore = document.activeElement;
   const dialog = document.createElement('dialog');
   dialog.className = 'ai-proactive-dialog ai-contact-picker-dialog';
@@ -74,6 +75,7 @@ export function openContactPickerDialog({ parent, getContacts, selected = [], ki
   const close = () => {
     if (closed) return;
     closed = true;
+    releaseViewport();
     if (dialog.open) dialog.close();
     dialog.remove();
     if (focusBefore?.isConnected) focusBefore.focus();
@@ -117,6 +119,6 @@ export function openContactPickerDialog({ parent, getContacts, selected = [], ki
       close(); onConfirm(chosen);
     }
   });
-  parent.append(dialog); dialog.showModal(); draw(); dialog.querySelector('input[type=search]').focus();
+  parent.append(dialog); dialog.showModal(); releaseViewport = bindDialogViewport(dialog); draw(); dialog.querySelector('input[type=search]').focus();
   return { close, draw, dialog };
 }

@@ -159,7 +159,15 @@ export function createProactiveUI({ panel, getState, context, isBusy, mutate, re
     return !!button;
   }
   function focusTaskList(taskId) {
+    const host = panel.querySelector('#ai-content');
+    if (host) host.scrollTop = view.listScrollTop || 0;
     if (!taskId || !focusControl('data-proactive-menu', taskId)) panel.querySelector('[data-proactive-new]')?.focus({ preventScroll: true });
+  }
+  function openEditor() {
+    view.listScrollTop = panel.querySelector('#ai-content')?.scrollTop || 0;
+    view.editing = true; render();
+    const host = panel.querySelector('#ai-content');
+    if (host) host.scrollTop = 0;
   }
   function closeDialog() {
     if (dialog) { dialog.close(); dialog.remove(); dialog = null; }
@@ -190,7 +198,7 @@ export function createProactiveUI({ panel, getState, context, isBusy, mutate, re
     if (isBusy()) throw new Error('请等待当前操作完成');
     remember();
     if (button.hasAttribute('data-proactive-expand')) { const key = button.dataset.proactiveExpand; const expanded = new Set(view.expandedTasks || []); if (expanded.has(key)) expanded.delete(key); else expanded.add(key); view.expandedTasks = [...expanded]; render(); focusControl('data-proactive-expand', key); }
-    else if (button.hasAttribute('data-proactive-new')) { view.draft ||= taskDraft(); view.editing = true; view.menu = ''; render(); }
+    else if (button.hasAttribute('data-proactive-new')) { view.draft ||= taskDraft(); view.menu = ''; openEditor(); }
     else if (button.hasAttribute('data-proactive-back')) { view.editing = false; render(); focusTaskList(view.draft?.id); }
     else if (button.hasAttribute('data-proactive-cancel')) { const taskId = view.draft?.id; view.editing = false; view.draft = null; submitError(); render(); focusTaskList(taskId); }
     else if (button.hasAttribute('data-proactive-pick')) pickContacts();
@@ -213,7 +221,7 @@ export function createProactiveUI({ panel, getState, context, isBusy, mutate, re
       const command = button.dataset.proactiveCommand, id = button.dataset.taskId, task = getState().proactiveTasks?.find(t => t.id === id);
       if (!task) throw new Error('任务已变化，请刷新列表');
       view.menu = '';
-      if (command === 'edit') { view.draft = taskDraft(task); view.editing = true; submitError(); render(); }
+      if (command === 'edit') { view.draft = taskDraft(task); submitError(); openEditor(); }
       else if (command === 'records') { await showRecords(id); }
       else if (command === 'delete') {
         refresh(true);
@@ -269,7 +277,10 @@ export function createProactiveUI({ panel, getState, context, isBusy, mutate, re
     if (button) { button.disabled = true; button.textContent = draft.id ? '正在保存…' : '正在创建…'; }
     if (fields) fields.disabled = true;
     editor?.setAttribute('aria-busy', 'true');
-    try { await mutate(value, () => { if (current !== context()) return; view.draft = null; view.editing = false; view.filter = 'all'; submitError(); }, value.command === 'edit' ? '修改已保存，任务状态保持不变' : '任务已创建，执行情况请查看任务列表和运行记录'); }
+    try {
+      await mutate(value, () => { if (current !== context()) return; view.draft = null; view.editing = false; view.filter = 'all'; submitError(); }, value.command === 'edit' ? '修改已保存，任务状态保持不变' : '任务已创建，执行情况请查看任务列表和运行记录');
+      if (current === context()) focusTaskList(draft.id);
+    }
     catch (e) { if (current === context()) submitError(`保存未完成，草稿已保留。${e.message}`); throw e; }
     finally {
       if (pendingSubmit === operation) pendingSubmit = null;

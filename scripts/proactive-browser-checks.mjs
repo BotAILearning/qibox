@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 // Shared current-UI check replacing retired five-step-wizard assertions.
 export async function proactiveDraftCheck(page) {
   await page.locator('.ai-main-tabs [data-ai-nav=proactive]').click();
+  const listScrollTop = await page.locator('#ai-content').evaluate(node => node.scrollTop);
   await page.locator('[data-proactive-new]').click();
+  assert.equal(await page.locator('#ai-content').evaluate(node => node.scrollTop), 0);
   assert.equal(await page.locator('.ai-steps').count(), 0);
   await page.locator('#ai-proactive-form [name=name]').fill('草稿保留验收');
   await page.locator('[data-proactive-pick]').click();
@@ -13,7 +15,10 @@ export async function proactiveDraftCheck(page) {
   await page.locator('#ai-proactive-form [name=goal]').fill('确认周末安排');
   await page.locator('#ai-proactive-form .ap-optional-requirements>summary').click();
   await page.locator('#ai-proactive-form [name=requirements]').fill('不要承诺具体地点');
+  await page.locator('#ai-content').evaluate(node => { node.scrollTop = node.scrollHeight; });
+  assert.ok(await page.locator('#ai-content').evaluate(node => node.scrollTop > 0));
   await page.locator('[data-proactive-back]').click();
+  assert.equal(await page.locator('#ai-content').evaluate(node => node.scrollTop), listScrollTop);
   await page.locator('[data-proactive-new]').click();
   assert.equal(await page.locator('#ai-proactive-form [name=goal]').inputValue(), '确认周末安排');
   assert.equal(await page.locator('#ai-proactive-selected .ap-chip').count(), 1);
@@ -25,7 +30,10 @@ export async function proactiveDraftCheck(page) {
   await page.locator('#ai-proactive-form [name=mode][value=random]').check();
   assert.equal(await page.locator('#ai-proactive-form [name=start]').isVisible(), true);
   assert.equal(await page.locator('#ai-proactive-form [name=weekdays]').count(), 7);
+  await page.locator('#ai-content').evaluate(node => { node.scrollTop = node.scrollHeight; });
   await page.locator('[data-proactive-cancel]').click();
+  assert.equal(await page.locator('#ai-content').evaluate(node => node.scrollTop), listScrollTop);
+  assert.equal(await page.locator('[data-proactive-new]').evaluate(node => node === document.activeElement), true);
 }
 
 export async function proactiveCommand(page, id, command) {
