@@ -30,9 +30,13 @@ export function objectRhythmDraft(form) {
 export function refreshObjectTiming(form, state) {
   const box = form?.querySelector('[data-rhythm-personal]'); if (!box) return;
   const inherited = !!form.elements.inheritRhythm?.checked;
-  const personal = JSON.parse(box.dataset.rhythmPersonal);
+  const showingInherited = box.dataset.showingInherited === 'true';
+  const personal = objectRhythmDraft(form).__rhythmPersonal;
+  box.dataset.rhythmPersonal = JSON.stringify(personal);
   const value = inherited ? replyRhythm(state.settings) : personal;
-  for (const [key, val] of Object.entries({ ...value.timing, takeoverEnabled: value.takeover.enabled, takeoverMinutes: value.takeover.minutes, segmentReplies: value.segmentReplies, followUpEnabled: value.followUpEnabled })) {
+  // Polling may refresh status while the user edits. Only replace the controls
+  // when displaying inherited values or returning from that inherited view.
+  if (inherited || showingInherited) for (const [key, val] of Object.entries({ ...value.timing, takeoverEnabled: value.takeover.enabled, takeoverMinutes: value.takeover.minutes, segmentReplies: value.segmentReplies, followUpEnabled: value.followUpEnabled })) {
     const input = form.elements[key]; if (!input) continue;
     input.disabled = inherited;
     if (input.type === 'checkbox') input.checked = val; else input.value = val;
