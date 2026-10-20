@@ -58,6 +58,7 @@ try{
   await page.screenshot({path:path.join(output,'saved-desktop.png')});
   await page.setViewportSize({width:390,height:844});
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'mobile has no horizontal overflow');
+  assert.ok(await page.locator('#ai-default-style-form button[type=submit]').evaluate(button=>button.getBoundingClientRect().width<button.parentElement.getBoundingClientRect().width-80),'a short save action keeps its content width on mobile');
   await page.screenshot({path:path.join(output,'saved-mobile.png')});
   assert.deepEqual(errors,[]);
   console.log('Default-style layout, picker, paste draft and save state passed');

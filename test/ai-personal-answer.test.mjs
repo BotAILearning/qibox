@@ -57,6 +57,8 @@ test('explicit speaker corrections and preference-only turns cannot be inverted 
   const context=text=>({pendingMessages:[{direction:'other',text}]});
   assert.ok(explicitTurnRepair(['没说让你也加班，急什么'],context('我说我周末加班，没说你也要加班。')));
   assert.ok(explicitTurnRepair(['我没那么说要陪你的意思啦'],context('我说我周末加班，没说你也要加班。')));
+  assert.equal(explicitTurnRepair(['哈哈行，那我先不动，周末的事等我确认了再说。'],context('我说我周末加班，没说你也要加班。')),'明白，你说的是你自己的情况。');
+  assert.equal(explicitTurnRepair(['没说让你也加班'],context('我说我周末加班，没说你也要加班。你周末有空吗？')),'');
   assert.equal(explicitTurnRepair(['好，我自己来定就行'],context('下周的安排我还没定，先别替我约好。')),'好，你自己决定就行。');
   assert.equal(explicitTurnRepair(['早，刚忙完啊'],context('晚上好，刚忙完。')),'嗯，刚忙完啊');
   assert.equal(explicitTurnRepair(['早，刚忙完啊'],context('早上好，刚忙完。')),'');

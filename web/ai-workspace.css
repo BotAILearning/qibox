@@ -1600,7 +1600,7 @@ dialog.ai-record-delete-dialog p{margin:0 0 20px;line-height:1.65}
 #ai-panel .ai-default-current .ai-card-heading h4{font-size:17px}
 #ai-panel .ai-default-current textarea{min-height:285px}
 #ai-panel .ai-default-current .ai-actions{display:flex;flex-wrap:wrap}
-#ai-panel .ai-default-current .ai-actions .primary{flex:1}
+#ai-panel .ai-default-current .ai-actions .primary{flex:0 0 auto}
 #ai-panel .ai-default-current.ai-default-empty{align-content:start;min-height:0}
 #ai-panel .ai-default-count{display:block;text-align:right;color:var(--qi-text-secondary);font-size:11px}
 #ai-panel .ai-default-source>.ai-learning-contacts{padding:0;margin:0 0 18px}

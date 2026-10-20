@@ -120,8 +120,7 @@ export function explicitTurnRepair(texts, { pendingMessages = [] } = {}) {
   if (pending.length !== 1) return '';
   const incoming = clean(pending[0].text).trim(), reply = texts.join('');
   if (/[“”"「」]/.test(incoming)) return '';
-  if (/^我说我[^。！？!?]{1,60}[，,]没说你(?:也|还|要|会)/.test(incoming)
-      && /没说(?:让)?你也|(?:又)?没(?:有)?(?:让|叫)你(?:也)?|我[^。！？!?]{0,20}(?:陪你|陪你的|加班)/.test(reply)) return '明白，你说的是你自己的情况。';
+  if (/^我说我[^。！？!?]{1,60}[，,]没说你(?:也|还|要|会)[^。！？!?]{1,60}[。！!]?$/u.test(incoming)) return '明白，你说的是你自己的情况。';
   if (/我(?:还)?(?:没|未)(?:有)?(?:定|确定)/.test(incoming) && /(?:别|不要|不用)(?:替|帮)我(?:约|定|安排)/.test(incoming)
       && /我自己(?:来)?定|我的安排/.test(reply)) return '好，你自己决定就行。';
   if (/^(?:晚上好|晚安)[，,。！!\s]/.test(incoming) && /^(?:早|早呀|早啊|早上好|早安)[，,。！!\s]/.test(reply))
