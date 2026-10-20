@@ -346,6 +346,7 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
       const files = { '/': ['index.html', 'text/html'], '/app.js': ['app.js', 'text/javascript'], '/style.css': ['style.css', 'text/css'], '/icon.png': ['icon.png', 'image/png'], '/backgrounds/mist.jpg': ['backgrounds/mist.jpg', 'image/jpeg'], '/auth-callback.html': ['auth-callback.html', 'text/html'], '/auth-callback.js': ['auth-callback.js', 'text/javascript'], '/privacy.html': ['privacy.html', 'text/html'], '/terms.html': ['terms.html', 'text/html'] };
       files['/ai-workspace.css'] = ['ai-workspace.css', 'text/css'];
       files['/home-foundation.css'] = ['home-foundation.css', 'text/css'];
+      files['/legal-page.css'] = ['legal-page.css', 'text/css'];
       Object.assign(files, chunks);
       files['/ui-foundation.css'] = ['ui-foundation.css', 'text/css'];
       files['/qiapp-product.css'] = ['qiapp-product.css', 'text/css'];
