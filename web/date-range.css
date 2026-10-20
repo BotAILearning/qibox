@@ -1,0 +1,64 @@
+/* Native calendar composition; controls use the locked QIAPP 0.2.1 contract. */
+.qibox-date-dialog {
+  width: min(760px, calc(100vw - 8px));
+  max-width: calc(100vw - 8px);
+  max-height: calc(100dvh - 16px);
+  padding: 24px;
+  overflow: auto;
+  color: var(--qi-text);
+  background: var(--qi-surface);
+  border: 1px solid var(--qi-border);
+  border-radius: var(--qi-radius-lg);
+  font-size: var(--qi-font-body);
+}
+.qibox-date-dialog h3 { margin: 0 0 8px; font-size: var(--qi-font-h3); line-height: 28px; }
+.qibox-date-dialog .ai-calendar-heading { padding: 0 0 16px; border-bottom: 1px solid var(--qi-border); }
+.qibox-date-dialog .ai-calendar-heading span { font-size: var(--qi-font-small); color: var(--qi-text-secondary); }
+.qibox-date-dialog .ai-calendar-heading h3 { margin: 4px 0 8px; font-size: var(--qi-font-h3); }
+.qibox-date-dialog .ai-calendar-heading p { margin: 0; color: var(--qi-text-secondary); font-size: var(--qi-font-small); }
+.qibox-date-dialog .ai-calendar-toolbar { display: grid; gap: 16px; margin: 16px 0; }
+.qibox-date-dialog .ai-calendar-picks { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; padding: 0; align-items: start; }
+.qibox-date-dialog .ai-calendar-pick-start { display: grid; min-width: 0; gap: 8px; }
+.qibox-date-dialog .ai-calendar-picks [data-pick] { display: grid; justify-content: start; justify-items: start; gap: 4px; width: 100%; min-width: 0; white-space: normal; }
+.qibox-date-dialog .ai-calendar-picks small { font-size: var(--qi-font-small); color: var(--qi-text-secondary); }
+.qibox-date-dialog .ai-calendar-picks strong { font-size: var(--qi-font-body); }
+.qibox-date-dialog .ai-calendar-toolbar .ai-calendar-pick-start > .ai-calendar-earliest {
+  position: static; justify-self: start; width: auto; margin: 0; border: 1px solid transparent;
+}
+.qibox-date-dialog [aria-pressed=true],.qibox-date-dialog button.selected { background: var(--qi-selected); color: var(--qi-primary); border-color: var(--qi-primary); box-shadow: none; }
+.qibox-date-dialog .ai-calendar-nav { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+.qibox-date-dialog .ai-calendar-toolbar .ai-calendar-nav-analysis { display: flex; margin: 0; }
+.qibox-date-dialog .ai-calendar-nav-label { display: none; }
+.qibox-date-dialog .ai-calendar-month-switch { display: grid; grid-template-columns: 32px 90px 76px 32px; gap: 8px; align-items: center; width: auto; }
+.qibox-date-dialog .ai-calendar-month-switch > button { width: 100%; min-width: 0; padding-inline: 0; }
+.qibox-date-dialog .ai-calendar-month-switch select { min-width: 0; width: 100%; }
+.qibox-date-dialog .ai-calendar-months { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 24px; padding: 0; }
+.qibox-date-dialog .ai-calendar-months section { padding: 0; border: 0; border-radius: 0; }
+.qibox-date-dialog .ai-calendar-months strong { display: block; margin: 0 0 12px; text-align: center; font-size: var(--qi-font-body); color: var(--qi-text); }
+.qibox-date-dialog .ai-calendar-grid { display: grid; grid-template-columns: repeat(7,minmax(0,1fr)); gap: 4px; text-align: center; }
+.qibox-date-dialog .ai-calendar-grid small { font-size: var(--qi-font-small); color: var(--qi-text-secondary); }
+.qibox-date-dialog .ai-calendar-grid button { min-width: 0; padding-inline: 0; white-space: nowrap; }
+.qibox-date-dialog .ai-calendar-grid button.in-range { background: var(--qi-surface-muted); }
+.qibox-date-dialog .qibox-date-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.qibox-date-dialog .qibox-date-heading h3 { margin: 0; }
+.qibox-date-dialog .qibox-date-heading .ai-actions { display: flex; gap: 8px; }
+.qibox-date-dialog footer { display: flex; justify-content: end; flex-wrap: wrap; gap: 8px; margin: 16px 0 0; padding: 16px 0 0; border-top: 1px solid var(--qi-border); background: var(--qi-surface); }
+.qibox-date-dialog footer button { min-width: 0; }
+.qibox-date-dialog .ai-calendar-empty { margin: 16px 0; padding: 0; color: var(--qi-text-secondary); }
+@media(max-width:639px),(any-pointer:coarse) {
+  .qibox-date-dialog .ai-calendar-month-switch { grid-template-columns: 44px 90px 76px 44px; gap: 8px; }
+  .qibox-date-dialog .ai-calendar-grid button { min-width: 44px; }
+  .qibox-date-dialog .ai-calendar-nav > [data-shift] { min-width: 44px; }
+}
+@media(max-width:639px) {
+  .qibox-date-dialog { padding: 16px 0; }
+  .qibox-date-dialog > :is(h3,p,.ai-actions,.qibox-date-heading),.qibox-date-dialog .ai-calendar-heading,.qibox-date-dialog .ai-calendar-toolbar,.qibox-date-dialog .ai-calendar-empty { margin-inline: 16px; }
+  .qibox-date-dialog .ai-calendar-months { grid-template-columns: 1fr; gap: 0; }
+  .qibox-date-dialog .ai-calendar-months section { padding: 0; }
+  .qibox-date-dialog .ai-calendar-months section:first-child { display: none; }
+  .qibox-date-dialog .ai-calendar-months section:nth-child(2) { display: block; }
+  .qibox-date-dialog:not(.ai-calendar-dialog-analysis) .ai-calendar-months section:first-child { display: block; }
+  .qibox-date-dialog:not(.ai-calendar-dialog-analysis) .ai-calendar-months section:nth-child(2) { display: none; }
+  .qibox-date-dialog .ai-calendar-grid { gap: 0; }
+  .qibox-date-dialog footer { margin-inline: 16px; }
+}

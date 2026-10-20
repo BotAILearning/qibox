@@ -4,3 +4,4 @@
 @import './qibox-components.css' layer(qibox-legacy);
 @import './qibox-modules.css' layer(qibox-legacy);
 @import './mobile-workspace.css';
+@import './date-range.css';
