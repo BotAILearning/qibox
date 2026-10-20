@@ -2,6 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {unsupportedPersonalAnswer, unsupportedChatTime, personalQuestionClarification, knownDateCorrection, explicitTurnRepair} from '../server/ai-personal-answer.mjs';
 
+test('direct personal questions also guard omitted subjects without claiming unrelated recipient facts',()=>{
+  const question=text=>({pendingMessages:[{direction:'other',text}]});
+  assert.equal(unsupportedPersonalAnswer(['在家呢，咋啦？'],question('你现在具体在哪个地方？')),'personal-fact');
+  assert.equal(unsupportedPersonalAnswer(['目前还没定呢，还在看机会'],question('你今天在哪家公司上班？')),'personal-fact');
+  assert.equal(unsupportedPersonalAnswer(['你在家就好'],question('你现在在哪？')),'');
+  assert.equal(unsupportedPersonalAnswer(['他说“在家呢”'],question('你现在在哪？')),'');
+  assert.equal(unsupportedPersonalAnswer(['在家呢'],{...question('你现在在哪？'),facts:'我在家。'}),'');
+  assert.equal(unsupportedPersonalAnswer(['在家呢'],question('你觉得猫为什么总盯着窗外？')),'');
+});
+
 test('unknown live presence and employment denials are not invented for natural chat',()=>{
   for(const text of ['怎么突然问这个，我在家呢。','我现在在办公室忙。','我没有在哪家公司上班。','我没在任何公司工作'])assert.equal(unsupportedPersonalAnswer([text]),'personal-fact',text);
   for(const text of ['这个这会儿说不准，找我是有什么事？','我在想怎么安排。','你在家就好。','他说“我在家”。','如果我在家就方便了。'])assert.equal(unsupportedPersonalAnswer([text]),'',text);
@@ -10,6 +20,10 @@ test('unknown live presence and employment denials are not invented for natural 
 test('explicit speaker corrections and preference-only turns cannot be inverted or reopened as questions',()=>{
   const context=text=>({pendingMessages:[{direction:'other',text}]});
   assert.ok(explicitTurnRepair(['没说让你也加班，急什么'],context('我说我周末加班，没说你也要加班。')));
+  assert.ok(explicitTurnRepair(['我没那么说要陪你的意思啦'],context('我说我周末加班，没说你也要加班。')));
+  assert.equal(explicitTurnRepair(['好，我自己来定就行'],context('下周的安排我还没定，先别替我约好。')),'好，你自己决定就行。');
+  assert.equal(explicitTurnRepair(['早，刚忙完啊'],context('晚上好，刚忙完。')),'嗯，刚忙完啊');
+  assert.equal(explicitTurnRepair(['早，刚忙完啊'],context('早上好，刚忙完。')),'');
   assert.ok(explicitTurnRepair(['好，那最近咋样？'],context('不用每句话都问我问题，随便聊两句就行。')));
   for(const incoming of ['他说“别总反问我”。','不用每句话都问我问题，顺便帮我查个电话','你今天怎么样？'])
     assert.equal(explicitTurnRepair(['最近咋样？'],context(incoming)),'');

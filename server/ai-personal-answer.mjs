@@ -43,6 +43,10 @@ export function unsupportedPersonalAnswer(texts, { messages = [], pendingMessage
     if ((locationQuestion || employmentQuestion) && unknownSelf.test(part)) return 'unknown-self';
     const place = livePlace.exec(part);
     if (place && !evidence.some(p => livePlace.exec(p)?.[1] === place[1])) return 'personal-fact';
+    const implicitPlace = locationQuestion && livePlace.exec('我' + part.replace(/^(?:嗯|哈哈|好|对|是的)\s*/, ''));
+    if (implicitPlace && !evidence.some(p => livePlace.exec(p)?.[1] === implicitPlace[1])) return 'personal-fact';
+    if (employmentQuestion && /^(?:我)?(?:目前|现在|暂时)?(?:还)?(?:没定|没有定|没工作|没上班|在找工作|在看机会)/.test(part)
+        && !evidence.some(p => p.replace(/^我/, '') === part.replace(/^我/, ''))) return 'personal-fact';
     if (employmentDenial.test(part) && !evidence.some(p => employmentDenial.test(p))) return 'personal-fact';
     if (availabilityClaim.test(part) && !evidence.some(p => availabilityClaim.test(p))) return 'personal-fact';
     if (deferredArrangement.test(part) && !evidence.some(p => deferredArrangement.test(p))) return 'future-notice';
@@ -94,7 +98,11 @@ export function explicitTurnRepair(texts, { pendingMessages = [] } = {}) {
   const incoming = clean(pending[0].text).trim(), reply = texts.join('');
   if (/[“”"「」]/.test(incoming)) return '';
   if (/^我说我[^。！？!?]{1,60}[，,]没说你(?:也|还|要|会)/.test(incoming)
-      && /没说(?:让)?你也|(?:又)?没(?:有)?(?:让|叫)你(?:也)?/.test(reply)) return '明白，你说的是你自己的情况。';
+      && /没说(?:让)?你也|(?:又)?没(?:有)?(?:让|叫)你(?:也)?|我[^。！？!?]{0,20}(?:陪你|陪你的|加班)/.test(reply)) return '明白，你说的是你自己的情况。';
+  if (/我(?:还)?(?:没|未)(?:有)?(?:定|确定)/.test(incoming) && /(?:别|不要|不用)(?:替|帮)我(?:约|定|安排)/.test(incoming)
+      && /我自己(?:来)?定|我的安排/.test(reply)) return '好，你自己决定就行。';
+  if (/^(?:晚上好|晚安)[，,。！!\s]/.test(incoming) && /^(?:早|早呀|早啊|早上好|早安)[，,。！!\s]/.test(reply))
+    return reply.replace(/^(?:早上好|早安|早呀|早啊|早)/, '嗯');
   const preferenceOnly = /^(?:不用|不要|别)(?:每句话|每句|每轮|总是|总|老是)(?:都)?(?:问(?:我)?(?:问题)?|反问(?:我)?|提问)(?:[，,](?:随便|正常|自然)(?:聊(?:两句|几句)?|聊天)?(?:就行|即可|就好)?)?[。！!]?$/u.test(incoming);
   if (preferenceOnly && /[？?]|(?:最近|近来)(?:怎么样|咋样|如何)/.test(reply)) return '好，随便聊聊就行。';
   return '';
