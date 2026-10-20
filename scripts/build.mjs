@@ -14,6 +14,11 @@ import { runtimePackageFile } from './runtime-package-filter.mjs';
 const requestedArch = process.argv.find(x => x.startsWith('--arch='))?.slice(7) || 'all';
 const targets = requestedArch === 'all' ? [architecture('x64'), architecture('arm64')] : [architecture(requestedArch)];
 const host = 'fnos';
+const uiSourceLockFile = path.join(root, 'web/vendor/qiapp-ui/source-lock.json');
+const uiSourceLock = JSON.parse(await readFile(uiSourceLockFile, 'utf8'));
+for (const [name, sha256] of Object.entries(uiSourceLock.files)) {
+  if (path.basename(name) !== name || await hashFile(path.join(root, 'web/vendor/qiapp-ui', name)) !== sha256) throw new Error(`Locked UI asset differs: ${name}`);
+}
 const product = { ...JSON.parse(await readFile(path.join(root, 'config/product.json'), 'utf8')), platform: targets.length === 2 ? 'all' : targets[0].fnos };
 const iconRevision = createHash('sha256').update(await readFile(path.join(root, 'web/icon.png'))).digest('hex').slice(0, 16);
 const out = path.join(root, 'public'); await mkdir(out, { recursive: true });
@@ -99,7 +104,7 @@ if (!process.argv.includes('--ui-only')) {
   if ((changed || untracked) && !process.argv.includes('--stage-only')) throw new Error('Commit source changes before producing a reviewable FPK');
   await writeFile(path.join(app, 'config/build-provenance.json'), JSON.stringify({ format: 1, sourceCommit,
     sourceDirty: !!(changed || untracked), buildId: product.buildId, delivery: 'complete-bundled', architectures: targets.map(target => target.node),
-    runtimeResourceFiles: [...copiedPayloads].sort(), ui: { specification: '2026-10-18', settingsCss: '0.1.2', existingBaseCss: '0.1.0' },
+    runtimeResourceFiles: [...copiedPayloads].sort(), ui: { specification: uiSourceLock.revision, package: uiSourceLock.package, cssRuntime: uiSourceLock.version, integration: 'native-html-css', sourceLockSha256: await hashFile(uiSourceLockFile) },
   }, null, 2) + '\n');
   const licenseRoot = path.join(app, 'licenses/npm'); await mkdir(licenseRoot, { recursive: true });
   for (const [name, license] of [['ws', 'LICENSE'], ['@novnc/novnc', 'LICENSE.txt'], ['@trimjs/web-app', 'package.json']]) {
