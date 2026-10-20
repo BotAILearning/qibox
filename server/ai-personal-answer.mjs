@@ -7,6 +7,8 @@ const livePlace = /^(?:嗯|哈哈|好|对|是的)?\s*我(?:现在|这会儿|目�
 const employmentDenial = /^我(?:现在|目前|今天)?(?:没有|没|不)(?:有)?(?:在)?(?:哪家|任何|什么|一家)?(?:公司|单位)(?:里)?(?:上班|工作)/;
 const liveActivity = /^(?:我)?(?:现在|这会儿|目前)?(?:刚刚?|正在|正|准备|马上|打算)(?:准备)?(出门|回家|去公司|上班|下班|开车|开会|吃饭|睡觉|洗澡|工作)/;
 const datedCheck = /^(?:那|好|行)?(?:周[一二三四五六日天]|明天|后天|下周)(?:我|我们|咱们)?(?:再|到时再)?(?:定|确定|确认|核对)(?:一下|下)?(?:具体)?(?:时间|几点)/;
+const futureMonitoring = /^我(?:再|会|先|回头|稍后)?(?:留意|留心|盯着|跟进|注意一下|关注一下)/;
+const datedNotice = /^(?:那|好|行)?(?:我)?(?:明天|后天|[一二三四五六七八九十\d]+天后|周[一二三四五六日天])[^。！？!?，,；;]{0,12}(?:再|就|会)?(?:找|联系|通知|回复)(?:你|您)/;
 const availabilityClaim = /^(?:我(?:现在|今天|这会儿|目前)?|(?:现在|今天|这会儿|目前))(?:这边)?(?:肯定|一定|确实)?(?:有空|没空|不忙|很忙|没(?:有)?(?:什么)?安排|没(?:有)?(?:什么)?事)/;
 const deferredArrangement = /(?:等我|我|得|先).{0,10}(?:看|查|确认|核对).{0,8}(?:安排|时间|日程).{0,10}(?:再|后|就).{0,6}(?:告诉|通知|联系|跟你确认|跟你说|和你确认)/;
 const futureNotice = /等我(?:确认|确定|定下来|有消息|有结果)(?:一下|下|时间)?(?:了|后|以后|之后)?[^。！？!?，,；;\n]{0,16}(?:再|就|会)?(?:告诉|通知|联系|回复|(?:跟|和)(?:你|您)(?:说|定(?:时间|下来|好)?)|给(?:你|您)发(?:消息|信息))(?:你|您)?(?:一声|一下)?$/;
@@ -22,6 +24,15 @@ const plannedInvitation = /^(?:那|好[的吧]?|嗯)?(?:我)?(下次|回头|明�
 
 export function unsupportedPersonalAnswer(texts, { messages = [], pendingMessages = [], facts = '', boundaries = '', now = Date.now(), identityAsked = false } = {}) {
   if (unsupportedRecipientHelp(texts, { messages, facts })) return 'recipient-fact';
+  const moved = /^(?:哦|哦哦|原来|嗯)?\s*(?:你|您)?(?:已经|刚刚?|现在)?搬(?:家)?(?:到|去|来)([^。！？!?，,；;\s]{1,24})/;
+  const relocationEvidence=[...messages.filter(m=>m.direction==='other'&&!m.aiGenerated).flatMap(m=>parts(m.text)).filter(p=>!/[“”"「」]|没|不|准备|打算|如果|假如|明天/.test(p)&&/^我(?:已经|刚刚?|现在)?搬(?:家)?(?:到|去|来)/.test(p)),...parts(facts).filter(p=>/^对方(?:已经|刚刚?|现在)?搬(?:家)?(?:到|去|来)/.test(p))];
+  const destination=value=>value.replace(/(?:啦|呀|呢|啊|了|吧|～|~)+$/u,'');
+  for(const text of texts)for(const part of parts(text)){
+    const claim=moved.exec(part);
+    if(claim&&!/[“”"「」]|如果|假如/.test(part)&&!relocationEvidence.some(p=>{
+      const source=/搬(?:家)?(?:到|去|来)([^。！？!?，,；;\s]{1,24})/.exec(p);return source&&destination(source[1])===destination(claim[1]);
+    }))return 'recipient-fact';
+  }
   // A counterpart's future result does not create a callback or let the
   // sender observe it. Keep the comma so split conditional clauses are
   // checked together, while ordinary recipient instructions stay intact.
@@ -61,6 +72,7 @@ export function unsupportedPersonalAnswer(texts, { messages = [], pendingMessage
     if (availabilityClaim.test(part) && !evidence.some(p => availabilityClaim.test(p))) return 'personal-fact';
     if (deferredArrangement.test(part) && !evidence.some(p => deferredArrangement.test(p))) return 'future-notice';
     if (datedCheck.test(part) && !evidence.some(p => p.replace(/^我/, '') === part.replace(/^我/, ''))) return 'future-notice';
+    if ((futureMonitoring.test(part) || datedNotice.test(part)) && !evidence.some(p=>p===part)) return 'future-notice';
     if (locationQuestion && privacyReason.test(part) && !privacyAllowed) return 'personal-fact';
     // A contextual bare denial must not become a false guarantee about who
     // typed the message. This check runs only at the final local boundary.
@@ -131,11 +143,16 @@ export function knownDateCorrection({pendingMessages = [], messages = [], now = 
 
 // Check only explicit added precision and claims about when the counterpart
 // spoke. A message's send time does not prove an event happened that evening.
-export function unsupportedChatTime(texts, { messages = [], facts = '', now = Date.now(), timezone = 'Asia/Shanghai' } = {}) {
+export function unsupportedChatTime(texts, { messages = [], pendingMessages = [], facts = '', now = Date.now(), timezone = 'Asia/Shanghai' } = {}) {
   const evidence = [...messages.filter(m => !m.aiGenerated && m.direction !== 'system').map(m => clean(m.text)), clean(facts)].join('\n');
   const nightWords = /昨晚|昨天晚上|昨日晚上/;
   const heardYesterday = annotateChatTimes(messages, now, timezone).some(m => m.direction === 'other' && !m.aiGenerated && m.temporal.relation === 'yesterday');
+  const dateCorrection=pendingMessages.length===1&&/^改(?:成|到)(周[一二三四五六日天])/.exec(clean(pendingMessages[0].text));
   for (const text of texts) for (const part of parts(text)) {
+    if(dateCorrection&&!/[“”"「」]|如果|假如/.test(part)){
+      const precise=new RegExp(dateCorrection[1]+'(?:的)?(早上|上午|中午|下午|傍晚|晚上|凌晨|夜里)').exec(part);
+      if(precise&&![...pendingMessages,...messages.filter(m=>m.direction==='self'&&m.authorship==='human'&&!m.aiGenerated)].some(m=>clean(m.text).includes(precise[0])))return 'time-fact';
+    }
     const beverageTime = /^(?:你|您)?(早上|上午|中午|下午|傍晚|晚上|凌晨|夜里)(?:就|先|刚刚?|已经|又)?(?:喝|来|冲|泡)(?:了|一|杯|点|些)/.exec(part);
     if (beverageTime && !/[“”"「」]|(?:说|引用)|(?:如果|假如)/.test(part) && !/[？?]/.test(text) && /咖啡|喝茶|一杯/.test(evidence)
         && ![...messages.filter(m=>m.direction==='other'&&!m.aiGenerated).flatMap(m=>parts(m.text)),...parts(facts).filter(p=>/^对方/.test(p)).map(p=>p.replace(/^对方/,''))]

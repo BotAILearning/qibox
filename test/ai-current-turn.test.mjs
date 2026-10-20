@@ -85,6 +85,9 @@ for(const [incoming,draft] of [
 for(const [incoming,draft,reason] of [
  ['今天喝了一杯咖啡，终于缓过来了。','早上就来一杯，挺提神的☕','unverified-time-fact'],
  ['改成周日吧，周六我不行。','行，周日再定一下时间。',''],
+ ['改成周日吧，周六我不行。','行，那周日下午。','unverified-time-fact'],
+ ['我现在住苏州，不是之前那个同名朋友住的城市。','哦，搬到苏州啦。','unverified-recipient-fact'],
+ ['钱还没到账，客服说要三天。','我再留意一下，三天后没动静再找你。','unverified-execution'],
 ]) test('final FPK observed wording is guarded without another model call: '+incoming,async t=>{
  const {a,bridge,provider,contact,advance}=await fixture(t);
  bridge.push(contact,'other',incoming);await a.tick();advance(20000);

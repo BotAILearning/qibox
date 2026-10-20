@@ -666,6 +666,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       drawSkips(); void loadSkipContent();
     }
     applySaveControls();
+    defaultLearningControls();
     if (state.notice) { const note = $('#ai-state-notice'); if (note) note.textContent = state.notice; }
   }
   function replyContactList() {
@@ -944,6 +945,15 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     return `<form id="ai-manual-reply-form" data-contact="${esc(contact.id)}"><div class="ai-page-heading"><button type="button" class="quiet" data-ai-action="back-reply-contacts">${icon('arrow-l')}返回联系人列表</button><h3>${contactName(contact)}的回复风格</h3></div><label class="ai-field">选择风格<select id="ai-reply-preset" name="replyPreset">${presets.map(p => option(p.id, p.label, v.replyPreset === p.id)).join('')}${option('custom', '自定义', v.replyPreset === 'custom')}${learnedProfiles().length ? '<optgroup label="已学习的风格">' + learnedProfiles().map(p => option('learned:' + p.id, p.label, v.replyPreset === 'learned:' + p.id)).join('') + '</optgroup>' : ''}</select></label>${field('summary', '风格说明（可修改）', v.summary || summaryText(v), 6000)}<details class="ai-paste"><summary>注意事项与策略（可选）</summary>${field('customAvoid', '注意事项', v.customAvoid, 1200)}${field('replyGoal', '回复目的与立场', v.replyGoal)}${field('boundaries', '不能擅自决定的事项', v.boundaries)}<label class="ai-field">回复次数上限${replyLimitControl(v.maxRounds, "ai-manual-round-limit")}</label></details><button type="submit" class="primary ai-wide">保存回复风格</button></form>`;
   }
   let pendingSave = null;
+  function defaultLearningControls() {
+    const blocked = busy || !!state?.operation;
+    for (const node of panel.querySelectorAll('.ai-default-learn')) {
+      node.disabled = blocked || node.dataset.aiDefaultSource === 'contacts' && !selectedContacts.size;
+      node.setAttribute('aria-busy', String(blocked));
+      node.innerHTML = blocked ? '处理中…' : `${icon('sparkle')}学习默认风格`;
+    }
+    for (const node of panel.querySelectorAll('#ai-default-style-form button[type=submit],[data-ai-action=cancel-default-style]')) node.disabled = blocked;
+  }
   function restoreSaveControls(save) {
     for (const [node, original] of save.controls) {
       node.disabled = original.disabled;
@@ -1108,10 +1118,11 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     if (busy) throw new Error('请等待当前操作完成，或先取消');
     rememberDraft();
     const current = generation, token = ++workToken; busy = true; panel.setAttribute('aria-busy', 'true'); message('');
+    defaultLearningControls();
     const step = async (action, extras) => { const result = await call(action, extras); if (!result) throw new Error('obsolete-context'); return result; };
     try { await work(step); if (current !== generation || token !== workToken) return; render(); if (success) message(success); }
     catch (e) { if (current === generation && e.message !== 'obsolete-context') throw e; }
-    finally { if (current === generation && token === workToken) { busy = false; panel.setAttribute('aria-busy', 'false'); } }
+    finally { if (current === generation && token === workToken) { busy = false; panel.setAttribute('aria-busy', 'false'); defaultLearningControls(); } }
   }
   async function execute(action, extras = {}, success = '') {
     if (busy && ['cancel'].includes(action)) {

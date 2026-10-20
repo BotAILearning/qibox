@@ -2,6 +2,23 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {unsupportedPersonalAnswer, unsupportedChatTime, personalQuestionClarification, knownDateCorrection, explicitTurnRepair} from '../server/ai-personal-answer.mjs';
 
+test('residence does not establish relocation and a refund does not create monitoring or a timed callback',()=>{
+ const messages=[{direction:'other',text:'我现在住苏州，不是那个同名朋友住的城市。'}];
+ for(const text of ['哦，搬到苏州啦','你搬到苏州啦'])assert.equal(unsupportedPersonalAnswer([text],{messages}),'recipient-fact');
+ for(const text of ['哦，你住苏州啊','他说“搬到苏州啦”','如果搬到苏州就方便了'])assert.equal(unsupportedPersonalAnswer([text],{messages}),'');
+ assert.equal(unsupportedPersonalAnswer(['哦，搬到苏州啦'],{messages:[{direction:'other',text:'我刚搬到苏州'}]}),'');
+ assert.equal(unsupportedPersonalAnswer(['哦，搬到苏州啦'],{messages:[{direction:'other',text:'我刚搬到杭州'}]}),'recipient-fact');
+ for(const text of ['我再留意一下，三天后没动静再找你','三天后没动静再找你'])assert.equal(unsupportedPersonalAnswer([text]),'future-notice');
+ for(const text of ['你再留意一下','你三天后再找客服','他说“我再留意一下”'])assert.equal(unsupportedPersonalAnswer([text]),'',text);
+});
+
+test('changing the day does not supply a previously unspecified afternoon',()=>{
+ const pendingMessages=[{direction:'other',text:'改成周日吧，周六我不行。'}];
+ assert.equal(unsupportedChatTime(['行，那周日下午。'],{pendingMessages}),'time-fact');
+ assert.equal(unsupportedChatTime(['行，那周日下午。'],{pendingMessages:[{direction:'other',text:'改成周日下午吧'}]}),'');
+ for(const text of ['行，那就周日','他说“周日下午”'])assert.equal(unsupportedChatTime([text],{pendingMessages}),'');
+});
+
 test('final package failures: current activity and dated confirmations require actual evidence',()=>{
  const pendingMessages=[{direction:'other',text:'你现在具体在哪个地方？'}];
  assert.equal(unsupportedPersonalAnswer(['刚准备出门呢，怎么啦？'],{pendingMessages}),'personal-fact');

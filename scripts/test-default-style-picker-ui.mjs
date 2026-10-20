@@ -13,7 +13,7 @@ try{
   page.on('pageerror',error=>errors.push(error.message));
   await page.goto(fixture.url);
   await page.locator(`[data-instance="${fixture.instance.id}"] summary`).click();
-  await page.locator('[data-action="ai"]').click();await page.locator('#ai-open').click();
+  await page.locator('[data-action="ai"]').click();await page.locator('#ai-panel').waitFor({state:'visible'});
   await page.locator('.ai-main-tabs [data-ai-nav=settings]').click();
   await page.locator('[data-ai-nav=default-style]').click();
   assert.equal(await page.locator('[data-ai-action=cancel-default-style]').count(),0);
@@ -34,6 +34,22 @@ try{
   await paste.fill('我：周末见面吗？\n对方：可以，周六下午。');
   await page.locator('input[name=default-perspective][value=self]').check();
   assert.match(await paste.inputValue(),/周末见面/,'changing direction retains the paste draft');
+  const complete=fixture.provider.complete.bind(fixture.provider);
+  let releaseLearning,enteredLearning;
+  const entered=new Promise(resolve=>enteredLearning=resolve),held=new Promise(resolve=>releaseLearning=resolve);
+  let attempted=0;
+  fixture.provider.complete=async(...args)=>{
+    if(args[2].defaultStyle){attempted++;enteredLearning();await held;throw new Error('Injected learning failure');}
+    return complete(...args);
+  };
+  await page.locator('button[form=ai-paste-form]').click();await entered;
+  assert.equal(await page.locator('button[form=ai-paste-form]').isDisabled(),true,'external form submit exposes its pending state');
+  assert.equal(await page.locator('button[form=ai-paste-form]').getAttribute('aria-busy'),'true');
+  await page.locator('button[form=ai-paste-form]').evaluate(button=>button.click());
+  assert.equal(attempted,1,'disabled external submit cannot start another learning request');
+  releaseLearning();await page.waitForFunction(()=>!document.querySelector('button[form=ai-paste-form]').disabled);
+  assert.match(await paste.inputValue(),/周末见面/,'a failed learning request retains the material');
+  fixture.provider.complete=complete;
   await page.locator('button[form=ai-paste-form]').click();
   await page.locator('#ai-default-style-form').waitFor();
   assert.equal(await page.locator('[data-ai-action=cancel-default-style]').count(),1,'new learning can be cancelled');
