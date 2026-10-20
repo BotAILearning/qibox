@@ -6,8 +6,13 @@
 .qiapp-product #mobile-ai > h2 { margin: 0 0 12px; font-size: var(--qi-font-h4); line-height: 24px; }
 .qiapp-product .market-panel { padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
 .qiapp-product #modal-body a { color: var(--qi-primary); text-decoration: underline; text-underline-offset: 2px; }
+.qiapp-product .qbx-product-dialog h3,
+.qiapp-product dialog.qiapp-dialog > h3 { margin: 0 0 16px; color: var(--qi-text); font-size: var(--qi-font-h3); line-height: 28px; font-weight: 600; }
+.qiapp-product dialog.qiapp-dialog > header > h3 { margin: 0; color: var(--qi-text); font-size: var(--qi-font-h3); line-height: 28px; font-weight: 600; }
+.qiapp-product .qbx-product-dialog p { color: var(--qi-text-secondary); font-size: var(--qi-font-body); line-height: 1.6; }
 .qiapp-product .app-menu > .qi-floating__content { left: auto; right: 0; top: calc(100% + 8px); width: 176px; background: var(--qi-surface); color: var(--qi-text); border-color: var(--qi-border); border-radius: var(--qi-radius-control); box-shadow: var(--qi-shadow-floating); }
 .qiapp-product .app-menu button.danger-link { color: var(--qi-error); }
+.qiapp-product #ai-panel .ai-record-context-menu button.danger-link { color: var(--qi-error); justify-content: start; }
 .qiapp-product .app-menu > summary { width: 32px; height: 32px; padding: 0; color: var(--qi-text-secondary); background: transparent; border-radius: var(--qi-radius-control); }
 .qiapp-product .app-menu[open] > summary,.qiapp-product .app-menu > summary:hover { background: var(--qi-hover); }
 .qiapp-product #file-transfer { background: var(--qi-overlay); }
@@ -81,6 +86,7 @@
 .qiapp-product #ai-panel .ai-object-reference { background: transparent; }
 .qiapp-product #ai-panel .ai-object-detail { background: transparent; }
 .qiapp-product #ai-panel .ai-object-detail #ai-object-form { width: 100%; max-width: var(--qi-reading-max); margin-inline: auto; --qi-control-height: var(--qi-control-md); }
+.qiapp-product #ai-panel .ai-reference-toggle-copy > h4 { font-size: var(--qi-font-h4); line-height: 24px; }
 .qiapp-product #ai-panel :is(.ai-reference-profile,.ai-reference-style,.ai-reference-memory) { border: 0; border-radius: 0; background: transparent; box-shadow: none; }
 .qiapp-product #ai-panel :is(.ai-reference-style-head,.ai-reference-memory-head) { padding-inline: 0; }
 .qiapp-product #ai-panel .ai-object-save { position: static; padding: 16px 0; margin-top: 24px; border: 0; background: transparent; box-shadow: none; }

@@ -27,7 +27,7 @@ export function replyRecordCards(state, filters, records, loading, activityEntri
     const plainName = label + (nickname ? `（${nickname}）` : '');
     const history = messages.length ? `<ol class="ai-reply-history-list">${messages.map(message => {
       const confirmed = !!message.id && message.confirmed !== false;
-      return `<li ${confirmed ? `data-ai-record-menu="${esc(message.id)}" data-ai-record-menu-source="${esc(filters.source === 'unknown' ? 'unknown' : 'reply')}"` : ''}><time>${esc(beijingTime(message.at))}</time><p class="ai-record-message">${esc(message.text)}</p><span>${filters.source === 'unknown' ? '来源未分类' : message.confirmed === false ? '发送结果未知' : '已回复'}</span></li>`;
+      return `<li ${confirmed ? `tabindex="0" data-ai-record-menu="${esc(message.id)}" data-ai-record-menu-source="${esc(filters.source === 'unknown' ? 'unknown' : 'reply')}"` : ''}><time>${esc(beijingTime(message.at))}</time><p class="ai-record-message">${esc(message.text)}</p><span>${filters.source === 'unknown' ? '来源未分类' : message.confirmed === false ? '发送结果未知' : '已回复'}</span></li>`;
     }).join('')}</ol>` : `<p class="ai-help">${loading ? '正在读取代发内容…' : source?.unavailable ? '暂时无法读取正文；点击头像或名称可打开微信聊天。' : '当前可读取范围内暂无正文；点击头像或名称可打开微信聊天。'}</p>`;
     const preview = profile.needsHelp ? esc(profile.reason || '需要本人处理') : messages[0]?.text ? esc(messages[0].text) : source?.pending ? '正在读取历史正文…' : source?.unavailable ? '正文暂不可读取' : '查看近期执行记录';
     return `<article class="ai-reply-record-card" data-ai-reply-card="${esc(profile.id)}">

@@ -44,6 +44,14 @@ try {
   await page.locator('[data-ai-record-source="proactive"]').click();
   const row = page.locator(`[data-proactive-record="${recordId}"]`);
   await row.waitFor();
+  for(const width of [1440,375]) {
+    await page.setViewportSize({width,height:900});await row.focus();await page.keyboard.press('Shift+F10');
+    const menu=page.locator('.ai-record-context-menu.open');await menu.waitFor();
+    assert.equal(await menu.locator('button').evaluate(n=>n===document.activeElement),true,'keyboard context action receives focus');
+    const r=await menu.locator('button').boundingBox();assert.ok(r.height>=(width<640?44:32));
+    await page.keyboard.press('Escape');assert.equal(await menu.count(),0);assert.equal(await page.locator('#ai-panel').isVisible(),true,'Escape closes the context action, not the workbench');assert.equal(await row.evaluate(n=>n===document.activeElement),true);
+  }
+  await page.setViewportSize({width:1440,height:900});
   await row.locator('.ai-reply-record-avatar img').evaluate(image => image.decode());
   assert.equal(await row.locator('.ai-record-contact-link .ai-contact-nick').evaluate(node => getComputedStyle(node).display), 'inline');
   assert.equal(await row.locator('[data-ai-delete-record]').count(), 0);
@@ -51,12 +59,19 @@ try {
   await page.locator('.ai-record-context-menu button').click();
   const dialog = page.locator('dialog.ai-record-delete-dialog');
   await dialog.waitFor();
+  assert.equal(await dialog.getAttribute('aria-label'),'删除这条执行记录？');
+  assert.equal(await dialog.locator('h3').evaluate(n=>getComputedStyle(n).fontSize),'20px');
+  assert.equal(await dialog.locator('[data-cancel]').evaluate(n=>n===document.activeElement),true);
+  await page.keyboard.press('Tab');await page.keyboard.press('Tab');
+  assert.equal(await dialog.locator('[data-cancel]').evaluate(n=>n===document.activeElement),true,'confirmation keeps Tab within its controls');
   await page.keyboard.press('Escape');
   assert.equal(await row.count(), 1);
+  assert.equal(await row.evaluate(n=>n===document.activeElement),true,'Escape returns focus to the originating record');
   await row.click({ button: 'right' });
   await page.locator('.ai-record-context-menu button').click();
   await dialog.locator('[data-cancel]').click();
   assert.equal(await row.count(), 1);
+  assert.equal(await row.evaluate(n=>n===document.activeElement),true,'cancel returns focus to the originating record');
   await row.click({ button: 'right' });
   await page.locator('.ai-record-context-menu button').click();
   await dialog.locator('[data-confirm]').click();
@@ -100,7 +115,7 @@ try {
   assert.equal(ai.data.deletedActivityRecords?.some(item => item.id === replyId), true);
   assert.equal(await identity.count(), 0, 'the empty record group disappears after deletion');
   if (errors.length) throw new Error(JSON.stringify(errors));
-  console.log('PASS: both live record avatars, chat opening, right-click deletion, Escape/cancel safety, confirmed deletion');
+  console.log('PASS: both live record avatars, chat opening, keyboard/right-click context actions, 32/44 targets, nested Escape, confirmation focus, cancel safety and confirmed deletion');
 } finally {
   await browser?.close(); await app.close(); await peer.close(); await cleanup(dataRoot);
 }

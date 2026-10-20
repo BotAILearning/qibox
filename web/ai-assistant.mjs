@@ -1,5 +1,5 @@
 import { replyRhythm } from '../server/ai-reply-rhythm.mjs';
-import { productDialog as platformProductDialog } from './dialogs.mjs';
+import { productDialog as platformProductDialog, bindDialogFocus } from './dialogs.mjs';
 import { personalInformationPage, personalEntriesFromForm, personalDraftFromForm, updatePersonalInformationForm, globalReplyStrategyPage, objectStyleTabs } from './ai-account-settings.mjs';
 import { retiredPersonalFields } from '../server/ai-personal-fields.mjs';
 import { dateRangeField, chooseDateRange } from './ai-date-range.mjs';
@@ -458,13 +458,23 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   const { show: message } = dismissibleNotice($('#ai-feedback'), {
     fallbackFocus: () => panel.querySelector('.ai-main-tabs [aria-current="page"]'),
   });
-  function confirmRecordDelete() {
+  function confirmRecordDelete(recordId, source) {
     return new Promise(resolve => {
+      const dialogGeneration = generation;
       const dialog = document.createElement('dialog');
       dialog.className = 'ai-confirm-dialog ai-record-delete-dialog';
+      dialog.setAttribute('aria-label', '删除这条执行记录？');
       dialog.innerHTML = '<div class="ai-record-delete-symbol" aria-hidden="true">!</div><h3>删除这条执行记录？</h3><p>删除后无法恢复。微信中的聊天消息不会被删除。</p><div class="ai-actions"><button type="button" class="secondary" data-cancel>取消</button><button type="button" class="danger" data-confirm>删除记录</button></div>';
       let confirmed = false;
-      dialog.addEventListener('close', () => { dialog.remove(); resolve(confirmed); }, { once: true });
+      bindDialogFocus(dialog);
+      dialog.addEventListener('close', () => {
+        dialog.remove();
+        if (dialogGeneration === generation) {
+          const origin = [...panel.querySelectorAll('[data-ai-record-menu]')].find(node => node.dataset.aiRecordMenu === recordId && node.dataset.aiRecordMenuSource === source);
+          if (origin) { if (!origin.hasAttribute('tabindex')) origin.tabIndex = -1; origin.focus({ preventScroll: true }); }
+        }
+        resolve(confirmed);
+      }, { once: true });
       dialog.addEventListener('cancel', event => { event.preventDefault(); dialog.close(); });
       dialog.addEventListener('click', event => {
         const button = event.target.closest('button');
@@ -474,24 +484,28 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       });
       document.body.append(dialog);
       dialog.showModal();
+      dialog.querySelector('[data-cancel]').focus();
     });
   }
-  function confirmAnalysisDelete() {
+  function confirmAnalysisDelete(reportId) {
     return new Promise(resolve => {
+      const dialogGeneration = generation;
       const dialog = document.createElement('dialog'); dialog.className = 'ai-confirm-dialog';
+      dialog.setAttribute('aria-label', '删除分析报告？');
       let confirmed = false;
       dialog.innerHTML = '<h3>删除分析报告？</h3><p>仅删除这份分析报告，不会删除微信聊天记录。</p><div class="ai-actions"><button type="button" class="secondary" data-cancel>取消</button><button type="button" class="danger" data-confirm>删除报告</button></div>';
-      const finish = () => { dialog.remove(); resolve(confirmed); };
+      bindDialogFocus(dialog);
+      const finish = () => { dialog.remove(); if (dialogGeneration === generation) [...panel.querySelectorAll('[data-ai-history-delete]')].find(node => node.dataset.aiHistoryDelete === reportId)?.focus({ preventScroll: true }); resolve(confirmed); };
       dialog.addEventListener('close', finish, { once: true });
       dialog.addEventListener('cancel', event => { event.preventDefault(); dialog.close(); }, { once: true });
       dialog.addEventListener('click', event => { const button = event.target.closest('button'); if (!button) return; if (button.hasAttribute('data-confirm')) confirmed = true; dialog.close(); });
-      document.body.append(dialog); dialog.showModal();
+      document.body.append(dialog); dialog.showModal(); dialog.querySelector('[data-cancel]').focus();
     });
   }
   async function deleteAnalysisReport(reportId) {
     rememberDraft();
     const current = generation, target = id, account = state?.account, epoch = analysisHistoryEpoch;
-    if (!await confirmAnalysisDelete()) return false;
+    if (!await confirmAnalysisDelete(reportId)) return false;
     if (current !== generation || target !== id || account !== state?.account || epoch !== analysisHistoryEpoch) { message('账号或页面已变化，请重新打开历史报告', true); return false; }
     const result = await api(`/instances/${target}/ai`, { action: 'analysis-report-delete', id: reportId }, 30000);
     if (current !== generation || target !== id || account !== state?.account || epoch !== analysisHistoryEpoch) return false;
@@ -1077,7 +1091,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     const disclosureStates = view === renderedView ? [...panel.querySelectorAll('#ai-content details')].filter(node => !node.hasAttribute('data-ai-record-expand') && !node.hasAttribute('data-ai-skip-messages') && !node.hasAttribute('data-ai-error-detail')).map(node => ({ label: node.dataset.aiOptional || node.querySelector('summary')?.textContent, open: node.open })) : [];
     renderedView = view; panel.dataset.page = tab;
     if (personalDraftAccount !== state.account) { personalDraft = null; personalDraftAccount = state.account; }
-    const pageTitle = ({ overview: '自动回复', proactive: '主动聊天', activity: '执行记录', provider: '模型设置', settings: '系统设置', 'personal-info': '我的信息', 'global-reply': '全局回复策略', analysis: '分析报告', learning: '批量学习风格与记忆', 'default-style': '学习默认风格', results: '学习结果', profile: '编辑学习结果', 'manual-reply': '手动回复' })[tab] || 'AI 辅助';
+    const pageTitle = tab === 'analysis' && analysisHistoryReport ? '报告详情' : ({ overview: '自动回复', proactive: '主动聊天', activity: '执行记录', provider: '模型设置', settings: '系统设置', 'personal-info': '我的信息', 'global-reply': '全局回复策略', analysis: '分析报告', learning: '批量学习风格与记忆', 'default-style': '学习默认风格', results: '学习结果', profile: '编辑学习结果', 'manual-reply': '手动回复' })[tab] || 'AI 辅助';
     $('#ai-title').textContent = pageTitle;
     $('#ai-mobile-title').textContent = pageTitle;
     const content = tab === 'profile' && editingProfile ? profileEditor(state.profiles.find(p => p.id === editingProfile)) : ({ overview: objects, analysis: () => analysisPage(state, analysisDraft, analysisResult, analysisSearch, analysisHistoryReport, analysisRangeMode, analysisContactsExpanded, analysisHistoryState()), activity, provider, settings: advancedSettings, 'personal-info': () => personalInformationPage(state, personalDraft || {}), 'global-reply': () => globalReplyStrategyPage(state), learning, 'default-style': defaultStyleLearning, results, proactive, 'manual-reply': manualReplyEditor }[tab] || objects)();
@@ -1278,7 +1292,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   panel.addEventListener('pointerdown', event => {
     if (!event.target.closest('.qibox-workspace-menu')) closeNavigation();
   });
-  panel.addEventListener('keydown', event => { if (event.key === 'Escape') { event.stopPropagation(); if (closeNavigation({ focus: true })) return; if (!proactiveUI.closeOverlay()) hide(); } });
+  panel.addEventListener('keydown', event => { if (event.key === 'Escape') { event.stopPropagation(); if (recordMenu?.classList.contains('open')) { hideRecordMenu({ focus: true }); return; } if (closeNavigation({ focus: true })) return; if (!proactiveUI.closeOverlay()) hide(); } });
   const changeMaster = async event => {
     if (!pass()) { event.target.checked = !event.target.checked; return; }
     if (!id && !(await ensureInstance())) { event.target.checked = !event.target.checked; message('AI 辅助尚未就绪，请重新打开微信后再试', true); return; }
@@ -1701,16 +1715,23 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     }
   });
   // 运行记录：右键执行记录文本浮现「删除记录」菜单，点击后仍弹确认框二次确认。
-  let recordMenu = null;
-  const hideRecordMenu = () => recordMenu?.classList.remove('open');
-  panel.addEventListener('contextmenu', event => {
-    const li = event.target.closest('[data-ai-record-menu]');
+  let recordMenu = null, recordMenuOrigin = null, recordMenuGeneration = 0;
+  const hideRecordMenu = ({ focus = false } = {}) => {
+    recordMenu?.classList.remove('open');
+    if (focus && recordMenuGeneration === generation) {
+      const origin = recordMenuOrigin?.isConnected ? recordMenuOrigin : [...panel.querySelectorAll('[data-ai-record-menu]')].find(node => node.dataset.aiRecordMenu === recordMenuOrigin?.dataset.aiRecordMenu && node.dataset.aiRecordMenuSource === recordMenuOrigin?.dataset.aiRecordMenuSource);
+      origin?.focus({ preventScroll: true });
+    }
+  };
+  function openRecordMenu(li, x, y) {
     if (!li) { hideRecordMenu(); return; }
-    event.preventDefault();
+    recordMenuOrigin = li; recordMenuGeneration = generation;
     if (!recordMenu) {
       recordMenu = document.createElement('div');
-      recordMenu.className = 'ai-record-context-menu';
-      recordMenu.innerHTML = '<button type="button">删除记录</button>';
+      recordMenu.className = 'ai-record-context-menu qi-floating__content qi-floating__content--top-layer';
+      recordMenu.setAttribute('role', 'group'); recordMenu.setAttribute('aria-label', '执行记录操作');
+      recordMenu.innerHTML = '<button type="button" class="qi-btn danger-link" data-variant="ghost" data-block>删除记录</button>';
+      recordMenu.addEventListener('focusout', event => { if (!recordMenu.contains(event.relatedTarget)) hideRecordMenu(); });
       panel.appendChild(recordMenu);
     }
     const action = recordMenu.querySelector('button');
@@ -1718,8 +1739,19 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     action.dataset.aiDeleteSource = li.dataset.aiRecordMenuSource;
     recordMenu.classList.add('open');
     const rect = recordMenu.getBoundingClientRect();
-    recordMenu.style.left = `${Math.max(4, Math.min(event.clientX, window.innerWidth - rect.width - 8))}px`;
-    recordMenu.style.top = `${Math.max(4, Math.min(event.clientY, window.innerHeight - rect.height - 8))}px`;
+    recordMenu.style.left = `${Math.max(4, Math.min(x, window.innerWidth - rect.width - 8))}px`;
+    recordMenu.style.top = `${Math.max(4, Math.min(y, window.innerHeight - rect.height - 8))}px`;
+    action.focus({ preventScroll: true });
+  }
+  panel.addEventListener('contextmenu', event => {
+    const li = event.target.closest('[data-ai-record-menu]');
+    if (!li) { hideRecordMenu(); return; }
+    event.preventDefault(); openRecordMenu(li, event.clientX, event.clientY);
+  });
+  panel.addEventListener('keydown', event => {
+    if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return;
+    const li = event.target.closest('[data-ai-record-menu]'); if (!li) return;
+    event.preventDefault(); const rect = li.getBoundingClientRect(); openRecordMenu(li, rect.left + 12, rect.top + 12);
   });
   panel.addEventListener('click', () => hideRecordMenu(), true);
   // 「最近异常」的展开状态记在本地筛选状态里，轮询刷新列表时不会被重新合上。
@@ -1836,9 +1868,8 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         return;
       }
       if ('aiDeleteRecord' in button.dataset) {
-        const current = generation, target = id;
-        if (!await confirmRecordDelete() || current !== generation || target !== id) return;
-        const recordId = button.dataset.aiDeleteRecord, source = button.dataset.aiDeleteSource;
+        const current = generation, target = id, recordId = button.dataset.aiDeleteRecord, source = button.dataset.aiDeleteSource;
+        if (!await confirmRecordDelete(recordId, source) || current !== generation || target !== id) return;
         await call('delete-activity-record', { value: { source, id: recordId } });
         proactiveHistory = proactiveHistory.filter(record => !(source === 'proactive' && record.id === recordId));
         logRecords = logRecords.map(record => ({ ...record, messages: (record.messages || []).filter(message => !(message.id === recordId && (source === 'reply' || source === 'unknown'))) }));

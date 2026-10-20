@@ -181,6 +181,13 @@ try {
   await screenshot('02-history-detail');
   await page.locator('[data-ai-export-detail]').click();
   const exportDialog = page.locator('#ai-report-export-dialog[open]'); await exportDialog.waitFor();
+  for(const width of [320,375,1280,1440]) {
+    await page.setViewportSize({width,height:width<640?812:900});
+    const layout=await exportDialog.evaluate(n=>{const r=n.getBoundingClientRect();return{left:r.left,right:r.right,overflow:n.scrollWidth>n.clientWidth,title:getComputedStyle(n.querySelector('h3')).fontSize,radius:getComputedStyle(n).borderRadius,actions:[...n.querySelectorAll('footer .ai-actions button')].map(b=>({width:b.getBoundingClientRect().width,height:b.getBoundingClientRect().height}))};});
+    assert.ok(layout.left>=0&&layout.right<=width);assert.equal(layout.overflow,false);assert.equal(layout.title,'20px');assert.equal(layout.radius,'16px');
+    for(const b of layout.actions){assert.ok(b.width<150,'export actions remain content width');assert.ok(b.height>=(width<640?44:32));}
+    await page.screenshot({path:path.join(output,`export-new-standard-${width}.png`)});
+  }
   assert.doesNotMatch(await exportDialog.innerText(), /方便阅读分享|方便编辑/);
   await screenshot('02a-export-dialog');
   await exportDialog.press('Escape');
