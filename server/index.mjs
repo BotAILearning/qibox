@@ -384,7 +384,7 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
         const disconnected = item.runtime.desktopConnected?.();
         ws.once('close', () => disconnected?.());
         const upstream = net.connect(item.runtime.port, '127.0.0.1');
-        const gate = new RfbInputGate({ beforeInput: event => item.runtime.manualInput?.(event),
+        const gate = new RfbInputGate({ beforeInput: async event => { await item.runtime.windowCloseInput?.before(event); await item.runtime.manualInput?.(event); },
           write: bytes => new Promise((resolve, reject) => upstream.write(bytes, error => error ? reject(error) : resolve())) });
         ws.on('message', (data, binary) => {
           if (!binary || upstream.writableLength > 2 * 1024 ** 2) { void gate.close().catch(() => {}); upstream.destroy(); return ws.close(1009); }

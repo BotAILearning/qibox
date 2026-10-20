@@ -27,6 +27,10 @@ test('draft protection drops input while keeping framebuffer refresh and later t
   assert.deepEqual(writes, [refresh(), pointer(1), pointer()]);
   await gate.close();
 });
+test('native window close decision drops click edges without closing the framebuffer or forwarding them', async () => {
+  const {gate,writes}=await connected({beforeInput:event=>{if(event.type==='pointer')throw new AppError('close',409,'desktop_window_close');}});
+  await gate.feed(Buffer.concat([pointer(1),pointer(),refresh()]));assert.deepEqual(writes,[refresh()]);await gate.close();
+});
 
 test('None and VNC authentication handshakes survive byte fragmentation without user activity', async () => {
   for (const security of [1, 2]) for (const version of ['007', '008']) {

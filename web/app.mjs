@@ -216,7 +216,7 @@ modal.addEventListener('close', () => {
 function showWindowClose(item) {
   const request = item?.runtime.windowCloseRequest;
   if (windowCloseDialogContext && (!request || request.id !== windowCloseDialogContext.requestId || item.id !== windowCloseDialogContext.id)) { windowCloseDialogContext = null; closeModal(); }
-  if (!request || modal.open || mobile() || $('#desktop-view').hidden || standaloneAI) return;
+  if (!request || request.automatic || modal.open || mobile() || $('#desktop-view').hidden || standaloneAI) return;
   const id = item.id, requestId = request.id;
   dialog('关闭微信窗口', `<p>请选择关闭后的行为。关闭栖盒网页本身不会退出微信。</p><label class="choice"><input type="radio" name="choice" value="background" checked><span><strong>后台运行（最小化）</strong><small>保留当前登录和任务，可从栖盒点击“显示微信”恢复。</small></span></label><label class="choice"><input type="radio" name="choice" value="quit"><span><strong>退出微信</strong><small>停止此实例和正在进行的任务；重新使用时需要再次打开。</small></span></label><label class="check-label"><input type="checkbox" name="remember">记住此选择，可在实例菜单“关闭行为”修改</label>`, undefined, async form => {
     await api(`/instances/${id}/window-close`, { requestId, choice: form.get('choice'), remember: form.has('remember') });
@@ -501,7 +501,7 @@ function renderDesktop() {
   // Derive both directions on every render; a previous offline response must
   // never leave this full-screen layer intercepting input after recovery.
   $('#desktop-status').hidden = !waiting && !offline && runtime?.windowVisible !== false;
-  $('#desktop-status').textContent = desktopStatus(runtime, desktopConnected, waiting);
+  $('#desktop-status-message').textContent = desktopStatus(runtime, desktopConnected, waiting);
   if (wechatEntry) showWindowClose(entry);
 }
 async function refresh() {

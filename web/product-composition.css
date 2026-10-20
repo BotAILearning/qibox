@@ -188,3 +188,4 @@
 .qiapp-product .store-card .app-description { margin: 16px 0 0; }
 .qiapp-product .store-card .install-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 16px; }
 .qiapp-product .store-card .install-actions > button { flex: none; width: auto; }
+.qiapp-product #desktop-status-message { width: max-content; max-width: calc(100% - 32px); margin: 16px; padding: 16px; border: 1px solid var(--qi-border); border-radius: var(--qi-radius-panel); background: var(--qi-surface); color: var(--qi-text); line-height: 1.6; text-align: center; }

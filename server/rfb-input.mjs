@@ -56,7 +56,7 @@ export class RfbInputGate {
           catch (error) {
             // A draft guard blocks input, not the read-only desktop. Keeping
             // the RFB session alive lets the owner inspect and take over.
-            if (error instanceof AppError && ['ai_draft_check', 'ai_input_pending'].includes(error.code)) blocked = true;
+            if (error instanceof AppError && ['ai_draft_check', 'ai_input_pending', 'desktop_window_close'].includes(error.code)) blocked = true;
             else throw error;
           }
         }

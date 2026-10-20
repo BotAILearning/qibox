@@ -55,17 +55,17 @@ export async function loginFingerprint(home) {
   return digest.digest('hex');
 }
 
-export function readNativeLogin({ appRoot, runtimeRoot, env, pid, navigate, signal, session = false, loginPage = false, scheduledLogin = false }) {
+export function readNativeLogin({ appRoot, runtimeRoot, env, pid, navigate, signal, session = false, loginPage = false, scheduledLogin = false, windowControls = false }) {
   return new Promise((resolve, reject) => {
     signal?.throwIfAborted();
-    const child = spawn(path.join(runtimeRoot, 'usr/bin/python3.11'), [path.join(appRoot, 'server/auto-login.py'), String(pid), ...(session ? ['--session', ...(loginPage ? ['--login-page'] : []), ...(scheduledLogin ? ['--scheduled-login'] : [])] : navigate ? ['--navigate'] : [])], {
+    const child = spawn(path.join(runtimeRoot, 'usr/bin/python3.11'), [path.join(appRoot, 'server/auto-login.py'), String(pid), ...(windowControls ? ['--window-controls'] : session ? ['--session', ...(loginPage ? ['--login-page'] : []), ...(scheduledLogin ? ['--scheduled-login'] : [])] : navigate ? ['--navigate'] : [])], {
       env: { ...env, PYTHONHOME: path.join(runtimeRoot, 'usr'), PYTHONNOUSERSITE: '1', PYTHONDONTWRITEBYTECODE: '1' },
       windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'],
     });
     let output = '', aborted = false, killTimer;
     const abort = () => { aborted = true; child.kill('SIGTERM'); killTimer ??= setTimeout(() => child.kill('SIGKILL'), 1000); };
     signal?.addEventListener('abort', abort, { once: true });
-    const timer = setTimeout(abort, 4200);
+    const timer = setTimeout(abort, windowControls ? 1200 : 4200);
     child.stdout.on('data', data => { output += data; if (output.length > 1024) abort(); });
     child.once('error', reject);
     child.once('close', code => {

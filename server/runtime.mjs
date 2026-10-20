@@ -8,7 +8,7 @@ import { createWriteStream } from 'node:fs';
 import { attachRuntimeLog } from './runtime-log.mjs';
 import { AppError, atomicJson, jsonFile, hashFile } from './files.mjs';
 import { activateWechatWindow, restoreWechatWindow, minimizeWechatWindow, wechatWindowVisible, DesktopWindowState } from './desktop.mjs';
-import { WindowClose, desktopWindowConfig, closeRequestCommand } from './window-close.mjs';
+import { WindowClose, WindowCloseInput, desktopWindowConfig, closeRequestCommand } from './window-close.mjs';
 import { fontConfiguration } from './fonts.mjs';
 import { AutoLoginVerifier, readNativeLogin } from './auto-login.mjs';
 import { LoginState } from './login-state.mjs';
@@ -92,6 +92,17 @@ export class Runtime {
       await minimizeWechatWindow({ root: this.runtimeRoot, env: this.desktopEnv, command, pid: this.processes.find(x => x.name === 'wechat')?.process.pid });
       await this.windowState.refresh(true);
     } });
+    this.windowCloseInput = new WindowCloseInput({
+      generation: () => this.closeControl.generation,
+      request: () => this.closeControl.request(),
+      probe: async () => {
+        const pid = this.processes.find(x => x.name === 'wechat')?.process.pid;
+        if (!this.isWechat || this.status !== 'running' || !pid) return null;
+        const result = await readNativeLogin({ appRoot: this.appRoot, runtimeRoot: this.runtimeRoot, env: this.desktopEnv, pid, windowControls: true });
+        if (this.status !== 'running' || this.processes.find(x => x.name === 'wechat')?.process.pid !== pid) return null;
+        return result.windowControls;
+      },
+    });
     this.windowState = new DesktopWindowState({ probe: () => wechatWindowVisible({ root: this.runtimeRoot, env: this.desktopEnv,
       command, pid: this.processes.find(x => x.name === 'wechat')?.process.pid }) });
     this.loginState = new LoginState({ probe: () => readNativeLogin({ appRoot, runtimeRoot: this.runtimeRoot,
@@ -402,6 +413,7 @@ export class Runtime {
   }
   async stop({ force = false, deadline = Infinity } = {}) {
     this.closeControl?.dispose();
+    this.windowCloseInput?.reset();
     this.status = 'stopping';
     clearInterval(this.audioRecovery);
     await this.audioStarting?.catch(() => {});

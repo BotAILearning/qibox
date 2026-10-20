@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { lstat, readFile, rm } from 'node:fs/promises';
 import { AppError, atomicJson, jsonFile } from './files.mjs';
+import { randomUUID } from 'node:crypto';
 
 const modes = ['ask', 'background', 'quit'];
 const xml = s => String(s).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;');
@@ -38,9 +39,13 @@ export class WindowClose {
       if (generation !== this.generation) return;
       await rm(signalFile, { force: true });
       if (generation !== this.generation || this.pending) return;
-      this.pending = { id };
-      if (this.mode !== 'ask') await this.resolve(id, this.mode, false);
+      await this.request(id);
     } finally { this.polling = false; }
+  }
+  async request(id = randomUUID()) {
+    if (this.pending || this.busy) return;
+    this.pending = { id };
+    if (this.mode !== 'ask') { this.pending.automatic = true; await this.resolve(id, this.mode, false); }
   }
   async resolve(id, choice, remember = false) {
     if (!this.pending || id !== this.pending.id || this.busy) throw new AppError('关闭操作已结束，请重新操作', 409);
@@ -55,9 +60,31 @@ export class WindowClose {
       if (generation === this.generation) this.pending = null;
       return this.state();
     } catch (error) {
-      if (generation === this.generation) this.pending = { ...request, error: '操作未完成，请重试或取消' };
+      if (generation === this.generation) this.pending = { ...request, automatic: false, error: '操作未完成，请重试或取消' };
       throw error;
     } finally { this.busy = false; }
   }
   dispose() { clearInterval(this.timer); this.generation++; this.pending = null; this.signalFile = null; }
+}
+
+export class WindowCloseInput {
+  constructor({ probe, request, generation }) { this.probe = probe; this.request = request; this.generation = generation; this.sources = new Map(); }
+  reset() { this.sources.clear(); }
+  async before(event) {
+    if (event.type === 'disconnect') { this.sources.delete(event.source); return; }
+    if (event.type !== 'pointer') return;
+    const previous = this.sources.get(event.source) || { buttons: 0 };
+    this.sources.set(event.source, { ...previous, buttons: event.buttons });
+    const within = rect => Array.isArray(rect) && rect.length === 4 && rect.every(Number.isFinite) && rect[2] > 0 && rect[3] > 0 && event.x >= rect[0] && event.y >= rect[1] && event.x < rect[0]+rect[2] && event.y < rect[1]+rect[3];
+    if (previous.close) {
+      if (!event.buttons) { this.sources.delete(event.source); if (within(previous.close)) void this.request().catch(() => {}); }
+      throw new AppError('请选择关闭微信后的行为', 409, 'desktop_window_close');
+    }
+    if (previous.buttons || event.buttons !== 1) return;
+    const generation = this.generation();
+    const result = await this.probe().catch(() => null);
+    if (generation !== this.generation() || !within(result?.close)) return;
+    this.sources.set(event.source, { buttons: event.buttons, close: result.close });
+    throw new AppError('请选择关闭微信后的行为', 409, 'desktop_window_close');
+  }
 }

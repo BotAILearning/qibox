@@ -328,6 +328,34 @@ class Inspector:
             return {'status': 'unknown', 'reason': 'account-changing'}
         return {'status': status, 'reason': 'native-login-method', 'accountKey': account}
 
+    def window_controls(self):
+        """Read the real CSD close button, never infer a hitbox from pixels."""
+        if '微信' not in self._mapped_frames():
+            return None
+        apps = [x for x in self.children(self.desktop) if self.call('get_process_id', c.c_uint, x) == self.pid]
+        if len(apps) != 1 or self.string('get_name', apps[0]) != 'wechat':
+            return None
+        frames = [x for x in self.children(apps[0]) if self.string('get_role_name', x) == 'frame'
+                  and self.string('get_name', x) == '微信' and self.visible(x)]
+        if len(frames) != 1:
+            return None
+        frame = frames[0]
+        matches = []
+        # The actual WeChat CSD toolbar is a direct frame child. Do not walk
+        # chat contents, menus, detached chats or any account controls.
+        for toolbar in self.children(frame):
+            if self.string('get_role_name', toolbar) != 'tool bar' or not self.visible(toolbar):
+                continue
+            tb = self.bounds(toolbar)
+            if not tb or tb[2] <= tb[3]:
+                continue
+            for button in self.children(toolbar):
+                if self.string('get_role_name', button) == 'push button' and self.string('get_name', button) == '关闭' and self.visible(button):
+                    rect = self.bounds(button)
+                    if rect and rect[2] > 0 and rect[3] > 0 and rect[0] >= tb[0] and rect[1] >= tb[1] and rect[0]+rect[2] <= tb[0]+tb[2] and rect[1]+rect[3] <= tb[1]+tb[3]:
+                        matches.append(rect)
+        return {'close': matches[0]} if len(matches) == 1 else None
+
     def inspect_session(self, login_page=False, scheduled_login=False):
         apps = [x for x in self.children(self.desktop)
                 if self.call('get_process_id', c.c_uint, x) == self.pid]
@@ -406,7 +434,10 @@ def main():
         def cancel(_signal, _frame):
             inspector.cancelled = True
         signal.signal(signal.SIGTERM, cancel)
-        result = inspector.inspect_session('--login-page' in sys.argv, '--scheduled-login' in sys.argv) if '--session' in sys.argv else inspector.inspect('--navigate' in sys.argv)
+        if '--window-controls' in sys.argv:
+            result = {'status': 'unknown', 'windowControls': inspector.window_controls()}
+        else:
+            result = inspector.inspect_session('--login-page' in sys.argv, '--scheduled-login' in sys.argv) if '--session' in sys.argv else inspector.inspect('--navigate' in sys.argv)
     except Exception:
         pass  # Do not log widget text, account identity or credential contents.
     finally:
