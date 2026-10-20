@@ -1,6 +1,11 @@
 // Keep the original WeChat button: its private portal requests a browser picker.
 // The recent pointer/key gesture provides transient activation for showPicker.
 import { fileExporter } from './file-export.mjs';
+export function mayClaimFileRequest(request, { focused, hidden, activeUntil, now = Date.now() }) {
+  // A native download can take much longer than transient browser activation.
+  // Showing its save panel is safe; opening a device picker still needs a click.
+  return !!request && focused && !hidden && (request.operation === 'save' || now < activeUntil);
+}
 export function localFiles({ screen, input, panel, api, upload, download, openFolder, notify, focus, pickNas }) {
   const bytes = crypto.getRandomValues(new Uint8Array(16));
   bytes[6] = (bytes[6] & 15) | 64; bytes[8] = (bytes[8] & 63) | 128;
@@ -75,7 +80,7 @@ export function localFiles({ screen, input, panel, api, upload, download, openFo
       }
       if (!result.request) {
         if (current && !controller) { current = null; hide(); }
-      } else if (!current && document.hasFocus() && Date.now() < activeUntil) {
+      } else if (!current && mayClaimFileRequest(result.request, { focused: document.hasFocus(), hidden: document.hidden, activeUntil })) {
         const claimed = await call('claim', { id: result.request.id });
         if (disposed) { await call('cancel', { id: result.request.id }).catch(() => {}); return; }
         current = claimed.request;

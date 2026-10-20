@@ -25,10 +25,19 @@ export async function restoreWechatWindow(options) {
   if (windows.some(window => window.visible)) return false;
   for (const window of windows) {
     if (window.visible) continue;
-    await options.command(`${options.root}/usr/bin/x11vnc`, ['-R', `id_cmd:win=${window.id}:map`], options.env, 5000);
+    // Map through the window manager, then activate the same PID-verified
+    // window. x11vnc's remote map command does not reliably deiconify Openbox.
+    await options.command(`${options.root}/usr/bin/xdotool`, ['windowmap', '--sync', window.id], options.env, 5000);
+    await options.command(`${options.root}/usr/bin/xdotool`, ['windowactivate', '--sync', window.id], options.env, 5000);
+    if (!(await wechatWindows(options)).some(item => item.id === window.id && item.visible)) throw new Error('WeChat window did not restore');
     return true;
   }
   return false;
+}
+export async function minimizeWechatWindow(options) {
+  const windows = await wechatWindows(options);
+  for (const window of windows.filter(item => item.visible)) await options.command(`${options.root}/usr/bin/xdotool`, ['windowminimize', '--sync', window.id], options.env, 5000);
+  if ((await wechatWindows(options)).some(item => item.visible)) throw new Error('WeChat window did not minimize');
 }
 export async function activateWechatWindow(options) {
   const windows = (await wechatWindows(options)).filter(window => window.visible);

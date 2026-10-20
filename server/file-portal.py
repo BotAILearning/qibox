@@ -17,7 +17,7 @@ import pathlib
 from clipboard_payload import LOCAL_TARGET
 
 
-def save_filename(current_name, current_file, extension):
+def save_filename(current_name, current_file, extension, title=''):
     if current_name:
         return current_name
     # XDG current_file is a NUL-terminated filesystem byte path, not a string.
@@ -31,7 +31,10 @@ def save_filename(current_name, current_file, extension):
                     return name
             except UnicodeDecodeError:
                 pass
-    return '微信图片.' + extension
+    if extension or re.search(r'图片|图像|image|picture', title, re.I):
+        return '微信图片.' + (extension or 'png')
+    # Unknown files must not acquire a PNG extension or be offered as images.
+    return '微信文件'
 
 
 def main():
@@ -118,7 +121,7 @@ def main():
                         if selected != value: unref(selected)
             finally:
                 unref(value)
-        return 'png'
+        return None
 
     def tuple_value(*values):
         return new_tuple((ptr * len(values))(*values), len(values))
@@ -265,7 +268,7 @@ def main():
                 if method_name == b'SaveFile':
                     # The image viewer omits current_name; provide an extension
                     # so the native image writer can select an output format.
-                    name = save_filename(option(options, 'current_name', ''), option(options, 'current_file', b''), image_extension(options))
+                    name = save_filename(option(options, 'current_name', ''), option(options, 'current_file', b''), image_extension(options), title)
                     print(json.dumps({'type': 'request', 'id': request_id, 'operation': 'save', 'name': name}), flush=True)
                 elif option(options, 'directory', False):
                     native_dialog(request_id, title, options, False, True)

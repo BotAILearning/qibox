@@ -15,6 +15,7 @@ export function desktopStatus(runtime, connected, waiting) {
   if (runtime?.status !== 'running') return '微信尚未运行，点击连接微信打开';
   if (desktopAction(runtime, connected)?.login) return '微信未登录，点击重新登录打开登录页面';
   if (!connected) return runtime.loginStatus === 'logged-in' ? '微信仍已登录，桌面连接已断开，请重新连接' : '桌面连接已断开，请重新连接后查看微信状态';
+  if (runtime.windowVisible === false) return '微信窗口已最小化，仍在后台运行。点击上方“显示微信”恢复窗口。';
   return '';
 }
 export function aiAvailable(runtime, connected) {

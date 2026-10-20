@@ -7,7 +7,8 @@ import { mkdir, mkdtemp, readFile, writeFile, chmod, access, rename, rm, readdir
 import { createWriteStream } from 'node:fs';
 import { attachRuntimeLog } from './runtime-log.mjs';
 import { AppError, atomicJson, jsonFile, hashFile } from './files.mjs';
-import { activateWechatWindow, restoreWechatWindow, wechatWindowVisible, DesktopWindowState } from './desktop.mjs';
+import { activateWechatWindow, restoreWechatWindow, minimizeWechatWindow, wechatWindowVisible, DesktopWindowState } from './desktop.mjs';
+import { WindowClose, desktopWindowConfig, closeRequestCommand } from './window-close.mjs';
 import { fontConfiguration } from './fonts.mjs';
 import { AutoLoginVerifier, readNativeLogin } from './auto-login.mjs';
 import { LoginState } from './login-state.mjs';
@@ -85,6 +86,12 @@ export class Runtime {
     this.runtimeRoot = runtimeRoot || path.join(dataRoot, 'runtime'); this.sharedReady = sharedReady; this.logPath = path.join(dataRoot, 'logs');
     this.tag = createHash('sha256').update(path.resolve(dataRoot)).digest('hex');
     this.desktopViewers = 0; this.foregroundUntil = 0;
+    this.closeControl = new WindowClose({ dataRoot, perform: async choice => {
+      if (this.status !== 'running') throw new AppError('微信已停止', 409);
+      if (choice === 'quit') return this.onWindowQuit ? this.onWindowQuit() : this.stop();
+      await minimizeWechatWindow({ root: this.runtimeRoot, env: this.desktopEnv, command, pid: this.processes.find(x => x.name === 'wechat')?.process.pid });
+      await this.windowState.refresh(true);
+    } });
     this.windowState = new DesktopWindowState({ probe: () => wechatWindowVisible({ root: this.runtimeRoot, env: this.desktopEnv,
       command, pid: this.processes.find(x => x.name === 'wechat')?.process.pid }) });
     this.loginState = new LoginState({ probe: () => readNativeLogin({ appRoot, runtimeRoot: this.runtimeRoot,
@@ -119,10 +126,11 @@ export class Runtime {
   publicState() {
     if (!this.isWechat) return { status: this.status, message: this.message, version: this.application?.()?.version || null, mode: this.dev ? 'development' : 'native', canConnect: this.status === 'running', windowVisible: this.status === 'running' };
     if (this.status === 'running' && !this.dev) { void this.loginState.refresh(); void this.windowState.refresh(); }
-    return { status: this.status, loginStatus: this.loginState.state(this.status === 'running'), aiEntryAvailable: this.loginState.entryAvailable(this.status === 'running'), windowVisible: this.windowState.state(this.status === 'running'), message: this.message,
+    return { status: this.status, ...this.closeControl?.state(), loginStatus: this.loginState.state(this.status === 'running'), aiEntryAvailable: this.loginState.entryAvailable(this.status === 'running'), windowVisible: this.windowState.state(this.status === 'running'), message: this.message,
       ...this.loginState.details(this.status === 'running'), audioAvailable: !!this.audioSocket, version: this.application?.()?.version || null, mode: this.dev ? 'development' : 'native', canConnect: this.status === 'running' };
   }
   async prepare() {
+    await this.closeControl?.init();
     await mkdir(this.logPath, { recursive: true, mode: 0o700 });
     if (this.dev) { this.status = 'unavailable'; this.message = '请将安装包安装到 NAS 后使用应用'; return; }
     try {
@@ -282,7 +290,9 @@ export class Runtime {
       await delay(700);
       if (ime.exitCode !== null) throw new Error('Chinese input method failed to start');
       const wmConfig = path.join(session, 'openbox.xml');
-      await writeFile(wmConfig, '<openbox_config xmlns="http://openbox.org/3.4/rc"><focus><focusNew>yes</focusNew></focus><applications><application type="normal"><maximized>yes</maximized></application></applications></openbox_config>');
+      const closeSignal = path.join(session, 'window-close.request');
+      const defaults = this.isWechat ? await readFile(path.join(root, 'etc/xdg/openbox/rc.xml'), 'utf8') : null;
+      await writeFile(wmConfig, this.isWechat ? desktopWindowConfig(defaults, closeRequestCommand(`${root}/usr/bin/python3.11`, path.join(this.appRoot, 'server/window-close-request.py'), closeSignal)) : '<openbox_config xmlns="http://openbox.org/3.4/rc"><focus><focusNew>yes</focusNew></focus><applications><application type="normal"><maximized>yes</maximized></application></applications></openbox_config>');
       this.child(`${root}/usr/bin/openbox`, ['--sm-disable', '--config-file', wmConfig], env, 'windows');
       await this.applyBackground();
       this.password = randomBytes(6).toString('base64').slice(0, 8);
@@ -305,6 +315,7 @@ export class Runtime {
       await delay(2500);
       if (wechat.exitCode !== null || wechat.signalCode !== null) throw new Error(`WeChat exited with ${wechat.signalCode || wechat.exitCode}`);
       this.status = 'running'; this.message = '';
+      if (this.isWechat) await this.closeControl.start(closeSignal);
       if (this.isWechat) void this.loginState.refresh();
       wechat.on('close', () => { if (this.status === 'running') { this.status = 'error'; this.message = '应用已退出，请重新打开'; this.port = null; this.password = null; } });
     } catch (error) {
@@ -390,6 +401,7 @@ export class Runtime {
     return { ready: true, ...(paste && this.isWechat && typeof text === 'string' ? { pasteRequired: false } : {}) };
   }
   async stop({ force = false, deadline = Infinity } = {}) {
+    this.closeControl?.dispose();
     this.status = 'stopping';
     clearInterval(this.audioRecovery);
     await this.audioStarting?.catch(() => {});

@@ -88,7 +88,7 @@ try {
     await page.setViewportSize({ width, height: 900 });
     const visible = page.locator('[data-market-action=add]:visible');
     assert.equal(await visible.count(), 1, `${width}px: installed app must expose exactly one primary action`);
-    assert.match(await visible.innerText(), /^添加(实例|到桌面)$/);
+    assert.equal(await visible.innerText(), '添加微信');
     await noOverflow(`${width}px installed market`);
     await page.screenshot({ path: path.join(output, `store-installed-${width}.png`) });
   }
@@ -216,7 +216,8 @@ try {
     const settings = await page.evaluate(() => {
       const links = document.querySelector('.qbx-settings-links').getBoundingClientRect();
       const config = document.querySelector('.qbx-settings-config').getBoundingClientRect();
-      const groups = [...document.querySelectorAll('.qbx-settings-group')].map(node => node.getBoundingClientRect());
+      const groups = [...document.querySelectorAll('.qibox-settings-form > section, .qibox-settings-form > details, .qibox-settings-form > footer')].map(node => node.getBoundingClientRect());
+      if (groups.length !== 3) throw new Error('Current settings semantic sections missing');
       const gaps = groups.slice(1).map((group, i) => group.top - groups[i].bottom);
       const groupGap = config.top - groups.at(-1).bottom;
       return { linksTop: links.top, linksBottom: links.bottom, configTop: config.top, groupTop: groups[0].top, groupGap, gaps: [...gaps, groupGap] };
@@ -238,7 +239,7 @@ try {
     if (width === 390 || width === 1440) await page.screenshot({ path: path.join(output, `settings-${width}.png`) });
     await noOverflow(`${width}px settings`);
   }
-  const toggle = page.locator('.qbx-settings-group input[name=acknowledgeAI]');
+  const toggle = page.locator('#ai-takeover-form input[name=acknowledgeAI]');
   const beforeToggle = await toggle.isChecked();
   await toggle.evaluate(node => { node.checked = !node.checked; });
   // Wait for the actual thumb endpoint; an immediate style read can catch the
@@ -248,12 +249,12 @@ try {
     const travel = 16;
     const shift = thumb.transform === 'none' ? 0 : new DOMMatrixReadOnly(thumb.transform).m41;
     return Math.abs(shift - (checked ? travel : 0)) < .5;
-  }, { selector: '.qbx-settings-group input[name=acknowledgeAI]', checked: !beforeToggle });
+  }, { selector: '#ai-takeover-form input[name=acknowledgeAI]', checked: !beforeToggle });
   const changedThumb = await toggle.evaluate(node => getComputedStyle(node, matchMedia('(max-width:639px), (any-pointer:coarse)').matches?'::after':'::before').transform);
   assert.equal(changedThumb === 'none' || changedThumb === 'matrix(1, 0, 0, 1, 0, 0)', beforeToggle, 'switch thumb must travel to the opposite end when state changes');
   await toggle.evaluate((node, checked) => { node.checked = checked; }, beforeToggle);
   await page.setViewportSize({ width: 1024, height: 900 });
-  const navContrast = await page.locator('.qbx-bottom-nav button[aria-current=page]').evaluate(node => {
+  const navContrast = await page.locator('.ai-main-tabs button[aria-current=page]').evaluate(node => {
     const style = getComputedStyle(node);
     const rgb = value => (value.match(/[\d.]+/g) || []).slice(0, 3).map(Number).map(x => { x /= 255; return x <= .04045 ? x / 12.92 : ((x + .055) / 1.055) ** 2.4; });
     const luminosity = value => rgb(value).reduce((sum, x, i) => sum + x * [.2126, .7152, .0722][i], 0);

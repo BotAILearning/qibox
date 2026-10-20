@@ -20,7 +20,7 @@ test('Qt utility window sharing NORMAL and main PID does not block reconnection'
 test('only the requested WeChat main window determines visibility and restoration', async () => {
   let state = 1; const mapped = [];
   const options = { root: '/runtime', env: {}, pid: 100, command: async (bin, args) => {
-    if (bin.endsWith('x11vnc')) { mapped.push(args[1]); return ''; }
+    if (bin.endsWith('xdotool')) { mapped.push(args); if (args[0] === 'windowactivate') state = 1; return ''; }
     if (args[0] === '--root') return '_NET_CLIENT_LIST(WINDOW) = 0x123, 222, 333, 444\n';
     return `WM_CLASS(STRING) = "${args[1] === '444' ? 'other' : 'wechat'}", "wechat"\nWM_STATE(WM_STATE) = ${state}, 0\n_NET_WM_WINDOW_TYPE(ATOM) = _NET_WM_WINDOW_TYPE_${args[1] === '222' ? 'DIALOG' : 'NORMAL'}\n_NET_WM_PID(CARDINAL) = ${args[1] === '333' ? 200 : 100}\n`;
   } };
@@ -28,7 +28,8 @@ test('only the requested WeChat main window determines visibility and restoratio
   assert.equal(await restoreWechatWindow(options), false);
   state = 3; assert.equal(await wechatWindowVisible(options), false);
   assert.equal(await restoreWechatWindow(options), true);
-  assert.deepEqual(mapped, ['id_cmd:win=0x123:map']);
+  assert.deepEqual(mapped, [['windowmap','--sync','0x123'],['windowactivate','--sync','0x123']]);
+  assert.equal(await wechatWindowVisible(options), true);
 });
 
 test('activation targets only the unique visible WeChat main window owned by this process', async () => {

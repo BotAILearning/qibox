@@ -150,6 +150,7 @@ class UserInstances {
     const runtime = this.runtimeFactory ? this.runtimeFactory(meta.id, options, this.uid) : await createAdapterRuntime(definition, options);
     runtime.definition = definition;
     const instance = { meta, runtime, home, dataRoot, tail: Promise.resolve(), busy: 0 };
+    runtime.onWindowQuit = () => this.stop(meta.id);
     instance.exclusive = action => {
       instance.busy++;
       const task = instance.tail.then(action).finally(() => instance.busy--);

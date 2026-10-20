@@ -208,6 +208,26 @@ async function downloadAnalysisReport(instanceId, value, signal) {
 bindDialogFocus(modal);
 modal.setAttribute('aria-labelledby', 'modal-title');
 function closeModal(generation = modalGeneration) { if (requiredModal || generation !== modalGeneration) return; modalGeneration++; modal.close(); modalSubmit = null; }
+let windowCloseDialogContext = null;
+modal.addEventListener('close', () => {
+  const context = windowCloseDialogContext; windowCloseDialogContext = null;
+  if (context) void api(`/instances/${context.id}/window-close`, { requestId: context.requestId, choice: 'cancel' }).catch(() => {});
+});
+function showWindowClose(item) {
+  const request = item?.runtime.windowCloseRequest;
+  if (windowCloseDialogContext && (!request || request.id !== windowCloseDialogContext.requestId || item.id !== windowCloseDialogContext.id)) { windowCloseDialogContext = null; closeModal(); }
+  if (!request || modal.open || mobile() || $('#desktop-view').hidden || standaloneAI) return;
+  const id = item.id, requestId = request.id;
+  dialog('关闭微信窗口', `<p>请选择关闭后的行为。关闭栖盒网页本身不会退出微信。</p><label class="choice"><input type="radio" name="choice" value="background" checked><span><strong>后台运行（最小化）</strong><small>保留当前登录和任务，可从栖盒点击“显示微信”恢复。</small></span></label><label class="choice"><input type="radio" name="choice" value="quit"><span><strong>退出微信</strong><small>停止此实例和正在进行的任务；重新使用时需要再次打开。</small></span></label><label class="check-label"><input type="checkbox" name="remember">记住此选择，可在实例菜单“关闭行为”修改</label>`, undefined, async form => {
+    await api(`/instances/${id}/window-close`, { requestId, choice: form.get('choice'), remember: form.has('remember') });
+    windowCloseDialogContext = null; await refresh();
+  });
+  windowCloseDialogContext = { id, requestId };
+}
+function windowCloseSettings(item) {
+  const mode = item.runtime.windowCloseBehavior || 'ask';
+  dialog('关闭行为', `<p>只影响微信主窗口的关闭按钮，不影响关闭网页。</p><label class="field">关闭微信窗口时<select name="mode" class="qi-input">${[['ask','每次询问'],['background','后台运行（最小化）'],['quit','退出微信']].map(([value,label])=>`<option value="${value}" ${value===mode?'selected':''}>${label}</option>`).join('')}</select></label>`, undefined, async form => { await api(`/instances/${item.id}/window-close`, { action: 'preference', mode: form.get('mode') }); await refresh(); notify('关闭行为已保存'); });
+}
 function dialog(title, content, actions = '<button type="button" data-close class="secondary">取消</button><button type="submit" class="primary">确定</button>', submit, required = false) {
   const generation = ++modalGeneration;
   requiredModal = required; modalSubmit = submit;
@@ -373,7 +393,7 @@ function renderMarket(app) {
   if (actions.dataset.state !== signature) {
     actions.dataset.state = signature;
     actions.innerHTML = installed
-      ? `<button ${id('add-instance')} data-market-action="add" class="primary pc-only" ${pending ? 'disabled' : ''}>添加到桌面</button><button data-market-action="add" class="primary mobile-only" ${pending ? 'disabled' : ''}>添加实例</button>${app.id === 'wechat' ? `<button data-market-action="update" class="quiet" ${manualBusy || jobPending ? 'disabled' : ''}>${manualUpdate?.status === 'paused' ? '继续更新' : manualUpdate?.status === 'error' ? '重试更新' : '手动更新'}</button>` : ''}`
+      ? `<button ${id('add-instance')} data-market-action="add" class="primary" ${pending ? 'disabled' : ''}>添加微信</button>${app.id === 'wechat' && session.user.isAdmin ? `<button data-market-action="update" class="secondary" ${manualBusy || jobPending ? 'disabled' : ''}>${manualUpdate?.status === 'paused' ? '继续更新' : manualUpdate?.status === 'error' ? '重试更新' : '手动更新'}</button>` : ''}`
       : `<button ${id('download')} data-market-action="download" class="primary" ${pending ? 'disabled' : ''}>下载安装${esc(app.name)}</button><button ${id('import-open')} data-market-action="import" class="quiet" ${pending ? 'disabled' : ''}>导入安装包</button>`;
   }
   part('status').textContent = manualUpdate && !['complete'].includes(manualUpdate.status) ? manualUpdate.message
@@ -383,6 +403,8 @@ function renderMarket(app) {
   part('retained').hidden = !retainedFor(app.id).length;
   part('uninstall').hidden = app.id !== 'wechat' || !installed || !session.user.isAdmin;
   part('uninstall').disabled = !!pending;
+  part('menu').hidden = part('retained').hidden && part('uninstall').hidden;
+  part('menu-separator').hidden = part('retained').hidden || part('uninstall').hidden;
   const visibleJob = manualUpdate && manualUpdate.status !== 'complete' ? manualUpdate : job;
   part('progress').hidden = !visibleJob || visibleJob.status === 'complete';
   if (visibleJob) {
@@ -405,7 +427,7 @@ function render() {
   if (!state) return;
   const catalogMarkup = state.catalog.map(app => {
     const part = (name, legacy) => `data-part="${name}"${app.id === 'wechat' && legacy ? ` id="${legacy}"` : ''}`;
-    return `<article class="store-card" data-market-app="${esc(app.id)}"><div class="store-card-main"><span class="wechat-icon" aria-hidden="true">${appIcon(app.icon)}</span><div><h3>${esc(app.name)}</h3><p ${part('status', 'package-status')}></p></div></div><p class="app-description">${esc(app.description)}</p><div ${part('actions', 'install-actions')} class="install-actions"></div><p ${part('format', 'install-format')} class="install-format">手动安装请选择 <strong>${esc(app.architecture)}</strong> 版 <strong>${esc(app.packageFormat)}</strong> 安装包。<a href="${esc(app.website)}" target="_blank" rel="noopener">${esc(app.name)}官网 ↗</a></p><div ${part('progress', 'install-progress')} class="install-progress" hidden><div><strong ${part('message', 'job-message')}></strong><span ${part('percent', 'job-percent')}></span></div><progress ${part('bar', 'job-progress')} max="100" aria-label="${esc(app.name)}安装进度"></progress><p ${part('detail', 'job-detail')}></p></div><div class="market-tools pc-only"><button ${part('retained', 'retained-open')} data-market-action="retained" class="quiet" hidden>保留的数据</button><button ${part('uninstall', 'uninstall')} data-market-action="uninstall" class="quiet danger-link" hidden>卸载${esc(app.name)}</button></div></article>`;
+    return `<article class="store-card" data-market-app="${esc(app.id)}"><div class="store-card-main"><span class="wechat-icon" aria-hidden="true">${appIcon(app.icon)}</span><div><h3>${esc(app.name)}</h3><p ${part('status', 'package-status')}></p></div><details class="app-menu market-menu pc-only" data-part="menu" hidden><summary aria-label="${esc(app.name)}更多操作"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.75"/><circle cx="12" cy="12" r="1.75"/><circle cx="19" cy="12" r="1.75"/></svg></summary><div><button ${part('retained', 'retained-open')} data-market-action="retained" class="quiet" hidden>保留的数据</button><hr data-part="menu-separator" hidden><button ${part('uninstall', 'uninstall')} data-market-action="uninstall" class="quiet danger-link" hidden>卸载${esc(app.name)}</button></div></details></div><p class="app-description">${esc(app.description)}</p><div ${part('actions', 'install-actions')} class="install-actions"></div><p ${part('format', 'install-format')} class="install-format">手动安装请选择 <strong>${esc(app.architecture)}</strong> 版 <strong>${esc(app.packageFormat)}</strong> 安装包。<a href="${esc(app.website)}" target="_blank" rel="noopener">${esc(app.name)}官网 ↗</a></p><div ${part('progress', 'install-progress')} class="install-progress" hidden><div><strong ${part('message', 'job-message')}></strong><span ${part('percent', 'job-percent')}></span></div><progress ${part('bar', 'job-progress')} max="100" aria-label="${esc(app.name)}安装进度"></progress><p ${part('detail', 'job-detail')}></p></div></article>`;
   }).join('');
   if (lastCatalogMarkup !== catalogMarkup) { $('#catalog-list').innerHTML = catalogMarkup; lastCatalogMarkup = catalogMarkup; }
   state.catalog.forEach(renderMarket);
@@ -416,7 +438,7 @@ function render() {
     const app = definition(item.appId), installed = app?.library.installed;
     const pending = app?.library.job && !['complete', 'error'].includes(app.library.job.status);
     const busy = !!pending || busyIds.has(item.id) || item.busy || ['preparing', 'starting', 'stopping'].includes(item.runtime.status);
-    return `<article class="instance-card" data-instance="${esc(item.id)}" data-app-id="${esc(item.appId || 'wechat')}"><button class="desktop-icon" data-action="open" aria-label="打开${esc(item.name)}" title="${esc(modes[item.schedule.mode] || '')}${item.schedule.paused ? ' · 已暂停' : ''}" ${busy || !installed ? 'disabled' : ''}><span class="wechat-icon" aria-hidden="true">${appIcon(app?.icon)}</span><h3 title="${esc(item.name)}">${esc(item.name)}</h3><span class="status ${item.runtime.status === 'running' && item.runtime.loginStatus === 'logged-in' ? 'logged-in' : 'logged-out'}">${busy ? '请稍候…' : installed ? (app?.id === 'wechat' ? loginLabel(item.runtime) : item.runtime.status === 'running' ? '运行中' : item.runtime.status === 'error' ? '启动失败' : '已停止') : '待重新安装'}</span></button><details class="app-menu"><summary aria-label="${esc(item.name)}的更多操作">•••</summary><div>${app?.capabilities.includes('startup-settings') ? `<button data-action="settings" ${busy || !installed ? 'disabled' : ''}>启动设置</button>` : ''}${(item.appId || 'wechat') === 'wechat' ? '<button data-action="ai">AI 辅助</button>' : ''}${item.runtime.loginCheckTimedOut ? '<button data-action="recheck">重新检测</button>' : ''}<button data-action="rename">重命名</button>${item.runtime.status === 'running' ? `<button data-action="stop" ${busy ? 'disabled' : ''}>停止</button>` : ''}<button class="danger-link" data-action="delete">删除</button></div></details></article>`;
+    return `<article class="instance-card" data-instance="${esc(item.id)}" data-app-id="${esc(item.appId || 'wechat')}"><button class="desktop-icon" data-action="open" aria-label="打开${esc(item.name)}" title="${esc(modes[item.schedule.mode] || '')}${item.schedule.paused ? ' · 已暂停' : ''}" ${busy || !installed ? 'disabled' : ''}><span class="wechat-icon" aria-hidden="true">${appIcon(app?.icon)}</span><h3 title="${esc(item.name)}">${esc(item.name)}</h3><span class="status ${item.runtime.status === 'running' && item.runtime.loginStatus === 'logged-in' ? 'logged-in' : 'logged-out'}">${busy ? '请稍候…' : installed ? (app?.id === 'wechat' ? loginLabel(item.runtime) : item.runtime.status === 'running' ? '运行中' : item.runtime.status === 'error' ? '启动失败' : '已停止') : '待重新安装'}</span></button><details class="app-menu"><summary aria-label="${esc(item.name)}的更多操作">•••</summary><div>${app?.capabilities.includes('startup-settings') ? `<button data-action="settings" ${busy || !installed ? 'disabled' : ''}>启动设置</button>` : ''}${(item.appId || 'wechat') === 'wechat' ? '<button data-action="ai">AI 辅助</button><button data-action="window-close-settings">关闭行为</button>' : ''}${item.runtime.loginCheckTimedOut ? '<button data-action="recheck">重新检测</button>' : ''}<button data-action="rename">重命名</button>${item.runtime.status === 'running' ? `<button data-action="stop" ${busy ? 'disabled' : ''}>停止</button>` : ''}<button class="danger-link" data-action="delete">删除</button></div></details></article>`;
   }).join('');
   if (lastInstancesMarkup !== markup) {
     const opened = [...document.querySelectorAll('#instances .app-menu[open]')].map(menu => menu.closest('[data-instance]').dataset.instance);
@@ -478,8 +500,9 @@ function renderDesktop() {
   const offline = !desktopConnected || runtime?.status !== 'running';
   // Derive both directions on every render; a previous offline response must
   // never leave this full-screen layer intercepting input after recovery.
-  $('#desktop-status').hidden = !waiting && !offline;
+  $('#desktop-status').hidden = !waiting && !offline && runtime?.windowVisible !== false;
   $('#desktop-status').textContent = desktopStatus(runtime, desktopConnected, waiting);
+  if (wechatEntry) showWindowClose(entry);
 }
 async function refresh() {
   if (polling) return true; polling = true;
@@ -543,9 +566,10 @@ function updateIdleChoice() {
   $('#idle-window').hidden = !$('#idle-mode').checked;
 }
 function uninstallDialog() {
-  dialog('卸载微信', '<p>卸载微信程序，并停止已添加的微信。</p><label class="choice"><input type="radio" name="deleteData" value="no" checked><span><strong>保留数据</strong><small>重新安装后可继续使用。</small></span></label><label class="choice"><input type="radio" name="deleteData" value="yes"><span><strong>同时清除我的微信数据</strong><small>包含保留的数据，删除后无法恢复。</small></span></label><label id="delete-confirm" class="field" hidden>请输入：<strong>确认删除微信</strong><input type="text" name="confirmName" autocomplete="off" placeholder="确认删除微信"></label>', '<button type="button" data-close class="secondary">取消</button><button type="submit" class="danger">卸载</button>', async form => {
+  dialog('卸载微信', '<p>卸载共享微信程序，并停止正在运行的微信实例。删除单个实例请在实例菜单操作。</p><label class="choice"><input type="radio" name="deleteData" value="no" checked><span><strong>保留数据</strong><small>重新安装后可继续使用。</small></span></label><label class="choice"><input type="radio" name="deleteData" value="yes"><span><strong>同时清除我的微信数据</strong><small>仅清除我名下的微信实例及保留数据，不清理其他用户的数据，删除后无法恢复。</small></span></label><label id="delete-confirm" class="field" hidden>请输入：<strong>确认删除微信</strong><input type="text" name="confirmName" autocomplete="off" placeholder="确认删除微信"></label>', '<button type="button" data-close class="secondary">取消</button><button type="submit" class="danger">卸载</button>', async form => {
     await api(`/apps/${marketAppId}/install/uninstall`, { deleteData: form.get('deleteData') === 'yes', confirmName: form.get('confirmName') }); disconnect(); await refresh(); notify('微信已卸载');
   });
+  $('#modal-actions [data-close]').focus();
 }
 function removeInstance(item, retained = false) {
   dialog(retained ? '删除保留的数据' : '删除应用', `<p>确定删除应用：<strong>${esc(item.name)}</strong>？</p>${!retained ? '<label class="choice"><input type="radio" name="deleteData" value="no" checked><span><strong>保留数据</strong><small>从保留数据恢复后，登录原微信继续使用。</small></span></label><label class="choice"><input type="radio" name="deleteData" value="yes"><span><strong>同时删除数据</strong><small>删除这个应用的登录状态和聊天数据，无法恢复。</small></span></label>' : '<p>这会永久删除该应用的登录状态和聊天数据。</p><input type="hidden" name="deleteData" value="yes">'}<label id="delete-confirm" class="field" ${retained ? '' : 'hidden'}>请输入：<strong>确认删除${esc(item.name)}</strong><input type="text" name="confirmName" autocomplete="off" placeholder="确认删除${esc(item.name)}"></label>`, '<button type="button" data-close class="secondary">取消</button><button type="submit" class="danger">删除</button>', async form => {
@@ -861,6 +885,7 @@ document.addEventListener('click', async event => {
       if (!item) return;
       if (button.dataset.action === 'open') await openDesktop(id);
       if (button.dataset.action === 'settings') settings(item);
+      if (button.dataset.action === 'window-close-settings') windowCloseSettings(item);
       if (button.dataset.action === 'ai') await openAIEntry(id);
       if (button.dataset.action === 'recheck') { button.disabled = true; try { await api(`/instances/${id}/recheck`, {}, 15000); } finally { await refresh(); button.disabled = false; } }
       if (button.dataset.action === 'delete') removeInstance(item);

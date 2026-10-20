@@ -147,7 +147,9 @@ try {
   await page.getByRole('button', { name: '删除', exact: true }).first().click();
   await page.locator('#modal-actions').getByRole('button', { name: '删除', exact: true }).click();
   await page.waitForFunction(() => document.querySelectorAll('[data-instance]').length === 1);
+  await page.getByLabel('微信更多操作', { exact: true }).click();
   assert.equal(await page.locator('#retained-open').isVisible(), true);
+  await page.keyboard.press('Escape');
   await page.locator('#add-instance').click(); await page.getByRole('heading', { name: '保留的数据', exact: true }).waitFor();
   await page.locator('#create-fresh').click();
   assert.equal(await page.locator('input[name=name]').inputValue(), '微信');
@@ -163,7 +165,7 @@ try {
   await page.locator('input[name=name]').fill('办公室'); await page.getByRole('button', { name: '确定', exact: true }).click();
   await page.locator('#modal-error').waitFor({ state: 'visible' }); assert.match(await page.locator('#modal-error').textContent(), /名称已存在/);
   await page.getByRole('button', { name: '取消', exact: true }).click();
-  await page.locator('#retained-open').click();
+  await page.getByLabel('微信更多操作', { exact: true }).click(); await page.locator('#retained-open').click();
   await page.getByRole('button', { name: '恢复使用', exact: true }).click();
   await page.waitForFunction(() => document.querySelectorAll('[data-instance]').length === 2);
   report.checks.push('Rename, keep data on removal, re-add retained instance');
@@ -176,7 +178,7 @@ try {
     const next = space.catalog.map(x => x.id === legacy.id ? { ...x, name: '个人微信' } : x);
     await writeFile(space.file, JSON.stringify(next)); space.catalog = next;
   });
-  await page.reload(); await page.locator('#retained-open').click();
+  await page.reload(); await page.getByLabel('微信更多操作', { exact: true }).click(); await page.locator('#retained-open').click();
   await page.getByRole('button', { name: '恢复使用', exact: true }).click();
   await page.getByRole('heading', { name: '修改名称后恢复', exact: true }).waitFor();
   assert.equal(await page.locator('input[name=name]').inputValue(), '个人微信');
@@ -185,7 +187,7 @@ try {
   // An older page may not know another application has already taken the name.
   const stale = await (await page.request.get(`${base}/api/state`)).json(); stale.instances[0].name = '过去的名称';
   await page.route('**/api/state', route => route.fulfill({ json: stale }));
-  await page.reload(); await page.locator('#retained-open').click();
+  await page.reload(); await page.getByLabel('微信更多操作', { exact: true }).click(); await page.locator('#retained-open').click();
   const rejectedRestore = page.waitForResponse(response => response.url().endsWith(`/instances/${legacy.id}/restore`));
   await page.getByRole('button', { name: '恢复使用', exact: true }).click();
   assert.equal((await rejectedRestore).status(), 409); await page.unroute('**/api/state');
@@ -204,7 +206,7 @@ try {
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `No overflow at ${width}`);
     if (width <= 760) {
       assert.equal(await page.getByRole('button', { name: '启动设置', exact: true }).first().isVisible(), false);
-      assert.equal(await page.locator('#add-instance').isVisible(), false);
+      assert.equal(await page.locator('#add-instance').isVisible(), true); assert.equal(await page.locator('[data-market-action=add]:visible').count(), 1);
       let starts = 0; const listener = request => { if (/\/start$|\/desktop$/.test(new URL(request.url()).pathname)) starts++; }; page.on('request', listener);
       assert.equal(await page.locator('#mobile-instances').isVisible(), true);
       assert.equal(await page.locator('[data-mobile-instance]').count(), 2);
@@ -219,7 +221,7 @@ try {
   const mobileContext = await browser.newContext({ viewport: { width: 844, height: 390 }, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148' });
   const mobilePage = await mobileContext.newPage(); await mobilePage.goto(`${base}/?dev=${app.devKey}`);
   await mobilePage.waitForFunction(() => document.querySelectorAll('[data-mobile-instance]').length === 2);
-  await mobilePage.locator('#mobile-instances').waitFor(); assert.equal(await mobilePage.locator('#add-instance').isVisible(), false);
+  await mobilePage.locator('#mobile-instances').waitFor(); assert.equal(await mobilePage.locator('#add-instance').isVisible(), true); assert.equal(await mobilePage.locator('[data-market-action=add]:visible').count(), 1);
   assert.equal(await mobilePage.locator('[data-mobile-instance]').count(), 2);
   assert.equal(await mobilePage.locator('[data-mobile-login], [data-mobile-stop]').count(), 2);
   assert.equal(await mobilePage.locator('#desktop-view').isVisible(), false);
@@ -237,13 +239,13 @@ try {
   report.checks.push('Phone desktop request shows only PC controls, and returning to phone width restores the mobile view');
   await page.setViewportSize({ width: 1440, height: 960 });
   const homeBefore = [...(await app.users.get('development')).instances.values()][0].home;
-  await page.locator('#uninstall').click();
+  await page.getByLabel('微信更多操作', { exact: true }).click(); await page.locator('#uninstall').click();
   assert.equal(await page.locator('input[name=deleteData][value=no]').isChecked(), true);
   await page.screenshot({ path: path.join(output, 'screenshots/uninstall.png') });
   await page.getByRole('button', { name: '卸载', exact: true }).click(); await page.locator('#modal').waitFor({ state: 'hidden' });
   await page.locator('#download').waitFor(); assert.equal(await page.locator('[data-instance]').count(), 2);
   assert.equal(await page.locator('[data-action=open]').first().isDisabled(), true);
-  await page.locator('#download').click(); await page.locator('#uninstall').waitFor();
+  await page.locator('#download').click(); await page.locator('#package-status').filter({ hasText: '已安装' }).waitFor(); await page.getByLabel('微信更多操作', { exact: true }).click(); await page.locator('#uninstall').waitFor(); await page.keyboard.press('Escape');
   assert.equal([...(await app.users.get('development')).instances.values()][0].home, homeBefore);
   const deletingName = await page.locator('[data-instance] h3').first().innerText();
   await page.locator('.app-menu summary').first().click(); await page.getByRole('button', { name: '删除', exact: true }).click();
@@ -254,7 +256,7 @@ try {
   await page.locator('input[name=confirmName]').fill(`确认删除${deletingName}`);
   await page.locator('#modal-actions button[type=submit]').click(); await page.locator('#modal').waitFor({ state: 'hidden' });
   assert.equal(await page.locator('[data-instance]').count(), 1);
-  await page.locator('#uninstall').click(); await page.locator('input[name=deleteData][value=yes]').check();
+  await page.getByLabel('微信更多操作', { exact: true }).click(); await page.locator('#uninstall').click(); await page.locator('input[name=deleteData][value=yes]').check();
   await page.locator('input[name=confirmName]').fill('微信'); await page.locator('#modal-actions button[type=submit]').click();
   await page.locator('#modal-error').waitFor({ state: 'visible' });
   await page.locator('input[name=confirmName]').fill('确认删除微信'); await page.locator('#modal-actions button[type=submit]').click();

@@ -280,12 +280,16 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
         }
         if (installRoute === '/api/install/nas') { if (host !== 'fnos') throw new AppError('请从本机上传安装包', 409); return send(res, 202, library.importNas(nasFiles, user.uid, data.path)); }
         if (route === '/api/instances') return send(res, 201, await space.add(data.name, data.appId));
-        const match = /^\/api\/instances\/([a-f0-9-]{36})\/(start|stop|rename|settings|delete|restore|desktop|show|login|recheck|clipboard|files)$/.exec(route);
+        const match = /^\/api\/instances\/([a-f0-9-]{36})\/(start|stop|rename|settings|delete|restore|desktop|show|login|recheck|clipboard|files|window-close)$/.exec(route);
         if (!match) throw new AppError('页面不存在', 404);
         const [, id, action] = match;
         if (action === 'restore') return send(res, 200, await space.restore(id, data.name));
         if (action === 'delete') return send(res, 200, await space.remove(id, data));
         const item = space.get(id);
+        if (action === 'window-close') {
+          if (!item.runtime.closeControl || item.meta.appId !== 'wechat') throw new AppError('当前应用不支持此操作', 409);
+          return send(res, 200, data.action === 'preference' ? await item.runtime.closeControl.preference(data.mode) : await item.runtime.closeControl.resolve(data.requestId, data.choice, data.remember ?? false));
+        }
         if (action === 'files') {
           const chooser = item.runtime.fileChooser;
           if (data.action === 'state') return send(res, 200, { available: !!chooser && item.runtime.status === 'running', ...(chooser?.state(data.client) || { request: null }) });

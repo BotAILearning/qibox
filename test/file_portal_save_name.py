@@ -24,3 +24,8 @@ class SaveNameTest(unittest.TestCase):
         for raw in [b'/private/name.txt', b'/private/bad\0name.txt\0', b'/private/\xff\0', b'../name.txt\0', b'/private/..\0', b'/\0', b'/' + b'x' * 32768 + b'\0']:
             with self.subTest(raw_length=len(raw)):
                 self.assertEqual(portal.save_filename('', raw, 'png'), '微信图片.png')
+
+    def test_unknown_document_is_not_renamed_to_png(self):
+        self.assertEqual(portal.save_filename('', b'', None, '保存文件'), '微信文件')
+        self.assertEqual(portal.save_filename('', b'/received/report.pdf\0', None), 'report.pdf')
+        self.assertEqual(portal.save_filename('', b'', None, '保存图片'), '微信图片.png')
