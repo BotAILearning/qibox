@@ -330,7 +330,7 @@ class Inspector:
 
     def window_controls(self):
         """Read the real CSD close button, never infer a hitbox from pixels."""
-        if '微信' not in self._mapped_frames():
+        if '微信' not in self._mapped_frames() or not self.active_main_window():
             return None
         apps = [x for x in self.children(self.desktop) if self.call('get_process_id', c.c_uint, x) == self.pid]
         if len(apps) != 1 or self.string('get_name', apps[0]) != 'wechat':
@@ -341,9 +341,14 @@ class Inspector:
             return None
         frame = frames[0]
         matches = []
-        # The actual WeChat CSD toolbar is a direct frame child. Do not walk
-        # chat contents, menus, detached chats or any account controls.
-        for toolbar in self.children(frame):
+        # Qt wraps the CSD toolbar in one outer filler on current WeChat.
+        # Only inspect that shell, never descend into chat contents.
+        shell = list(self.children(frame))
+        toolbars = [x for x in shell if self.string('get_role_name', x) == 'tool bar']
+        for wrapper in shell:
+            if self.string('get_role_name', wrapper) == 'filler':
+                toolbars.extend(x for x in self.children(wrapper) if self.string('get_role_name', x) == 'tool bar')
+        for toolbar in toolbars:
             if self.string('get_role_name', toolbar) != 'tool bar' or not self.visible(toolbar):
                 continue
             tb = self.bounds(toolbar)
@@ -355,6 +360,14 @@ class Inspector:
                     if rect and rect[2] > 0 and rect[3] > 0 and rect[0] >= tb[0] and rect[1] >= tb[1] and rect[0]+rect[2] <= tb[0]+tb[2] and rect[1]+rect[3] <= tb[1]+tb[3]:
                         matches.append(rect)
         return {'close': matches[0]} if len(matches) == 1 else None
+
+    def active_main_window(self):
+        with windows.x11_connection() as (xlib, display, errors):
+            root = xlib.XDefaultRootWindow(display)
+            atom = lambda name: xlib.XInternAtom(display, name.encode('ascii'), 1)
+            active = windows.x11_property32(xlib, display, root, atom('_NET_ACTIVE_WINDOW'), atom('WINDOW'))
+            owner = windows.x11_property32(xlib, display, active, atom('_NET_WM_PID'), atom('CARDINAL'))
+            return owner == self.pid and windows.x11_window_title(xlib, display, active) == '微信' and not errors
 
     def inspect_session(self, login_page=False, scheduled_login=False):
         apps = [x for x in self.children(self.desktop)
