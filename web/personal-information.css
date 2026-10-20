@@ -34,11 +34,11 @@
 #ai-panel .ai-personal-form, #ai-panel .qbx-settings-page .ai-card { background:var(--qi-surface);color:var(--qi-text); }
 #ai-panel .ai-personal-form textarea, #ai-panel .qbx-settings-page input[type=number], #ai-panel .qbx-settings-page select { background:var(--qi-surface);color:var(--qi-text);border-color:var(--qi-border-strong); }
 #ai-panel .ai-personal-form .ai-help, #ai-panel .qbx-settings-page .ai-help { color:var(--qi-text-secondary); }
-#ai-panel .ai-personal-form button.primary, #ai-panel .qbx-settings-page button.primary { background:var(--qi-primary);color:var(--qi-on-primary); }
+#ai-panel .ai-personal-form button.primary, #ai-panel .qbx-settings-page button.primary { background:var(--qi-action);color:var(--qi-on-action); }
 #ai-panel:has(.ai-personal-form,.qbx-settings-page,.ai-object-timing,.ai-reply-rhythm) #ai-content, #ai-panel:has(.ai-personal-form,.qbx-settings-page,.ai-object-timing,.ai-reply-rhythm) .ai-page-body { background:var(--qi-bg); }
 #ai-panel .ai-personal-form .ai-personal-more { background:var(--qi-surface);border-color:var(--qi-border); }
-#ai-panel .ai-personal-form button.primary:hover:not(:disabled), #ai-panel .qbx-settings-page button.primary:hover:not(:disabled) { background:var(--qi-primary-hover); }
-#ai-panel .ai-personal-form button.primary:active:not(:disabled), #ai-panel .qbx-settings-page button.primary:active:not(:disabled) { background:var(--qi-primary-active); }
+#ai-panel .ai-personal-form button.primary:hover:not(:disabled), #ai-panel .qbx-settings-page button.primary:hover:not(:disabled) { background:var(--qi-action-hover); }
+#ai-panel .ai-personal-form button.primary:active:not(:disabled), #ai-panel .qbx-settings-page button.primary:active:not(:disabled) { background:var(--qi-action-active); }
 #ai-panel .ai-personal-form button:disabled, #ai-panel .qbx-settings-page button:disabled { background:var(--qi-disabled,#efedf2);color:var(--qi-disabled-text,#847b90);opacity:1; }
 #ai-panel[aria-busy=true]:has(.ai-personal-form,.qbx-settings-page,.ai-object-timing,.ai-reply-rhythm) #ai-content { opacity:1; }
 #ai-panel:has(.ai-personal-form,.qbx-settings-page,.ai-object-timing,.ai-reply-rhythm) { --qbx-ink:var(--qi-text);--qbx-muted:var(--qi-text-secondary);--qbx-accent:var(--qi-primary);--qbx-line:var(--qi-border);--qbx-surface:var(--qi-surface);--qbx-canvas:var(--qi-bg);--qbx-module-radius:12px;--qbx-radius:12px;--qbx-module-padding:24px; }

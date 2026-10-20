@@ -52,9 +52,9 @@ function editorCard(state, draft, presets) {
   <div class="ai-provider-footer"><p id="ai-provider-status" class="ai-help">${esc(draft.status || '填写完成后可测试连接；保存模型后到功能分配中点击“保存”生效')}</p><button type="button" class="secondary" data-ai-action="test">${icon('link')}测试连接</button><button class="primary" type="submit">${icon('check')}保存模型</button></div></form>`;
 }
 function assignmentCard(state, draft, models, assignments) {
-  return `<section class="ai-card ai-assignment-card">
-  <div class="ai-card-heading"><h4>功能分配</h4><span class="ai-help">按功能选择使用的模型，保存后生效</span></div>
-  <div class="ai-assignment-rows">${features.map(f => {
+  return `<section class="ai-assignment-card qi-settings-group"><h3>功能分配</h3>
+  <p class="ai-help">按功能选择使用的模型，保存后生效</p>
+  <div class="ai-assignment-rows qi-settings-panel">${features.map(f => {
     const m = assignedModel(models, assignments, f.key);
     return `<div class="ai-assignment-row">
       <div class="ai-assignment-label"><strong>${f.label}</strong><small>${f.hint}</small></div>
@@ -76,6 +76,6 @@ export function providerPage(state, draft, { back = '' } = {}) {
       <p class="ai-help">API Key 加密保存；删除模型不影响其他已保存的模型。</p>`}</aside>`;
   const assignmentsCard = assignmentCard(state, draft, models, assignments);
   const configured = models.length > 0 && !editing;
-  return `<div class="ai-page-heading ai-provider-page-heading"><div>${editing ? '' : back}<h3>模型设置</h3><p>为聊天类和学习分析类分别选择模型；第一个添加的模型默认应用于全部功能。</p></div>${badge}</div>
-  <div class="ai-model-workspace${configured ? ' ai-model-configured' : ''}">${configured ? assignmentsCard + maintenance : maintenance + assignmentsCard}</div>`;
+  return `<div class="ai-page-heading ai-provider-page-heading"><div>${editing ? '' : back}<p>为聊天类和学习分析类分别选择模型；第一个添加的模型默认应用于全部功能。</p></div>${badge}</div>
+  <div class="ai-model-workspace qi-settings-form${configured ? ' ai-model-configured' : ''}">${configured ? assignmentsCard + maintenance : maintenance + assignmentsCard}</div>`;
 }

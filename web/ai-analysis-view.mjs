@@ -144,7 +144,7 @@ export function analysisPage(state, draft, result, search = '', report = null, r
   const chosenRows = chosen.map((c, index) => `<div class="ai-analysis-picked-row">${contactPickerAvatar(c, index)}<span>${contactName(c)}</span></div>`).join('');
   const rangeButtons = [['all','全部'],['day','近一天'],['week','近一周'],['month','近一月']].map(([id,label]) => `<button type="button" data-ai-analysis-range="${id}" aria-pressed="${rangeMode === id}">${label}</button>`).join('');
   return `<form id="ai-analysis-form" class="ai-analysis-setup qbx-workspace">
-    <section class="ai-analysis-request qbx-surface" aria-labelledby="ai-analysis-create-title">
+    <section class="ai-analysis-request" aria-labelledby="ai-analysis-create-title">
       <div class="ai-analysis-create-heading">
         <div class="ai-analysis-intro qbx-section-heading"><h4 id="ai-analysis-create-title">创建分析</h4><p>选择联系人和分析方向，或写下你关心的问题。</p></div>
       </div>

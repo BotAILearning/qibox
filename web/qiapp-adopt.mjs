@@ -20,6 +20,12 @@ export function adoptQiUI(root) {
   });
   visit(fields, node => node.classList.add('qi-input'));
   visit('label.field, label.ai-field', node => node.classList.add('qi-field'));
+  visit('label.ai-check', node => node.classList.add('qi-check'));
+  visit('.app-menu > div', node => node.classList.add('qi-floating__content', 'qi-menu'));
+  visit('.app-menu button', node => { node.classList.add('qi-btn'); node.dataset.variant = 'ghost'; node.setAttribute('data-block', ''); });
+  visit('button[data-ai-analysis-range], button[data-ai-analysis-preset], button[data-ai-analysis-other], button[data-ai-record-source], button[data-ai-record-kind], button[data-ai-object-section], button[data-ai-memory-category]', node => {
+    node.classList.add('qi-btn'); node.dataset.variant = 'ghost';
+  });
   visit(surfaces, node => node.classList.add('qi-card'));
   visit(modules, node => node.classList.add('qbx-module'));
   visit('input[role=switch]', node => node.classList.add('qi-switch'));

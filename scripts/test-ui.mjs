@@ -7,6 +7,7 @@ import { createApplication } from '../server/index.mjs';
 import { root, playwrightPath } from './tooling.mjs';
 import { temp, cleanup, runtimeFactory, extractor, fetcher, packageBytes, packageSha256 } from '../test/fixtures.mjs';
 const { chromium } = createRequire(import.meta.url)(playwrightPath);
+const output = path.resolve(root, process.argv[2] || 'reports');
 const dataRoot = await temp();
 const downloadBytes = Buffer.alloc(4 * 1024 ** 2); packageBytes.copy(downloadBytes);
 let downloadStream, downloads = 0, extractions = 0, preparations = 0, reportExtraction;
@@ -40,22 +41,22 @@ try {
   await page.waitForFunction(() => document.querySelector('.brand img').naturalWidth === 512);
   assert.equal(await page.getByRole('button', { name: '下载安装微信', exact: true }).isVisible(), true);
   assert.equal(await page.getByRole('button', { name: '导入安装包', exact: true }).isVisible(), true);
-  await mkdir(path.join(root, 'reports/screenshots'), { recursive: true });
+  await mkdir(path.join(output, 'screenshots'), { recursive: true });
   assert.match(await page.locator('#install-format').textContent(), /x86_64.*\.deb/);
   for (const width of [320, 390, 760, 1024, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     assert.equal(await page.locator('#install-format').isVisible(), true);
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Import format fits at ${width}`);
-    if (width === 390) await page.screenshot({ path: path.join(root, 'reports/screenshots/mobile-store.png'), fullPage: true });
+    if (width === 390) await page.screenshot({ path: path.join(output, 'screenshots/mobile-store.png'), fullPage: true });
   }
   await page.setViewportSize({ width: 1440, height: 960 });
-  await page.screenshot({ path: path.join(root, 'reports/screenshots/desktop-store.png'), fullPage: true });
+  await page.screenshot({ path: path.join(output, 'screenshots/desktop-store.png'), fullPage: true });
   report.checks.push('Desktop: independent brand, official download and package import entries; x86_64 .deb hint visible at all five desktop/mobile widths');
   await page.getByRole('button', { name: '下载安装微信', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('#job-percent').textContent === '50%' && document.querySelector('#job-detail').textContent.includes('/s'));
   assert.match(await page.locator('#job-detail').textContent(), /2\.0 MB \/ 4\.0 MB/);
   assert.equal(await page.locator('#job-progress').getAttribute('value'), '50');
-  await page.screenshot({ path: path.join(root, 'reports/screenshots/download-progress.png'), fullPage: true });
+  await page.screenshot({ path: path.join(output, 'screenshots/download-progress.png'), fullPage: true });
   await page.waitForFunction(() => document.querySelector('#job-detail').textContent.endsWith(' · 0 B/s'));
   assert.equal(await page.locator('#job-percent').textContent(), '50%');
   downloadStream.enqueue(downloadBytes.subarray(2 * 1024 ** 2, 3 * 1024 ** 2));
@@ -65,7 +66,7 @@ try {
   assert.equal(await page.locator('#job-progress').getAttribute('value'), null);
   assert.equal(await page.locator('#job-percent').textContent(), ''); assert.equal(await page.locator('#job-detail').textContent(), '');
   assert.equal(await page.locator('#job-progress').evaluate(element => getComputedStyle(element).animationName), 'install-activity');
-  await page.screenshot({ path: path.join(root, 'reports/screenshots/install-preparing.png'), fullPage: true });
+  await page.screenshot({ path: path.join(output, 'screenshots/install-preparing.png'), fullPage: true });
   preparation.resolve();
   await page.waitForFunction(() => document.querySelector('#job-message').textContent === '正在检查安装包');
   assert.equal(await page.locator('#job-progress').getAttribute('value'), null);
@@ -73,10 +74,10 @@ try {
   await page.waitForFunction(() => document.querySelector('#job-percent').textContent === '25%');
   assert.equal(await page.locator('#job-message').textContent(), '正在解压微信文件');
   assert.equal(await page.locator('#job-detail').textContent(), '2.0 MB / 8.0 MB');
-  await page.screenshot({ path: path.join(root, 'reports/screenshots/install-extracting.png'), fullPage: true });
+  await page.screenshot({ path: path.join(output, 'screenshots/install-extracting.png'), fullPage: true });
   await page.setViewportSize({ width: 320, height: 900 });
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
-  await page.screenshot({ path: path.join(root, 'reports/screenshots/mobile-progress.png'), fullPage: true });
+  await page.screenshot({ path: path.join(output, 'screenshots/mobile-progress.png'), fullPage: true });
   await page.setViewportSize({ width: 1440, height: 960 });
   reportExtraction({ stage: 'extracting', bytes: 8 * 1024 ** 2, total: 8 * 1024 ** 2 });
   await page.waitForFunction(() => document.querySelector('#job-percent').textContent === '100%');
@@ -86,7 +87,7 @@ try {
   catch (error) {
     report.installDiagnostic = await page.evaluate(() => ({ message: document.querySelector('#job-message')?.textContent || '',
       progress: document.querySelector('#job-percent')?.textContent || '', body: document.body.innerText.slice(-600) }));
-    await page.screenshot({ path: path.join(root, 'reports/screenshots/install-timeout.png'), fullPage: true });
+    await page.screenshot({ path: path.join(output, 'screenshots/install-timeout.png'), fullPage: true });
     throw error;
   }
   assert.equal(await page.locator('#install-progress').isVisible(), false);
@@ -102,7 +103,7 @@ try {
   await page.locator('#modal').waitFor({ state: 'hidden' });
   await page.locator('.app-menu summary').first().click(); await page.getByRole('button', { name: '启动设置', exact: true }).first().click();
   assert.equal(await page.locator('input[value=continuous]').isChecked(), true);
-  await page.screenshot({ path: path.join(root, 'reports/screenshots/startup-settings.png') });
+  await page.screenshot({ path: path.join(output, 'screenshots/startup-settings.png') });
   await page.getByRole('button', { name: '取消', exact: true }).click();
   await page.locator('.app-menu summary').first().click(); await page.getByRole('button', { name: '启动设置', exact: true }).first().click();
   assert.equal(await page.locator('input[name=autoLoginReady]').count(), 0);
@@ -118,7 +119,7 @@ try {
   await page.locator('.app-menu summary').first().click(); await page.getByRole('button', { name: '启动设置', exact: true }).first().click();
   assert.equal(await page.locator('input[value=idle]').isChecked(), true);
   assert.equal(await page.locator('input[name=startTime]').inputValue(), '23:00');
-  await page.screenshot({ path: path.join(root, 'reports/screenshots/idle-settings.png') });
+  await page.screenshot({ path: path.join(output, 'screenshots/idle-settings.png') });
   detectedInstance.runtime.inspectAutoLogin = () => { throw new Error('Must not inspect automatic-login eligibility'); };
   await detectedInstance.scheduler.tick();
   await page.waitForResponse(response => response.url().endsWith('/api/state'));
@@ -141,7 +142,7 @@ try {
   assert.equal(await page.getByRole('button', { name: '启动设置', exact: true }).first().isVisible(), false);
   report.checks.push('Desktop is the main area on the left and market is the right sidebar; add/restore/install stay in the market; desktop uses named icon buttons and compact menus');
   await page.locator('#toast').waitFor({ state: 'hidden' });
-  await page.screenshot({ path: path.join(root, 'reports/screenshots/desktop-installed.png'), fullPage: true });
+  await page.screenshot({ path: path.join(output, 'screenshots/desktop-installed.png'), fullPage: true });
   await page.locator('.app-menu summary').first().click();
   await page.getByRole('button', { name: '删除', exact: true }).first().click();
   await page.locator('#modal-actions').getByRole('button', { name: '删除', exact: true }).click();
@@ -156,7 +157,7 @@ try {
     assert.match(await page.locator('#modal-error').textContent(), /名称已存在/);
     assert.equal(await page.locator('[data-instance]').count(), 1);
   }
-  await page.screenshot({ path: path.join(root, 'reports/screenshots/duplicate-name.png') });
+  await page.screenshot({ path: path.join(output, 'screenshots/duplicate-name.png') });
   await page.getByRole('button', { name: '取消', exact: true }).click();
   await page.locator('.app-menu summary').first().click(); await page.getByRole('button', { name: '重命名', exact: true }).first().click();
   await page.locator('input[name=name]').fill('办公室'); await page.getByRole('button', { name: '确定', exact: true }).click();
@@ -191,7 +192,7 @@ try {
   await page.getByRole('heading', { name: '修改名称后恢复', exact: true }).waitFor();
   await page.getByRole('button', { name: '恢复使用', exact: true }).click();
   await page.locator('#modal-error').waitFor({ state: 'visible' }); assert.match(await page.locator('#modal-error').textContent(), /名称已存在/);
-  await page.screenshot({ path: path.join(root, 'reports/screenshots/restore-name-conflict.png') });
+  await page.screenshot({ path: path.join(output, 'screenshots/restore-name-conflict.png') });
   await page.locator('input[name=name]').fill('办公室'); await page.getByRole('button', { name: '恢复使用', exact: true }).click();
   await page.locator('#modal').waitFor({ state: 'hidden' }); await page.waitForFunction(() => document.querySelectorAll('[data-instance]').length === 2);
   assert.equal(space.get(legacy.id).home, originalHome); assert.equal(space.get(legacy.id).meta.name, '办公室');
@@ -209,9 +210,9 @@ try {
       assert.equal(await page.locator('[data-mobile-instance]').count(), 2);
       assert.equal(await page.locator('[data-mobile-login], [data-mobile-stop]').count(), 2);
       assert.equal(await page.locator('#desktop-view').isVisible(), false); assert.equal(starts, 0);
-      if (width === 390) await page.screenshot({ path: path.join(root, 'reports/screenshots/mobile-instances.png'), fullPage: true });
+      if (width === 390) await page.screenshot({ path: path.join(output, 'screenshots/mobile-instances.png'), fullPage: true });
       page.off('request', listener);
-      if (width === 390) await page.screenshot({ path: path.join(root, 'reports/screenshots/mobile-installed.png'), fullPage: true });
+      if (width === 390) await page.screenshot({ path: path.join(output, 'screenshots/mobile-installed.png'), fullPage: true });
     }
   }
   report.checks.push('320/390/760/1024/1440 layouts do not overflow; mobile instance controls render without opening a desktop session');
@@ -229,7 +230,7 @@ try {
   assert.equal(await mobilePage.locator('#mobile-instances').isVisible(), false);
   assert.equal(await mobilePage.locator('#mobile-ai').isVisible(), false);
   assert.equal(await mobilePage.locator('#add-instance').isVisible(), true);
-  await mobilePage.screenshot({ path: path.join(root, 'reports/screenshots/phone-desktop-request.png'), fullPage: true });
+  await mobilePage.screenshot({ path: path.join(output, 'screenshots/phone-desktop-request.png'), fullPage: true });
   await mobilePage.setViewportSize({ width: 844, height: 390 });
   await mobilePage.waitForFunction(() => document.documentElement.classList.contains('mobile'));
   assert.equal(await mobilePage.locator('#mobile-instances').isVisible(), true);
@@ -238,7 +239,7 @@ try {
   const homeBefore = [...(await app.users.get('development')).instances.values()][0].home;
   await page.locator('#uninstall').click();
   assert.equal(await page.locator('input[name=deleteData][value=no]').isChecked(), true);
-  await page.screenshot({ path: path.join(root, 'reports/screenshots/uninstall.png') });
+  await page.screenshot({ path: path.join(output, 'screenshots/uninstall.png') });
   await page.getByRole('button', { name: '卸载', exact: true }).click(); await page.locator('#modal').waitFor({ state: 'hidden' });
   await page.locator('#download').waitFor(); assert.equal(await page.locator('[data-instance]').count(), 2);
   assert.equal(await page.locator('[data-action=open]').first().isDisabled(), true);
@@ -249,7 +250,7 @@ try {
   await page.locator('input[name=deleteData][value=yes]').check();
   await page.locator('input[name=confirmName]').fill(deletingName);
   await page.locator('#modal-actions button[type=submit]').click(); await page.locator('#modal-error').waitFor({ state: 'visible' });
-  await page.screenshot({ path: path.join(root, 'reports/screenshots/delete-confirm.png') });
+  await page.screenshot({ path: path.join(output, 'screenshots/delete-confirm.png') });
   await page.locator('input[name=confirmName]').fill(`确认删除${deletingName}`);
   await page.locator('#modal-actions button[type=submit]').click(); await page.locator('#modal').waitFor({ state: 'hidden' });
   assert.equal(await page.locator('[data-instance]').count(), 1);
@@ -266,5 +267,5 @@ finally {
   preparation.resolve(); extraction.resolve();
   if (downloadStream) { try { downloadStream.error(new Error('Test closed')); } catch {} }
   await browser?.close(); await app.close(); await cleanup(dataRoot); report.finishedAt = new Date().toISOString();
-  await mkdir(path.join(root, 'reports'), { recursive: true }); await writeFile(path.join(root, 'reports/ui-tests.json'), JSON.stringify(report, null, 2) + '\n'); console.log(JSON.stringify(report, null, 2));
+  await mkdir(output, { recursive: true }); await writeFile(path.join(output, 'ui-tests.json'), JSON.stringify(report, null, 2) + '\n'); console.log(JSON.stringify(report, null, 2));
 }

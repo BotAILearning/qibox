@@ -31,6 +31,7 @@ try {
  await page.setViewportSize({width:1440,height:1000});await page.locator('[data-action=open]').first().click();await page.locator('#ai-open').click();await page.getByRole('button',{name:'陈小雨',exact:false}).waitFor();report.checks.push('Desktop still opens the full AI workspace and its correct contacts.');
  await page.setViewportSize({width:390,height:844});assert.equal(await page.locator('#ai-panel').isVisible(),true);
  for(const [key,title] of [['settings','系统设置'],['proactive','主动聊天'],['activity','执行记录'],['analysis','分析报告'],['overview','自动回复']]){
+  const menu=page.locator('.qibox-workspace-menu');if(await menu.getAttribute('open')===null)await menu.locator('summary').click();
   await page.locator(`[data-ai-nav=${key}]`).first().click();assert.equal(await page.locator('#ai-title').textContent(),title);
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
   await page.screenshot({path:path.join(out,`workspace-${key}-390.png`)});

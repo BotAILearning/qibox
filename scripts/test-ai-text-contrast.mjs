@@ -8,7 +8,8 @@ import { proactiveFixture } from './proactive-ui-fixture.mjs';
 const { chromium } = createRequire(import.meta.url)(playwrightPath);
 const fixture = await proactiveFixture(), { ai, bridge } = fixture;
 const output = path.resolve(root, process.env.QIBOX_TEST_OUTPUT || 'reports/ai-text-contrast');
-const report = { startedAt: new Date().toISOString(), syntheticRecords: true, realWechatSends: 0, pages: [], boundary: 'Rendered opaque text/background combinations; disabled controls excluded. Images, translucent layers and full WCAG conformance require separate review.' };
+const theme = process.env.QIBOX_TEST_THEME || 'light';
+const report = { startedAt: new Date().toISOString(), theme, syntheticRecords: true, realWechatSends: 0, pages: [], boundary: 'Rendered opaque text/background combinations; disabled controls excluded. Images, translucent layers and full WCAG conformance require separate review.' };
 let browser;
 try {
   await mkdir(output, { recursive: true });
@@ -21,7 +22,7 @@ try {
   ai.data.analysisReports.push({id:'11111111-1111-4111-8111-111111111111',account:ai.data.account,contact:p.contact,label:p.label,createdAt:Date.now(),count:1,report:'合成分析报告，仅用于可读性检查。'});
   await ai.save();
   browser = await chromium.launch({ channel: 'msedge', headless: true });
-  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, colorScheme: theme });
   await context.grantPermissions(['local-network-access'], { origin: new URL(fixture.url).origin });
   const page = await context.newPage();
   await page.goto(fixture.url);

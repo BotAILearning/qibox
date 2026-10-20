@@ -1,5 +1,4 @@
-/* QIAPP 2026-10-18 settings composition; shared primitives from @qiapp/ui 0.1.2. */
-#ai-panel .qi-settings-form { box-sizing: border-box; width: min(100%, 760px); max-width: 760px; margin-inline: auto; padding: 24px; gap: 20px; }
+/* Retained business timing structure; current shared primitives are pinned in vendor/qiapp-ui/source-lock.json. */
 #ai-panel .ai-reference-general.ai-card.qi-settings-form { padding: 24px; }
 .qiapp-product #ai-panel .ai-reference-settings.qbx-settings-page { box-sizing: border-box; width: min(100%, 760px); max-width: 760px; margin-inline: auto; gap: 20px; }
 #ai-panel .ai-reference-general { display: grid; gap: 20px; }
@@ -101,9 +100,7 @@
 :root[data-qi-theme=dark] #ai-panel:has(.ai-object-timing,.ai-reply-rhythm) .ai-object-sidebar .ai-contact-picker-types button[aria-pressed=true] { background: var(--qi-surface); color: var(--qi-text); }
 
 @media (max-width: 767px) {
-  #ai-panel .qi-settings-form { padding: 16px; }
   .qiapp-product #ai-panel form.ai-reference-general.qi-settings-form.qbx-settings-group { padding: 16px; }
-  .qiapp-product #ai-panel .ai-reference-settings.qbx-settings-page > .qbx-settings-config { padding-inline: 16px; }
   #ai-panel .ai-time-range { padding: 12px; }
   #ai-panel .ai-reply-rhythm > summary { align-items: flex-start; gap: 2px 8px; }
   #ai-panel .ai-reply-rhythm > summary > span { flex-basis: 100%; }

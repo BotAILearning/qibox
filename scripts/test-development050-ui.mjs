@@ -247,13 +247,14 @@ try {
   await page.locator('#toast').waitFor({ state: 'hidden' });
   await page.screenshot({ path: path.join(output, 'style-autosize.png') });
   await page.setViewportSize({ width: 768, height: 900 });
-  assert.equal(await page.locator('.ai-main-tabs').evaluate(node => Math.round(node.getBoundingClientRect().width)), 768);
+  const narrowNav=await page.locator('.qibox-workspace-menu').evaluate(node=>({width:node.getBoundingClientRect().width,contentLeft:document.querySelector('#ai-content').getBoundingClientRect().left}));
+  assert.equal(narrowNav.width,248);assert.equal(narrowNav.contentLeft,narrowNav.width,'tablet sidebar and content must not overlap');
   await page.locator('#ai-object-form .ai-object-save').scrollIntoViewIfNeeded();
   await page.screenshot({ path: path.join(output, 'narrow-style-actions.png') });
   const longStyleHeight = await styleSummary.evaluate(node => node.getBoundingClientRect().height);
   await styleSummary.fill('简短风格');
   assert.ok(await styleSummary.evaluate(node => node.getBoundingClientRect().height) < longStyleHeight, '文本缩短后输入框收回');
-  report.checks.push('Compact desktop navigation spans the narrow screen below the content');
+  report.checks.push('640px and wider use a 248px side menu without covering the content; narrow mobile uses the top menu');
   for (const width of [768,800,860]) {
     await page.setViewportSize({width,height:844});
     for (const section of ['reply','style','memory']) {
@@ -261,11 +262,12 @@ try {
       assert.ok(await page.locator('#ai-content').evaluate(el=>el.scrollWidth<=el.clientWidth+1),width+' '+section+' overflow');
       await page.screenshot({path:path.join(output,'phone-'+width+'-'+section+'.png')});
     }
-    await page.locator('#ai-mobile-back').click();
+    if(await page.locator('#ai-mobile-back').isVisible())await page.locator('#ai-mobile-back').click();else await page.locator('[data-ai-object-back]').click();
+    assert.ok(await page.locator('.ai-object-sidebar').isVisible(),'return restores the object list at narrow container widths');
     await page.locator('[data-ai-nav=learning]').click();
     await page.screenshot({path:path.join(output,'phone-'+width+'-learning.png')});
     assert.ok(await page.locator('#ai-content').evaluate(el=>el.scrollWidth<=el.clientWidth+1));
-    await page.locator('#ai-mobile-back').click();
+    if(await page.locator('#ai-mobile-back').isVisible())await page.locator('#ai-mobile-back').click();else await page.locator('.ai-reference-learning-top [data-ai-nav=overview]').click();
     await page.locator('.ai-main-tabs [data-ai-nav=settings]').click();
     await page.locator('[data-ai-nav=default-style]').click();
     await page.screenshot({path:path.join(output,'phone-'+width+'-default-style.png')});

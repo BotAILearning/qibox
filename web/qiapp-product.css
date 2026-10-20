@@ -61,7 +61,7 @@ html.mobile .qiapp-product button.mobile-only { display: inline-flex; }
 .qiapp-product .modal-heading { margin-bottom: var(--qi-space-4); }
 .qiapp-product .modal-heading h2 { color: var(--qi-text); font-size: var(--qi-font-h3); }
 .qiapp-product .modal-actions { margin-top: var(--qi-space-6); }
-.qiapp-product #modal-actions button.primary { background: var(--qi-primary); color: var(--qi-on-primary); }
+.qiapp-product #modal-actions button.primary { background: var(--qi-action); color: var(--qi-on-action); }
 .qiapp-product #modal-actions button.secondary { border: 1px solid var(--qi-border); background: var(--qi-surface); color: var(--qi-text); }
 .qiapp-product #modal-body .field { margin-top: var(--qi-space-4); }
 .qiapp-product #modal-body .field>input { margin-top: var(--qi-space-2); }

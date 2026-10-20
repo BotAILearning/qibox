@@ -1,6 +1,100 @@
 /* Product structure for the reviewed 2026-10-20 / @qiapp/ui0.3.0 standard.
    Shared controls own their dimensions, states, action palette and shapes. */
+.qiapp-product { --qbx-module-radius: var(--qi-radius-panel); }
+.qiapp-product .content { max-width: var(--qi-workspace-max); }
+.qiapp-product .brand { font-size: 18px; line-height: 24px; }
+.qiapp-product #mobile-ai > h2 { margin: 0 0 12px; font-size: var(--qi-font-h4); line-height: 24px; }
+.qiapp-product .market-panel { padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.qiapp-product #modal-body a { color: var(--qi-primary); text-decoration: underline; text-underline-offset: 2px; }
+.qiapp-product .app-menu > .qi-floating__content { left: auto; right: 0; top: calc(100% + 8px); width: 176px; background: var(--qi-surface); color: var(--qi-text); border-color: var(--qi-border); border-radius: var(--qi-radius-control); box-shadow: var(--qi-shadow-floating); }
+.qiapp-product .app-menu button.danger-link { color: var(--qi-error); }
+.qiapp-product .app-menu > summary { width: 32px; height: 32px; padding: 0; color: var(--qi-text-secondary); background: transparent; border-radius: var(--qi-radius-control); }
+.qiapp-product .app-menu[open] > summary,.qiapp-product .app-menu > summary:hover { background: var(--qi-hover); }
+.qiapp-product #file-transfer { background: var(--qi-overlay); }
+.qiapp-product .file-transfer-card { border-color: var(--qi-border); border-radius: var(--qi-radius-dialog); background: var(--qi-surface); color: var(--qi-text); box-shadow: var(--qi-shadow-modal); }
+.qiapp-product .file-transfer-titles strong { font-size: var(--qi-font-h3); line-height: 28px; }
+.qiapp-product .file-transfer-titles span,.qiapp-product .file-transfer-card p[data-file-destination-help] { color: var(--qi-text-secondary); font-size: var(--qi-font-small); }
+.qiapp-product .file-transfer-card p[data-file-status] { color: var(--qi-info); background: var(--qi-info-soft); border-color: var(--qi-border); border-radius: var(--qi-radius-control); }
+.qiapp-product .file-transfer-icon { background: transparent; color: var(--qi-text-secondary); box-shadow: none; }
+.qiapp-product .file-transfer-icon svg { stroke: currentColor; }
 .qiapp-product #ai-panel { background: var(--qi-bg); color: var(--qi-text); --ai-sidebar: var(--qi-sidebar); }
+.qiapp-product #ai-panel #ai-content { background: var(--qi-bg); }
+.qiapp-product #ai-panel .ai-panel-heading h2 { font-size: var(--qi-font-h3); line-height: 28px; font-weight: 550; }
+.qiapp-product #ai-panel :is(small,time,.ai-help) { font-size: var(--qi-font-small); line-height: 1.6; }
+.qiapp-product #ai-panel .ai-page-body.qi-content { display: block; width: 100%; min-width: 0; padding: 24px 32px; background: transparent; }
+.qiapp-product #ai-panel .ai-page-body.qi-content[data-layout="reading"] { max-width: var(--qi-reading-max); }
+.qiapp-product #ai-panel[data-page="provider"] .ai-panel-heading h2,
+.qiapp-product #ai-panel[data-page="personal-info"] .ai-panel-heading h2,
+.qiapp-product #ai-panel[data-page="global-reply"] .ai-panel-heading h2,
+.qiapp-product #ai-panel[data-page="default-style"] .ai-panel-heading h2 { font-size: var(--qi-font-h2); line-height: 32px; }
+.qiapp-product #ai-panel :is(.ai-model-workspace,.ai-default-style-layout) { display: flex; flex-direction: column; gap: 28px; }
+.qiapp-product #ai-panel .ai-model-workspace { container: qi-settings / inline-size; }
+.qiapp-product #ai-panel :is(.ai-assignment-card,.ai-model-sidebar,.ai-model-editor,.ai-account-form) { width: 100%; max-width: 100%; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.qiapp-product #ai-panel .ai-assignment-card { display: grid; gap: 12px; }
+.qiapp-product #ai-panel .ai-assignment-rows { display: block; }
+.qiapp-product #ai-panel .ai-assignment-label { width: auto; max-width: none; min-width: 0; }
+.qiapp-product #ai-panel .ai-assignment-label small { max-width: none; }
+.qiapp-product #ai-panel .ai-assignment-card > h3 { font-size: var(--qi-font-h4); line-height: 24px; }
+.qiapp-product #ai-panel .ai-assignment-row { display: grid; grid-template-columns: minmax(0,1fr); gap: 12px; padding: 16px 0; border-bottom: 1px solid var(--qi-border); }
+.qiapp-product #ai-panel .ai-assignment-row:last-child { border-bottom: 0; }
+.qiapp-product #ai-panel .ai-assignment-row select { width: 100%; max-width: 360px; }
+.qiapp-product #ai-panel .ai-assignment-row .ai-badge { justify-self: start; }
+.qiapp-product #ai-panel .ai-model-list { padding: 0 16px; border: 1px solid var(--qi-border); border-radius: var(--qi-radius-panel); background: var(--qi-surface); }
+.qiapp-product #ai-panel .ai-model-item { margin: 0; padding: 16px 0; border: 0; border-bottom: 1px solid var(--qi-border); border-radius: 0; background: transparent; box-shadow: none; }
+.qiapp-product #ai-panel .ai-model-item:last-child { border-bottom: 0; }
+.qiapp-product #ai-panel .ai-model-item small { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+.qiapp-product #ai-panel .ai-model-editor .ai-form-grid { display: grid; grid-template-columns: minmax(0,1fr); gap: 16px; }
+.qiapp-product #ai-panel .ai-model-editor [name="timeout"] { max-width: 120px; }
+.qiapp-product #ai-panel .ai-personal-form .ai-personal-fields { padding: 0 16px; }
+.qiapp-product #ai-panel .ai-personal-form .ai-personal-card:last-child { border-bottom: 0; }
+.qiapp-product #ai-panel .ai-personal-form .ai-personal-intro { padding: 0; margin-bottom: 24px; }
+.qiapp-product #ai-panel .ai-personal-form .ai-personal-editor { padding: 0 0 16px; }
+.qiapp-product #ai-panel .ai-personal-form .ai-personal-save { position: static; padding: 16px 0 0; border: 0; background: transparent; }
+.qiapp-product #ai-panel .ai-personal-form .ai-personal-more { border: 0; background: transparent; }
+.qiapp-product #ai-panel .ai-personal-form .ai-personal-more > summary { padding-inline: 0; }
+.qiapp-product #ai-panel .ai-activity-page .qbx-record-section { padding: 0; margin: 24px 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.qiapp-product #ai-panel .ai-activity-page .qbx-record-section > summary { padding: 12px 0; border-bottom: 1px solid var(--qi-border); }
+.qiapp-product #ai-panel .ai-activity-page .qbx-record-section-body { padding: 16px 0 0; }
+.qiapp-product #ai-panel .ai-activity-page .ai-reply-record-card { margin: 0; border: 0; border-bottom: 1px solid var(--qi-border); border-radius: 0; background: transparent; box-shadow: none; }
+.qiapp-product #ai-panel .ai-activity-page .ai-reply-record-card:last-child { border-bottom: 0; }
+.qiapp-product #ai-panel .ai-page-body:has(> .ai-analysis-setup) { display: block; }
+.qiapp-product #ai-panel .ai-analysis-setup { display: block; width: 100%; max-width: var(--qi-reading-max); margin-inline: auto; --qi-control-height: var(--qi-control-md); }
+.qiapp-product #ai-panel .ai-analysis-request { position: static; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.qiapp-product #ai-panel .ai-analysis-request .ai-analysis-time-entry { margin: 16px 0; padding: 16px 0; border: 0; border-block: 1px solid var(--qi-border); border-radius: 0; background: transparent; box-shadow: none; }
+.qiapp-product #ai-panel .ai-analysis-time-controls { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.qiapp-product #ai-panel .ai-analysis-request .ai-analysis-time-entry { display: grid; grid-template-columns: minmax(0,1fr); gap: 12px; align-items: start; }
+.qiapp-product #ai-panel .ai-analysis-time-copy { width: auto; min-width: 0; margin: 0; text-align: start; justify-self: start; }
+.qiapp-product #ai-panel .ai-reference-analysis-ranges { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; padding: 0; background: transparent; border: 0; box-shadow: none; }
+.qiapp-product #ai-panel .ai-reference-analysis-ranges button { flex: 0 1 auto; width: auto; }
+.qiapp-product #ai-panel .ai-reference-analysis-ranges button[aria-pressed="true"] { background: var(--qi-selected); color: var(--qi-text); box-shadow: none; }
+.qiapp-product #ai-panel .ai-analysis-intro h4 { font-size: var(--qi-font-h4); line-height: 24px; }
+.qiapp-product #ai-panel .ai-analysis-report-grid { display: grid; grid-template-columns: minmax(0,1fr); }
+.qiapp-product #ai-panel .ai-analysis-history { margin-top: 32px; }
+.qiapp-product #ai-panel .ai-analysis-history-detail { width: 100%; max-width: var(--qi-reading-max); margin-inline: auto; }
+.qiapp-product #ai-panel .ai-analysis-history-detail .ai-report-text { padding: 0; border: 0; background: transparent; box-shadow: none; }
+.qiapp-product #ai-panel .ap-editor-layout { width: 100%; max-width: var(--qi-reading-max); margin-inline: auto; --qi-control-height: var(--qi-control-md); }
+.qiapp-product #ai-panel .ap-editor-layout > fieldset { display: flex; flex-direction: column; gap: 24px; }
+.qiapp-product #ai-panel .ap-editor-layout .ap-form-card { width: 100%; margin: 0; padding: 16px 0; border: 0; border-bottom: 1px solid var(--qi-border); border-radius: 0; background: transparent; box-shadow: none; }
+.qiapp-product #ai-panel .ap-editor-confirm { position: static; padding: 16px 0; background: transparent; border: 0; box-shadow: none; }
+.qiapp-product #ai-panel .ap-heading { gap: 16px; margin-bottom: 24px; }
+.qiapp-product #ai-panel .ap-heading p { font-size: var(--qi-font-small); color: var(--qi-text-secondary); }
+.qiapp-product #ai-panel .ai-object-reference { background: transparent; }
+.qiapp-product #ai-panel .ai-object-detail { background: transparent; }
+.qiapp-product #ai-panel .ai-object-detail #ai-object-form { width: 100%; max-width: var(--qi-reading-max); margin-inline: auto; --qi-control-height: var(--qi-control-md); }
+.qiapp-product #ai-panel :is(.ai-reference-profile,.ai-reference-style,.ai-reference-memory) { border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.qiapp-product #ai-panel :is(.ai-reference-style-head,.ai-reference-memory-head) { padding-inline: 0; }
+.qiapp-product #ai-panel .ai-object-save { position: static; padding: 16px 0; margin-top: 24px; border: 0; background: transparent; box-shadow: none; }
+.qiapp-product #ai-panel .ai-contact-picker-search { padding: 0; border: 0; border-radius: 0; background: transparent; }
+.qiapp-product #ai-panel .ai-reference-memory-categories { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 0; overflow: visible; background: transparent; }
+.qiapp-product #ai-panel .ai-reference-memory-categories button { flex: 0 1 auto; width: auto; min-width: 64px; white-space: normal; }
+.qiapp-product #ai-panel .ai-reference-learning-config { border: 0; border-radius: 0; padding: 0; background: transparent; box-shadow: none; }
+.qiapp-product #ai-panel .ai-learn-target { margin: 0; border: 0; border-bottom: 1px solid var(--qi-border); border-radius: 0; padding: 12px 0; background: transparent; box-shadow: none; }
+.qiapp-product #ai-panel .ai-learn-target:last-child { border-bottom: 0; }
+.qiapp-product #ai-panel .ai-reference-learning-config > :is(section,footer) { padding: 16px 0; }
+.qiapp-product #ai-panel .ai-reference-learning-config > footer { align-items: start; text-align: start; }
+@container qi-settings (min-width:600px) {
+  .qiapp-product #ai-panel .ai-assignment-row { grid-template-columns: minmax(0,1fr) 176px auto; align-items: center; }
+}
 .qiapp-product #ai-panel .ai-main-tabs { background: var(--qi-surface-muted); color: var(--qi-text); box-shadow: none; border-color: var(--qi-border); }
 .qiapp-product #ai-panel .ai-main-tabs button { color: var(--qi-text); background: transparent; }
 .qiapp-product #ai-panel .ai-main-tabs button[aria-current="page"] { color: var(--qi-text); background: var(--qi-selected); }
@@ -35,6 +129,7 @@
 .qiapp-product #ai-panel .qibox-workspace-menu .ai-nav-brand { display: flex; gap: 8px; padding: 8px 12px 20px; min-height: 0; }
 .qiapp-product #ai-panel .qibox-workspace-menu .ai-nav-brand > div { display: block; }
 .qiapp-product #ai-panel .qibox-workspace-menu .ai-nav-brand > span { background: var(--qi-primary); color: var(--qi-on-primary); box-shadow: none; }
+.qiapp-product #ai-panel .qibox-workspace-menu .ai-nav-brand > img { width: 28px; height: 28px; flex: none; }
 .qiapp-product #ai-panel .qibox-workspace-menu .ai-main-tabs button { flex: none; flex-direction: row; justify-content: start; width: 100%; min-width: 0; min-height: 40px; padding: 8px 12px; gap: 12px; font-size: var(--qi-font-body); border-radius: var(--qi-radius-control); color: var(--qi-text); background: transparent; }
 .qiapp-product #ai-panel .qibox-workspace-menu .ai-main-tabs button[aria-current="page"] { color: var(--qi-text); background: var(--qi-selected); }
 .qiapp-product #ai-panel .qibox-workspace-menu .ai-main-tabs button > span { display: block; font-size: inherit; white-space: normal; }
@@ -59,6 +154,8 @@
   .qiapp-product #ai-panel .qibox-workspace-menu[open] > summary { width: max-content; margin-left: auto; }
   .qiapp-product #ai-panel .qibox-workspace-menu .ai-main-tabs button { min-height: 44px; }
   .qiapp-product #ai-panel[data-page="settings"] .ai-page-body { padding: 24px 16px; }
+  .qiapp-product #ai-panel .ai-page-body.qi-content { padding: 24px 16px; }
   .qiapp-product #ai-panel .qibox-settings-form footer { flex-wrap: wrap; }
 }
 @media(any-pointer:coarse) { .qiapp-product #ai-panel .qibox-workspace-menu .ai-main-tabs button { min-height: 44px; } }
+@media(max-width:639px),(any-pointer:coarse) { .qiapp-product .app-menu > summary { width: 44px; height: 44px; } }

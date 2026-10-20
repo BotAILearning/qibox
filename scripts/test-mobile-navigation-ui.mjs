@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import {root,playwrightPath} from './tooling.mjs';
 import {proactiveFixture} from './proactive-ui-fixture.mjs';
 const {chromium}=createRequire(import.meta.url)(playwrightPath), f=await proactiveFixture();
-const out=path.join(root,'local/mobile-layout-20261020/navigation');await mkdir(out,{recursive:true});
+const out=path.resolve(root,process.argv[2]||'reports/mobile-navigation');await mkdir(out,{recursive:true});
 const report={scope:'Production product bundle, disposable synthetic data; browser mobile emulation, no real NAS/phone/model/messages',checks:[],errors:[],passed:false};
 let browser,page;
 try{
@@ -19,9 +19,14 @@ try{
  const snap=async name=>{
   await page.screenshot({path:path.join(out,name+'.png')});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
-  const header=await page.locator('.qbx-mobile-toolbar').evaluate(n=>({h:n.clientHeight,overflow:n.scrollWidth-n.clientWidth}));
-  assert.ok(header.overflow<=1);assert.ok(header.h>=64);
-  assert.ok(await back.evaluate(n=>n.getBoundingClientRect().width>=44&&n.getBoundingClientRect().height>=44));
+  if(await page.locator('.qbx-mobile-toolbar').isVisible()) {
+   const header=await page.locator('.qbx-mobile-toolbar').evaluate(n=>({h:n.clientHeight,overflow:n.scrollWidth-n.clientWidth}));
+   assert.ok(header.overflow<=1);assert.ok(header.h>=64);
+   assert.ok(await back.evaluate(n=>n.getBoundingClientRect().width>=44&&n.getBoundingClientRect().height>=44));
+  } else {
+   assert.ok(await page.locator('.ai-panel-heading').isVisible());
+   assert.ok(await page.locator('.ai-main-tabs [aria-current=page]').isVisible());
+  }
  };
  assert.match(await page.locator('#ai-mobile-context').innerText(),/主动聊天本地验收/);
  await snap('01-object-list');
@@ -29,7 +34,7 @@ try{
  assert.equal(await back.getAttribute('aria-label'),'返回对象列表');
  assert.equal(await page.locator('[data-ai-object-back]').isVisible(),false);
  await snap('02-object-detail');await back.click();assert.equal(await title.innerText(),'自动回复');
- const nav=async key=>page.locator(`.ai-main-tabs [data-ai-nav="${key}"]`).click();
+ const nav=async key=>{const menu=page.locator('.qibox-workspace-menu');if(await menu.locator('summary').isVisible()&&await menu.getAttribute('open')===null)await menu.locator('summary').click();await page.locator(`.ai-main-tabs [data-ai-nav="${key}"]`).click();};
  await nav('settings');await page.locator('[data-ai-nav="global-reply"]').click();
  assert.equal(await back.getAttribute('aria-label'),'返回系统设置');
  assert.equal(await page.locator('.ai-page-heading [data-ai-nav="settings"]').isVisible(),false);
@@ -49,7 +54,14 @@ try{
  assert.ok(await page.locator('.ap-task-cleanup').evaluate(n=>n.getBoundingClientRect().height<140),'List maintenance follows its content, not the old horizontal flex basis');
  await page.locator('[data-proactive-new]').click();assert.match(await title.innerText(),/新建/);await snap('06-task-editor');
  assert.match(await back.getAttribute('aria-label'),/返回任务列表/);await back.click();assert.equal(await title.innerText(),'主动聊天');
- for(const width of [320,375,639,640,768,860]){await page.setViewportSize({width,height:812});await nav('settings');await page.locator('[data-ai-nav="personal-info"]').click();await snap(`07-personal-${width}`);await back.click();assert.equal(await title.innerText(),'系统设置');}
+ for(const width of [320,375,639,640,768,860]){await page.setViewportSize({width,height:812});await nav('settings');await page.locator('[data-ai-nav="personal-info"]').click();await snap(`07-personal-${width}`);if(width<640){await back.click();assert.equal(await title.innerText(),'系统设置');}else{await page.locator('.ai-page-heading [data-ai-nav=settings]').click();assert.equal(await page.locator('#ai-title').innerText(),'系统设置');}}
+ for(const width of [639,640,768,860]){
+  await page.setViewportSize({width,height:812});await nav('overview');
+  if(await page.locator('[data-ai-nav=learning]').isVisible()===false){if(width<640)await back.click();else await page.locator('[data-ai-object-back]').click();}
+  await page.locator('[data-ai-nav=learning]').click();
+  if(width<640)await back.click();else await page.locator('.ai-reference-learning-top [data-ai-nav=overview]').click();
+  assert.equal(await page.locator('#ai-panel').getAttribute('data-page'),'overview');
+ }
  await page.setViewportSize({width:320,height:812});await nav('analysis');await page.locator('[data-ai-analysis-pick]').click();
  const picker=page.locator('.ai-contact-picker-dialog[open]');
  await picker.locator('[data-picker-all]').click();assert.match(await picker.locator('[data-picker-count]').innerText(),/3/);
@@ -59,7 +71,7 @@ try{
  assert.ok(pickerLayout.search>=128);assert.ok(pickerLayout.all.height>=44&&pickerLayout.clear.height>=44);
  assert.ok(pickerLayout.all.right<=pickerLayout.clear.left,'Selection actions remain side by side with readable labels');
  await picker.press('Escape');await picker.waitFor({state:'hidden'});
- // App-bar return exits each root tab; bottom tabs perform peer navigation.
+ // App-bar return exits each root tab; the collapsible menu performs peer navigation.
  await page.setViewportSize({width:375,height:812});
  for(const key of ['settings','proactive','activity','analysis','overview']){await nav(key);assert.equal(await back.getAttribute('aria-label'),'返回栖盒');await back.click();await page.locator('#ai-panel').waitFor({state:'hidden'});await page.locator('[data-mobile-ai-open]').first().click();await page.locator('#ai-panel').waitFor({state:'visible'});}
  for(const width of [861,1024,1280]){

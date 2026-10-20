@@ -106,13 +106,13 @@ test('analysis media summary reflects each explicit opt-in without silently sele
 
 test('configured models prioritize assignments, but creating and editing models prioritize setup', () => {
   const state = { models: [{ id: 'one', model: '示例模型', baseUrl: 'https://model.test', tested: true }], assignments: { chat: 'one', learningAnalysis: 'one' }, schema: { providerPresets: [] } };
-  before(providerPage(state, null), 'class="ai-card ai-assignment-card"', '<aside');
+  before(providerPage(state, null), 'class="ai-assignment-card qi-settings-group"', '<aside');
   const editing = providerPage(state, { models: state.models, assignments: state.assignments, editing: 'one', form: { keyStored: true, model: '待保存模型', baseUrl: 'https://draft.test', consent: true } });
-  before(editing, 'id="ai-model-form"', 'class="ai-card ai-assignment-card"');
+  before(editing, 'id="ai-model-form"', 'class="ai-assignment-card qi-settings-group"');
   assert.match(editing, /value="待保存模型"/);
   assert.match(editing, /value="https:\/\/draft.test"/);
   assert.match(editing, /value="\*{8}" data-key-stored="true"/);
-  before(providerPage({ models: [], schema: {} }, null), '<aside', 'class="ai-card ai-assignment-card"');
+  before(providerPage({ models: [], schema: {} }, null), '<aside', 'class="ai-assignment-card qi-settings-group"');
 });
 
 test('personal priorities preserve draft content, group permission and the shared field schema', () => {

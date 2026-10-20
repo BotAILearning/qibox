@@ -1043,7 +1043,7 @@ dialog {
  #ai-panel .ai-reference-settings-entries{display:block}
  #ai-panel .ai-reference-settings-entries>a,#ai-panel .ai-reference-settings-entries>button{border-radius:0;box-shadow:none;border:0;border-bottom:1px solid var(--ai-border);width:100%}
  #ai-panel textarea{resize:none!important;min-height:96px;max-height:50dvh;overflow-y:auto;line-height:1.65;font-size:16px}
- #ai-panel :is(.ai-learning-back,.ai-object-back,.ai-sticky-back button,[data-proactive-back],[data-ai-action="model-cancel"],[data-ai-action="back-learning"],[data-ai-action="back-reply-contacts"],.ai-reference-learning-top [data-ai-nav]){display:none!important}
+ @media(max-width:639px){#ai-panel :is(.ai-learning-back,.ai-object-back,.ai-sticky-back button,[data-proactive-back],[data-ai-action="model-cancel"],[data-ai-action="back-learning"],[data-ai-action="back-reply-contacts"],.ai-reference-learning-top [data-ai-nav]){display:none!important}}
  #ai-panel .ai-reference-learning-top{margin:0 0 12px}
  #ai-panel .ai-reference-learning-top h3{display:none}
  #ai-panel .ai-object-reference{padding:14px 16px;gap:0}
@@ -1119,7 +1119,7 @@ dialog {
  #ai-panel .ai-reference-memory-content{padding:14px 0;min-width:0}
  #ai-panel .ai-reference-memory-head{padding:12px 0}
  #ai-panel .ai-reference-reply-settings>.ai-reference-section{border:0;box-shadow:none;padding:12px 0}
- #ai-panel .ai-reference-learning-top{display:none}
+ @media(max-width:639px){#ai-panel .ai-reference-learning-top{display:none}}
  #ai-panel .ai-reference-learning-list header,#ai-panel .ai-reference-learning-tools{padding:12px 0}
  #ai-panel .ai-reference-learning-choices{padding:0;max-height:45dvh}
  #ai-panel .ai-reference-learning-config>section,#ai-panel .ai-reference-learning-config>footer{padding:14px 0}

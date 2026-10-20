@@ -15,8 +15,8 @@
 #ai-panel h4,#ai-panel .ai-object-detail h4{font-size:14px;line-height:1.5;font-weight:600;margin:0 0 12px}
 #ai-panel button{font-family:inherit;font-weight:500;cursor:pointer}
 #ai-panel :where(button:not(.icon-button):not(.ai-key-eye)){display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:36px;padding:8px 14px;border-radius:8px}
-#ai-panel .primary{background:var(--ai-primary);border:1px solid var(--ai-primary);color:var(--qi-on-primary)}
-#ai-panel .primary:hover{background:#3a54e0}
+#ai-panel .primary{background:var(--qi-action);border:1px solid var(--qi-action);color:var(--qi-on-action)}
+#ai-panel .primary:hover{background:var(--qi-action-hover)}
 #ai-panel .secondary{background:var(--qi-surface);border:1px solid var(--ai-border);color:var(--ai-muted)}
 #ai-panel .secondary:hover,#ai-panel .quiet:hover{background:var(--ai-soft);color:var(--ai-primary)}
 #ai-panel .quiet{background:transparent;color:var(--ai-primary);border:1px solid transparent}
@@ -493,7 +493,7 @@
 #ai-panel .ap-cycle.once{background:#fff1df;color:var(--qi-warning)}#ai-panel .ap-cycle.random{background:var(--qi-surface-muted);color:var(--qi-primary)}
 #ai-panel .ap-status{display:inline-flex;align-items:center;gap:7px;padding:7px 11px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap;background:var(--qi-surface-muted);color:var(--qi-text-secondary)}
 #ai-panel .ap-status:before{content:'';width:7px;height:7px;border-radius:50%;background:currentColor}
-#ai-panel .ap-status.running{background:var(--qi-surface-muted);color:var(--qi-primary)}#ai-panel .ap-status.paused{background:#fff1df;color:var(--qi-warning)}#ai-panel .ap-status.failed{background:var(--qi-surface-muted);color:#c83c50}
+#ai-panel .ap-status.running{background:var(--qi-info-soft);color:var(--qi-info)}#ai-panel .ap-status.paused{background:var(--qi-warning-soft);color:var(--qi-warning)}#ai-panel .ap-status.failed{background:var(--qi-error-soft);color:var(--qi-error)}
 #ai-panel .ap-task-table .ap-error{color:var(--qi-error)}
 #ai-panel .ap-actions-cell{position:relative}
 #ai-panel .ap-more{width:36px;height:36px;padding:0;border-radius:8px;font-size:22px;background:transparent;color:var(--qi-text-secondary);letter-spacing:1px}
@@ -872,9 +872,9 @@
 #ai-panel .ai-card,#ai-panel .ai-page-body>form,#ai-panel .ai-task-card,#ai-panel .ai-object-detail,#ai-panel .ai-model-sidebar{border-color:var(--qi-border);border-radius:15px;box-shadow:0 8px 24px rgba(39,42,82,.045)}
 #ai-panel .ai-card,#ai-panel .ai-page-body>form,#ai-panel .ai-task-card{padding:20px 22px;margin-bottom:16px}
 #ai-panel .ai-card-heading h4,#ai-panel .ai-card-heading h3{color:var(--qi-text);font-weight:700}
-#ai-panel .ai-primary,#ai-panel .primary{--ai-primary:#5869ec}
-#ai-panel .primary{background:#5869ec;border-color:#5869ec}
-#ai-panel .primary:hover{background:#4859d8}
+#ai-panel .ai-primary,#ai-panel .primary{--ai-primary:var(--qi-primary)}
+#ai-panel .primary{background:var(--qi-action);border-color:var(--qi-action)}
+#ai-panel .primary:hover{background:var(--qi-action-hover)}
 #ai-panel .secondary{border-radius:9px}
 #ai-panel :is(input:not([type=checkbox]):not([type=radio]):not([type=hidden]),select,textarea){border-color:var(--qi-border);border-radius:9px}
 #ai-panel :is(input,select,textarea):focus{border-color:#9ba5fa;box-shadow:0 0 0 3px #eef0ff}

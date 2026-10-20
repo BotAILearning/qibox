@@ -1,7 +1,7 @@
 /* Qibox mobile composition. Shared components retain their public contracts;
    this file only arranges product navigation, identity and contextual actions. */
 #ai-panel .ap-mobile-filter { display: none; }
-@media (max-width: 860px) {
+@media (max-width: 639px) {
   /* Return is represented once by the app bar, with the same business handler. */
   #ai-panel .qbx-content-return,
   #ai-panel .qbx-return-only { display: none !important; }
@@ -10,6 +10,9 @@
   #ai-panel .ai-reference-learning-top h3,
   #ai-panel .ap-heading h3 { display: none; }
   #ai-panel .ai-reference-learning-top:has(>.qbx-content-return) { display: none; }
+}
+@media (max-width: 860px) {
+  #ai-panel .ai-provider-page-heading { position: static; padding: 0; margin: 0 0 16px; }
   #ai-panel .ai-page-body { gap: 16px; padding: 16px; }
   #ai-panel .ai-page-heading { margin: 0 0 16px; gap: 12px; }
   #ai-panel .ai-page-heading p { margin: 0; font-size: 13px; line-height: 20px; }
