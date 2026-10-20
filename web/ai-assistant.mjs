@@ -1076,8 +1076,10 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     $('#ai-title').textContent = pageTitle;
     $('#ai-mobile-title').textContent = pageTitle;
     const content = tab === 'profile' && editingProfile ? profileEditor(state.profiles.find(p => p.id === editingProfile)) : ({ overview: objects, analysis: () => analysisPage(state, analysisDraft, analysisResult, analysisSearch, analysisHistoryReport, analysisRangeMode, analysisContactsExpanded, analysisHistoryState()), activity, provider, settings: advancedSettings, 'personal-info': () => personalInformationPage(state, personalDraft || {}), 'global-reply': () => globalReplyStrategyPage(state), learning, 'default-style': defaultStyleLearning, results, proactive, 'manual-reply': manualReplyEditor }[tab] || objects)();
-    const nav = `<nav class="ai-main-tabs qbx-bottom-nav" aria-label="AI 页面"><div class="ai-nav-brand"><span>${logoIcon}</span><div>AI 辅助<small>栖盒 · QIBOX</small></div></div><p class="ai-nav-caption">工作台</p>${[['overview', '自动回复', 'chat'], ['proactive', '主动聊天', 'send'], ['activity','执行记录','clock'],['analysis','分析报告','file'], ['settings', '系统设置', 'sliders']].map(([key, name, symbol]) => `<button type="button" data-ai-nav="${key}" title="${name}" aria-label="${name}" aria-current="${tab === key || key === 'overview' && ['learning','results','profile','manual-reply'].includes(tab) || key === 'settings' && ['default-style','provider','personal-info','global-reply'].includes(tab) ? 'page' : 'false'}">${icon(symbol)}<span>${name}</span></button>`).join('')}</nav>`;
-    panel.querySelector(':scope > .ai-main-tabs')?.remove();
+    const focusedNavigation = document.activeElement?.closest?.('.qibox-workspace-menu') ? document.activeElement.dataset.aiNav || 'summary' : null;
+    const navigationOpen = !window.matchMedia?.('(max-width:639px)')?.matches || !!panel.querySelector(':scope > .qibox-workspace-menu[open]');
+    const nav = `<details class="qi-workspace-menu qibox-workspace-menu" ${navigationOpen ? 'open' : ''}><summary aria-label="页面菜单"><span aria-hidden="true">☰</span><span>菜单</span></summary><nav class="ai-main-tabs qi-nav" aria-label="AI 页面"><div class="ai-nav-brand"><span>${logoIcon}</span><div>栖盒</div></div>${[['overview', '自动回复', 'chat'], ['proactive', '主动聊天', 'send'], ['activity','执行记录','clock'],['analysis','分析报告','file'], ['settings', '系统设置', 'sliders']].map(([key, name, symbol]) => `<button type="button" class="qi-btn" data-variant="ghost" data-ai-nav="${key}" title="${name}" aria-label="${name}" aria-current="${tab === key || key === 'overview' && ['learning','results','profile','manual-reply'].includes(tab) || key === 'settings' && ['default-style','provider','personal-info','global-reply'].includes(tab) ? 'page' : 'false'}">${icon(symbol)}<span>${name}</span></button>`).join('')}</nav></details>`;
+    panel.querySelector(':scope > .qibox-workspace-menu')?.remove();
     $('#ai-content').innerHTML = iconSprite + nav + (tab === 'overview' ? content : `<div class="ai-page-body">${content}</div>`);
     if (analysisExportDialog) {
       const dialog = $('#ai-report-export-dialog');
@@ -1085,7 +1087,8 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       dialog?.addEventListener('cancel', event => { event.preventDefault(); closeAnalysisExport(); });
       dialog?.showModal();
     }
-    panel.append($('#ai-content .ai-main-tabs'));
+    panel.append($('#ai-content .qibox-workspace-menu'));
+    if (focusedNavigation) panel.querySelector(focusedNavigation === 'summary' ? '.qibox-workspace-menu > summary' : `.qibox-workspace-menu [data-ai-nav="${focusedNavigation}"]`)?.focus({ preventScroll: true });
     const activeMemoryCategory = panel.querySelector(`.ai-reference-memory-categories button[data-ai-memory-category="${objectMemoryCategory}"]`)?.dataset.aiMemoryCategory || panel.querySelector('.ai-reference-memory-categories button')?.dataset.aiMemoryCategory;
     for (const node of panel.querySelectorAll('.ai-reference-memory [data-ai-wiki-field]')) node.hidden = node.dataset.aiWikiField !== activeMemoryCategory;
     for (const textarea of $('#ai-content').querySelectorAll('.ai-wiki-bubble textarea[aria-label="信息内容"]')) resizeWikiTextarea(textarea);
@@ -1255,7 +1258,21 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   $('#ai-mobile-back').onclick = goBack;
   panel.addEventListener('input', event => { if (event.target.tagName === 'TEXTAREA') mobileLayout(); });
   window.addEventListener('resize', mobileLayout);
-  panel.addEventListener('keydown', event => { if (event.key === 'Escape') { event.stopPropagation(); if (!proactiveUI.closeOverlay()) hide(); } });
+  function closeNavigation({ focus = false } = {}) {
+    const menu = panel.querySelector(':scope > .qibox-workspace-menu');
+    if (!window.matchMedia?.('(max-width:639px)')?.matches || !menu?.open) return false;
+    menu.open = false;
+    if (focus) menu.querySelector('summary')?.focus();
+    return true;
+  }
+  window.matchMedia?.('(max-width:639px)')?.addEventListener?.('change', event => {
+    const menu = panel.querySelector(':scope > .qibox-workspace-menu');
+    if (menu) menu.open = !event.matches;
+  });
+  panel.addEventListener('pointerdown', event => {
+    if (!event.target.closest('.qibox-workspace-menu')) closeNavigation();
+  });
+  panel.addEventListener('keydown', event => { if (event.key === 'Escape') { event.stopPropagation(); if (closeNavigation({ focus: true })) return; if (!proactiveUI.closeOverlay()) hide(); } });
   const changeMaster = async event => {
     if (!pass()) { event.target.checked = !event.target.checked; return; }
     if (!id && !(await ensureInstance())) { event.target.checked = !event.target.checked; message('AI 辅助尚未就绪，请重新打开微信后再试', true); return; }
@@ -2055,7 +2072,13 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         objectDrafts.set(selectedObject, { ...objectDrafts.get(selectedObject), styleId: form.elements.styleId.value, summary: form.elements.summary.value });
         render(); $('[data-ai-dirty]').hidden = false; return;
       }
-      if (button.dataset.aiNav) { await navigate(button.dataset.aiNav); return; }
+      if (button.dataset.aiNav) {
+        const fromMenu = !!button.closest('.qibox-workspace-menu');
+        closeNavigation();
+        await navigate(button.dataset.aiNav);
+        if (fromMenu && window.matchMedia?.('(max-width:639px)')?.matches) panel.querySelector('.qibox-workspace-menu > summary')?.focus();
+        return;
+      }
       if (button.dataset.aiKind) { rememberDraft(); objectKind = button.dataset.aiKind; selectedObject = ''; objectSection = 'reply'; objectMemoryCategory = objectKind === 'group' ? 'group_info' : 'name'; objectSearch = ''; const list = $('#ai-object-list'); if (list) list.scrollTop = 0; render(); return; }
       if (button.dataset.aiLearnKind) { learnContactKind = button.dataset.aiLearnKind; render(); return; }
       if (button.dataset.aiObjectSection) { rememberDraft(); objectSection = button.dataset.aiObjectSection; render(); return; }
@@ -2242,7 +2265,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       selectedContacts.clear(); replyProfiles.clear(); setPanelVisible(false); rail.hidden = false; panel.setAttribute('aria-busy', 'false');
       proactiveHistory = []; proactiveHistoryPage = null; proactiveRecordLoading = false; proactiveRecordEpoch++; errorHistory = []; errorPage = null; errorLoading = false; errorEpoch++;
       replyContactSearch = ''; logRecords = []; logLoading = false; logEpoch++; logSignature = ''; logFilters = { source: 'reply' }; lastAutoScanAt = 0;
-      panel.querySelector(':scope > .ai-main-tabs')?.remove();
+      panel.querySelector(':scope > .qibox-workspace-menu')?.remove();
       $('#ai-content').innerHTML = loadingContent; message('');
       try { const result = await call(); if (!result) return; restoreRecords(); modeTargets('reply').forEach(id => replyProfiles.add(id)); render(); } catch (e) { if (attachedGeneration !== generation) return; $('#ai-content').innerHTML = '<div class="ai-entry-error" role="alert">设置读取失败，请返回后重试。</div>'; message(e.message, true); }
       finally { if (attachedGeneration === generation) attaching = false; }
@@ -2260,6 +2283,6 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         finally { if (current === generation) polling = false; }
       }, 1000);
     },
-    detach() { accountFormDrafts.clear(); finishSave(pendingSave); contactDialog?.close(); analysisQueueToken++; analysisQueueAccount = null; rememberRecords(); proactiveRecordEpoch++; proactiveRecordLoading = false; proactiveHistory = []; proactiveHistoryPage = null; errorEpoch++; errorLoading = false; errorHistory = []; errorPage = null; logEpoch++; analysisDraft = { request: '', from: '', to: '', contacts: [] }; analysisSearch = ''; analysisHistoryReport = null; analysisHistoryEpoch++; resetAnalysisExport(); analysisResult = null; reviewAlert.hidden = true; concealKey(true); modelDraft = null; learningDraft = null; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); objectDirtyContacts.clear(); objectScrollKey = ''; objectScrollTop = 0; personalDraft = null; personalDraftAccount = null; selectedObject = ''; objectSearch = ''; objectKind = 'person'; editingReplyContact = null; providerRevision++; accountFormDrafts.clear(); generation++; skipEpoch++; skipLoading = false; skipHistory = []; skipHistoryPage = null; skipPageLoading = false; skipContent.clear(); markReplyStatus.clear(); clearInterval(timer); id = null; setContactAvatarInstance(null); state = null; attaching = false; rail.hidden = true; setPanelVisible(false); panel.querySelector(':scope > .ai-main-tabs')?.remove(); $('#ai-content').replaceChildren(); selectedContacts.clear(); replyProfiles.clear(); proactiveUI.reset(); replyDraft = null; },
+    detach() { accountFormDrafts.clear(); finishSave(pendingSave); contactDialog?.close(); analysisQueueToken++; analysisQueueAccount = null; rememberRecords(); proactiveRecordEpoch++; proactiveRecordLoading = false; proactiveHistory = []; proactiveHistoryPage = null; errorEpoch++; errorLoading = false; errorHistory = []; errorPage = null; logEpoch++; analysisDraft = { request: '', from: '', to: '', contacts: [] }; analysisSearch = ''; analysisHistoryReport = null; analysisHistoryEpoch++; resetAnalysisExport(); analysisResult = null; reviewAlert.hidden = true; concealKey(true); modelDraft = null; learningDraft = null; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); objectDirtyContacts.clear(); objectScrollKey = ''; objectScrollTop = 0; personalDraft = null; personalDraftAccount = null; selectedObject = ''; objectSearch = ''; objectKind = 'person'; editingReplyContact = null; providerRevision++; accountFormDrafts.clear(); generation++; skipEpoch++; skipLoading = false; skipHistory = []; skipHistoryPage = null; skipPageLoading = false; skipContent.clear(); markReplyStatus.clear(); clearInterval(timer); id = null; setContactAvatarInstance(null); state = null; attaching = false; rail.hidden = true; setPanelVisible(false); panel.querySelector(':scope > .qibox-workspace-menu')?.remove(); $('#ai-content').replaceChildren(); selectedContacts.clear(); replyProfiles.clear(); proactiveUI.reset(); replyDraft = null; },
   };
 }

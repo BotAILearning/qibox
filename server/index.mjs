@@ -352,7 +352,7 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
       files['/qiapp-product.css'] = ['qiapp-product.css', 'text/css'];
       files['/qibox-components.css'] = ['qibox-components.css', 'text/css'];
       files['/qibox-modules.css'] = ['qibox-modules.css', 'text/css'];
-      for (const stylesheet of ['styles', 'tokens', 'brands', 'base', 'components', 'ai']) {
+      for (const stylesheet of ['styles', 'tokens', 'brands', 'base', 'components', 'settings', 'ai', 'composition', 'workspace']) {
         files[`/vendor/qiapp-ui/${stylesheet}.css`] = [`vendor/qiapp-ui/${stylesheet}.css`, 'text/css'];
       }
       if (!files[route]) throw new AppError('页面不存在', 404);

@@ -1,17 +1,19 @@
 {
   "package": "@qiapp/ui",
-  "version": "0.2.1",
-  "revision": "2026-10-19.2",
+  "version": "0.3.0",
+  "revision": "2026-10-20",
   "files": {
-    "styles.css": "96a136a6a71aa427fb262a9b2ff3cd38bb0112452b4655f1f7254b4dc7272577",
-    "tokens.css": "afd9ff825db5c4d9980e178a0efc9f20917725683411299e251d0af8acfc0e05",
+    "styles.css": "2659fef39ca4dd7b1f89ab99c66f643327722a879a235fda5446798f3ce739c8",
+    "tokens.css": "927aa20b4537402f26bde4474622573ccd3732d8b1dbc3d06932840945357f83",
     "brands.css": "1000d35b2896a4f99145dd57028a6b370cbd12c9ee39f2d2df34514eea9edba1",
     "base.css": "fa19a04ffac881ca2ff181a98fb56e825b9467ea6362f5596653e56c0f82405f",
     "components.css": "3df2d6bade617d2070766ac68b1c564bf680cff11973eabf818a2a9c8d3fdc39",
     "settings.css": "10f692734c9ec9085b85ebfa1973f374ec9bada5d2cffaedd59874480d97372b",
     "ai.css": "825a6adcb1a38443fbaa97a5020e6bd96b1d5e78bb8ec4d308cd53222942ed53",
-    "composition.css": "6a36705eeb016272a3ac4e3c4713728d521d0e401139551eb2c0f56317e204ab"
+    "composition.css": "b1113bec77c0464b4c86ad5399f108b512bb21a5d19652cf60587e65ab17c291",
+    "workspace.css": "cb59c283e26700a5be9c0c38d1605e181ba97e5674ab100ec66b52864431f4b5"
   },
-  "packageArchive": "qiapp-ui-0.2.1.tgz",
-  "packageArchiveSha256": "512f4a8dbf676d45151da191ba156e003fed6fa5f72b7e204f63a1339ebca018"
+  "packageArchive": "qiapp-ui-0.3.0.tgz",
+  "packageArchiveSha256": "a6a7e2fed1b8fcf559a2f74aa63cb9511e4c865d348c75c9e92b5c8526296f05",
+  "packagedSpecificationSha256": "d3e8161043af92f03ae0a2726ea871e0871eea1a07e41796bdf6b17e45f58f3a"
 }

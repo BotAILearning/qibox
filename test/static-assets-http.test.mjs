@@ -15,6 +15,8 @@ test('static cache stays behind gateway identity and never caches or compresses 
     const source = '// 微信桌面与 AI 辅助\n'.repeat(200);
     await writeFile(path.join(appRoot, 'public/app.js'), source);
     await writeFile(path.join(appRoot, 'public/legal-page.css'), '.qibox-legal-page h2 { font-size: 16px; }');
+    await mkdir(path.join(appRoot, 'public/vendor/qiapp-ui'), { recursive: true });
+    for (const name of ['settings', 'composition', 'workspace']) await writeFile(path.join(appRoot, `public/vendor/qiapp-ui/${name}.css`), `/* reviewed ${name} */`);
     await mkdir(path.join(appRoot, 'public/chunks'));
     await writeFile(path.join(appRoot, 'public/chunks/desktop-runtime-ABC.js'), source);
     await writeFile(path.join(appRoot, 'public/chunks/not-registered.js'), source);
@@ -48,6 +50,12 @@ test('static cache stays behind gateway identity and never caches or compresses 
     assert.match(legalStyle.headers['content-type'], /text\/css/);
     assert.equal(legalStyle.bytes.toString(), '.qibox-legal-page h2 { font-size: 16px; }');
     assert.equal((await request('/legal-page.css', { authenticated: false })).status, 401);
+    for (const name of ['settings', 'composition', 'workspace']) {
+      const route = `/vendor/qiapp-ui/${name}.css`, response = await request(route);
+      assert.equal(response.status, 200); assert.match(response.headers['content-type'], /text\/css/);
+      assert.equal(response.bytes.toString(), `/* reviewed ${name} */`);
+      assert.equal((await request(route, { authenticated: false })).status, 401);
+    }
     assert.equal((await request('/chunks/desktop-runtime-ABC.js', {authenticated:false})).status, 401);
     assert.equal((await request('/chunks/not-registered.js')).status, 404);
     assert.equal((await request('/web-chunks.json')).status, 404);

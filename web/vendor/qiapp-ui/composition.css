@@ -1,9 +1,9 @@
 /* Public composition layer. Defaults are inherited; explicit component sizes win. */
 .qi-root { --qi-control-height:var(--qi-control-sm); --qi-control-padding:var(--qi-space-3); --qi-chat-page-offset:0px; overflow-wrap:anywhere; }
-[data-qi-density="compact"] { --qi-control-height:var(--qi-control-sm); }
-[data-qi-density="comfortable"] { --qi-control-height:var(--qi-control-md); }
-[data-qi-density="touch"] { --qi-control-height:var(--qi-touch-target); }
-.qi-root :is(.qi-btn,.qi-input):not([data-size]) { min-height:var(--qi-control-height); padding:4px var(--qi-control-padding); border-radius:var(--qi-radius-sm); font-size:var(--qi-font-body); }
+[data-qi-density="compact"] { --qi-control-height:var(--qi-control-sm); --qi-selected-control-height:var(--qi-control-sm); }
+[data-qi-density="comfortable"] { --qi-control-height:var(--qi-control-md); --qi-selected-control-height:var(--qi-control-md); }
+[data-qi-density="touch"] { --qi-control-height:var(--qi-touch-target); --qi-selected-control-height:var(--qi-touch-target); }
+.qi-root :is(.qi-btn,.qi-input):not([data-size]) { min-height:var(--qi-control-height); padding:4px var(--qi-control-padding); border-radius:var(--qi-radius-control); font-size:var(--qi-font-body); }
 .qi-root :is(input,select).qi-input:not([data-size]) { height:var(--qi-control-height); }
 .qi-root .qi-btn { width:fit-content; max-width:100%; white-space:normal; flex-shrink:0; align-self:start; }
 .qi-root .qi-btn[data-size="md"] { min-height:var(--qi-control-md); padding:8px 16px; font-size:var(--qi-font-button); }

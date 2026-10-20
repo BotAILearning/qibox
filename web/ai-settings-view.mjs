@@ -42,18 +42,20 @@ export function settingsPage(state) {
   const settings = state.settings || {};
   const rhythm = replyRhythm(settings);
   const rule = settings.takeover || { enabled: true, minutes: 5 };
-  return `<div class="ai-reference-settings qbx-settings-page">
-    <form id="ai-takeover-form" class="ai-card ai-reference-general qbx-surface qbx-settings-group qi-settings-form">
-      <h4>通用行为</h4>
-      <div class="ai-switch-row qbx-setting-row"><span>AI 总开关<small>关闭后暂停回复与主动聊天，自动学习由下方独立开关控制。</small></span><input type="checkbox" name="master" role="switch" class="qbx-switch" aria-label="AI 总开关" ${settings.enabled ? 'checked' : ''}></div>
-      <div class="ai-switch-row qbx-setting-row"><span>自动学习<small>从聊天中自动更新我的信息、聊天风格和聊天记忆。关闭后停止学习，已保存内容仍可用于回复。</small></span><input type="checkbox" name="autoLearning" role="switch" class="qbx-switch" aria-label="自动学习" ${settings.autoLearning ? 'checked' : ''}></div>
-      <details class="ai-reply-rhythm ai-reply-module qi-settings-group" data-ai-optional="global-rhythm"><summary class="ai-reply-module-heading"><h4>回复节奏与接管</h4><span>${rhythmSummary(rhythm)}</span></summary><div class="ai-reply-module-body">${rhythmFields(rhythm, true)}</div></details>
-      <div class="ai-switch-row qbx-setting-row"><span>被问及身份时承认 AI<small>开启后，仅被询问时说明由 AI 回复。</small></span><input type="checkbox" name="acknowledgeAI" role="switch" class="qbx-switch" aria-label="被问及身份时承认 AI" ${settings.acknowledgeAI ? 'checked' : ''}></div>
-      <footer><span>修改后点击保存生效</span><button class="primary" type="submit">保存设置</button></footer>
+  const switchRow = (name, label, help, checked) => `<div class="ai-switch-row qbx-setting-row qi-setting-row"><div class="qi-setting-copy"><label for="ai-setting-${name}">${label}</label><p>${help}</p></div><input id="ai-setting-${name}" type="checkbox" name="${name}" role="switch" class="qi-switch" aria-label="${label}" ${checked ? 'checked' : ''}></div>`;
+  return `<div class="ai-reference-settings qbx-settings-page qi-content" data-layout="reading">
+    <form id="ai-takeover-form" class="ai-reference-general qi-settings-form qibox-settings-form">
+      <section class="qi-settings-group"><h3>通用行为</h3><div class="qi-settings-panel">
+        ${switchRow('master', 'AI 总开关', '关闭后暂停回复与主动聊天，自动学习由下方独立开关控制。', settings.enabled)}
+        ${switchRow('autoLearning', '自动学习', '从聊天中自动更新我的信息、聊天风格和聊天记忆。关闭后停止学习，已保存内容仍可用于回复。', settings.autoLearning)}
+        ${switchRow('acknowledgeAI', '被问及身份时承认 AI', '开启后，仅被询问时说明由 AI 回复。', settings.acknowledgeAI)}
+      </div></section>
+      <details class="ai-reply-rhythm qibox-settings-rhythm" data-ai-optional="global-rhythm"><summary><h3>回复节奏与接管</h3><span>${rhythmSummary(rhythm)}</span></summary><div class="ai-reply-module-body qi-settings-panel">${rhythmFields(rhythm, true)}</div></details>
+      <footer class="qi-actions"><span>修改后点击保存生效</span><button class="primary qi-btn" type="submit">保存设置</button></footer>
     </form>
-    <section class="ai-card qbx-settings-config qi-settings-group" aria-labelledby="ai-settings-config-title">
-      <div class="ai-card-heading"><div><h4 id="ai-settings-config-title">回复配置</h4><p class="ai-help">按需调整账号资料、默认策略与模型</p></div></div>
-      <div class="ai-reference-settings-entries qbx-settings-links">${entries.map(([page, glyph, title, hint]) => `<button type="button" class="ai-settings-entry" data-ai-nav="${page}"><span class="ai-settings-entry-icon">${icon(glyph)}</span><span class="ai-settings-entry-text"><strong>${title}</strong><small>${hint}</small></span><span class="ai-settings-entry-arrow">${icon('chev-r')}</span></button>`).join('')}</div>
+    <section class="qbx-settings-config qi-settings-group" aria-labelledby="ai-settings-config-title">
+      <h3 id="ai-settings-config-title">回复配置</h3>
+      <div class="ai-reference-settings-entries qbx-settings-links qi-settings-panel">${entries.map(([page, glyph, title, hint]) => `<button type="button" class="ai-settings-entry" data-ai-nav="${page}"><span class="ai-settings-entry-text"><strong>${title}</strong><small>${hint}</small></span><span class="ai-settings-entry-arrow">${icon('chev-r')}</span></button>`).join('')}</div>
     </section>
   </div>`;
 }

@@ -17,7 +17,10 @@ test('frequent switches precede configuration while saved off states and waiting
   const html = settingsPage({ settings: { enabled: false, acknowledgeAI: true, takeover: { enabled: false, minutes: 17 } } });
   before(html, 'id="ai-takeover-form"', 'data-ai-nav="global-reply"');
   before(html, 'name="master"', 'name="enabled"');
-  before(html, 'name="minutes"', 'name="acknowledgeAI"');
+  // 0.3 groups the three boolean behaviors before the optional timing editor.
+  before(html, 'name="master"', 'name="acknowledgeAI"');
+  before(html, 'name="acknowledgeAI"', 'data-ai-optional="global-rhythm"');
+  before(html, 'data-ai-optional="global-rhythm"', 'name="minutes"');
   before(html, 'data-ai-nav="global-reply"', 'data-ai-nav="personal-info"');
   before(html, 'data-ai-nav="default-style"', 'data-ai-nav="provider"');
   assert.match(html, /name="master"[^>]*>/);

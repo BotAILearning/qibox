@@ -1,0 +1,64 @@
+/* Product structure for the reviewed 2026-10-20 / @qiapp/ui0.3.0 standard.
+   Shared controls own their dimensions, states, action palette and shapes. */
+.qiapp-product #ai-panel { background: var(--qi-bg); color: var(--qi-text); --ai-sidebar: var(--qi-sidebar); }
+.qiapp-product #ai-panel .ai-main-tabs { background: var(--qi-surface-muted); color: var(--qi-text); box-shadow: none; border-color: var(--qi-border); }
+.qiapp-product #ai-panel .ai-main-tabs button { color: var(--qi-text); background: transparent; }
+.qiapp-product #ai-panel .ai-main-tabs button[aria-current="page"] { color: var(--qi-text); background: var(--qi-selected); }
+.qiapp-product #ai-panel :is(.ai-nav-brand,.ai-nav-caption,.ai-nav-brand small) { color: var(--qi-text-secondary); }
+.qiapp-product #ai-panel .ai-panel-heading { background: var(--qi-bg); color: var(--qi-text); border-color: var(--qi-border); }
+.qiapp-product #ai-panel[data-page="settings"] .ai-panel-heading h2 { font-size: var(--qi-font-h2); font-weight: 550; line-height: 32px; }
+.qiapp-product #ai-panel[data-page="settings"] .ai-page-body { padding: 24px 32px; }
+.qiapp-product #ai-panel .ai-reference-settings.qi-content { display: grid; gap: 28px; margin-inline: auto; padding: 0; }
+.qiapp-product #ai-panel .qibox-settings-form { margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.qiapp-product #ai-panel .qibox-settings-form :is(.qi-settings-group > h3,.qibox-settings-rhythm h3),
+.qiapp-product #ai-panel .qbx-settings-config > h3 { margin: 0; padding: 0; color: var(--qi-text); font-size: var(--qi-font-h4); font-weight: 600; line-height: 24px; }
+.qiapp-product #ai-panel .qibox-settings-form .qi-setting-row { margin: 0; min-height: 0; border-bottom: 1px solid var(--qi-border); }
+.qiapp-product #ai-panel .qibox-settings-form .qi-setting-row:last-child { border-bottom: 0; }
+.qiapp-product #ai-panel .qibox-settings-form .qi-setting-row:has(> .qi-switch) { grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 16px; }
+.qiapp-product #ai-panel .qibox-settings-form .qi-setting-copy p { margin: 0; }
+.qiapp-product #ai-panel .qibox-settings-rhythm { margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; overflow: visible; }
+.qiapp-product #ai-panel .qibox-settings-rhythm > summary { display: grid; gap: 8px; padding: 0; cursor: pointer; }
+.qiapp-product #ai-panel .qibox-settings-rhythm > summary > span { color: var(--qi-text-secondary); font-size: var(--qi-font-small); line-height: 1.6; }
+.qiapp-product #ai-panel .qibox-settings-rhythm > .qi-settings-panel { margin-top: 12px; padding: 0 16px; }
+.qiapp-product #ai-panel .qibox-settings-form footer { display: flex; justify-content: end; align-items: center; gap: 16px; margin: 0; padding: 0; }
+.qiapp-product #ai-panel .qibox-settings-form footer > span { color: var(--qi-text-secondary); font-size: var(--qi-font-small); }
+.qiapp-product #ai-panel .qbx-settings-config { margin: 0; padding: 0; background: transparent; border: 0; }
+.qiapp-product #ai-panel .qbx-settings-links { display: block; }
+.qiapp-product #ai-panel .qbx-settings-links .ai-settings-entry { display: flex; align-items: center; gap: 16px; width: 100%; margin: 0; padding: 16px 0; border: 0; border-bottom: 1px solid var(--qi-border); border-radius: 0; background: transparent; text-align: left; }
+.qiapp-product #ai-panel .qbx-settings-links .ai-settings-entry:last-child { border-bottom: 0; }
+.qiapp-product #ai-panel .qbx-settings-links .ai-settings-entry-text { display: grid; gap: 4px; flex: 1; min-width: 0; }
+.qiapp-product #ai-panel .qbx-settings-links .ai-settings-entry strong { font-size: var(--qi-font-body); font-weight: 500; color: var(--qi-text); }
+.qiapp-product #ai-panel .qbx-settings-links .ai-settings-entry small { font-size: var(--qi-font-small); color: var(--qi-text-secondary); }
+.qiapp-product #ai-panel .qibox-workspace-menu { position: absolute; inset: 0 auto 0 0; width: var(--ai-sidebar); height: 100%; padding: 16px 12px; background: var(--qi-surface-muted); overflow: auto; box-shadow: none; z-index: var(--qi-z-dropdown); }
+.qiapp-product #ai-panel .qibox-workspace-menu > summary { display: none; }
+.qiapp-product #ai-panel .qibox-workspace-menu .ai-main-tabs { position: static; inset: auto; display: flex; flex-direction: column; flex-wrap: nowrap; width: 100%; height: auto; max-height: none; min-height: 0; padding: 0; margin: 0; gap: 4px; border: 0; background: transparent; overflow: visible; }
+.qiapp-product #ai-panel .qibox-workspace-menu .ai-nav-brand { display: flex; gap: 8px; padding: 8px 12px 20px; min-height: 0; }
+.qiapp-product #ai-panel .qibox-workspace-menu .ai-nav-brand > div { display: block; }
+.qiapp-product #ai-panel .qibox-workspace-menu .ai-nav-brand > span { background: var(--qi-primary); color: var(--qi-on-primary); box-shadow: none; }
+.qiapp-product #ai-panel .qibox-workspace-menu .ai-main-tabs button { flex: none; flex-direction: row; justify-content: start; width: 100%; min-width: 0; min-height: 40px; padding: 8px 12px; gap: 12px; font-size: var(--qi-font-body); border-radius: var(--qi-radius-control); color: var(--qi-text); background: transparent; }
+.qiapp-product #ai-panel .qibox-workspace-menu .ai-main-tabs button[aria-current="page"] { color: var(--qi-text); background: var(--qi-selected); }
+.qiapp-product #ai-panel .qibox-workspace-menu .ai-main-tabs button > span { display: block; font-size: inherit; white-space: normal; }
+.qiapp-product #ai-panel .ai-mobile-navigation { display: none; }
+.qiapp-product #ai-panel #ai-content { width: calc(100% - var(--ai-sidebar)); }
+@media(min-width:640px) {
+  .qiapp-product #ai-panel .ai-panel-heading { display: flex; margin-left: var(--ai-sidebar); }
+  .qiapp-product #ai-panel .ai-heading-actions { display: flex; }
+  .qiapp-product #ai-panel #ai-close { display: inline-flex; width: auto; height: auto; font-size: var(--qi-font-body); }
+  .qiapp-product #ai-panel #ai-content { margin-left: var(--ai-sidebar); }
+  .qiapp-product #ai-panel :is(#ai-feedback,#ai-operation,#ai-manual-recovery) { margin-left: var(--ai-sidebar); }
+}
+@media(max-width:639px) {
+  .qiapp-product #ai-panel { --ai-sidebar: 0px; }
+  .qiapp-product #ai-panel .ai-panel-heading { display: none; }
+  .qiapp-product #ai-panel .ai-mobile-navigation { display: grid; grid-template-columns: 44px minmax(0,1fr); gap: 8px; padding: 8px 88px 8px 12px; min-height: 64px; background: var(--qi-bg); border-bottom: 1px solid var(--qi-border); }
+  .qiapp-product #ai-panel #ai-content { margin-left: 0; padding-bottom: env(safe-area-inset-bottom); }
+  .qiapp-product #ai-panel .qibox-workspace-menu { inset: 0 0 auto auto; width: auto; height: auto; padding: 8px 12px; overflow: visible; background: transparent; }
+  .qiapp-product #ai-panel .qibox-workspace-menu > summary { display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 64px; min-height: 44px; padding: 8px; color: var(--qi-text); border-radius: var(--qi-radius-control); font-size: var(--qi-font-body); }
+  .qiapp-product #ai-panel .qibox-workspace-menu > summary:focus-visible { outline: 2px solid var(--qi-focus); outline-offset: 2px; }
+  .qiapp-product #ai-panel .qibox-workspace-menu[open] { width: min(248px,calc(100% - 56px)); height: 100%; overflow: auto; background: var(--qi-surface-muted); box-shadow: var(--qi-shadow-floating); border-left: 1px solid var(--qi-border); }
+  .qiapp-product #ai-panel .qibox-workspace-menu[open] > summary { width: max-content; margin-left: auto; }
+  .qiapp-product #ai-panel .qibox-workspace-menu .ai-main-tabs button { min-height: 44px; }
+  .qiapp-product #ai-panel[data-page="settings"] .ai-page-body { padding: 24px 16px; }
+  .qiapp-product #ai-panel .qibox-settings-form footer { flex-wrap: wrap; }
+}
+@media(any-pointer:coarse) { .qiapp-product #ai-panel .qibox-workspace-menu .ai-main-tabs button { min-height: 44px; } }

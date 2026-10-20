@@ -1,5 +1,5 @@
-/* Native calendar composition; controls use the locked QIAPP 0.2.1 contract. */
-.qibox-date-dialog {
+/* Native calendar composition; controls use the reviewed QIAPP 0.3.0 contract. */
+.qiapp-product dialog.qibox-date-dialog {
   width: min(760px, calc(100vw - 8px));
   max-width: calc(100vw - 8px);
   max-height: calc(100dvh - 16px);
@@ -8,7 +8,7 @@
   color: var(--qi-text);
   background: var(--qi-surface);
   border: 1px solid var(--qi-border);
-  border-radius: var(--qi-radius-lg);
+  border-radius: var(--qi-radius-dialog);
   font-size: var(--qi-font-body);
 }
 .qibox-date-dialog h3 { margin: 0 0 8px; font-size: var(--qi-font-h3); line-height: 28px; }
@@ -51,7 +51,7 @@
   .qibox-date-dialog .ai-calendar-nav > [data-shift] { min-width: 44px; }
 }
 @media(max-width:639px) {
-  .qibox-date-dialog { padding: 16px 0; }
+  .qiapp-product dialog.qibox-date-dialog { padding: 16px 0; }
   .qibox-date-dialog > :is(h3,p,.ai-actions,.qibox-date-heading),.qibox-date-dialog .ai-calendar-heading,.qibox-date-dialog .ai-calendar-toolbar,.qibox-date-dialog .ai-calendar-empty { margin-inline: 16px; }
   .qibox-date-dialog .ai-calendar-months { grid-template-columns: 1fr; gap: 0; }
   .qibox-date-dialog .ai-calendar-months section { padding: 0; }

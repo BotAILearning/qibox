@@ -1,4 +1,4 @@
-/* QIAPP UI 0.2.0 product brand and business composition. Product state and events stay in qibox. */
+/* Qibox brand mapping and retained legacy composition. Shared0.3.0 controls and neutral surfaces take precedence. */
 .qiapp-product {
   min-height: 100vh;
   min-height: 100dvh;
@@ -6,24 +6,10 @@
   --qi-primary-hover: #4055d6;
   --qi-primary-active: #3548bc;
   --qi-on-primary: #fff;
-  --qi-secondary: #eaf0ff;
-  --qi-selected: #eaf0ff;
-  --qi-hover: #f0f3ff;
-  --qi-active: #dce4ff;
   --qi-focus: #6378f2;
-  --qi-bg: #f7f8fc;
-  --qi-surface: #fff;
-  --qi-surface-muted: #f6f8fd;
-  --qi-border: #e2e6f0;
-  --qi-border-strong: #aab4cb;
-  --qi-text: #202d47;
-  --qi-text-secondary: #54627b;
-  --qi-text-tertiary: #576680;
-  --qi-shadow-subtle: none;
-  --qi-shadow-floating: 0 10px 32px #1b2b5a14;
   --ui-control-height: var(--qi-control-height);
   --ui-control-height-touch: var(--qi-touch-target);
-  --ui-control-radius: var(--qi-radius-sm);
+  --ui-control-radius: var(--qi-radius-control);
   --ui-control-gap: var(--qi-space-2);
   color: var(--qi-text);
   background: var(--qi-bg);
@@ -35,45 +21,13 @@
   --qi-primary: #9bbcff;
   --qi-primary-hover: #bdd2ff;
   --qi-primary-active: #d3e1ff;
-  --qi-on-primary: #172642;
-  --qi-secondary: inherit;
-  --qi-selected: inherit;
-  --qi-hover: inherit;
-  --qi-active: inherit;
-  --qi-focus: inherit;
-  --qi-bg: inherit;
-  --qi-surface: inherit;
-  --qi-surface-muted: inherit;
-  --qi-border: inherit;
-  --qi-border-strong: inherit;
-  --qi-text: inherit;
-  --qi-text-secondary: inherit;
-  --qi-text-tertiary: inherit;
-  --qi-shadow-subtle: inherit;
-  --qi-shadow-floating: inherit;
-}
+  --qi-on-primary: #172642;}
 @media (prefers-color-scheme: dark) {
   :root:is([data-qi-theme="system"], :not([data-qi-theme])) .qiapp-product {
     --qi-primary: #9bbcff;
     --qi-primary-hover: #bdd2ff;
     --qi-primary-active: #d3e1ff;
-    --qi-on-primary: #172642;
-    --qi-secondary: inherit;
-    --qi-selected: inherit;
-    --qi-hover: inherit;
-    --qi-active: inherit;
-    --qi-focus: inherit;
-    --qi-bg: inherit;
-    --qi-surface: inherit;
-    --qi-surface-muted: inherit;
-    --qi-border: inherit;
-    --qi-border-strong: inherit;
-    --qi-text: inherit;
-    --qi-text-secondary: inherit;
-    --qi-text-tertiary: inherit;
-    --qi-shadow-subtle: inherit;
-    --qi-shadow-floating: inherit;
-  }
+    --qi-on-primary: #172642;  }
 }
 
 /* Native control appearance, density and states come from the pinned library. */
