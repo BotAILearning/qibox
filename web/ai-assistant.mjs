@@ -49,6 +49,8 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     return !!id;
   }
   let id, state, tab = 'overview', timer, lastPollAt = 0, generation = 0, requestEpoch = 0, workToken = 0, analysisQueueToken = 0, analysisQueueAccount = null, polling = false, busy = false, attaching = false;
+  let dateRangeOperation = null;
+  function invalidateDateRange() { dateRangeOperation?.controller.abort(); dateRangeOperation = null; if ($('#ai-feedback')?.textContent.includes('正在读取聊天日期…')) message(''); }
   let personalDraft = null, personalDraftAccount = null;
   const loadingContent = '<div class="ai-entry-loading" role="status" aria-live="polite"><div class="ai-entry-loading-art" aria-hidden="true"><span class="ai-entry-loading-ring"></span><span class="ai-entry-loading-mark">AI</span></div><strong>正在打开 AI 辅助</strong><p>正在读取当前微信的设置…</p></div>';
   // Profiles carry a snapshot label; the WeChat nickname still lives in the
@@ -605,6 +607,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     const initialState = !state;
     const accountChanged = state && state.account !== result.account;
     if (accountChanged) {
+      invalidateDateRange();
       finishSave(pendingSave);
       // Invalidate pending reads and discard local edits from the old account,
       // even when both accounts have the same contact ID.
@@ -1049,6 +1052,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     if (paste) learningDraft = Object.fromEntries(new FormData(paste));
   }
   async function navigate(next) {
+    invalidateDateRange();
     rememberDraft();
     if (tab === 'provider') concealKey(true);
     if (next === 'results') resultProfileIds = null;
@@ -1242,7 +1246,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       void refreshContacts().catch(error => { if (current === generation) message(error.message, true); });
     }
   }
-  function hide() { rememberDraft(); rememberRecords(); concealKey(true); proactiveUI.closeOverlay(); if (learningDraft) learningDraft.text = ''; setPanelVisible(false); rail.querySelector('#ai-open').setAttribute('aria-expanded', 'false'); panel.querySelectorAll('[name=text], [name=styleText]').forEach(input => { input.value = ''; }); rail.querySelector('#ai-open').focus(); onClose?.(); }
+  function hide() { invalidateDateRange(); rememberDraft(); rememberRecords(); concealKey(true); proactiveUI.closeOverlay(); if (learningDraft) learningDraft.text = ''; setPanelVisible(false); rail.querySelector('#ai-open').setAttribute('aria-expanded', 'false'); panel.querySelectorAll('[name=text], [name=styleText]').forEach(input => { input.value = ''; }); rail.querySelector('#ai-open').focus(); onClose?.(); }
   rail.querySelector('#ai-open').onclick = async () => {
     if (panel.hidden && !pass()) return;
     if (panel.hidden && !id && !(await ensureInstance())) { message('AI 辅助尚未就绪，请重新打开微信后再试', true); return; }
@@ -1788,7 +1792,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
             return [...contacts.values()];
           },
           onRefresh: refreshContacts, onClose: () => { contactDialog = null; },
-          onConfirm: contacts => { if (current !== generation || account !== state?.account) return; analysisDraft.contacts = contacts.map(c => c.id); render(); $('#ai-analysis-form [data-ai-analysis-pick]')?.focus(); } });
+          onConfirm: contacts => { if (current !== generation || account !== state?.account) return; invalidateDateRange(); analysisDraft.contacts = contacts.map(c => c.id); render(); $('#ai-analysis-form [data-ai-analysis-pick]')?.focus(); } });
         return;
       }
       if (button.dataset.aiDefaultMode) {
@@ -2011,6 +2015,8 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       if (action === 'analysis-use-chat') { await execute('analysis-use-chat', {}, '分析报告已改用聊天模型'); return; }
       if (action === 'analysis-settings') { await navigate('provider'); return; }
       if (button.dataset.aiAnalysisRange) {
+        if (button.dataset.aiAnalysisRange === 'custom' && dateRangeOperation) return;
+        invalidateDateRange();
         rememberDraft();
         analysisRangeBeforeCustom = button.dataset.aiAnalysisRange === 'custom' && analysisRangeMode !== 'custom' ? analysisRangeMode : null;
         analysisRangeMode = button.dataset.aiAnalysisRange;
@@ -2025,8 +2031,10 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         if (analysisRangeMode === 'custom') $('#ai-analysis-form [data-ai-date-range="analysis"]')?.click();
         return;
       }
-      if (button.dataset.aiLearnRange) { learnRangeMode = button.dataset.aiLearnRange; if (learnRangeMode === 'all') learnRange = { from: '', to: '' }; render(); return; }
+      if (button.dataset.aiLearnRange) { invalidateDateRange(); learnRangeMode = button.dataset.aiLearnRange; if (learnRangeMode === 'all') learnRange = { from: '', to: '' }; render(); return; }
       if (button.dataset.aiDefaultRange) {
+        if (button.dataset.aiDefaultRange === 'custom' && dateRangeOperation) return;
+        invalidateDateRange();
         learnRangeMode = button.dataset.aiDefaultRange;
         if (learnRangeMode === 'all') learnRange = { from: '', to: '' };
         else if (learnRangeMode !== 'custom') {
@@ -2186,10 +2194,19 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         rememberDraft(); const scope = button.dataset.aiDateRange, contacts = scope === 'analysis' ? analysisDraft.contacts : [...selectedContacts];
         if (!contacts.length) throw new Error('请先选择联系人');
         const current = generation, target = id;
+        const page = tab, account = state?.account, contactKey = JSON.stringify([...contacts].sort());
+        const key = JSON.stringify([current,target,page,account,scope,contactKey]);
+        if (dateRangeOperation?.key === key) return;
+        invalidateDateRange();
+        const operation = { key, controller: new AbortController() }; dateRangeOperation = operation;
+        const active = () => dateRangeOperation === operation && current === generation && target === id && page === tab && account === state?.account && !panel.hidden && contactKey === JSON.stringify([...(scope === 'analysis' ? analysisDraft.contacts : selectedContacts)].sort());
+        button.setAttribute('aria-busy','true'); message('正在读取聊天日期…');
+        try {
         const calendar = await api(`/instances/${target}/ai`, {action:'calendar',value:{contacts}}, 130000);
-        if (current !== generation || target !== id) return;
-        const result = await chooseDateRange(calendar.dates, scope === 'analysis' ? analysisDraft : learnRange, { analysis: scope === 'analysis' });
-        if (current !== generation || target !== id) return;
+        if (!active()) return;
+        message('');
+        const result = await chooseDateRange(calendar.dates, scope === 'analysis' ? analysisDraft : learnRange, { analysis: scope === 'analysis', signal: operation.controller.signal });
+        if (!active()) return;
         if (!result) {
           if (scope === 'analysis' && analysisRangeBeforeCustom !== null) { analysisRangeMode = analysisRangeBeforeCustom; analysisRangeBeforeCustom = null; render(); }
           (scope === 'analysis' ? $('#ai-analysis-form [data-ai-analysis-range="custom"]') : ($('[data-ai-date-range="learning"]') || $('[data-ai-default-range="all"]')))?.focus({ preventScroll: true });
@@ -2200,6 +2217,8 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         render();
         (scope === 'analysis' ? $('#ai-analysis-form [data-ai-analysis-range="custom"]') : ($('[data-ai-date-range="learning"]') || $('[data-ai-default-range="all"]')))?.focus({ preventScroll: true });
         return;
+        } catch (error) { if (active()) throw error; }
+        finally { button.removeAttribute('aria-busy'); if (dateRangeOperation === operation) invalidateDateRange(); }
       }
       if (button.dataset.aiApplyResult) {
         const profile = state.profiles.find(p => p.id === button.dataset.aiApplyResult);
@@ -2253,7 +2272,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
           },
           detail: c => `${learnedProfiles().some(p => p.contact === c.id) ? '<small>已学习</small>' : ''}${c.missing ? '<small>本次列表未读取到，保留原选择</small>' : ''}`,
           onRefresh: refreshContacts, onClose: () => { contactDialog = null; },
-          onConfirm: contacts => { if (current !== generation || account !== state?.account) return; selectedContacts.clear(); contacts.forEach(c => selectedContacts.add(c.id)); render(); } });
+          onConfirm: contacts => { if (current !== generation || account !== state?.account) return; invalidateDateRange(); selectedContacts.clear(); contacts.forEach(c => selectedContacts.add(c.id)); render(); } });
         return;
       }
       if (['select-contacts', 'clear-contacts'].includes(action)) {
@@ -2303,7 +2322,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       analysisDraft = { request: '', from: '', to: '', contacts: [], includeVoice: false, includeVisual: false }; analysisRangeMode = 'all'; analysisRangeBeforeCustom = null; analysisContactsExpanded = false; analysisSearch = ''; analysisHistoryReport = null; analysisHistoryEpoch++; resetAnalysisExport(); learnRange = {from:'',to:''}; learnRangeMode = 'all'; learnScope='range'; learnTarget='both'; defaultStylePerspective = 'self'; analysisResult = null; proactiveUI.reset();
       reviewAlert.hidden = true;
       concealKey(true); modelDraft = null; learningDraft = null; renderedView = ''; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); objectDirtyContacts.clear(); objectScrollKey = ''; objectScrollTop = 0; personalDraft = null; personalDraftAccount = null; summaryResults.clear(); selectedObject = ''; objectSearch = ''; objectKind = 'person'; learnContactKind = 'person'; editingReplyContact = null; contactSearch = ''; providerRevision++;
-      accountFormDrafts.clear(); generation++; skipEpoch++; skipLoading = false; skipHistory = []; skipHistoryPage = null; skipPageLoading = false; skipContent.clear(); markReplyStatus.clear(); clearInterval(timer); lastPollAt = 0; id = instanceId; setContactAvatarInstance(instanceId); state = null; busy = false; polling = false; attaching = true; tab = 'overview'; replyDraft = null; editingProfile = null; contactsLoaded = false; contactsLoading = false; resultProfileIds = null;
+      invalidateDateRange(); accountFormDrafts.clear(); generation++; skipEpoch++; skipLoading = false; skipHistory = []; skipHistoryPage = null; skipPageLoading = false; skipContent.clear(); markReplyStatus.clear(); clearInterval(timer); lastPollAt = 0; id = instanceId; setContactAvatarInstance(instanceId); state = null; busy = false; polling = false; attaching = true; tab = 'overview'; replyDraft = null; editingProfile = null; contactsLoaded = false; contactsLoading = false; resultProfileIds = null;
       const attachedGeneration = generation;
       selectedContacts.clear(); replyProfiles.clear(); setPanelVisible(false); rail.hidden = false; panel.setAttribute('aria-busy', 'false');
       proactiveHistory = []; proactiveHistoryPage = null; proactiveRecordLoading = false; proactiveRecordEpoch++; errorHistory = []; errorPage = null; errorLoading = false; errorEpoch++;

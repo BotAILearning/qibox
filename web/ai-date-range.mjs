@@ -2,7 +2,8 @@ const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 export function dateRangeField(scope, value = {}, { compact = false, label = '全部' } = {}) {
   return `<div class="ai-date-range" data-range-scope="${scope}"><input type="hidden" name="from" value="${esc(value.from)}"><input type="hidden" name="to" value="${esc(value.to)}">${compact ? '' : '<span>时间范围</span>'}<button type="button" class="secondary" aria-label="选择聊天时间范围" data-ai-date-range="${scope}">${value.from ? `${esc(value.from)} 至 ${esc(value.to)}` : esc(label)}</button></div>`;
 }
-export function chooseDateRange(dates, value = {}, { analysis = false } = {}) {
+export function chooseDateRange(dates, value = {}, { analysis = false, signal } = {}) {
+  if (signal?.aborted) return Promise.resolve(null);
   dates = [...new Set(dates)].sort();
   const available = new Set(dates), today = new Date(Date.now()+28800000).toISOString().slice(0,10);
   let from = available.has(value.from) ? value.from : dates[0] || '', to = value.to || dates.at(-1) || '', picking = 'from';
@@ -46,7 +47,8 @@ export function chooseDateRange(dates, value = {}, { analysis = false } = {}) {
   }
   return new Promise(resolve=>{
     let result=null;
-    dialog.addEventListener('close',()=>{dialog.remove();if(returnFocus?.isConnected)returnFocus.focus({preventScroll:true});resolve(result);},{once:true});
+    const abort = () => { result = null; dialog.close(); };
+    dialog.addEventListener('close',()=>{signal?.removeEventListener('abort',abort);dialog.remove();if(!signal?.aborted&&returnFocus?.isConnected)returnFocus.focus({preventScroll:true});resolve(result);},{once:true});
     dialog.addEventListener('keydown',event=>{if(event.key==='Escape')event.stopPropagation();});
     dialog.addEventListener('change',e=>{if(e.target.matches('[data-year],[data-month]')) {month=dialog.querySelector('[data-year]').value+'-'+dialog.querySelector('[data-month]').value;renderWithFocus();}});
     dialog.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
@@ -60,6 +62,6 @@ export function chooseDateRange(dates, value = {}, { analysis = false } = {}) {
       if(b.dataset.day){if(picking==='from'){from=b.dataset.day;if(to<from)to=from;picking='to';}else to=b.dataset.day;}
       renderWithFocus();
     });
-    render();document.body.append(dialog);dialog.showModal();
+    render();document.body.append(dialog);dialog.showModal();signal?.addEventListener('abort',abort,{once:true});
   });
 }
