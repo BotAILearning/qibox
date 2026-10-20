@@ -68,6 +68,19 @@ for(const [incoming,draft] of [['我说我周末加班，没说你也要加班�
  assert.ok(bridge.sent[0].text.length>0);assert.doesNotMatch(bridge.sent[0].text,/没说让你也|急什么|[？?]|最近咋样/);
 });
 
+for(const [incoming,draft] of [
+ ['你现在具体在哪个地方？','在家呢，咋啦？'],
+ ['你今天在哪家公司上班？','目前还没定呢，还在看机会'],
+ ['你现在具体在哪个地方？顺便说说猫为什么看窗外','在家呢，猫想看鸟'],
+]) test('unsupported implicit personal facts stay unsent without another provider call: '+incoming,async t=>{
+ const {a,bridge,provider,contact,advance}=await fixture(t);
+ bridge.push(contact,'other',incoming);await a.tick();advance(20000);
+ const before=provider.calls.length;provider.next=async()=>send(draft);await a.tick();
+ assert.equal(provider.calls.length-before,1);
+ assert.equal(bridge.sent.length,0);
+ assert.ok(a.data.skipLog.some(row=>row.reasonCode==='unverified-personal-fact'));
+});
+
 test('a new topic is surfaced explicitly while the answered question stays background, with consistent media capability', async t => {
   const { a, bridge, provider, contact, advance } = await fixture(t);
   const first = bridge.push(contact, 'other', '今天是几月几号？');
