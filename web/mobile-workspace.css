@@ -49,7 +49,8 @@
   #ai-panel .ai-contact-picker-dialog .ap-picker-summary > span:last-child { display: flex; flex-wrap: wrap; gap: 8px; }
   #ai-panel .ai-contact-picker-dialog .ap-picker-summary button { font-size: 14px; }
   #ai-panel .ai-contact-picker-dialog .ap-picker-list { padding-inline: 16px; }
-  #ai-panel .ai-contact-picker-dialog > footer { padding: 16px; gap: 8px; }
+  #ai-panel .ai-contact-picker-dialog > footer { padding: 8px 16px; gap: 8px; border-block: 1px solid var(--qi-border); flex-wrap: wrap; }
+  #ai-panel .ai-contact-picker-dialog > footer > b { width: auto; flex: 1 1 auto; margin-right: auto; }
   #ai-panel .ai-contact-picker-dialog[open] {
     top: calc(var(--qbx-dialog-viewport-top,0px) + 14px); bottom: auto; margin: 0 auto;
     height: min(780px,calc(var(--qbx-dialog-viewport-height,100dvh) - 28px));
