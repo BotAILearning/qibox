@@ -183,6 +183,14 @@ try {
   const exportDialog = page.locator('#ai-report-export-dialog[open]'); await exportDialog.waitFor();
   assert.doesNotMatch(await exportDialog.innerText(), /方便阅读分享|方便编辑/);
   await screenshot('02a-export-dialog');
+  await exportDialog.press('Escape');
+  await exportDialog.waitFor({ state: 'detached' });
+  assert.equal(await page.locator('#ai-panel').isVisible(), true, 'Escape closes only the export dialog, retaining the workbench');
+  assert.equal(await page.locator('.ai-analysis-history-detail').isVisible(), true, 'Escape retains the current saved report');
+  assert.equal(await page.locator('[data-ai-export-detail]').evaluate(node => node === document.activeElement), true, 'Escape restores focus to the export opener');
+  assert.equal(offlineCalls, 0, 'Escape never requests a model');
+  await page.locator('[data-ai-export-detail]').click();
+  await exportDialog.waitFor();
   await exportDialog.locator('[name=report-export-format][value=docx]').check();
   const singleDownload = page.waitForEvent('download');
   await exportDialog.locator('[data-ai-export-download]').click();

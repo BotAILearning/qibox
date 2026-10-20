@@ -533,8 +533,13 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     }
   }
   function closeAnalysisExport() {
+    const reportId = analysisExportDialog?.ids?.[0], scrollTop = $('#ai-content').scrollTop;
     analysisExportController?.abort(); analysisExportController = null;
     analysisExportDialog = null; render();
+    $('#ai-content').scrollTop = scrollTop;
+    const opener = analysisHistoryReport ? $('[data-ai-export-detail]') :
+      $('[data-ai-history-export-next]') || [...panel.querySelectorAll('[data-ai-history-export]')].find(button => button.dataset.aiHistoryExport === reportId);
+    opener?.focus({ preventScroll: true });
   }
   function openAnalysisExport(ids, report = null) {
     if (!downloadAnalysisReport) throw new Error('当前页面暂不支持文件下载，请刷新后重试');
@@ -1076,6 +1081,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     $('#ai-content').innerHTML = iconSprite + nav + (tab === 'overview' ? content : `<div class="ai-page-body">${content}</div>`);
     if (analysisExportDialog) {
       const dialog = $('#ai-report-export-dialog');
+      dialog?.addEventListener('keydown', event => event.stopPropagation());
       dialog?.addEventListener('cancel', event => { event.preventDefault(); closeAnalysisExport(); });
       dialog?.showModal();
     }
