@@ -1,10 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {unsupportedPersonalAnswer, unsupportedChatTime, personalQuestionClarification, knownDateCorrection} from '../server/ai-personal-answer.mjs';
+import {unsupportedPersonalAnswer, unsupportedChatTime, personalQuestionClarification, knownDateCorrection, explicitTurnRepair} from '../server/ai-personal-answer.mjs';
 
 test('unknown live presence and employment denials are not invented for natural chat',()=>{
   for(const text of ['怎么突然问这个，我在家呢。','我现在在办公室忙。','我没有在哪家公司上班。','我没在任何公司工作'])assert.equal(unsupportedPersonalAnswer([text]),'personal-fact',text);
   for(const text of ['这个这会儿说不准，找我是有什么事？','我在想怎么安排。','你在家就好。','他说“我在家”。','如果我在家就方便了。'])assert.equal(unsupportedPersonalAnswer([text]),'',text);
+});
+
+test('explicit speaker corrections and preference-only turns cannot be inverted or reopened as questions',()=>{
+  const context=text=>({pendingMessages:[{direction:'other',text}]});
+  assert.ok(explicitTurnRepair(['没说让你也加班，急什么'],context('我说我周末加班，没说你也要加班。')));
+  assert.ok(explicitTurnRepair(['好，那最近咋样？'],context('不用每句话都问我问题，随便聊两句就行。')));
+  for(const incoming of ['他说“别总反问我”。','不用每句话都问我问题，顺便帮我查个电话','你今天怎么样？'])
+    assert.equal(explicitTurnRepair(['最近咋样？'],context(incoming)),'');
+  assert.equal(explicitTurnRepair(['好的，随便聊聊'],context('不用每句话都问我问题，随便聊两句就行。')),'');
+  assert.equal(explicitTurnRepair(['最近咋样？'],{pendingMessages:[{direction:'other',text:'别每轮都反问我'},{direction:'other',text:'我需要你帮忙看看这个问题'}]}),'');
 });
 test('only recent human first-person evidence or explicit user facts establish live presence',()=>{
   const now=1700000000000,m={direction:'self',authorship:'human',text:'我在家呢。',timestamp:Math.floor(now/1000)-60};

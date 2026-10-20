@@ -60,6 +60,14 @@ async function fixture(t) {
   return { a, bridge, provider, contact, advance: ms => now += ms };
 }
 
+for(const [incoming,draft] of [['我说我周末加班，没说你也要加班。','知道了，没说让你也加班，急什么'],['不用每句话都问我问题，随便聊两句就行。','好呀，最近咋样？']]) test('final send respects the explicit current-turn correction without another model call: '+incoming,async t=>{
+ const {a,bridge,provider,contact,advance}=await fixture(t);
+ bridge.push(contact,'other',incoming);await a.tick();advance(20000);
+ const before=provider.calls.length;provider.next=async()=>send(draft);await a.tick();
+ assert.equal(provider.calls.length-before,1);assert.equal(bridge.sent.length,1);
+ assert.ok(bridge.sent[0].text.length>0);assert.doesNotMatch(bridge.sent[0].text,/没说让你也|急什么|[？?]|最近咋样/);
+});
+
 test('a new topic is surfaced explicitly while the answered question stays background, with consistent media capability', async t => {
   const { a, bridge, provider, contact, advance } = await fixture(t);
   const first = bridge.push(contact, 'other', '今天是几月几号？');

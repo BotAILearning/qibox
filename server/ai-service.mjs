@@ -31,7 +31,7 @@ import { createHash, randomInt, randomUUID } from 'node:crypto';
 import { setTimeout as wait } from 'node:timers/promises';
 import { AppError, atomicJson, jsonFile } from './files.mjs';
 import { AIProvider, SecretStore, providerValue, providerFingerprint } from './ai-provider.mjs';
-import { unsupportedPersonalAnswer, unsupportedChatTime, personalQuestionClarification, knownDateCorrection } from './ai-personal-answer.mjs';
+import { unsupportedPersonalAnswer, unsupportedChatTime, personalQuestionClarification, knownDateCorrection, explicitTurnRepair } from './ai-personal-answer.mjs';
 import { categories, styleOptions, avoidOptions, defaultStyle, styleSchema, styleValue, strategyValue, replyStrategyValue, replyLimitValue, validReplyLimit, strategyReady, textField } from './ai-schema.mjs';
 import { providerPresets, goalPresets, replyPresets } from './ai-presets.mjs';
 import { unsupportedTextAction, promisesMedia } from './ai-capabilities.mjs';
@@ -3367,7 +3367,7 @@ export class AIAssistant {
       const finalTexts = [...segments, ...(nativeAudioAllowed && result.media?.[0]?.text ? [result.media[0].text] : [])];
       const finalContext = { messages: modelMessages, pendingMessages, facts: [strategy.facts, ...replyFacts.map(row=>row.text), ...replyMemory.entries.map(row=>'联系人事实：'+row.text)].filter(Boolean).join('\n'), boundaries: strategy.boundaries, identityAsked, now: this.now(), timezone: currentChatTime(this.now(), selfContext(this, profile.kind)).timezone };
       const personalViolation = unsupportedPersonalAnswer(finalTexts, finalContext) || unsupportedChatTime(finalTexts, finalContext);
-      const clarification = personalViolation === 'unknown-self' ? personalQuestionClarification(pendingMessages) : personalViolation === 'future-notice' ? knownDateCorrection(finalContext) : '';
+      const clarification = personalViolation === 'unknown-self' ? personalQuestionClarification(pendingMessages) : personalViolation === 'future-notice' ? knownDateCorrection(finalContext) : !personalViolation && result.action === 'send' && mode === 'reply' && profile.kind === 'person' && !followUp ? explicitTurnRepair(finalTexts, finalContext) : '';
       if (clarification) { result = {action:'send', text:clarification, followUp:false, memoryUpdates:[]}; segments = [clarification]; }
       else if (personalViolation) { result.action = 'skip'; result[personalViolation === 'identity-rule' ? 'identitySkipped' : personalViolation === 'future-notice' ? 'executionSkipped' : personalViolation === 'time-fact' ? 'timeSkipped' : 'factsSkipped'] = true; result.recipientFactsSkipped = personalViolation === 'recipient-fact'; result.memoryUpdates = []; }
     }

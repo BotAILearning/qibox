@@ -86,6 +86,20 @@ export function personalQuestionClarification(pendingMessages = []) {
     ? '怎么了，找我有事吗？' : '';
 }
 
+// Narrow repairs for explicit conversational corrections. They do not infer
+// personal facts, override multi-message requests, or issue another model call.
+export function explicitTurnRepair(texts, { pendingMessages = [] } = {}) {
+  const pending = pendingMessages.filter(m => m.direction === 'other');
+  if (pending.length !== 1) return '';
+  const incoming = clean(pending[0].text).trim(), reply = texts.join('');
+  if (/[“”"「」]/.test(incoming)) return '';
+  if (/^我说我[^。！？!?]{1,60}[，,]没说你(?:也|还|要|会)/.test(incoming)
+      && /没说(?:让)?你也|(?:又)?没(?:有)?(?:让|叫)你(?:也)?/.test(reply)) return '明白，你说的是你自己的情况。';
+  const preferenceOnly = /^(?:不用|不要|别)(?:每句话|每句|每轮|总是|总|老是)(?:都)?(?:问(?:我)?(?:问题)?|反问(?:我)?|提问)(?:[，,](?:随便|正常|自然)(?:聊(?:两句|几句)?|聊天)?(?:就行|即可|就好)?)?[。！!]?$/u.test(incoming);
+  if (preferenceOnly && /[？?]|(?:最近|近来)(?:怎么样|咋样|如何)/.test(reply)) return '好，随便聊聊就行。';
+  return '';
+}
+
 export function knownDateCorrection({pendingMessages = [], messages = [], now = Date.now()} = {}) {
   const pending = pendingMessages.filter(m => m.direction === 'other');
   if (pending.length !== 1) return '';
