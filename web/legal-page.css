@@ -1,0 +1,8 @@
+/* Product document composition; controls, typography tokens and themes are shared. */
+.qibox-legal { margin: 0; }
+.qibox-legal-page { max-width: 760px; margin-inline: auto; }
+.qibox-legal-page > .qi-page-header { display: block; }
+.qibox-legal-page .qi-page-header h1 { margin: 16px 0 8px; }
+.qibox-legal-page h2 { margin: 24px 0 8px; font-size: var(--qi-font-h4); line-height: 24px; font-weight: 600; }
+.qibox-legal-page p { margin: 0 0 16px; }
+.qibox-legal-page .legal-meta { color: var(--qi-text-secondary); font-size: var(--qi-font-small); }
