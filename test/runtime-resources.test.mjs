@@ -382,3 +382,13 @@ test('restart reuses authenticated hashes only for unchanged file signatures and
   assert.notEqual(tampered.snapshot().status, 'ready'); assert.ok(hashes > 0, 'invalid authentication cannot reuse the saved hash');
   assert.equal(await tampered.currentValid(), false);
 });
+
+test('runtime hash stability uses its existing three attempts and never caches continuously changed bytes', async t=>{
+ const f=await fixture(t);f.manager.start();await f.manager.working;const tool=path.join(f.dataRoot,'runtime/tool');f.manager.verifiedHashes.clear();let hashes=0;
+ f.manager.hash=async file=>{hashes++;const bytes=await readFile(file);await writeFile(file,Buffer.alloc(bytes.length+1,0x59));return sha(bytes);};
+ await assert.rejects(f.manager.verifiedHash(tool),/持续变化/);assert.equal(hashes,3);assert.equal(f.manager.verifiedHashes.has(await realpath(tool)),false);
+});
+test('runtime hash failures unrelated to a changed signature remain explicit without retry', async t=>{
+ const f=await fixture(t);f.manager.start();await f.manager.working;const tool=path.join(f.dataRoot,'runtime/tool');f.manager.verifiedHashes.clear();let hashes=0;
+ f.manager.hash=async()=>{hashes++;throw Error('permanent hash failure');};await assert.rejects(f.manager.verifiedHash(tool),/permanent hash failure/);assert.equal(hashes,1);
+});

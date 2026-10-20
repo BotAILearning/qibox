@@ -164,3 +164,17 @@ test('offline import verifies size and hash before exposing a completed path', a
     await assert.rejects(next.importFile(wrongHash), /SHA-256/);
   } finally { await f.close(); }
 });
+
+test('closing an already paused transfer waits for its outstanding checkpoint write', async()=>{
+ const download=new DurableDownload({directory:tmpdir(),autoResume:false});download.state.status='paused';
+ const gate=Promise.withResolvers();download.persistQueue=gate.promise;let closed=false;
+ const closing=download.close().then(()=>{closed=true;});await new Promise(r=>setImmediate(r));
+ try{assert.equal(closed,false,'paused does not mean its queued file write has settled');}
+ finally{gate.resolve();await closing;}
+});
+test('a pause awaiting transfer completion cannot enqueue another write after close', async()=>{
+ const download=new DurableDownload({directory:tmpdir(),autoResume:false});download.state.status='downloading';download.meta={checkpoint:0};
+ const gate=Promise.withResolvers();download.working=gate.promise;let pauseWrites=0;
+ download.setState=async()=>{pauseWrites++;};const pausing=download.pause();const closing=download.close();gate.resolve();
+ await Promise.all([pausing,closing]);assert.equal(pauseWrites,0,'close owns the final checkpoint; the earlier pause cannot publish a later state');
+});

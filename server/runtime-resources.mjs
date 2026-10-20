@@ -112,7 +112,7 @@ export class RuntimeResources {
           // replaced while this input still references the original inode.
           const sha256 = await this.hash(file, Number(before.signature.split(':')[2]));
           const after = await this.fileSignature(file);
-          if (after.key !== before.key) throw Error('运行组件在校验期间发生变化');
+          if (after.key !== before.key) throw Object.assign(Error('运行组件在校验期间发生变化'), { code: 'runtime_hash_changed' });
           this.verifiedHashes.set(before.canonical, { signature: before.signature, sha256 });
           this.hashCacheDirty = true;
           return sha256;
@@ -123,6 +123,10 @@ export class RuntimeResources {
         const sha256 = await pending;
         const current = await this.fileSignature(file);
         if (current.key === before.key) return sha256;
+      } catch (error) {
+        // This is the existing three-attempt stability check. A shared hash
+        // rejected for a changed signature must reach its next bounded turn.
+        if (error?.code !== 'runtime_hash_changed') throw error;
       } finally {
         if (this.hashesInFlight.get(before.key) === pending) this.hashesInFlight.delete(before.key);
       }

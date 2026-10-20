@@ -179,7 +179,7 @@ export class DurableDownload {
     if (this.state.status === 'downloading' || this.state.status === 'verifying') {
       this.abortController?.abort(new Error('下载已暂停'));
       await this.working;
-      if (this.state.status !== 'complete') await this.setState('paused', this.meta.checkpoint, null);
+      if (!this.closed && this.state.status !== 'complete') await this.setState('paused', this.meta.checkpoint, null);
     }
     return this.snapshot();
   }
@@ -192,6 +192,8 @@ export class DurableDownload {
       this.state = { ...this.state, status: 'downloading', error: null, bytes: this.meta.checkpoint };
       await this.notify(); await this.persist();
     }
+    await this.working;
+    await this.persistQueue;
     return this.snapshot();
   }
 
