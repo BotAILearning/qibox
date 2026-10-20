@@ -5,6 +5,8 @@ const parts = value => clean(value).split(/[。！？!?，,；;\n]/).map(x => x.
 const attributed = value => /^(?:你|您|他|她|别人|对方|那个人|例如|比如|如果|假如|假设)|(?:说|写|问|原话|引用)[：:]?[“"「]|[“"「].*[”"」]/.test(value);
 const livePlace = /^(?:嗯|哈哈|好|对|是的)?\s*我(?:现在|这会儿|目前|这边)?(?:就|还|正)?在(家|公司|办公室|单位|学校|医院|外地|路上)(?:呢|里|这边|休息|上班|忙|[\s。！？!?，,；;]|$)/;
 const employmentDenial = /^我(?:现在|目前|今天)?(?:没有|没|不)(?:有)?(?:在)?(?:哪家|任何|什么|一家)?(?:公司|单位)(?:里)?(?:上班|工作)/;
+const liveActivity = /^(?:我)?(?:现在|这会儿|目前)?(?:刚刚?|正在|正|准备|马上|打算)(?:准备)?(出门|回家|去公司|上班|下班|开车|开会|吃饭|睡觉|洗澡|工作)/;
+const datedCheck = /^(?:那|好|行)?(?:周[一二三四五六日天]|明天|后天|下周)(?:我|我们|咱们)?(?:再|到时再)?(?:定|确定|确认|核对)(?:一下|下)?(?:具体)?(?:时间|几点)/;
 const availabilityClaim = /^(?:我(?:现在|今天|这会儿|目前)?|(?:现在|今天|这会儿|目前))(?:这边)?(?:肯定|一定|确实)?(?:有空|没空|不忙|很忙|没(?:有)?(?:什么)?安排|没(?:有)?(?:什么)?事)/;
 const deferredArrangement = /(?:等我|我|得|先).{0,10}(?:看|查|确认|核对).{0,8}(?:安排|时间|日程).{0,10}(?:再|后|就).{0,6}(?:告诉|通知|联系|跟你确认|跟你说|和你确认)/;
 const futureNotice = /等我(?:确认|确定|定下来|有消息|有结果)(?:一下|下|时间)?(?:了|后|以后|之后)?[^。！？!?，,；;\n]{0,16}(?:再|就|会)?(?:告诉|通知|联系|回复|(?:跟|和)(?:你|您)(?:说|定(?:时间|下来|好)?)|给(?:你|您)发(?:消息|信息))(?:你|您)?(?:一声|一下)?$/;
@@ -36,20 +38,29 @@ export function unsupportedPersonalAnswer(texts, { messages = [], pendingMessage
   const singleAIQuestion = identityAsked && pending.length === 1 && /AI|人工智能|机器人|自动回复|代回复|\bbot\b/i.test(clean(pending[0].text));
   const locationQuestion = pending.some(m => /(?:你|您).{0,6}(?:在哪|在哪里|在什么|位置|地点)/.test(clean(m.text)));
   const employmentQuestion = pending.some(m => /(?:你|您).{0,6}(?:哪家|哪个|什么)(?:公司|单位).{0,3}(?:上班|工作)/.test(clean(m.text)));
+  const directPersonalQuestion = !!personalQuestionClarification(pending);
+  const sameAssertion = value => clean(value).replace(/^我(?:本人)?/, '').replace(/^(?:现在|目前|这会儿)/, '').replace(/(?:呢|呀|啊|啦|哦|哈|～|~)+$/, '').trim();
   const privacyAllowed = /不(?:说|透露|分享)(?:我)?(?:位置|地点|行踪)|(?:位置|地点|行踪).{0,6}(?:保密|不说|不透露)/.test(clean(boundaries)) || evidence.some(p => privacyReason.test(p));
   const planNotDelegated = pending.some(m => /(?:不用|不必|别|不要|先别)(?:再)?(?:替|帮)(?:我|我们)(?:确定|决定|定|约|安排)/.test(clean(m.text)));
   for (const text of [...texts, texts.join('')]) for (const part of parts(text)) {
     if (attributed(part) || /(?:不是说|别说|不能说|没有说|不代表|未确认|说不准|不确定)/.test(part)) continue;
     if ((locationQuestion || employmentQuestion) && unknownSelf.test(part)) return 'unknown-self';
+    // A direct question about an unknown personal fact must not be answered
+    // with a new euphemism for that fact. Preserve supported assertions and
+    // neutral clarifications; everything else remains visibly unsent.
+    if (directPersonalQuestion && !(privacyAllowed && privacyReason.test(part)) && !/^(?:嗯+|哦+|哈哈(?:好)?|好(?:的)?|怎么(?:了|啦|突然(?:问|这么问))|咋(?:了|啦)|(?:有|是)?什么事|有什么事(?:吗|呀)?|找我有事(?:吗|呀)?|你找我(?:有什么|啥)事(?:吗|呀)?)$/.test(part)
+        && !evidence.some(p=>sameAssertion(p)===sameAssertion(part))) return 'personal-fact';
     const place = livePlace.exec(part);
     if (place && !evidence.some(p => livePlace.exec(p)?.[1] === place[1])) return 'personal-fact';
     const implicitPlace = locationQuestion && livePlace.exec('我' + part.replace(/^(?:嗯|哈哈|好|对|是的)\s*/, ''));
     if (implicitPlace && !evidence.some(p => livePlace.exec(p)?.[1] === implicitPlace[1])) return 'personal-fact';
     if (employmentQuestion && /^(?:我)?(?:目前|现在|暂时)?(?:还)?(?:没定|没有定|没工作|没上班|在找工作|在看机会)/.test(part)
         && !evidence.some(p => p.replace(/^我/, '') === part.replace(/^我/, ''))) return 'personal-fact';
+    if (locationQuestion && liveActivity.test(part) && !evidence.some(p => liveActivity.exec(p)?.[1] === liveActivity.exec(part)?.[1])) return 'personal-fact';
     if (employmentDenial.test(part) && !evidence.some(p => employmentDenial.test(p))) return 'personal-fact';
     if (availabilityClaim.test(part) && !evidence.some(p => availabilityClaim.test(p))) return 'personal-fact';
     if (deferredArrangement.test(part) && !evidence.some(p => deferredArrangement.test(p))) return 'future-notice';
+    if (datedCheck.test(part) && !evidence.some(p => p.replace(/^我/, '') === part.replace(/^我/, ''))) return 'future-notice';
     if (locationQuestion && privacyReason.test(part) && !privacyAllowed) return 'personal-fact';
     // A contextual bare denial must not become a false guarantee about who
     // typed the message. This check runs only at the final local boundary.
@@ -125,6 +136,10 @@ export function unsupportedChatTime(texts, { messages = [], facts = '', now = Da
   const nightWords = /昨晚|昨天晚上|昨日晚上/;
   const heardYesterday = annotateChatTimes(messages, now, timezone).some(m => m.direction === 'other' && !m.aiGenerated && m.temporal.relation === 'yesterday');
   for (const text of texts) for (const part of parts(text)) {
+    const beverageTime = /^(?:你|您)?(早上|上午|中午|下午|傍晚|晚上|凌晨|夜里)(?:就|先|刚刚?|已经|又)?(?:喝|来|冲|泡)(?:了|一|杯|点|些)/.exec(part);
+    if (beverageTime && !/[“”"「」]|(?:说|引用)|(?:如果|假如)/.test(part) && !/[？?]/.test(text) && /咖啡|喝茶|一杯/.test(evidence)
+        && ![...messages.filter(m=>m.direction==='other'&&!m.aiGenerated).flatMap(m=>parts(m.text)),...parts(facts).filter(p=>/^对方/.test(p)).map(p=>p.replace(/^对方/,''))]
+          .some(p=>!attributed(p.replace(/^我/,''))&&new RegExp(beverageTime[1]+'.{0,12}(?:咖啡|茶|一杯)').test(p))) return 'time-fact';
     if (attributed(part) || /不是|不确定|说不准|不能确定/.test(part)) continue;
     if (nightWords.test(part) && !nightWords.test(evidence)) return 'time-fact';
     if (/一年前/.test(part) && /去年/.test(evidence) && !/一年前/.test(evidence)) return 'time-fact';

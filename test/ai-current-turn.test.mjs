@@ -70,6 +70,7 @@ for(const [incoming,draft] of [['我说我周末加班，没说你也要加班�
 
 for(const [incoming,draft] of [
  ['你现在具体在哪个地方？','在家呢，咋啦？'],
+ ['你现在具体在哪个地方？','刚准备出门呢，怎么啦？'],
  ['你今天在哪家公司上班？','目前还没定呢，还在看机会'],
  ['你现在具体在哪个地方？顺便说说猫为什么看窗外','在家呢，猫想看鸟'],
 ]) test('unsupported implicit personal facts stay unsent without another provider call: '+incoming,async t=>{
@@ -79,6 +80,17 @@ for(const [incoming,draft] of [
  assert.equal(provider.calls.length-before,1);
  assert.equal(bridge.sent.length,0);
  assert.ok(a.data.skipLog.some(row=>row.reasonCode==='unverified-personal-fact'));
+});
+
+for(const [incoming,draft,reason] of [
+ ['今天喝了一杯咖啡，终于缓过来了。','早上就来一杯，挺提神的☕','unverified-time-fact'],
+ ['改成周日吧，周六我不行。','行，周日再定一下时间。',''],
+]) test('final FPK observed wording is guarded without another model call: '+incoming,async t=>{
+ const {a,bridge,provider,contact,advance}=await fixture(t);
+ bridge.push(contact,'other',incoming);await a.tick();advance(20000);
+ const before=provider.calls.length;provider.next=async()=>send(draft);await a.tick();
+ assert.equal(provider.calls.length-before,1);assert.equal(bridge.sent.length,0);
+ assert.ok(a.data.events.some(row=>row.code==='skip'&&row.reasonCode===(reason||'unverified-execution')));
 });
 
 test('a new topic is surfaced explicitly while the answered question stays background, with consistent media capability', async t => {

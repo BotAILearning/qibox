@@ -2,6 +2,25 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {unsupportedPersonalAnswer, unsupportedChatTime, personalQuestionClarification, knownDateCorrection, explicitTurnRepair} from '../server/ai-personal-answer.mjs';
 
+test('final package failures: current activity and dated confirmations require actual evidence',()=>{
+ const pendingMessages=[{direction:'other',text:'你现在具体在哪个地方？'}];
+ assert.equal(unsupportedPersonalAnswer(['刚准备出门呢，怎么啦？'],{pendingMessages}),'personal-fact');
+ for(const text of ['在外面呢','刚到楼下','我正在去机场','公司啊'])assert.equal(unsupportedPersonalAnswer([text],{pendingMessages}),'personal-fact',text);
+ assert.equal(unsupportedPersonalAnswer(['怎么了，找我有事吗？'],{pendingMessages}),'');
+ assert.equal(unsupportedPersonalAnswer(['刚准备出门呢'],{pendingMessages,facts:'我刚准备出门。'}),'');
+ assert.equal(unsupportedPersonalAnswer(['行，周日再定一下时间。']),'future-notice');
+ for(const text of ['你周日再定一下时间','他说“周日再定一下时间”','行，周日见'])assert.equal(unsupportedPersonalAnswer([text]),'',text);
+});
+
+test('a beverage mentioned today does not establish a morning event',()=>{
+ const context={messages:[{direction:'other',text:'今天喝了一杯咖啡，终于缓过来了。'}]};
+ assert.equal(unsupportedChatTime(['早上就来一杯，挺提神的'],context),'time-fact');
+ assert.equal(unsupportedChatTime(['你早上就来一杯'],context),'time-fact');
+ for(const text of ['缓过来就好','他说“早上就来一杯”','你早上想喝咖啡吗？'])assert.equal(unsupportedChatTime([text],context),'',text);
+ assert.equal(unsupportedChatTime(['早上就来一杯'],{messages:[{direction:'other',text:'我早上喝了一杯咖啡'}]}),'');
+ assert.equal(unsupportedChatTime(['你早上就来一杯'],{...context,facts:'对方早上喝了一杯咖啡'}),'');
+});
+
 test('direct personal questions also guard omitted subjects without claiming unrelated recipient facts',()=>{
   const question=text=>({pendingMessages:[{direction:'other',text}]});
   assert.equal(unsupportedPersonalAnswer(['在家呢，咋啦？'],question('你现在具体在哪个地方？')),'personal-fact');

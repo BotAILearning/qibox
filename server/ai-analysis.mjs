@@ -3,6 +3,7 @@ import { textField } from './ai-schema.mjs';
 import { dateRange, readStableRange } from './ai-range.mjs';
 import { actualRange, reportMetrics, reportMessageTime } from './ai-report-history.mjs';
 import { resolveAnalysisMedia } from './ai-analysis-media.mjs';
+import { analysisEvidenceViolation } from './ai-analysis-evidence.mjs';
 
 // Unicode code points in message bodies; JSON and prompt overhead are separate.
 export const ANALYSIS_INPUT_CHARS = 150000;
@@ -131,6 +132,7 @@ export async function analyzeContacts(assistant, value) {
           ? validated.reportText
           : normalizeDefaultReport(typeof validated?.report === 'string' ? validated.report.trim() : '', options.request);
         if (!reportText) throw new AppError('模型没有返回有效报告正文，请重试', 502, 'ai_model_schema');
+        if (analysisEvidenceViolation(reportText, inputMessages)) throw new AppError('模型报告的消息归属、时间或标识汇总与原文不一致，本次未保存。原有报告和分析要求已保留，请核对后重试', 502, 'ai_analysis_evidence');
         const report = { ...head, status: 'complete', count: messages.length, rangeCount: material.count,
           readableCount: sourceMessages.length, analyzedCount: messages.length, ...(mediaCoverage ? { contentParsedCount } : {}), analyzedChars: coverage.analyzedChars,
           totalChars: coverage.totalChars, omittedMessages: coverage.omittedMessages, partialMessages: coverage.partialMessages,

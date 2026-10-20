@@ -34,6 +34,20 @@ async function fixture(t) {
   return { root, bridge, provider, a, contact: bridge.contacts[0].id };
 }
 
+test('a contradictory report is visibly rejected after one call, preserving saved reports and allowing explicit recovery',async t=>{
+ const {bridge,provider,a,contact}=await fixture(t);
+ bridge.readRange=async args=>({account:args.account,contact:args.contact,messages:[
+  {id:key('evidence-other'),direction:'other',text:'QIBOX-STABLE-01',timestamp:stamp('2026-10-20T08:42:45+08:00')},
+  {id:key('evidence-self'),direction:'self',text:'收到',timestamp:stamp('2026-10-20T08:43:36+08:00')},
+ ]});
+ let calls=0;provider.complete=async()=>{calls++;return {report:calls===2?'QIBOX-STABLE 标识均来自本人':'本次本人和对方各发言一次。'};};
+ const value={request:'核对标识归属',contacts:[contact]};
+ const first=await a.analyze(value);assert.equal(first.reports[0].status,'complete');
+ const rejected=await a.analyze(value);assert.equal(calls,2);assert.equal(rejected.reports[0].status,'error');assert.match(rejected.reports[0].error,/与原文不一致/);
+ assert.equal(a.publicState().analysis.history.length,1);assert.equal(a.operation,null);
+ const next=await a.analyze(value);assert.equal(calls,3);assert.equal(next.reports[0].status,'complete');assert.equal(a.publicState().analysis.history.length,2);
+});
+
 test('单联系人一次请求覆盖全部消息并保存完整统计，不保存聊天片段', async t => {
   const { root, bridge, provider, a, contact } = await fixture(t);
   const messages = Array.from({ length: 100 }, (_, index) => ({ id: key(`analysis-long-${index}`), direction: index % 2 ? 'other' : 'self', text: `关键安排 ${index}：${'具体事件与双方约定。'.repeat(90)}`, timestamp: stamp('2026-09-01T09:15:00+08:00') + index * 86400 }));
