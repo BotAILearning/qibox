@@ -17,6 +17,15 @@ try {
   await menu.locator('summary').click();const startup=menu.getByRole('button',{name:'启动设置',exact:true});
   if(await startup.count()){await startup.click();await page.locator('#modal[open]').waitFor();await check('startup-settings',width,height,theme);await page.locator('#modal').press('Escape');}else await menu.locator('summary').press('Escape');
  }
+ for(const theme of ['light','dark']){
+  await page.locator('html').evaluate((n,t)=>n.dataset.qiTheme=t,theme);await page.waitForTimeout(200);
+  const desktop=await page.evaluate(()=>{
+   const rgb=s=>s.match(/[\d.]+/g).slice(0,3).map(Number).map(x=>{x/=255;return x<=.04045?x/12.92:((x+.055)/1.055)**2.4;});
+   const lum=s=>{const a=rgb(s);return a[0]*.2126+a[1]*.7152+a[2]*.0722;};
+   return ['#desktop-name','#ai-open span','.ai-outer-master > span'].map(selector=>{const n=document.querySelector(selector);let p=n,bg;while(p){bg=getComputedStyle(p).backgroundColor;if(!bg.endsWith(', 0)')&&bg!=='transparent')break;p=p.parentElement;}const color=getComputedStyle(n).color,a=lum(color),b=lum(bg);return{selector,color,background:bg,contrast:(Math.max(a,b)+.05)/(Math.min(a,b)+.05)};});
+  });
+  report.desktopPalette??=[];report.desktopPalette.push({theme,desktop});assert.ok(desktop.every(r=>r.contrast>=4.5),JSON.stringify({theme,desktop}));
+ }
  report.passed=true;
 }catch(e){report.failure=e.stack;throw e;}finally{await fs.writeFile(path.join(out,'report.json'),JSON.stringify(report,null,2));await browser.close();await f.close();}
 console.log(JSON.stringify({passed:report.passed,checks:report.checks.length}));
