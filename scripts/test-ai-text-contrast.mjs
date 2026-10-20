@@ -57,7 +57,15 @@ try {
   };
   for (const name of ['自动回复', '主动聊天', '执行记录', '分析报告', '系统设置']) {
     await page.locator('.ai-main-tabs').getByRole('button', { name, exact: true }).click();
-    if(name==='自动回复'){await page.locator(`[data-ai-object="${p.contact}"]`).click();await page.getByRole('switch',{name:'多轮交流',exact:true}).check();}
+    if(name==='自动回复'){
+      await page.locator(`[data-ai-object="${p.contact}"]`).click();
+      // The current object contract groups timing and takeover in one disclosure.
+      // Expand it so all the former timing text remains in the contrast sample.
+      const rhythm = page.locator('[data-ai-optional="object-rhythm"]');
+      await rhythm.locator('summary').click();
+      assert.equal(await rhythm.evaluate(e => e.open), true);
+      await rhythm.getByText('继承全局设置', { exact: true }).waitFor();
+    }
     if (name === '执行记录') {
       await page.locator('.ai-reply-record-preview').filter({ hasText: '合成回复' }).waitFor();
       await page.locator('[data-ai-record-expand]').click();
