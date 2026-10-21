@@ -46,6 +46,9 @@
 .qiapp-product #ai-panel[data-page="global-reply"] .ai-panel-heading h2,
 .qiapp-product #ai-panel[data-page="default-style"] .ai-panel-heading h2 { font-size: var(--qi-font-h2); line-height: 32px; }
 .qiapp-product #ai-panel :is(.ai-model-workspace,.ai-default-style-layout) { display: flex; flex-direction: column; gap: 28px; }
+.qiapp-product #ai-panel .ai-default-style-layout { align-items: stretch; }
+.qiapp-product #ai-panel .ai-default-style-layout > :is(.ai-default-material,.ai-default-current) { align-self: stretch; width: 100%; min-width: 0; }
+.qiapp-product #ai-panel .ap-gate-note { display: block; max-width: 38ch; margin-top: 6px; color: var(--qi-text-secondary); font-size: var(--qi-font-small); line-height: 1.5; white-space: normal; }
 .qiapp-product #ai-panel .ai-model-workspace { container: qi-settings / inline-size; }
 .qiapp-product #ai-panel :is(.ai-assignment-card,.ai-model-sidebar,.ai-model-editor,.ai-account-form) { width: 100%; max-width: 100%; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
 .qiapp-product #ai-panel .ai-assignment-card { display: grid; gap: 12px; }

@@ -8,6 +8,10 @@ const employmentDenial = /^我(?:现在|目前|今天)?(?:没有|没|不)(?:有)
 const liveActivity = /^(?:我)?(?:现在|这会儿|目前)?(?:刚刚?|正在|正|准备|马上|打算)(?:准备)?(出门|回家|去公司|上班|下班|开车|开会|吃饭|睡觉|洗澡|工作)/;
 const datedCheck = /^(?:那|好|行)?(?:周[一二三四五六日天]|明天|后天|下周)(?:我|我们|咱们)?(?:再|到时再)?(?:定|确定|确认|核对)(?:一下|下)?(?:具体)?(?:时间|几点)/;
 const futureMonitoring = /^我(?:再|会|先|回头|稍后)?(?:留意|留心|盯着|跟进|注意一下|关注一下)/;
+// Catch a prospective/reduplicated offer embedded after the topic, such as
+// "书店那边我也留意留意". Keep this narrow: past observations such as
+// "我也留意到新活动了" are not monitoring commitments.
+const repeatedFutureMonitoring = /我(?:也|还)?(留意|留心|盯着|跟进|注意|关注)\1/;
 const datedNotice = /^(?:那|好|行)?(?:我)?(?:明天|后天|[一二三四五六七八九十\d]+天后|周[一二三四五六日天])[^。！？!?，,；;]{0,12}(?:再|就|会)?(?:找|联系|通知|回复)(?:你|您)/;
 const availabilityClaim = /^(?:我(?:现在|今天|这会儿|目前)?|(?:现在|今天|这会儿|目前))(?:这边)?(?:肯定|一定|确实)?(?:有空|没空|不忙|很忙|没(?:有)?(?:什么)?安排|没(?:有)?(?:什么)?事)/;
 const deferredArrangement = /(?:等我|我|得|先).{0,10}(?:看|查|确认|核对).{0,8}(?:安排|时间|日程).{0,10}(?:再|后|就).{0,6}(?:告诉|通知|联系|跟你确认|跟你说|和你确认)/;
@@ -72,7 +76,7 @@ export function unsupportedPersonalAnswer(texts, { messages = [], pendingMessage
     if (availabilityClaim.test(part) && !evidence.some(p => availabilityClaim.test(p))) return 'personal-fact';
     if (deferredArrangement.test(part) && !evidence.some(p => deferredArrangement.test(p))) return 'future-notice';
     if (datedCheck.test(part) && !evidence.some(p => p.replace(/^我/, '') === part.replace(/^我/, ''))) return 'future-notice';
-    if ((futureMonitoring.test(part) || datedNotice.test(part)) && !evidence.some(p=>p===part)) return 'future-notice';
+    if ((futureMonitoring.test(part) || repeatedFutureMonitoring.test(part) || datedNotice.test(part)) && !evidence.some(p=>p===part)) return 'future-notice';
     if (locationQuestion && privacyReason.test(part) && !privacyAllowed) return 'personal-fact';
     // A contextual bare denial must not become a false guarantee about who
     // typed the message. This check runs only at the final local boundary.

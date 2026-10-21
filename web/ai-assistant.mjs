@@ -75,6 +75,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   const objectDrafts = new Map();
   const objectDirtyContacts = new Set();
   const accountFormDrafts = new Map();
+  const accountFormBaselines = new Map();
   let learnRange = { from: '', to: '' }, learnScope = 'range', learnRangeMode = 'all', learnTarget = 'both', memoryPendingSignature = '';
   let defaultStylePerspective = 'self', defaultStyleMode = 'contacts';
   let defaultStyleReturn = 'settings';
@@ -618,7 +619,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       state = null; $('#ai-content').innerHTML = loadingContent;
       replyLimitConfirmController?.abort(); replyLimitConfirmController = null;
       for (const controller of confirmationControllers) controller.abort();
-      concealKey(true); providerRevision++; modelDraft = null; learningDraft = null; replyDraft = null; accountFormDrafts.clear();
+      concealKey(true); providerRevision++; modelDraft = null; learningDraft = null; replyDraft = null; accountFormDrafts.clear(); accountFormBaselines.clear();
       profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); objectDirtyContacts.clear();
       objectScrollKey = ''; objectScrollTop = 0; selectedObject = ''; objectSearch = ''; objectKind = 'person'; objectSection = 'reply'; objectMemoryCategory = 'name';
       editingProfile = null; editingReplyContact = null; selectedContacts.clear(); replyProfiles.clear();
@@ -1012,14 +1013,35 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     for (const form of save.forms) form.removeAttribute('aria-busy');
     pendingSave = null;
   }
+  function accountFormBaseline(formId, source = state) {
+    if (formId === 'ai-global-reply-form') return { account: source?.account, values: source?.replyStrategy || {} };
+    const rhythm = replyRhythm(source?.settings || {});
+    return { account: source?.account, values: {
+      master: source?.settings?.enabled === true,
+      autoLearning: source?.settings?.autoLearning === true,
+      acknowledgeAI: source?.settings?.acknowledgeAI === true,
+      ...rhythm.timing,
+      segmentReplies: rhythm.segmentReplies,
+      followUpEnabled: rhythm.followUpEnabled,
+      enabled: rhythm.takeover.enabled,
+      minutes: rhythm.takeover.minutes,
+    } };
+  }
   function rememberDraft() {
     if (!state) return;
     for (const formId of ['ai-takeover-form', 'ai-global-reply-form']) {
       const form = panel.querySelector(`#${formId}`);
-      if (form) accountFormDrafts.set(formId, {
-        account: state.account,
-        fields: [...form.querySelectorAll('input[name],select[name],textarea[name]')].map(node => ({ name: node.name, value: node.value, checked: node.checked, type: node.type })),
-      });
+      if (form) {
+        const renderedBaseline = accountFormBaselines.get(formId);
+        const baseline = renderedBaseline?.account === state.account ? renderedBaseline.values : accountFormBaseline(formId).values;
+        const fields = [...form.querySelectorAll('input[name],select[name],textarea[name]')]
+          .map(node => ({ name: node.name, value: node.value, checked: node.checked, type: node.type }))
+          .filter(field => ['checkbox', 'radio'].includes(field.type)
+            ? field.checked !== (baseline[field.name] === true)
+            : String(field.value ?? '') !== String(baseline[field.name] ?? ''));
+        if (fields.length) accountFormDrafts.set(formId, { account: state.account, fields });
+        else accountFormDrafts.delete(formId);
+      }
     }
     const personal = $('#ai-personal-information-form');
     if (personal && personal.dataset.personalAccount === (state?.account || '')) {
@@ -1105,6 +1127,8 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     panel.querySelector(':scope > .qibox-workspace-menu')?.remove();
     const contentLayout = ['provider','personal-info','global-reply','default-style'].includes(tab) ? 'reading' : 'data';
     $('#ai-content').innerHTML = iconSprite + nav + (tab === 'overview' ? content : `<div class="ai-page-body qi-content" data-layout="${contentLayout}">${content}</div>`);
+    if (tab === 'settings') accountFormBaselines.set('ai-takeover-form', accountFormBaseline('ai-takeover-form'));
+    if (tab === 'global-reply') accountFormBaselines.set('ai-global-reply-form', accountFormBaseline('ai-global-reply-form'));
     if (analysisExportDialog) {
       const dialog = $('#ai-report-export-dialog');
       dialog?.addEventListener('keydown', event => event.stopPropagation());
@@ -1134,6 +1158,8 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         if (['checkbox', 'radio'].includes(field.type)) node.checked = field.checked;
         else node.value = field.value;
       }
+      const draftNotice = form?.querySelector('footer span');
+      if (draftNotice) draftNotice.textContent = '有未保存的修改；保存后生效';
       if (formId === 'ai-takeover-form' && form) {
         const followup = form.querySelector('[data-followup-waits]'), takeover = form.querySelector('[data-takeover-minutes]');
         if (followup && form.elements?.followUpEnabled) followup.hidden = !form.elements.followUpEnabled.checked;
@@ -2322,7 +2348,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       analysisDraft = { request: '', from: '', to: '', contacts: [], includeVoice: false, includeVisual: false }; analysisRangeMode = 'all'; analysisRangeBeforeCustom = null; analysisContactsExpanded = false; analysisSearch = ''; analysisHistoryReport = null; analysisHistoryEpoch++; resetAnalysisExport(); learnRange = {from:'',to:''}; learnRangeMode = 'all'; learnScope='range'; learnTarget='both'; defaultStylePerspective = 'self'; analysisResult = null; proactiveUI.reset();
       reviewAlert.hidden = true;
       concealKey(true); modelDraft = null; learningDraft = null; renderedView = ''; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); objectDirtyContacts.clear(); objectScrollKey = ''; objectScrollTop = 0; personalDraft = null; personalDraftAccount = null; summaryResults.clear(); selectedObject = ''; objectSearch = ''; objectKind = 'person'; learnContactKind = 'person'; editingReplyContact = null; contactSearch = ''; providerRevision++;
-      invalidateDateRange(); accountFormDrafts.clear(); generation++; skipEpoch++; skipLoading = false; skipHistory = []; skipHistoryPage = null; skipPageLoading = false; skipContent.clear(); markReplyStatus.clear(); clearInterval(timer); lastPollAt = 0; id = instanceId; setContactAvatarInstance(instanceId); state = null; busy = false; polling = false; attaching = true; tab = 'overview'; replyDraft = null; editingProfile = null; contactsLoaded = false; contactsLoading = false; resultProfileIds = null;
+      invalidateDateRange(); accountFormDrafts.clear(); accountFormBaselines.clear(); generation++; skipEpoch++; skipLoading = false; skipHistory = []; skipHistoryPage = null; skipPageLoading = false; skipContent.clear(); markReplyStatus.clear(); clearInterval(timer); lastPollAt = 0; id = instanceId; setContactAvatarInstance(instanceId); state = null; busy = false; polling = false; attaching = true; tab = 'overview'; replyDraft = null; editingProfile = null; contactsLoaded = false; contactsLoading = false; resultProfileIds = null;
       const attachedGeneration = generation;
       selectedContacts.clear(); replyProfiles.clear(); setPanelVisible(false); rail.hidden = false; panel.setAttribute('aria-busy', 'false');
       proactiveHistory = []; proactiveHistoryPage = null; proactiveRecordLoading = false; proactiveRecordEpoch++; errorHistory = []; errorPage = null; errorLoading = false; errorEpoch++;
@@ -2345,6 +2371,6 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         finally { if (current === generation) polling = false; }
       }, 1000);
     },
-    detach() { accountFormDrafts.clear(); finishSave(pendingSave); contactDialog?.close(); analysisQueueToken++; analysisQueueAccount = null; rememberRecords(); proactiveRecordEpoch++; proactiveRecordLoading = false; proactiveHistory = []; proactiveHistoryPage = null; errorEpoch++; errorLoading = false; errorHistory = []; errorPage = null; logEpoch++; analysisDraft = { request: '', from: '', to: '', contacts: [] }; analysisSearch = ''; analysisHistoryReport = null; analysisHistoryEpoch++; resetAnalysisExport(); analysisResult = null; reviewAlert.hidden = true; concealKey(true); modelDraft = null; learningDraft = null; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); objectDirtyContacts.clear(); objectScrollKey = ''; objectScrollTop = 0; personalDraft = null; personalDraftAccount = null; selectedObject = ''; objectSearch = ''; objectKind = 'person'; editingReplyContact = null; providerRevision++; accountFormDrafts.clear(); generation++; skipEpoch++; skipLoading = false; skipHistory = []; skipHistoryPage = null; skipPageLoading = false; skipContent.clear(); markReplyStatus.clear(); clearInterval(timer); id = null; setContactAvatarInstance(null); state = null; attaching = false; rail.hidden = true; setPanelVisible(false); panel.querySelector(':scope > .qibox-workspace-menu')?.remove(); $('#ai-content').replaceChildren(); selectedContacts.clear(); replyProfiles.clear(); proactiveUI.reset(); replyDraft = null; },
+    detach() { accountFormDrafts.clear(); accountFormBaselines.clear(); finishSave(pendingSave); contactDialog?.close(); analysisQueueToken++; analysisQueueAccount = null; rememberRecords(); proactiveRecordEpoch++; proactiveRecordLoading = false; proactiveHistory = []; proactiveHistoryPage = null; errorEpoch++; errorLoading = false; errorHistory = []; errorPage = null; logEpoch++; analysisDraft = { request: '', from: '', to: '', contacts: [] }; analysisSearch = ''; analysisHistoryReport = null; analysisHistoryEpoch++; resetAnalysisExport(); analysisResult = null; reviewAlert.hidden = true; concealKey(true); modelDraft = null; learningDraft = null; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); objectDirtyContacts.clear(); objectScrollKey = ''; objectScrollTop = 0; personalDraft = null; personalDraftAccount = null; selectedObject = ''; objectSearch = ''; objectKind = 'person'; editingReplyContact = null; providerRevision++; accountFormDrafts.clear(); accountFormBaselines.clear(); generation++; skipEpoch++; skipLoading = false; skipHistory = []; skipHistoryPage = null; skipPageLoading = false; skipContent.clear(); markReplyStatus.clear(); clearInterval(timer); id = null; setContactAvatarInstance(null); state = null; attaching = false; rail.hidden = true; setPanelVisible(false); panel.querySelector(':scope > .qibox-workspace-menu')?.remove(); $('#ai-content').replaceChildren(); selectedContacts.clear(); replyProfiles.clear(); proactiveUI.reset(); replyDraft = null; },
   };
 }

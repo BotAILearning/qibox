@@ -12,6 +12,17 @@ test('residence does not establish relocation and a refund does not create monit
  for(const text of ['你再留意一下','你三天后再找客服','他说“我再留意一下”'])assert.equal(unsupportedPersonalAnswer([text]),'',text);
 });
 
+test('Q53-38 unsupported monitoring offer is rejected while sourced and ordinary observations remain allowed',()=>{
+ const input='我周日想买书，顺便喝茶，再散散步。刚才说错了，不是周六。天气不好我就只去书店，其余再看，不用帮我确定计划。';
+ const candidate='嗯好的，周日看天气再定，书店那边我也留意留意。';
+ assert.equal(unsupportedPersonalAnswer([candidate],{pendingMessages:[{direction:'other',text:input}]}),'future-notice');
+
+ const now=1700000000000;
+ assert.equal(unsupportedPersonalAnswer(['我也留意留意'],{now,messages:[{direction:'self',authorship:'human',timestamp:Math.floor(now/1000),text:'我也留意留意'}]}),'');
+ for(const allowed of ['书店那边我也留意到新活动了','你也留意留意书店那边的信息','他说“我也留意留意这家书店”'])
+  assert.equal(unsupportedPersonalAnswer([allowed]),'',allowed);
+});
+
 test('changing the day does not supply a previously unspecified afternoon',()=>{
  const pendingMessages=[{direction:'other',text:'改成周日吧，周六我不行。'}];
  assert.equal(unsupportedChatTime(['行，那周日下午。'],{pendingMessages}),'time-fact');

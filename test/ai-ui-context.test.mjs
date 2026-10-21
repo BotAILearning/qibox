@@ -11,19 +11,98 @@ test.beforeEach(() => {
 });
 test.afterEach(() => { globalThis.window = originalWindow; });
 
+for (const edited of [false, true]) test(`settings draft ${edited ? 'preserves real edits' : 'follows refreshed state when untouched'}`, async t => {
+  const originalDocument = globalThis.document, dom = surface();
+  globalThis.document = dom.document;
+  const snapshot = { ...availableState(), account: 'account-a', settings: { enabled: edited, replyDelay: 8 } };
+  const controller = aiAssistant({ api: async (_url, payload) => {
+    if (payload?.action === 'scan') snapshot.settings = { ...snapshot.settings, enabled: true };
+    return snapshot;
+  } });
+  t.after(() => { controller.detach(); globalThis.document = originalDocument; });
+  await controller.attach('instance-a'); await dom.navigate('settings');
+  const form = dom.node('#ai-takeover-form');
+  assert.ok(form);
+  const master = form.elements.namedItem('master');
+  assert.ok(master, dom.node('#ai-content').innerHTML.slice(0, 500));
+  if (edited) master.checked = false;
+  await dom.navigate('proactive');
+  await dom.click('scan');
+  assert.equal(snapshot.settings.enabled, true);
+  await dom.navigate('settings');
+  const restored = dom.node('#ai-takeover-form');
+  assert.match(dom.node('#ai-content').innerHTML, /name="master"[^>]*checked/);
+  assert.equal(restored.elements.namedItem('master').checked, edited ? false : true);
+  assert.equal(restored.notice.textContent, edited ? '有未保存的修改；保存后生效' : '');
+});
+
+test('failed settings save keeps edited values marked as unsaved', async t => {
+  const originalDocument = globalThis.document, OriginalFormData = globalThis.FormData, dom = surface();
+  globalThis.document = dom.document;
+  globalThis.FormData = class extends OriginalFormData {
+    constructor(form) {
+      super();
+      for (const field of form?.fields || []) {
+        if (['checkbox', 'radio'].includes(field.type) ? field.checked : true) this.append(field.name, ['checkbox', 'radio'].includes(field.type) ? 'on' : field.value);
+      }
+    }
+  };
+  const snapshot = { ...availableState(), account: 'account-a', settings: { enabled: true, replyDelay: 8 } };
+  const controller = aiAssistant({ api: async (_url, payload) => {
+    if (payload?.action === 'settings') throw new Error('fixture save failure');
+    return snapshot;
+  } });
+  t.after(() => { controller.detach(); globalThis.document = originalDocument; globalThis.FormData = OriginalFormData; });
+  await controller.attach('instance-a'); await dom.navigate('settings');
+  const form = dom.node('#ai-takeover-form');
+  form.elements.namedItem('replyDelay').value = '13';
+  await dom.submit(form);
+  assert.equal(dom.node('#ai-feedback').hidden, false);
+  await dom.navigate('proactive'); await dom.navigate('settings');
+  const restored = dom.node('#ai-takeover-form');
+  assert.equal(restored.elements.namedItem('replyDelay').value, '13');
+  assert.equal(restored.notice.textContent, '有未保存的修改；保存后生效');
+});
+
 // Exercise the real controller's async click handler at its API boundary. The
 // minimal DOM surface only supplies elements used by attach/render; no browser,
 // model service or native desktop is involved in these context-switch tests.
 function surface({ without = [] } = {}) {
   const nodes = new Map(), handlers = new Map(), forms = new Map(), panelClicks = [];
   const attribute = key => 'data-' + key.replace(/[A-Z]/g, letter => '-' + letter.toLowerCase());
+  const parsedForm = selector => {
+    const id = selector.slice(1), html = nodes.get('#ai-content')?.innerHTML || '';
+    if (!html.includes(`id="${id}"`)) return null;
+    const start = html.indexOf(`<form id="${id}"`), end = html.indexOf('</form>', start);
+    if (start < 0 || end < 0) return null;
+    const source = html.slice(start, end), fields = [];
+    const controls = [
+      ...[...source.matchAll(/<input\b([^>]*)>/g)].map(match => ({ attrs: match[1], body: '' })),
+      ...[...source.matchAll(/<(textarea|select)\b([^>]*)>([\s\S]*?)<\/\1>/g)].map(match => ({ attrs: match[2], body: match[3] })),
+    ];
+    for (const { attrs, body } of controls) {
+      const name = attrs.match(/\bname="([^"]+)"/)?.[1];
+      if (!name) continue;
+      const type = attrs.match(/\btype="([^"]+)"/)?.[1] || (attrs.includes('textarea') ? 'textarea' : 'text');
+      fields.push({ name, type, value: attrs.match(/\bvalue="([^"]*)"/)?.[1] ?? body, checked: /\bchecked(?:\s|$)/.test(attrs) });
+    }
+    const notice = { textContent: '' };
+    const form = { id, _html: source, isConnected: true, fields, get entries() { return fields.map(({ name, value }) => [name, value]); }, querySelectorAll: () => fields, querySelector: selector => selector === 'footer span' ? notice : null,
+      elements: { namedItem: name => fields.find(field => field.name === name) }, setAttribute() {}, removeAttribute() {}, notice };
+    forms.set(selector, form); return form;
+  };
   const buttonNode = dataset => ({ dataset, attributes: Object.keys(dataset).map(key => ({ name: attribute(key) })),
     closest: selector => selector === '[data-proactive-root]' && Object.keys(dataset).some(key => key.startsWith('proactive')) ? {} : null,
     hasAttribute: name => Object.keys(dataset).some(key => attribute(key) === name) });
   const node = selector => {
     if (without.includes(selector)) return null;
     if (selector === '#ai-queue-live') return null;
-    if (['#ai-proactive-form', '#ai-reply-form', '#ai-provider-form', '#ai-model-form', '#ai-profile-form', '#ai-paste-form', '#ai-manual-reply-form', '#ai-object-form', '#ai-analysis-form'].includes(selector)) return forms.get(selector) || null;
+    if (['#ai-proactive-form', '#ai-reply-form', '#ai-provider-form', '#ai-model-form', '#ai-profile-form', '#ai-paste-form', '#ai-manual-reply-form', '#ai-object-form', '#ai-analysis-form', '#ai-takeover-form', '#ai-global-reply-form'].includes(selector)) {
+      const existing = forms.get(selector), html = nodes.get('#ai-content')?.innerHTML || '';
+      if (existing && !existing._html) return existing;
+      if (existing?._html && html.includes(`id="${selector.slice(1)}"`) && html.slice(html.indexOf(`<form id="${selector.slice(1)}"`)).startsWith(existing._html)) return existing;
+      forms.delete(selector); return parsedForm(selector);
+    }
     if (!nodes.has(selector)) {
       let html = '', text = '', children = [];
       nodes.set(selector, {

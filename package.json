@@ -1,6 +1,6 @@
 {
   "name": "qibox",
-  "version": "0.11.7",
+  "version": "0.11.8",
   "private": true,
   "type": "module",
   "description": "栖盒：在 NAS 上安装和运行 Linux 应用",
@@ -10,7 +10,7 @@
     "prepare:runtime": "node scripts/prepare-runtime.mjs",
     "build:web": "node scripts/build.mjs --ui-only",
     "build": "node scripts/build.mjs",
-    "test": "node --test test/*.test.mjs",
+    "test": "node scripts/run-tests.mjs",
     "check": "node scripts/check.mjs",
     "test:ui": "node scripts/test-ui.mjs",
     "test:desktop": "node scripts/test-desktop.mjs",

@@ -95,6 +95,9 @@ try {
   assert.equal(await page.locator('.ai-default-style-page input[name=default-perspective]').count(), 2, '学习方向保留本人和对方两个明确选项');
   assert.equal(await page.locator('.ai-default-style-page .ai-default-style-layout').count(), 1, '学习素材与当前风格使用双栏布局');
   assert.equal(await page.locator('.ai-default-current').count(), 1, '无现存风格时显示空状态，不造示例风格');
+  const desktopLearningGeometry = await page.locator('.ai-default-material').evaluate(node => ({ width: node.getBoundingClientRect().width, tabs: node.querySelector('.ai-default-source-tabs')?.getBoundingClientRect().width || 0, buttons: [...node.querySelectorAll('.ai-default-source-tabs button')].map(button => button.getBoundingClientRect().width) }));
+  assert.ok(desktopLearningGeometry.width >= 300, `desktop learning material collapsed: ${JSON.stringify(desktopLearningGeometry)}`);
+  assert.ok(desktopLearningGeometry.tabs >= 300 && desktopLearningGeometry.buttons.every(width => width >= 120), `desktop source tabs collapsed: ${JSON.stringify(desktopLearningGeometry)}`);
   assert.equal(await page.locator('[data-ai-default-source=contacts]').first().isVisible(), true);
   await page.locator('[data-ai-default-mode=paste]').click();
   assert.equal(await page.locator('[data-ai-default-source=paste]').first().isVisible(), true);

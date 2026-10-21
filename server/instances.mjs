@@ -7,6 +7,24 @@ import { createAdapterRuntime, inertAI, manualSchedule } from './app-adapters.mj
 import { validUserKey } from './platform.mjs';
 
 const validId = id => typeof id === 'string' && /^[a-f0-9-]{36}$/.test(id);
+function unavailableAssistant(assistant, cause) {
+  const message = /^ai_secret_/.test(cause.code || '')
+    ? cause.message.replace(/后重试$/, '后重启栖盒')
+    : '此实例 AI 设置暂不可读取，原数据已保留；请恢复密钥或配置备份后重启栖盒';
+  const error = new AppError(message, 409, /^ai_secret_/.test(cause.code || '') ? cause.code : 'ai_storage_unavailable');
+  const refuse = () => { throw error; };
+  // A storage failure isolates AI, not its WeChat desktop. Lifecycle and user
+  // input must remain usable without ever saving an empty replacement state.
+  const isolated = { storageError: error, available: false, closed: true, notice: message,
+    begin() {}, invalidate() {}, async suspend() {}, async close() {}, async manualInput() {}, userActivity() { return { noted: true }; } };
+  for (const name of Object.getOwnPropertyNames(Object.getPrototypeOf(assistant))) {
+    if (name !== 'constructor' && !Object.hasOwn(isolated, name)) isolated[name] = refuse;
+  }
+  // Report export and explicit key reveal inspect these before calling a
+  // method; keep those routes inside the same unavailable boundary.
+  for (const name of ['data', 'models']) Object.defineProperty(isolated, name, { get: refuse });
+  return isolated;
+}
 export function instanceName(value) {
   if (typeof value !== 'string' || !value.trim() || [...value.trim()].length > 30 || /[\x00-\x1f\x7f]/.test(value)) throw new AppError('请输入 1–30 个字的名称');
   return value.trim();
@@ -170,7 +188,12 @@ class UserInstances {
     instance.ai = new AIAssistant({ dataRoot, bridge: runtime.aiBridge || new DataChatBridge(runtime), provider: this.aiProvider,
       ready: () => !this.owner.closing && !meta.removedAt && this.consent.accepted && runtime.status === 'running' && !this.library.updating && !this.library.updateHolds?.has(dataRoot) });
     runtime.manualInput = event => instance.ai.manualInput(event);
-    await instance.ai.init(); instance.ai.begin();
+    try { await instance.ai.init(); instance.ai.begin(); }
+    catch (error) {
+      if (instance.ai.storageError !== error) throw error;
+      try { await instance.ai.bridge.close?.(); } catch {}
+      instance.ai = unavailableAssistant(instance.ai, error);
+    }
     this.instances.set(meta.id, instance);
     {
       const resumeFile = path.join(dataRoot, 'session-resume.json'), saved = await jsonFile(resumeFile, {});

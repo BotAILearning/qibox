@@ -137,6 +137,21 @@ test('task list shows newest published task first, even after an older task is e
   assert.deepEqual(s.proactiveTasks.map(row => row.id), ['older', 'newest', 'same-time-later', 'middle']);
 });
 
+test('running proactive tasks explain when a parent switch currently blocks execution without changing schedule state', () => {
+  const running = task({ status: 'running', nextAt: Date.parse('2026-09-18T06:40:00Z') });
+  const aiOff = proactiveTable(state({ settings: { enabled: false, proactive: true }, proactiveTasks: [running] }));
+  assert.match(aiOff, /排程仍启用，当前不会执行：AI 总开关已关闭；开启后按原计划运行。/);
+  assert.match(aiOff, /<span class="ap-status running"[^>]*>已排程<\/span>/);
+  assert.match(aiOff, /下次计划/);
+  const proactiveOff = proactiveTable(state({ settings: { enabled: true, proactive: false }, proactiveTasks: [running] }));
+  assert.match(proactiveOff, /主动聊天开关已关闭/);
+  const bothOff = proactiveTable(state({ settings: { enabled: false, proactive: false }, proactiveTasks: [running] }));
+  assert.match(bothOff, /AI 总开关、主动聊天开关已关闭/);
+  const ready = proactiveTable(state({ proactiveTasks: [running] }));
+  assert.match(ready, /<span class="ap-status running">执行中<\/span>/);
+  assert.doesNotMatch(ready, /ap-gate-note|排程仍启用/);
+});
+
 test('ended editor is read-only, and unmapped migration cannot silently save as once', () => {
   const ended = task({ status: 'ended' });
   const html = proactivePage(state({ proactiveTasks: [ended] }), { editing: true, draft: taskDraft(ended) });

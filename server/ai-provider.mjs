@@ -260,10 +260,22 @@ function providerEndpoints(config) {
 }
 export class SecretStore {
   constructor(root) { this.file = path.join(root, 'ai-secret.key'); }
-  async init() {
+  async init({ encryptedValues = [] } = {}) {
     try { this.key = await readFile(this.file); }
-    catch (e) { if (e.code !== 'ENOENT') throw e; const key = randomBytes(32); try { await writeFile(this.file, key, { mode: 0o600, flag: 'wx' }); this.key = key; } catch (error) { if (error.code !== 'EEXIST') throw error; this.key = await readFile(this.file); } }
-    if (this.key.length !== 32) throw new AppError('模型配置无法读取，请重新配置');
+    catch (e) {
+      if (e.code !== 'ENOENT') throw e;
+      if (encryptedValues.length) throw new AppError('AI 数据密钥缺失，原数据已保留；请恢复原密钥后重试', 409, 'ai_secret_missing');
+      const key = randomBytes(32);
+      try { await writeFile(this.file, key, { mode: 0o600, flag: 'wx' }); this.key = key; }
+      catch (error) { if (error.code !== 'EEXIST') throw error; this.key = await readFile(this.file); }
+    }
+    if (this.key.length !== 32) throw new AppError('模型配置无法读取，原数据已保留；请恢复原密钥后重试', 409, 'ai_secret_invalid');
+    // Authenticate existing data before any migration can save over it. One
+    // readable value verifies the key while independent damaged backups remain
+    // available for the caller's existing per-record recovery behavior.
+    if (encryptedValues.length && !encryptedValues.some(value => {
+      try { this.open(value); return true; } catch { return false; }
+    })) throw new AppError('AI 数据无法解密，原数据已保留；请恢复原密钥或备份后重试', 409, 'ai_secret_invalid');
   }
   seal(value) { const iv = randomBytes(12), cipher = createCipheriv('aes-256-gcm', this.key, iv); const encrypted = Buffer.concat([cipher.update(JSON.stringify(value)), cipher.final()]); return { iv: iv.toString('base64'), tag: cipher.getAuthTag().toString('base64'), data: encrypted.toString('base64') }; }
   open(value) { const cipher = createDecipheriv('aes-256-gcm', this.key, Buffer.from(value.iv, 'base64')); cipher.setAuthTag(Buffer.from(value.tag, 'base64')); return JSON.parse(Buffer.concat([cipher.update(Buffer.from(value.data, 'base64')), cipher.final()]).toString()); }
