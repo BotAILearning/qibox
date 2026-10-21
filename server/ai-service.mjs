@@ -1,5 +1,6 @@
 import { replyRhythm } from './ai-reply-rhythm.mjs';
 import { initDefaultStyleAccounts, rememberDefaultStyle, switchDefaultStyleAccount, verifyDefaultStyleAccount, saveDefaultStyleChange } from './ai-default-style-scope.mjs';
+import { initReplyLimitAccounts, replyLimitsForAccount, migrateReplyLimitIdentity } from './ai-reply-limit-scope.mjs';
 import { mediaCapability, mediaOutputPrompt, generateMediaOutput } from './ai-media-output.mjs';
 import { readableMediaInput } from './ai-media-input.mjs';
 import { learningEnabled, learningEpoch, learningCurrent, learningRules, sensitiveMemory, deduplicateLearnedFacts, explicitFactTime } from './ai-learning-policy.mjs';
@@ -195,6 +196,7 @@ export class AIAssistant {
   async init() {
     try {
       this.data = await jsonFile(this.file, defaults());
+      initReplyLimitAccounts(this.data);
       await this.vault.init({ encryptedValues: encryptedStateValues(this.data) });
       this.storageError = null;
     } catch (error) { this.storageError = error; throw error; }
@@ -218,11 +220,6 @@ export class AIAssistant {
     this.data.replyTargets ??= [...this.data.targets]; this.data.proactiveTargets ??= [...this.data.targets]; this.syncTargets();
     this.data.strategy = strategyValue(this.data.strategy, { stored: true });
     this.data.replyStrategy = replyStrategyValue(this.data.replyStrategy || this.data.strategy, { stored: true });
-    this.data.replyRoundLimits = { person: null, group: null, ...(this.data.replyRoundLimits || {}) };
-    for (const kind of ['person', 'group']) if (this.data.replyRoundLimits[kind] !== null) {
-      try { this.data.replyRoundLimits[kind] = replyLimitValue(this.data.replyRoundLimits[kind]); }
-      catch { /* Preserve legacy limits; execution remains blocked until a valid save. */ }
-    }
     for (const profile of Object.values(this.data.profiles)) {
       // Older versions persisted model-selected group wait durations. They are
       // not user/system throttles and must not delay messages after upgrade.
@@ -768,12 +765,12 @@ export class AIAssistant {
       replyGoal: profile.replyStrategy.replyGoal,
     } : {}), maxRounds: profile.replyStrategy?.maxRounds != null
       ? profile.replyStrategy.maxRounds
-      : this.data.replyRoundLimits?.[profile.kind] ?? profile.continuation.strategy.maxRounds };
+      : this.replyRoundLimits()[profile.kind] ?? profile.continuation.strategy.maxRounds };
     // Independent replies receive only their reply configuration, never another
     // conversation's proactive purpose, opening content, persona or style source.
     const base = replyStrategyValue(this.globalReplyStrategy(), { stored: true });
     const result = strategyValue({ ...base, ...(profile?.inheritReplyStrategy ? {} : profile?.replyStrategy) }, { stored: true });
-    result.maxRounds = profile?.replyStrategy?.maxRounds != null ? profile.replyStrategy.maxRounds : this.data.replyRoundLimits?.[profile?.kind] ?? result.maxRounds;
+    result.maxRounds = profile?.replyStrategy?.maxRounds != null ? profile.replyStrategy.maxRounds : this.replyRoundLimits()[profile?.kind] ?? result.maxRounds;
     return result;
   }
   styleProfile(strategy) {
@@ -1031,6 +1028,7 @@ export class AIAssistant {
   }
   configuration(value) { return accountConfiguration(this, value); }
   globalReplyStrategy() { return this.data.globalReplyStrategies?.[this.data.account] || this.data.replyStrategy; }
+  replyRoundLimits() { return replyLimitsForAccount(this.data); }
   skipEvents() {
     const profileIds = new Set(this.profiles().map(profile => profile.id)), rows = new Map();
     for (const event of [...this.data.events.filter(row => row.code === 'skip'), ...this.data.skipLog])
@@ -1059,7 +1057,7 @@ export class AIAssistant {
     }));
     const selected = this.profiles().find(profile => profile.contact === contact);
     if (selected) { const index = profiles.findIndex(profile => profile.id === selected.id); profiles[index] = { ...this.publicProfile(selected), ...profiles[index] }; delete profiles[index].generatedIds; delete profiles[index].sentMessages; }
-    return { compact: true, configurationRevision: this.revision, account: this.data.account, settings: this.data.settings, profiles, live: this.liveStates(), available: this.available, notice: this.notice,
+    return { compact: true, configurationRevision: `${this.revision}:${this.defaultStyleRevision || 0}`, account: this.data.account, settings: this.data.settings, profiles, live: this.liveStates(), available: this.available, notice: this.notice,
       operation: this.operation || this.scanOperation || null, waiting: this.data.settings.enabled && (!this.ready() || !this.available || !this.modelReady() || !!this.operation || !!this.scanOperation),
       activity: this.activitySummaries(), activityHistory: this.activitySummaries('unknown'), ...this.proactiveV2.state(), queue: this.data.queue, skipRecords: skipped.records, skipRecordsPage: skipped.page, recentErrors: errors.records, errorsPage: errors.page };
   }
@@ -1067,8 +1065,8 @@ export class AIAssistant {
     const errors = this.errorRecords({ limit: 20 });
     const skipped = this.skipRecords();
     const skipRecords = skipped.records;
-    return { capabilities: { mediaOutput: !!(this.providerConfig('chat') && mediaCapability(this.providerConfig('chat')) && this.bridge.supportsMediaOutput), nativeVoiceOutput: this.bridge.supportsNativeVoiceOutput === true, writeContactRemark: typeof this.bridge?.setContactRemark === 'function' }, settings: this.data.settings, strategy: this.data.strategy, replyStrategy: this.globalReplyStrategy(), personalInformation: (() => { const info = personalInformation(this); return { entries: info.entries, suggestions: info.suggestions, history: info.history.map(row => ({ at: row.at })) }; })(), personalFields, replyRoundLimits: this.data.replyRoundLimits, profiles: this.profiles().map(profile => this.publicProfile(profile)), targets: this.data.targets, replyTargets: this.data.replyTargets, proactiveTargets: this.data.proactiveTargets,
-      ...this.proactiveV2.state(), account: this.data.account, configurationRevision: this.revision,
+    return { capabilities: { mediaOutput: !!(this.providerConfig('chat') && mediaCapability(this.providerConfig('chat')) && this.bridge.supportsMediaOutput), nativeVoiceOutput: this.bridge.supportsNativeVoiceOutput === true, writeContactRemark: typeof this.bridge?.setContactRemark === 'function' }, settings: this.data.settings, strategy: this.data.strategy, replyStrategy: this.globalReplyStrategy(), personalInformation: (() => { const info = personalInformation(this); return { entries: info.entries, suggestions: info.suggestions, history: info.history.map(row => ({ at: row.at })) }; })(), personalFields, replyRoundLimits: this.replyRoundLimits(), profiles: this.profiles().map(profile => this.publicProfile(profile)), targets: this.data.targets, replyTargets: this.data.replyTargets, proactiveTargets: this.data.proactiveTargets,
+      ...this.proactiveV2.state(), account: this.data.account, configurationRevision: `${this.revision}:${this.defaultStyleRevision || 0}`,
       activity: this.activitySummaries(), activityHistory: this.activitySummaries('unknown'),
       provider: this.publicProvider('chat'), models: this.publicModels(), assignments: { chat: this.assignmentFor('chat'), learningAnalysis: this.assignmentFor('learning') },
       analysis: { mode: this.data.analysisMode, provider: this.publicProvider('analysis'), effectiveProvider: this.publicProvider('analysis'), history: this.analysisHistory() },
@@ -1380,6 +1378,7 @@ export class AIAssistant {
     if (!this.bridge.stableMessageIds) this.forgetContext();
     const revision = this.revision, scanOperation = { phase: 'contacts', completed: 0, total: 0 };
     this.scanOperation = scanOperation;
+    let replyLimitMigration = null;
     try {
       const result = await this.bridge.scan({ signal: this.controller.signal, onProgress: ({ completed, total }) => {
         if (revision === this.revision && Number.isInteger(completed) && Number.isInteger(total) && completed >= 0 && completed <= total) Object.assign(scanOperation, { completed, total });
@@ -1389,6 +1388,11 @@ export class AIAssistant {
       if (!result.available || !validKey(result.account)) { this.available = false; this.contacts.clear(); this.avatarUrls.clear(); this.avatarReady = false; throw new AppError('暂时无法获取联系人，请打开微信并登录后重试', 409, 'ai_data_unavailable'); }
       const migrated = this.migrateContactIdentities(result);
       if (this.data.account !== result.account) {
+        const previous = { account: this.data.account, replyTargets: this.data.replyTargets, proactiveTargets: this.data.proactiveTargets,
+          queue: this.data.queue, learnedDefaultStyle: this.data.learnedDefaultStyle, defaultStyleSnapshot: this.data.defaultStyleSnapshot,
+          defaultStyleAccount: this.data.defaultStyleAccount, autoLearning: this.data.settings.autoLearning };
+        const migration = migrateReplyLimitIdentity(this.data, result.account, migrated.equivalentIdentity);
+        if (migration) replyLimitMigration = { ...migration, previous };
         this.available = false; this.contacts.clear(); this.avatarUrls.clear(); this.avatarReady = false; this.data.contacts = []; this.data.lastScanAt = null;
         this.invalidate(); if (this.data.account) this.data.settings.enabled = false; this.data.replyTargets = migrated.replyTargets; this.data.proactiveTargets = migrated.proactiveTargets; this.syncTargets(); this.data.queue = { status: 'idle', items: [], nextAt: null }; this.forgetContext();
         switchDefaultStyleAccount(this, result.account, { equivalentIdentity: migrated.equivalentIdentity });
@@ -1416,8 +1420,18 @@ export class AIAssistant {
       for (const [id] of this.cursors) if (!this.contacts.has(this.data.profiles[id]?.contact)) this.cursors.delete(id);
       this.retryAt = 0; this.scanFailures = 0; this.scanRetryAt = 0;
       this.available = true; this.notice = this.contacts.size ? (Number.isInteger(result.unreadableCount) && result.unreadableCount > 0 ? `已获取 ${this.contacts.size} 位联系人，另有 ${result.unreadableCount} 位暂时无法读取` : '联系人已更新') : '暂无可读取的联系人，请稍后刷新';
-      await this.save(); return this.publicState();
+      await this.save(); replyLimitMigration = null; return this.publicState();
     } catch (error) {
+      if (replyLimitMigration && this.data.accountReplyRoundLimits[replyLimitMigration.account] === replyLimitMigration.next) {
+        delete this.data.accountReplyRoundLimits[replyLimitMigration.account];
+        if (this.data.account === replyLimitMigration.account) {
+          const { autoLearning, ...previous } = replyLimitMigration.previous;
+          Object.assign(this.data, previous, { contacts: [], lastScanAt: null });
+          this.data.settings.autoLearning = autoLearning; this.data.settings.updateStyle = autoLearning; this.syncTargets();
+          this.defaultStyleSavedAccount = null; this.defaultStyleSavedValue = null;
+          this.available = false; this.contacts.clear(); this.avatarUrls.clear(); this.avatarReady = false;
+        }
+      }
       if (revision === this.revision) {
         const transient = ['ai_data_database_changed', 'ai_wechat_logged_out'].includes(error.code);
         // A database write or a brief login transition can clear on the next
@@ -1902,14 +1916,27 @@ export class AIAssistant {
       if (!['person', 'group'].includes(kind) || maxRounds == null) throw new AppError('上限设置无效');
       const identity = await this.bridge.currentAccount();
       const contacts = [...this.contacts.values()].filter(contact => contact.kind === kind).map(contact => contact.id).sort();
-      if (!account || account !== this.data.account || identity.account !== account || (scope && (!Array.isArray(scope.contacts) || scope.contacts.some(contact => typeof contact !== 'string') || JSON.stringify([...scope.contacts].sort()) !== JSON.stringify(contacts)))) throw new AppError('账号或对象范围已变化，请重新确认应用范围', 409, 'AI_SCOPE_CHANGED');
+      if (!validKey(account) || account !== this.data.account || identity.account !== account || (scope && (!Array.isArray(scope.contacts) || scope.contacts.some(contact => typeof contact !== 'string') || JSON.stringify([...scope.contacts].sort()) !== JSON.stringify(contacts)))) throw new AppError('账号或对象范围已变化，请重新确认应用范围', 409, 'AI_SCOPE_CHANGED');
       maxRounds = replyLimitValue(maxRounds);
-      this.data.replyRoundLimits = { person: null, group: null, ...(this.data.replyRoundLimits || {}), [kind]: maxRounds };
+      const previous = this.data.accountReplyRoundLimits[account], next = { ...this.replyRoundLimits(), [kind]: maxRounds };
+      this.data.accountReplyRoundLimits[account] = next;
+      const changes = [];
       let count = 0;
       for (const profile of this.profiles()) if (profile.account === this.data.account && profile.kind === kind) {
-        profile.replyStrategy = { ...profile.replyStrategy, maxRounds }; count++;
+        const before = profile.replyStrategy, after = { ...before, maxRounds };
+        profile.replyStrategy = after; changes.push({ profile, before, after }); count++;
       }
-      await this.save(); return { ...this.publicState(), appliedReplyLimit: { kind, maxRounds, count: [...this.contacts.values()].filter(target => target.kind === kind).length, configuredCount: count } };
+      try { await this.save(); }
+      catch (error) {
+        if (this.data.accountReplyRoundLimits[account] === next) {
+          if (previous === undefined) delete this.data.accountReplyRoundLimits[account]; else this.data.accountReplyRoundLimits[account] = previous;
+        }
+        for (const { profile, before, after } of changes) if (this.data.profiles[profile.id] === profile && profile.replyStrategy === after) {
+          if (before === undefined) delete profile.replyStrategy; else profile.replyStrategy = before;
+        }
+        throw error;
+      }
+      return { ...this.publicState(), appliedReplyLimit: { kind, maxRounds, count: [...this.contacts.values()].filter(target => target.kind === kind).length, configuredCount: count } };
     });
   }
   async saveReplyProfile({ contact, style: value, strategy: reply, preserveSwitches = false, replyEnabled, styleSet, styleId, applyCombinedLearning = false, combinedLearningId, inheritStrategy, group, options, memory, timing, takeover, rhythm } = {}) {

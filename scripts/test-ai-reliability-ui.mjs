@@ -7,7 +7,7 @@ import { proactiveFixture } from './proactive-ui-fixture.mjs';
 
 const { chromium } = createRequire(import.meta.url)(playwrightPath);
 const fixture = await proactiveFixture(), { ai, bridge } = fixture;
-const output = path.join(root, 'reports/ai-reliability-2026-09-30/browser/new-features');
+const output = path.resolve(root, process.env.QIBOX_TEST_OUTPUT || 'reports/ai-reliability-2026-09-30/browser/new-features');
 await mkdir(output, { recursive: true });
 const report = { scope: 'Disposable local app, simulated model and deliveries. Real browser interactions; no NAS or real messages.', checks: [], errors: [] };
 let browser;
@@ -60,9 +60,16 @@ try {
   await page.locator('[data-ai-object-section=reply]').click();
   await page.locator('[data-ai-reply-limit-choice]').selectOption('custom'); await page.locator('[data-ai-reply-limit-custom]').fill('13');
   await page.locator('[data-ai-apply-limit-kind=person]').click(); await confirm.waitFor(); await confirm.locator('[data-cancel]').click();
-  assert.equal(ai.data.replyRoundLimits.person, null);
-  await page.locator('[data-ai-apply-limit-kind=person]').click(); await clickAndSave(confirm.locator('button[type=submit]'), 'apply-reply-limit');
-  assert.equal(ai.data.replyRoundLimits.person, 13); assert.equal(ai.data.replyRoundLimits.group, null);
+  const account = ai.data.account;
+  assert.equal(ai.data.accountReplyRoundLimits[account]?.person ?? null, null);
+  assert.equal(ai.publicState().replyRoundLimits.person, null);
+  await page.locator('[data-ai-apply-limit-kind=person]').click();
+  const applyLimitResponse = responseFor('apply-reply-limit');
+  await confirm.locator('button[type=submit]').click();
+  const appliedLimitState = await (await applyLimitResponse).json(); await settled();
+  assert.equal(ai.data.accountReplyRoundLimits[account].person, 13);
+  assert.equal(ai.publicState().replyRoundLimits.person, 13); assert.equal(ai.publicState().replyRoundLimits.group, null);
+  assert.deepEqual(appliedLimitState.replyRoundLimits, { person: 13, group: null });
   await page.waitForFunction(() => document.body.innerText.includes('已更新'));
   report.checks.push('Bulk person cap asks confirmation, cancellation does nothing, success feedback appears and group cap is retained');
 

@@ -73,5 +73,8 @@ export async function saveDefaultStyleChange(a, account, change) {
     if (a.defaultStyleSavedAccount === account) { a.defaultStyleSavedAccount = null; a.defaultStyleSavedValue = null; }
     throw error;
   }
+  // Notify other open pages only after persistence succeeds. Publishing a
+  // configuration revision must not abort an otherwise valid reply task.
+  a.defaultStyleRevision = (a.defaultStyleRevision || 0) + 1;
   return { ...a.publicState(), ...result };
 }

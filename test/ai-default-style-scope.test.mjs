@@ -17,6 +17,24 @@ async function fixture(t) {
   return { a, bridge, provider, first, second, switchTo, create };
 }
 
+test('default saves publish a UI revision after persistence without invalidating running work', async t => {
+  const f = await fixture(t), revision = f.a.revision, signal = f.a.controller.signal;
+  const before = f.a.publicState().configurationRevision;
+  await f.a.saveDefaultStyle({ summary: 'CROSS_PAGE_DEFAULT' });
+  const after = f.a.publicState().configurationRevision;
+  assert.notEqual(after, before);
+  assert.equal(f.a.publicLiveState().configurationRevision, after);
+  assert.equal(f.a.revision, revision, 'A notification must not retire the generation used by running replies');
+  assert.equal(f.a.controller.signal, signal); assert.equal(signal.aborted, false);
+  const save = f.a.save;
+  f.a.save = async () => { throw Error('fixture disk full'); };
+  await assert.rejects(f.a.saveDefaultStyle({ summary: 'UNSAVED_DEFAULT' }), /fixture disk full/);
+  f.a.save = save;
+  assert.equal(f.a.publicState().configurationRevision, after);
+  assert.equal(f.a.publicState().effectiveDefaultStyle.summary, 'CROSS_PAGE_DEFAULT');
+  assert.equal(f.provider.calls.length, 0); assert.equal(f.bridge.sent.length, 0);
+});
+
 test('legacy default belongs only to its recorded account, both accounts restore their own default after restart', async t => {
   const f = await fixture(t); await f.a.commitDefaultStyle({ summary: 'STYLE_ACCOUNT_A' });
   const firstStyle = structuredClone(f.a.publicState().learnedDefaultStyle);

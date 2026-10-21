@@ -55,10 +55,10 @@ test('invalid inherited type and global limits are preserved instead of falling 
   t.after(async () => { await a.close(); await cleanup(root); });
   await a.configure(modelConfig); await a.scan(); await a.setReplyOptions({ contact: bridge.contacts[0].id, enabled: true }); await a.settings({ enabled: true });
   const p = a.profiles()[0]; delete p.replyStrategy;
-  a.data.replyRoundLimits.person = 'unlimited';
+  a.data.accountReplyRoundLimits[a.data.account] = { person: 'unlimited', group: null };
   assert.equal(a.strategy(p, 'reply').maxRounds, 'unlimited');
   assert.equal(a.canDeliver(p, 'reply', a.revision, a.controller.signal), false);
-  a.data.replyRoundLimits.person = null; a.data.replyStrategy.maxRounds = 99999;
+  a.data.accountReplyRoundLimits[a.data.account].person = null; a.data.replyStrategy.maxRounds = 99999;
   assert.equal(a.strategy(p, 'reply').maxRounds, 99999);
   assert.equal(a.canDeliver(p, 'reply', a.revision, a.controller.signal), false);
   await a.configuration({ type: 'global-reply-strategy', strategy: { ...a.globalReplyStrategy(), replyGoal: '只更新要求，不确认上限' } });

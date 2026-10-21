@@ -7,9 +7,9 @@ import assert from 'node:assert/strict';
 import {root,playwrightPath} from './tooling.mjs';
 import {proactiveFixture} from './proactive-ui-fixture.mjs';
 const {chromium}=createRequire(import.meta.url)(playwrightPath);
-const fixture=await proactiveFixture(),{ai,bridge,provider}=fixture;
+const fixture=await proactiveFixture(),{ai,bridge,provider,runtime}=fixture;
 const output=pathToFileURL(path.resolve(root,process.env.QIBOX_TEST_OUTPUT||'reports/ai-confirmation-isolation')+path.sep);
-const proof={scope:'Disposable production UI; record cleanup confirmation across accounts',realWechatSends:0,realProviderCalls:0,previewRequests:0,cleanupRequests:0,passed:false};
+const proof={scope:'Disposable production UI; confirmation cleanup on account change and host detach',realWechatSends:0,realProviderCalls:0,previewRequests:0,cleanupRequests:0,applyLimitRequests:0,passed:false};
 let browser;
 try{
  await fs.mkdir(output,{recursive:true});
@@ -17,7 +17,7 @@ try{
  const profile=ai.profiles().find(p=>p.contact===contact);
  profile.sentMessages=[{id:'old-record-confirmation',at:Date.now(),source:'reply',body:ai.vault.seal({text:'OLD_ACCOUNT_RECORD'})}];await ai.save();
  browser=await chromium.launch({channel:'msedge',headless:true});const page=await browser.newPage({viewport:{width:1280,height:900}});
- page.on('request',request=>{if(request.method()==='POST'&&request.url().endsWith('/ai')){const body=request.postDataJSON();if(body.action==='configuration'&&body.value?.type==='clear-records'){if(body.value.token)proof.cleanupRequests++;else proof.previewRequests++;}}});
+ page.on('request',request=>{if(request.method()==='POST'&&request.url().endsWith('/ai')){const body=request.postDataJSON();if(body.action==='configuration'&&body.value?.type==='clear-records'){if(body.value.token)proof.cleanupRequests++;else proof.previewRequests++;}if(body.action==='apply-reply-limit')proof.applyLimitRequests++;}});
  await page.goto(fixture.url);await page.locator('[data-action=open]').click();await page.locator('#ai-open').click();await page.locator('[data-ai-nav=activity]').click();
  await page.locator('[data-ai-clear-records=reply]').click();const dialog=page.locator('dialog.qbx-product-dialog');await dialog.waitFor();
  bridge.account=createHash('sha256').update('record-confirmation-new-account').digest('hex');await ai.scan();await ai.setReplyOptions({contact,enabled:true});
@@ -25,6 +25,21 @@ try{
  await dialog.waitFor({state:'detached',timeout:7000});await page.waitForTimeout(300);
  proof.oldConfirmationCancelled=true;proof.newAccountRecordsRetained=next.sentMessages.length===1;
  assert.equal(proof.cleanupRequests,0);assert.equal(proof.newAccountRecordsRetained,true);assert.equal(provider.calls.length,0);assert.equal(bridge.sent.length,0);
- await page.screenshot({path:fileURLToPath(new URL('new-account-records.png',output))});proof.passed=true;
+ await page.screenshot({path:fileURLToPath(new URL('new-account-records.png',output))});
+ await page.locator('[data-ai-nav=overview]').click();
+ await page.locator(`[data-ai-object="${contact}"]`).click();
+ await page.locator('[data-ai-apply-limit-kind=person]').click();
+ const limitDialog=page.locator('dialog.qbx-product-dialog');await limitDialog.waitFor();
+ await page.screenshot({path:fileURLToPath(new URL('logout-confirmation-before.png',output))});
+ runtime.loginStatus='logged-out';
+ await page.locator('#ai-panel').waitFor({state:'hidden',timeout:7000});
+ await limitDialog.waitFor({state:'detached',timeout:3000});
+ proof.aiEntryExpandedAfterDetach=await page.locator('#ai-open').getAttribute('aria-expanded');
+ await page.screenshot({path:fileURLToPath(new URL('logout-confirmation-cleared.png',output))});
+ proof.logoutDetachedModalClosed=true;
+ assert.equal(proof.aiEntryExpandedAfterDetach,'false','A hidden panel must not leave the AI entry exposed as expanded');
+ assert.equal(proof.applyLimitRequests,0,'A stale confirmation must never submit its write after the host detaches the account');
+ assert.equal(provider.calls.length,0);assert.equal(bridge.sent.length,0);
+ proof.passed=true;
 }finally{await fs.writeFile(new URL('report.json',output),JSON.stringify(proof,null,2));await browser?.close();await fixture.close();}
 console.log(JSON.stringify(proof));

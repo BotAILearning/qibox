@@ -249,7 +249,7 @@ test('applying a reply limit updates only the selected object type and preserves
  assert.equal(profile.paused,true);assert.equal(profile.manualPause,true);assert.equal(profile.rounds,2);
  assert.equal(a.data.replyStrategy.maxRounds,50); assert.equal(group.replyStrategy.maxRounds,4);
  assert.deepEqual(wikiOnly.replyStrategy,{maxRounds:12},'批量设置只改变次数上限，保留其余空白');
- assert.equal(a.data.replyRoundLimits.person,12,'Wiki-only 新联系人使用联系人类型默认上限');
+ assert.equal(a.publicState().replyRoundLimits.person,12,'Wiki-only 新联系人使用联系人类型默认上限');
  assert.equal(a.strategy({kind:'person'},'reply').maxRounds,12); assert.equal(a.strategy({kind:'group'},'reply').maxRounds,50);
  await a.applyReplyLimitToKind('group',8);
  assert.equal(group.replyStrategy.maxRounds,8); assert.equal(a.data.replyStrategy.maxRounds,50);
@@ -273,10 +273,10 @@ test('applying a reply limit updates only the selected object type and preserves
 test('batch reply limits reject an account change before the page sees it',async t=>{
  const {a,bridge,provider}=await fixture(t);
  const scope={account:a.data.account,contacts:bridge.contacts.map(contact=>contact.id)};
- const before=structuredClone(a.data.replyRoundLimits);
+ const before=structuredClone(a.publicState().replyRoundLimits);
  bridge.account=key('different-batch-account');
  await assert.rejects(a.applyReplyLimitToKind('person',13,scope),error=>error.code==='AI_SCOPE_CHANGED');
- assert.deepEqual(a.data.replyRoundLimits,before);
+ assert.deepEqual(a.publicState().replyRoundLimits,before);
  assert.equal(provider.calls.length,0);
 });
 
@@ -284,22 +284,22 @@ test('batch reply limits require the confirmed contact range and preserve new ob
  const {a,bridge}=await fixture(t);
  const scope={account:a.data.account,contacts:bridge.contacts.map(contact=>contact.id)};
  bridge.contacts.push({id:key('new-batch-contact'),label:'新增测试对象',kind:'person'});await a.scan();
- const before=structuredClone(a.data.replyRoundLimits);
+ const before=structuredClone(a.publicState().replyRoundLimits);
  await assert.rejects(a.applyReplyLimitToKind('person',13,scope),error=>error.code==='AI_SCOPE_CHANGED');
- assert.deepEqual(a.data.replyRoundLimits,before);
+ assert.deepEqual(a.publicState().replyRoundLimits,before);
  const current={account:a.data.account,contacts:bridge.contacts.map(contact=>contact.id)};
  const result=await a.applyReplyLimitToKind('person',13,current);
- assert.equal(result.appliedReplyLimit.count,4);assert.equal(a.data.replyRoundLimits.person,13);
- assert.equal(a.data.replyRoundLimits.group,null);
+ assert.equal(result.appliedReplyLimit.count,4);assert.equal(a.publicState().replyRoundLimits.person,13);
+ assert.equal(a.publicState().replyRoundLimits.group,null);
 });
 test('bulk unlimited is rejected without changing any type or object limits',async t=>{
  const {a,bridge}=await fixture(t),contact=bridge.contacts[0];
  await a.saveReplyProfile({contact:contact.id,style:a.publicState().schema.defaultStyle,strategy:{maxRounds:50}});
- const before=structuredClone(a.data.replyRoundLimits),profile=a.profiles().find(p=>p.contact===contact.id);
+ const before=structuredClone(a.publicState().replyRoundLimits),profile=a.profiles().find(p=>p.contact===contact.id);
  await assert.rejects(a.applyReplyLimitToKind('person','unlimited'),/1到2000/);
- assert.deepEqual(a.data.replyRoundLimits,before);assert.equal(profile.replyStrategy.maxRounds,50);
+ assert.deepEqual(a.publicState().replyRoundLimits,before);assert.equal(profile.replyStrategy.maxRounds,50);
  const result=await a.applyReplyLimitToKind('person',2000);
- assert.equal(result.replyRoundLimits.person,2000);assert.equal(result.appliedReplyLimit.count,3);assert.equal(a.data.replyRoundLimits.group,null);
+ assert.equal(result.replyRoundLimits.person,2000);assert.equal(result.appliedReplyLimit.count,3);assert.equal(a.publicState().replyRoundLimits.group,null);
 });
 
 test('analysis omits unreadable bodies but keeps database errors visible',async t=>{

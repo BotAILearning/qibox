@@ -11,6 +11,7 @@ export async function proactiveFixture() {
   const dataRoot = await temp(), bridge = new ChatFixture(), provider = new AIModelFixture();
   ['陈小雨', '林一', '周末'].forEach((label, i) => { bridge.contacts[i].label = label; });
   const opened = [];
+  let runtime;
   bridge.openChat = async ({ contact }) => { opened.push(contact); return { opened: true }; };
   const original = provider.complete.bind(provider);
   provider.complete = async (config, system, input, signal) => input.mode === 'proactive'
@@ -18,7 +19,7 @@ export async function proactiveFixture() {
     : original(config, system, input, signal);
   const peer = await rfbFixture(path.join(root, 'web/backgrounds/mist.jpg'));
   const app = await createApplication({ appRoot: root, dataRoot, dev: true, extract: extractor, fetcher, trustedHashes: [packageSha256], aiProvider: provider,
-    runtimeFactory: (...args) => ({ ...runtimeFactory(...args), port: peer.port, aiBridge: bridge, loginStatus: 'logged-in' }) });
+    runtimeFactory: (...args) => (runtime = { ...runtimeFactory(...args), port: peer.port, aiBridge: bridge, loginStatus: 'logged-in' }) });
   await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve));
   const space = await app.users.get('development'); await space.setConsent(true);
   app.library.download(); await app.library.working;
@@ -27,7 +28,7 @@ export async function proactiveFixture() {
   clearInterval(ai.timer); await ai.verifyProvider(modelConfig); await ai.scan();
   await ai.settings({ enabled: false, reply: false });
   ai.interval = () => 0;
-  return { app, ai, bridge, provider, instance, opened, dataRoot, peer,
+  return { app, ai, bridge, provider, instance, opened, dataRoot, peer, runtime,
     url: `http://127.0.0.1:${app.server.address().port}${app.prefix}/?dev=${app.devKey}`,
     async close() { await app.close(); await peer.close(); await cleanup(dataRoot); }
   };

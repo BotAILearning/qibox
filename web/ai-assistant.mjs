@@ -37,7 +37,7 @@ const serviceIdentity = value => `${String(value?.protocol || 'openai')}|${Strin
 
 export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, onVisibilityChange, guard, ensure }) {
   const rail = document.querySelector('#ai-rail'), panel = document.querySelector('#ai-panel');
-  const setPanelVisible = visible => { panel.hidden = !visible; onVisibilityChange?.(visible); };
+  const setPanelVisible = visible => { panel.hidden = !visible; rail.querySelector('#ai-open')?.setAttribute('aria-expanded', String(visible)); onVisibilityChange?.(visible); };
   panel.addEventListener('error', event => { noteContactAvatarFailure(event.target); }, true);
   // guard：入口常驻后，操作开关 / 打开面板前由外层判断可用性，不满足时弹窗提醒并返回 false。
   const pass = () => guard ? guard() !== false : true;
@@ -610,6 +610,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     if (accountChanged) {
       invalidateDateRange();
       finishSave(pendingSave);
+      message('');
       // Invalidate pending reads and discard local edits from the old account,
       // even when both accounts have the same contact ID.
       requestEpoch++;
@@ -658,6 +659,15 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   const hasPendingAnalysis = () => analysisQueueAccount !== null && analysisResult?.reports?.some(row => ['waiting', 'analyzing'].includes(row.status));
   function controls() {
     if (!state) return;
+    const defaultCurrent = tab === 'default-style' && panel.querySelector('.ai-default-current');
+    if (defaultCurrent && defaultCurrent.dataset.defaultStyleState !== defaultStyleSignature()) {
+      const focused = defaultCurrent.contains(document.activeElement) ? document.activeElement : null;
+      const selection = focused?.name === 'summary' ? [focused.selectionStart, focused.selectionEnd] : null;
+      rememberDraft();
+      defaultCurrent.outerHTML = defaultStyleCurrent();
+      accountFormBaselines.set('ai-default-style-form', accountFormBaseline('ai-default-style-form'));
+      if (selection) { const input = panel.querySelector('#ai-default-style-form [name=summary]'); input?.focus({ preventScroll: true }); input?.setSelectionRange(...selection); }
+    }
     // 记忆合并在后台跑，轮询拿到新状态时重画对象页，让合并结果立刻可确认。
     const memoryPending = JSON.stringify((state.profiles || []).map(p => [p.id, p.pendingMemoryId || '', p.pendingMemoryAt || 0, p.pendingMemorySource || '', p.memoryMerge?.status || '']));
     if (memoryPending !== memoryPendingSignature) {
@@ -940,13 +950,23 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   function defaultReplyStyle() {
     return Object.hasOwn(state, 'effectiveDefaultStyle') ? state.effectiveDefaultStyle || state.schema?.defaultStyle : state.learnedDefaultStyle?.style || state.schema?.defaultStyle;
   }
-  function defaultStyleLearning() {
+  function defaultStyleSignature() {
+    return JSON.stringify([state.account, state.learnedDefaultStyle || null, !!state.defaultStyleUndoable]);
+  }
+  function defaultStyleCurrent() {
     const ds = state.learnedDefaultStyle || null;
+    const draft = accountFormDrafts.get('ai-default-style-form');
+    const draftSummary = draft?.account === state.account ? draft.fields.find(field => field.name === 'summary')?.value : undefined;
+    const summary = draftSummary ?? (ds?.style?.summary || summaryText(ds?.style));
+    const dirty = draftSummary !== undefined && draftSummary !== (ds?.style?.summary || summaryText(ds?.style));
     const perspectiveLabel = p => p === 'other' ? '对方的风格' : '我的风格';
     const contactCount = ds?.labels?.length || ds?.contacts?.length || 0;
     const source = ds?.source === 'manual' ? '手动设置' : ds?.source === 'paste' ? '来自粘贴的聊天' : contactCount ? `基于 ${contactCount} 位联系人的聊天` : '未记录学习来源';
     const meta = ds ? `${perspectiveLabel(ds.perspective)} · ${source}${ds.learnedAt ? ` · ${new Date(ds.learnedAt).toLocaleString('zh-CN', { hour12: false })}` : ''}` : '';
-    const current = ds ? `<section class="ai-card ai-default-current"><div class="ai-card-heading"><h4>${state.defaultStyleUndoable ? '待确认的默认风格' : '当前默认风格'}</h4><span class="ai-badge blue">${state.defaultStyleUndoable ? '待确认' : '已保存'}</span></div><form id="ai-default-style-form"><label class="ai-field"><span class="sr-only">风格总结</span><textarea name="summary" maxlength="6000" rows="7" placeholder="用自然语言描述默认的口吻与表达习惯">${esc(ds.style?.summary || summaryText(ds.style))}</textarea></label><small class="ai-default-count">${String(ds.style?.summary || summaryText(ds.style)).length} / 6000</small><p class="ai-help">${esc(meta)}。${state.defaultStyleUndoable ? '确认并保存后才用于自动回复；当前仍使用原风格。' : '这将作为后续自动回复的默认风格。'}</p><div class="ai-actions">${state.defaultStyleUndoable ? '<button type="button" class="secondary" data-ai-action="cancel-default-style">取消当前学习</button>' : ''}<button type="submit" class="primary">保存修改</button></div></form></section>` : `<section class="ai-card ai-default-current ai-default-empty"><div><span class="ai-badge muted">尚未设置</span><h4>当前还没有默认风格</h4><p>选择联系人聊天或粘贴聊天内容开始学习。确认并保存后，才会应用于没有单独风格设置的对象。</p></div></section>`;
+    return ds || dirty ? `<section class="ai-card ai-default-current" data-default-style-state="${esc(defaultStyleSignature())}"><div class="ai-card-heading"><h4>${state.defaultStyleUndoable ? '待确认的默认风格' : '当前默认风格'}</h4><span class="ai-badge blue">${dirty ? '未保存' : state.defaultStyleUndoable ? '待确认' : '已保存'}</span></div><form id="ai-default-style-form"><label class="ai-field"><span class="sr-only">风格总结</span><textarea name="summary" maxlength="6000" rows="7" placeholder="用自然语言描述默认的口吻与表达习惯">${esc(summary)}</textarea></label><small class="ai-default-count">${String(summary).length} / 6000</small><p class="ai-help">${ds ? esc(meta) + '。' : '默认风格已清除；此处保留未保存的修改。'}${state.defaultStyleUndoable ? '确认并保存后才用于自动回复；当前仍使用原风格。' : '保存后将作为后续自动回复的默认风格。'}</p><div class="ai-actions">${state.defaultStyleUndoable ? '<button type="button" class="secondary" data-ai-action="cancel-default-style">取消当前学习</button>' : ''}<button type="submit" class="primary">保存修改</button></div></form></section>` : `<section class="ai-card ai-default-current ai-default-empty" data-default-style-state="${esc(defaultStyleSignature())}"><div><span class="ai-badge muted">尚未设置</span><h4>当前还没有默认风格</h4><p>选择联系人聊天或粘贴聊天内容开始学习。确认并保存后，才会应用于没有单独风格设置的对象。</p></div></section>`;
+  }
+  function defaultStyleLearning() {
+    const current = defaultStyleCurrent();
     const backLabel = ({ overview: '自动回复', settings: '系统设置', 'personal-info': '我的信息', 'global-reply': '全局回复策略', results: '学习结果', learning: '学习聊天风格', profile: '学习结果', 'manual-reply': '自动回复' })[defaultStyleReturn] || '系统设置';
     const sourceTabs = `<div class="ai-default-source-tabs" role="tablist" aria-label="学习素材来源"><button type="button" role="tab" data-ai-default-mode="contacts" aria-selected="${defaultStyleMode === 'contacts'}" class="${defaultStyleMode === 'contacts' ? 'selected' : ''}">${icon('chat')}<strong>联系人聊天</strong><small>选择与特定联系人的聊天记录</small></button><button type="button" role="tab" data-ai-default-mode="paste" aria-selected="${defaultStyleMode === 'paste'}" class="${defaultStyleMode === 'paste' ? 'selected' : ''}">${icon('file')}<strong>粘贴聊天</strong><small>直接粘贴聊天内容文本</small></button></div>`;
     const direction = `<section class="ai-default-direction"><h4>学习方向</h4><p class="ai-help">确定以谁的聊天风格为主要参考</p><div class="ai-default-perspectives"><label><input type="radio" name="default-perspective" value="self" ${defaultStylePerspective === 'self' ? 'checked' : ''}><span><strong>我的风格</strong><small>学习我在聊天中的表达方式，作为默认风格</small></span></label><label><input type="radio" name="default-perspective" value="other" ${defaultStylePerspective === 'other' ? 'checked' : ''}><span><strong>对方的风格</strong><small>仅学习对方的说话方式和表达习惯</small></span></label></div></section>`;
@@ -1015,6 +1035,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   }
   function accountFormBaseline(formId, source = state) {
     if (formId === 'ai-global-reply-form') return { account: source?.account, values: source?.replyStrategy || {} };
+    if (formId === 'ai-default-style-form') return { account: source?.account, values: { summary: source?.learnedDefaultStyle?.style?.summary || summaryText(source?.learnedDefaultStyle?.style) } };
     const rhythm = replyRhythm(source?.settings || {});
     return { account: source?.account, values: {
       master: source?.settings?.enabled === true,
@@ -1029,11 +1050,11 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   }
   function rememberDraft() {
     if (!state) return;
-    for (const formId of ['ai-takeover-form', 'ai-global-reply-form']) {
+    for (const formId of ['ai-takeover-form', 'ai-global-reply-form', 'ai-default-style-form']) {
       const form = panel.querySelector(`#${formId}`);
       if (form) {
         const renderedBaseline = accountFormBaselines.get(formId);
-        const baseline = renderedBaseline?.account === state.account ? renderedBaseline.values : accountFormBaseline(formId).values;
+        const baseline = renderedBaseline && renderedBaseline.account === state.account ? renderedBaseline.values : accountFormBaseline(formId).values;
         const fields = [...form.querySelectorAll('input[name],select[name],textarea[name]')]
           .map(node => ({ name: node.name, value: node.value, checked: node.checked, type: node.type }))
           .filter(field => ['checkbox', 'radio'].includes(field.type)
@@ -1129,6 +1150,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     $('#ai-content').innerHTML = iconSprite + nav + (tab === 'overview' ? content : `<div class="ai-page-body qi-content" data-layout="${contentLayout}">${content}</div>`);
     if (tab === 'settings') accountFormBaselines.set('ai-takeover-form', accountFormBaseline('ai-takeover-form'));
     if (tab === 'global-reply') accountFormBaselines.set('ai-global-reply-form', accountFormBaseline('ai-global-reply-form'));
+    if (tab === 'default-style') accountFormBaselines.set('ai-default-style-form', accountFormBaseline('ai-default-style-form'));
     if (analysisExportDialog) {
       const dialog = $('#ai-report-export-dialog');
       dialog?.addEventListener('keydown', event => event.stopPropagation());
@@ -1215,11 +1237,13 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       if (value.contacts && !value.contacts.length) throw new Error('请选择至少一位联系人');
       if (value.contacts?.some(key => !state.contacts.some(c => c.id === key && ['person', 'group'].includes(c.kind)))) throw new Error('联系人已变化，请刷新后重新选择');
       rememberDraft();
-      const current = generation, expectedWorkToken = workToken + 1;
+      const current = generation, expectedWorkToken = workToken + 1, account = state.account, submitted = panel.querySelector('#ai-default-style-form [name=summary]')?.value;
       await workflow(async step => {
         $('#ai-operation').hidden = false; $('#ai-operation-text').textContent = '正在读取聊天并学习默认风格…';
         await step('learn', { value: { ...value, previewOnly: false } });
         if (current !== generation || workToken !== expectedWorkToken) return;
+        const draft = accountFormDrafts.get('ai-default-style-form');
+        if (draft?.account === account && draft.fields.find(field => field.name === 'summary')?.value === submitted) accountFormDrafts.delete('ai-default-style-form');
         if (typeof value.text === 'string') {
           const input = $('#ai-paste-form')?.querySelector('[name=text]');
           if (input?.value === value.text) input.value = '';
@@ -1485,6 +1509,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     resizeStyleSummary();
     if (!state) return;
     if (event.target.name === 'summary' && event.target.closest('#ai-default-style-form')) {
+      rememberDraft();
       const form = event.target.form;
       form.querySelector('.ai-default-count').textContent = `${event.target.value.length} / 6000`;
       const saved = state.learnedDefaultStyle?.style;
@@ -1582,7 +1607,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   panel.addEventListener('submit', async event => {
     event.preventDefault(); const form = event.target;
     const data = new FormData(form);
-    const saving = ['ai-takeover-form', 'ai-global-reply-form', 'ai-object-form', 'ai-personal-information-form'].includes(form.id);
+    const saving = ['ai-takeover-form', 'ai-global-reply-form', 'ai-object-form', 'ai-personal-information-form', 'ai-default-style-form'].includes(form.id);
     if (saving && busy) { message('请等待当前保存完成', true); return; }
     const save = saving ? { id: form.id, generation, controls: new Map(), forms: new Set() } : null;
     if (save) { rememberDraft(); pendingSave = save; applySaveControls(); }
@@ -1717,11 +1742,14 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         }, '回复风格已保存');
       }
       if (form.id === 'ai-default-style-form') {
-        const summary = String(data.get('summary') || '').trim();
+        const submitted = String(data.get('summary') || ''), summary = submitted.trim(), account = state.account;
         if (!summary) throw new Error('请填写风格总结');
         const current = generation;
         const saved = await execute('commit-default-style', { value: { summary } });
         if (!saved || current !== generation) return;
+        const draft = accountFormDrafts.get(form.id);
+        if (draft?.account === account && draft.fields.find(field => field.name === 'summary')?.value === submitted) accountFormDrafts.delete(form.id);
+        render();
         message(saved.appliedDefaultStyle ? `默认风格已保存，并同步给 ${saved.appliedDefaultStyle} 个使用默认风格的对象` : '默认风格已保存，当前没有使用默认风格的对象');
         return;
       }
@@ -2270,9 +2298,12 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       if (action === 'cancel-default-style') {
         if (!state.defaultStyleUndoable) return;
         if (!await confirmDialog('取消本次学习？默认风格将恢复为最近已确认的内容，联系人与群聊的设置不受影响。')) return;
-        const current = generation;
+        const current = generation, account = state.account, submitted = panel.querySelector('#ai-default-style-form [name=summary]')?.value;
         const cancelled = await execute('cancel-default-style', {});
         if (!cancelled || current !== generation) return;
+        const draft = accountFormDrafts.get('ai-default-style-form');
+        if (draft?.account === account && draft.fields.find(field => field.name === 'summary')?.value === submitted) accountFormDrafts.delete('ai-default-style-form');
+        render();
         message(cancelled.defaultStyleCancelled === 'reverted' ? '已取消本次学习，默认风格恢复为最近已确认的内容' : '默认风格已清除');
         return;
       }
@@ -2371,6 +2402,6 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         finally { if (current === generation) polling = false; }
       }, 1000);
     },
-    detach() { accountFormDrafts.clear(); accountFormBaselines.clear(); finishSave(pendingSave); contactDialog?.close(); analysisQueueToken++; analysisQueueAccount = null; rememberRecords(); proactiveRecordEpoch++; proactiveRecordLoading = false; proactiveHistory = []; proactiveHistoryPage = null; errorEpoch++; errorLoading = false; errorHistory = []; errorPage = null; logEpoch++; analysisDraft = { request: '', from: '', to: '', contacts: [] }; analysisSearch = ''; analysisHistoryReport = null; analysisHistoryEpoch++; resetAnalysisExport(); analysisResult = null; reviewAlert.hidden = true; concealKey(true); modelDraft = null; learningDraft = null; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); objectDirtyContacts.clear(); objectScrollKey = ''; objectScrollTop = 0; personalDraft = null; personalDraftAccount = null; selectedObject = ''; objectSearch = ''; objectKind = 'person'; editingReplyContact = null; providerRevision++; accountFormDrafts.clear(); accountFormBaselines.clear(); generation++; skipEpoch++; skipLoading = false; skipHistory = []; skipHistoryPage = null; skipPageLoading = false; skipContent.clear(); markReplyStatus.clear(); clearInterval(timer); id = null; setContactAvatarInstance(null); state = null; attaching = false; rail.hidden = true; setPanelVisible(false); panel.querySelector(':scope > .qibox-workspace-menu')?.remove(); $('#ai-content').replaceChildren(); selectedContacts.clear(); replyProfiles.clear(); proactiveUI.reset(); replyDraft = null; },
+    detach() { for (const controller of confirmationControllers) controller.abort(); replyLimitConfirmController?.abort(); replyLimitConfirmController = null; accountFormDrafts.clear(); accountFormBaselines.clear(); finishSave(pendingSave); contactDialog?.close(); analysisQueueToken++; analysisQueueAccount = null; rememberRecords(); proactiveRecordEpoch++; proactiveRecordLoading = false; proactiveHistory = []; proactiveHistoryPage = null; errorEpoch++; errorLoading = false; errorHistory = []; errorPage = null; logEpoch++; analysisDraft = { request: '', from: '', to: '', contacts: [] }; analysisSearch = ''; analysisHistoryReport = null; analysisHistoryEpoch++; resetAnalysisExport(); analysisResult = null; reviewAlert.hidden = true; concealKey(true); modelDraft = null; learningDraft = null; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); objectDirtyContacts.clear(); objectScrollKey = ''; objectScrollTop = 0; personalDraft = null; personalDraftAccount = null; selectedObject = ''; objectSearch = ''; objectKind = 'person'; editingReplyContact = null; providerRevision++; accountFormDrafts.clear(); accountFormBaselines.clear(); generation++; skipEpoch++; skipLoading = false; skipHistory = []; skipHistoryPage = null; skipPageLoading = false; skipContent.clear(); markReplyStatus.clear(); clearInterval(timer); id = null; setContactAvatarInstance(null); state = null; attaching = false; rail.hidden = true; setPanelVisible(false); panel.querySelector(':scope > .qibox-workspace-menu')?.remove(); $('#ai-content').replaceChildren(); selectedContacts.clear(); replyProfiles.clear(); proactiveUI.reset(); replyDraft = null; },
   };
 }
