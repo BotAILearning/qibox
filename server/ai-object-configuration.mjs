@@ -44,7 +44,6 @@ function cursorValue(cursor) {
 export async function commitObjectConfiguration(a, id, change, { invalidate = false } = {}) {
   const account = a.data.account, finished = Promise.withResolvers(), pending = { id, account, finished };
   a.pendingObjectConfiguration = pending;
-  for (const [key, controller] of a.replyControllers) if (key === id || key.startsWith(id + ':')) { controller.abort(); a.replyControllers.delete(key); }
   try {
     return await withConfigurationCommit(a, async persist => {
       if (account !== a.data.account) throw new AppError('微信账号已变化，请重新保存对象设置', 409, 'AI_SCOPE_CHANGED');

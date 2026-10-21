@@ -1299,7 +1299,7 @@ export class AIAssistant {
     };
     return JSON.stringify({ chat: effective('chat'), learningAnalysis: effective('learningAnalysis') });
   }
-  async persistModelConfiguration(payload, persist, { legacy = false, tested = false, draftIds = [] } = {}) {
+  async persistModelConfiguration(payload, persist, { legacy = false, tested = false, draftIds = [], pauseQueueOnSuccess = false } = {}) {
     const currentModels = this.models, currentAssignments = this.assignments;
     const changed = legacy
       ? (this.config == null ? null : modelFingerprint(canonicalKeyValue(this.config)))
@@ -1310,15 +1310,16 @@ export class AIAssistant {
       : payload.data;
     await persist({ [configurationSnapshotPatch]: snapshot => {
       Object.assign(snapshot, patch);
-      if (changed) {
+      if (changed || pauseQueueOnSuccess) {
         if (snapshot.queue?.status === 'running') snapshot.queue.status = 'paused';
         if (snapshot.queue) snapshot.queue.nextAt = null;
-        for (const profile of Object.values(snapshot.profiles || {})) delete profile.preparedReply;
       }
+      if (changed) for (const profile of Object.values(snapshot.profiles || {})) delete profile.preparedReply;
     } });
     if (changed) {
       this.invalidate(); this.pauseQueue(); this.bridge.clearContext?.(); this.retryAt = 0;
-    } else this.followUps.clear();
+    } else if (pauseQueueOnSuccess) this.pauseQueue();
+    else this.followUps.clear();
     if (legacy) {
       this.config = payload.config;
       this.data.provider = patch.provider; this.data.tested = patch.tested; this.data.analysisMode = 'shared';
@@ -3007,19 +3008,22 @@ export class AIAssistant {
     }
   }
   async verifyProvider(value, scope = 'chat') {
-    return this.exclusive(() => withConfigurationCommit(this, async persist => {
+    return this.exclusive(async () => {
       const config = providerValue(value, this.providerConfig(scope)), revision = this.providerRevision(scope);
       await this.provider.test(config, this.controller.signal);
       if (revision !== this.providerRevision(scope)) throw new AppError('配置已变化，请重新验证');
-      if (this.models.length) {
-        const group = scope === 'analysis' ? 'learningAnalysis' : 'chat';
-        const id = this.assignments[group] || this.models[0].id;
-        const models = this.models.map(m => m.id === id ? { ...m, ...config } : m);
-        const testedMap = { ...this.modelTested, [id]: modelFingerprint(config) };
-        await this.persistModelConfiguration(this.modelConfigurationPayload(models, { ...this.assignments, [group]: id }, testedMap), persist, { draftIds: [id] });
-      } else await this.persistModelConfiguration({ config }, persist, { legacy: true, tested: true });
-      return this.publicState();
-    }));
+      return withConfigurationCommit(this, async persist => {
+        if (revision !== this.providerRevision(scope)) throw new AppError('配置已变化，请重新验证');
+        if (this.models.length) {
+          const group = scope === 'analysis' ? 'learningAnalysis' : 'chat';
+          const id = this.assignments[group] || this.models[0].id;
+          const models = this.models.map(m => m.id === id ? { ...m, ...config } : m);
+          const testedMap = { ...this.modelTested, [id]: modelFingerprint(config) };
+          await this.persistModelConfiguration(this.modelConfigurationPayload(models, { ...this.assignments, [group]: id }, testedMap), persist, { draftIds: [id], pauseQueueOnSuccess: true });
+        } else await this.persistModelConfiguration({ config }, persist, { legacy: true, tested: true, pauseQueueOnSuccess: true });
+        return this.publicState();
+      });
+    });
   }
   startRun(id, operation, revision) {
     if (id === this.pendingObjectConfiguration?.id) return null;
@@ -3622,6 +3626,19 @@ export class AIAssistant {
           `${replyFixedRules}${learningEnabled(this) ? learningRules : ' 自动学习已关闭，不提取或返回本人资料、风格更新和聊天记忆更新。'}${contextualStylePrompt}${speakerIdentityPrompt}${personalContextPrompt}${presentTimePrompt}${learningEnabled(this) ? chatMemoryPrompt : ''}${profile.kind === 'group' ? groupMemoryInstruction : ' 单聊中，对方姓名写入 name；只有用户确实直接这样称呼对方且对象明确时，才把称呼写入 addressing。'}${identityPrompt(allowIdentity)}${conversationPrompt}${replySummaryContext} ${mediaOutputPrompt} 只能发送文字和capabilities明确允许的生成图片或微信原生语音，不能读取或下载任意文件，不能拨打或接听电话，仅能理解实际附带的图片；未附带的图片与未转写的语音直接略过，不回复这些内容，不要求重发或转文字，不猜测内容；只回应本轮可读取的文字、微信转写或实际附带的图片。${groupTriggerInstruction}${groupBatch?.sender ? ` 本轮只回复成员ID ${groupBatch.sender} 对应的消息 ${groupBatch.ids.join(',')}，其余成员的消息仅作背景。需要称呼时仅使用members中该ID对应的真实称呼，不编造姓名。` : ''}${profile.groupContextWait?.trigger === 'atMe' ? ' 上轮已等待补充信息，本次必须回复；信息仍不足时用一句简短问题澄清，不能再次wait。' : ''}${currentTask}${currentStyle}${profile.kind === 'group' ? groupPrompt(trigger, allowSegments, profile.groupOptions?.realtimeMode) : ''}${generationProtocol({ multiTurn, allowSegments, group: profile.kind === 'group', followUpAllowed: profile.kind !== 'group' && !followUp && multiTurn, updateStyle: this.automaticStyleAllowed(profile, modelMessages), memoryUpdates: learningEnabled(this), allowSkip: !mustReply, allowStop: true })}${reflectiveReplyPrompt}${currentTimeAnchor(time)}${mode === 'reply' && !followUp ? ' 本轮只回应conversation.pendingIncomingMessages列出的来信；其中excerpt=true时按ID查阅messages全文。messages中pending=false的旧问题和已发回复只作背景，不能再补答。' : ''}${replySafetyPrompt}${naturalAttributionPrompt}${safetyCorrection}`,
           { identityPolicy: { asked: identityAsked, allowDisclosure: !!allowIdentity }, images: images, onlyImages: onlyImages, capabilityConcern: reason, mode, continuation, multiTurn, allowSegments, followUp, followUpAllowed: profile.kind !== 'group' && !followUp && multiTurn, kind: profile.kind, replyPerspective: replyPerspective(profile), roleAnchor: replyRoleAnchor(profile), conversation, addressing, memory: replyMemory, ...time, myInformation: replyFacts, groupState, capabilities: { sendText: true, wechatVoiceText: true, files: false, calls: false, executeExternalActions: false, sendImages, sendAudio, receiveImages: images.length > 0, sendMedia: sendImages || sendAudio }, strategy, style, contextualStyle: contextualReplyStyle(modelMessages), styleOwner: 'self', ...(learningEnabled(this) ? {styleLearningMessageIds: this.automaticStyleSamples(profile, modelMessages).map(row=>row.id)} : {}), judgeReply: profile.kind === 'group' ? trigger !== 'atMe' : followUp || this.replyOptions(profile).judgeReply, updateStyle: this.automaticStyleAllowed(profile, modelMessages), messages: annotateChatTimes(modelMessages, this.now(), time.timezone).map(message => ({ ...withSpeaker(message, profile), pending: conversation.pendingIncomingIds.includes(message.id), aiGenerated: message.aiGenerated === true || (profile.generatedIds || []).includes(message.id) })) }, signal, { validate: value => validateCurrentTimeReply(validateReplyResult(value, { multiTurn, allowSegments, group: profile.kind === 'group' }), time) }
         );
+        // An unrelated group trigger can be saved while this result is in
+        // flight. Keep it behind the object fence instead of discarding it;
+        // cancellation must still release the running generation immediately.
+        const pendingConfiguration = mode === 'reply' && profile.kind === 'group' && this.pendingObjectConfiguration?.id === profile.id ? this.pendingObjectConfiguration : null;
+        if (pendingConfiguration) {
+          const interrupted = Promise.withResolvers(), abort = () => interrupted.resolve();
+          signal.addEventListener('abort', abort, { once: true });
+          try {
+            if (signal.aborted) interrupted.resolve();
+            await Promise.race([pendingConfiguration.finished.promise, interrupted.promise]);
+          } finally { signal.removeEventListener('abort', abort); }
+          if (!this.canDeliver(profile, mode, revision, signal)) return;
+        }
         if (result?.action === 'send') {
           const violation = replySafetyViolation(messageSegments(result, { multiTurn, allowSegments }), { allowIdentity, identityAsked, audioText: sendAudio && result.media?.[0]?.type === 'audio' ? result.media[0].text : '' });
           if (violation) {

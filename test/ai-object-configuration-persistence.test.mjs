@@ -19,12 +19,100 @@ async function fixture(t, kind = 'person', expectedCalls = 0, expectedSends = 0)
   t.after(async () => {
     ai.closed = true; clearInterval(ai.timer); clearInterval(ai.warmupTimer);
     await ai.actions; await ai.writes;
-    assert.equal(provider.calls.length, expectedCalls); assert.equal(bridge.sent.length, expectedSends);
-    await cleanup(root);
+    try { assert.equal(provider.calls.length, expectedCalls); assert.equal(bridge.sent.length, expectedSends); }
+    finally { await cleanup(root); }
   });
   return { ai, root, bridge, provider, contact: bridge.contacts[0].id };
 }
 const profileValue = ai => ({ style: ai.publicState().schema.defaultStyle, strategy: { ...strategy, maxRounds: 50 }, preserveSwitches: true });
+
+for (const kind of ['person', 'group']) test(`invalid ${kind} options cannot abort an existing reply before validation`, async t => {
+  const { ai, contact } = await fixture(t, kind);
+  if (kind === 'group') await ai.setGroupOptions({ contact, atMe: true }); else await ai.setReplyOptions({ contact, enabled: true });
+  const profile = ai.profiles()[0], key = kind === 'group' ? `${profile.id}:atMe` : profile.id, controller = new AbortController();
+  ai.replyControllers.set(key, controller);
+  await assert.rejects(kind === 'group' ? ai.setGroupOptions({ contact, atMe: 'invalid' }) : ai.setReplyOptions({ contact, enabled: 'invalid' }));
+  assert.equal(controller.signal.aborted, false); assert.equal(ai.replyControllers.get(key), controller);
+  assert.equal(ai.pendingObjectConfiguration, null);
+});
+
+test('disabling only atMe preserves realtime controller through a pending group save and keeps the object execution fence', async t => {
+  const { ai, contact } = await fixture(t, 'group'); await ai.setGroupOptions({ contact, atMe: true, realtime: true, confirmRealtime: true });
+  const profile = ai.profiles()[0], atMe = new AbortController(), realtime = new AbortController();
+  ai.replyControllers.set(`${profile.id}:atMe`, atMe); ai.replyControllers.set(`${profile.id}:realtime`, realtime);
+  const save = ai.save, entered = Promise.withResolvers(), held = Promise.withResolvers(); let first = true;
+  ai.save = function (...args) { if (first) { first = false; entered.resolve(); return held.promise.then(() => save.apply(this, args)); } return save.apply(this, args); };
+  const operation = ai.setGroupOptions({ contact, atMe: false }); await entered.promise;
+  const during = { atMeAborted: atMe.signal.aborted, realtimeAborted: realtime.signal.aborted,
+    selected: ai.selected(profile, 'reply'), canDeliver: ai.canDeliver(profile, 'reply', ai.revision, ai.controller.signal), pendingId: ai.pendingObjectConfiguration?.id };
+  held.resolve(); await operation;
+  assert.deepEqual(during, { atMeAborted: true, realtimeAborted: false, selected: false, canDeliver: false, pendingId: profile.id });
+  assert.equal(realtime.signal.aborted, false); assert.equal(ai.replyControllers.get(`${profile.id}:realtime`), realtime);
+  assert.equal(profile.groupOptions.atMe, false); assert.equal(profile.groupOptions.realtime, true);
+  assert.equal(ai.pendingObjectConfiguration, null); assert.equal(ai.selected(profile, 'reply'), true);
+});
+
+test('a valid person disable still cancels its own reply controller', async t => {
+  const { ai, contact } = await fixture(t); await ai.setReplyOptions({ contact, enabled: true });
+  const profile = ai.profiles()[0], controller = new AbortController(); ai.replyControllers.set(profile.id, controller);
+  await ai.setReplyOptions({ contact, enabled: false });
+  assert.equal(controller.signal.aborted, true); assert.equal(ai.replySelected(profile), false); assert.equal(ai.pendingObjectConfiguration, null);
+});
+
+for (const fail of [false, true]) test(`an in-flight realtime answer survives an atMe-only ${fail ? 'failed' : 'successful'} configuration without another generation`, async t => {
+  const { ai, contact, bridge, provider } = await fixture(t, 'group', 1, 1);
+  let now = Date.parse('2026-10-22T12:00:00+08:00'); ai.now = () => now; ai.delay = async () => {};
+  await ai.setGroupOptions({ contact, atMe: true, realtime: true, confirmRealtime: true }); await ai.tick();
+  const profile = ai.profiles()[0], incoming = Object.assign(bridge.push(contact, 'other', 'A synthetic group realtime question'), {
+    timestamp: Math.floor(now / 1000), sender: 'fixture-realtime-member', mentions: { verified: true, self: false, all: false, others: false },
+  });
+  await ai.tick(); now += 60000;
+  const modelEntered = Promise.withResolvers(), modelResult = Promise.withResolvers();
+  provider.next = async () => { modelEntered.resolve(); return modelResult.promise; };
+  const running = ai.tick(); await modelEntered.promise;
+  const save = ai.save, saveEntered = Promise.withResolvers(), held = Promise.withResolvers(); let first = true;
+  ai.save = function (...args) { if (first) { first = false; saveEntered.resolve(); return held.promise.then(() => save.apply(this, args)); } return save.apply(this, args); };
+  const operation = ai.setGroupOptions({ contact, atMe: false }), outcome = operation.then(() => null, error => error); await saveEntered.promise;
+  modelResult.resolve({ action: 'send', text: 'The original realtime answer.' });
+  await new Promise(resolve => setImmediate(resolve)); const sentWhilePending = bridge.sent.length;
+  if (fail) held.reject(Error('controlled atMe-only configuration failure')); else held.resolve();
+  const error = await outcome; await running; await ai.tick();
+  assert.equal(!!error, fail); assert.equal(sentWhilePending, 0);
+  assert.equal(provider.calls.length, 1, 'An unrelated trigger save must not drop an already generated realtime answer and buy it again');
+  assert.deepEqual(bridge.sent.map(row => row.text), ['The original realtime answer.']);
+  assert.deepEqual(profile.sentMessages[0].replyTo, [incoming.id]);
+  assert.equal(profile.groupOptions.atMe, fail); assert.equal(profile.groupOptions.realtime, true);
+  t.diagnostic(JSON.stringify({ configuration: fail ? 'failed' : 'successful', mockProviderCalls: provider.calls.length, fixtureSends: bridge.sent.length, sentWhilePending, realProviderCalls: 0, realWeChatSends: 0 }));
+});
+
+test('cancelling an in-flight realtime result waiting for object persistence returns before that persistence settles', async t => {
+  const { ai, contact, bridge, provider } = await fixture(t, 'group', 1, 0);
+  let now = Date.parse('2026-10-22T12:00:00+08:00'); ai.now = () => now; ai.delay = async () => {};
+  await ai.setGroupOptions({ contact, atMe: true, realtime: true, confirmRealtime: true }); await ai.tick();
+  const profile = ai.profiles()[0];
+  Object.assign(bridge.push(contact, 'other', 'A synthetic cancellable realtime question'), {
+    timestamp: Math.floor(now / 1000), sender: 'fixture-realtime-member', mentions: { verified: true, self: false, all: false, others: false },
+  });
+  await ai.tick(); now += 60000;
+  const modelEntered = Promise.withResolvers(), modelResult = Promise.withResolvers();
+  provider.next = async () => { modelEntered.resolve(); return modelResult.promise; };
+  let finished = false; const running = ai.tick().then(() => { finished = true; }); await modelEntered.promise;
+  const save = ai.save, saveEntered = Promise.withResolvers(), held = Promise.withResolvers(); let first = true;
+  ai.save = function (...args) { if (first) { first = false; saveEntered.resolve(); return held.promise.then(() => save.apply(this, args)); } return save.apply(this, args); };
+  const operation = ai.setGroupOptions({ contact, atMe: false }); await saveEntered.promise;
+  modelResult.resolve({ action: 'send', text: 'This cancelled fixture result must not be sent.' });
+  await new Promise(resolve => setImmediate(resolve));
+  const wasWaiting = !finished, controller = ai.replyControllers.get(`${profile.id}:realtime`);
+  controller?.abort(); await new Promise(resolve => setImmediate(resolve));
+  const finishedBeforePersistence = finished, sentWhilePending = bridge.sent.length;
+  held.resolve(); await operation; await running;
+  assert.ok(controller, 'The actual realtime pipeline installed its trigger controller');
+  assert.equal(wasWaiting, true); assert.equal(finishedBeforePersistence, true, 'The abort must release the generation without waiting for storage');
+  assert.equal(sentWhilePending, 0); assert.equal(provider.calls.length, 1); assert.equal(bridge.sent.length, 0);
+  assert.equal(ai.pendingObjectConfiguration, null);
+  t.diagnostic(JSON.stringify({ cancellation: 'while-waiting', mockProviderCalls: provider.calls.length, fixtureSends: bridge.sent.length, finishedBeforePersistence, realProviderCalls: 0, realWeChatSends: 0 }));
+});
+
 const entries = [
   { name: 'person-options', kind: 'person', apply: (a, contact) => a.setReplyOptions({ contact, enabled: true }) },
   { name: 'group-options', kind: 'group', apply: (a, contact) => a.setGroupOptions({ contact, atMe: true }) },
