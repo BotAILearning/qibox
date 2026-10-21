@@ -1,6 +1,8 @@
 import { replyRhythm } from './ai-reply-rhythm.mjs';
 import { initDefaultStyleAccounts, rememberDefaultStyle, switchDefaultStyleAccount, verifyDefaultStyleAccount, saveDefaultStyleChange } from './ai-default-style-scope.mjs';
 import { initReplyLimitAccounts, replyLimitsForAccount, migrateReplyLimitIdentity } from './ai-reply-limit-scope.mjs';
+import { configurationSnapshotPatch, withConfigurationCommit } from './ai-configuration-commit.mjs';
+import { commitObjectConfiguration } from './ai-object-configuration.mjs';
 import { mediaCapability, mediaOutputPrompt, generateMediaOutput } from './ai-media-output.mjs';
 import { readableMediaInput } from './ai-media-input.mjs';
 import { learningEnabled, learningEpoch, learningCurrent, learningRules, sensitiveMemory, deduplicateLearnedFacts, explicitFactTime } from './ai-learning-policy.mjs';
@@ -386,7 +388,7 @@ export class AIAssistant {
     catch { /* keep waiting for a later retry */ }
     finally { this.warmupRunning = false; this.lastWarmupAt = this.now(); }
   }
-  save() {
+  save(options) {
     if (this.storageError) return Promise.reject(this.storageError);
     rememberDefaultStyle(this);
     this.syncScheduledRun();
@@ -395,7 +397,9 @@ export class AIAssistant {
       if (cursor) profile.replyCursor = { revision: cursor.revision, last: cursor.last, own: cursor.own, sent: cursor.sent, changedAt: cursor.changedAt, pending: !!cursor.pending, pendingSince: cursor.pendingSince, pendingAfter: cursor.pendingAfter, sender: cursor.sender };
       else delete profile.replyCursor;
     }
-    const snapshot = structuredClone(this.data); const operation = this.writes.then(() => atomicJson(this.file, snapshot)); this.writes = operation.catch(() => {}); return operation;
+    const snapshot = structuredClone(this.data);
+    options?.[configurationSnapshotPatch]?.(snapshot);
+    const operation = this.writes.then(() => atomicJson(this.file, snapshot)); this.writes = operation.catch(() => {}); return operation;
   }
   exclusive(action) { const task = this.actions.then(action); this.actions = task.catch(() => {}); return task; }
   async commitAutomaticLearning(epoch, valid, apply) {
@@ -720,6 +724,7 @@ export class AIAssistant {
     for (const profile of Object.values(this.data.profiles)) if (!this.data.proactiveTargets.includes(profile.id) && !profile.continuation?.scheduleId) delete profile.continuation;
   }
   selected(profile, mode) {
+    if (!this.objectConfigurationStaging && profile?.id === this.pendingObjectConfiguration?.id) return false;
     if (!this.eligible(profile) || this.data.profiles[profile.id] !== profile) return false;
     if (mode === 'proactive') return this.data.proactiveTargets.includes(profile.id) || ['running', 'paused', 'failed'].includes(this.data.queue.status) && this.data.queue.scheduleId && this.data.queue.items.some(x => x.id === profile.id);
     if (mode === 'reply') return this.replySelected(profile) || this.continuing(profile);
@@ -727,7 +732,9 @@ export class AIAssistant {
   }
   pruneQueueTargets() {
     const q = this.data.queue;
-    for (const item of q.items) if (item.status === 'pending' && !this.selected(this.data.profiles[item.id], 'proactive')) {
+    for (const item of q.items) if (item.status === 'pending'
+      && (this.objectConfigurationStaging || item.id !== this.pendingObjectConfiguration?.id)
+      && !this.selected(this.data.profiles[item.id], 'proactive')) {
       if (q.scheduleId) this.failQueueItem(item); else item.status = 'skipped';
     }
     this.settleQueue(q);
@@ -814,7 +821,7 @@ export class AIAssistant {
   }
   replySelected(profile) { return profile?.kind === 'group' ? groupReplyEnabled(profile.groupOptions) : profile?.replyOptions?.enabled ?? (this.data.settings.replyScope === 'all' && profile?.kind === 'person' || this.data.replyTargets.includes(profile?.id)); }
   async setGroupOptions({ contact, ...value }) {
-    return this.exclusive(async () => {
+    return this.exclusive(() => commitObjectConfiguration(this, digest(`${this.data.account}\0${contact}`), () => {
       const target = this.contacts.get(contact);
       if (!this.available || target?.kind !== 'group') throw new AppError('请选择当前账号的群聊');
       const id = digest(`${this.data.account}\0${contact}`), before = this.data.profiles[id]?.groupOptions || groupDefaults();
@@ -840,15 +847,15 @@ export class AIAssistant {
         this.resumeForSavedReply(profile);
       }
       else { this.data.replyTargets = this.data.replyTargets.filter(x => x !== id); this.endReplyRound(profile, 'disabled'); }
-      this.syncTargets(); await this.save(); return this.publicState();
-    });
+      this.syncTargets();
+    }));
   }
   replyOptions(profile) {
     return { enabled: this.replySelected(profile), multiTurn: profile?.replyOptions?.multiTurn ?? this.data.settings.multiTurn,
       judgeReply: profile?.replyOptions?.judgeReply ?? this.data.settings.judgeReply, sendImages: profile?.replyOptions?.sendImages === true, sendAudio: profile?.replyOptions?.sendAudio === true };
   }
   async setReplyOptions({ contact, ...value }) {
-    return this.exclusive(async () => {
+    return this.exclusive(() => commitObjectConfiguration(this, digest(`${this.data.account}\0${contact}`), () => {
       const target = this.contacts.get(contact);
       if (!this.available || !target || target.kind !== 'person') throw new AppError('请选择当前账号的联系人');
       for (const key of Object.keys(value)) if (key !== 'takeover' && (!['enabled', 'multiTurn', 'judgeReply', 'sendImages', 'sendAudio'].includes(key) || typeof value[key] !== 'boolean')) throw new AppError('请检查回复设置');
@@ -866,8 +873,8 @@ export class AIAssistant {
       if (before.enabled !== profile.replyOptions.enabled) { profile.replyWatchSince = this.now(); this.cursors.delete(id); delete profile.manualWait; }
       if (profile.replyOptions.enabled) this.data.replyTargets = [...new Set([...this.data.replyTargets, id])];
       else { this.data.replyTargets = this.data.replyTargets.filter(x => x !== id); this.endReplyRound(profile, 'disabled'); }
-      this.syncTargets(); await this.save(); return this.publicState();
-    });
+      this.syncTargets();
+    }));
   }
   watchedTargets() { return [...new Set([...this.data.targets, ...this.profiles().filter(p => this.continuing(p) || learningEnabled(this) && this.eligible(p)).map(p => p.id), ...(this.data.settings.reply && this.data.settings.replyScope === 'all' ? this.profiles().filter(p => this.eligible(p) && p.kind === 'person').map(p => p.id) : [])])]
     .filter(id => { const profile = this.data.profiles[id]; return profile && !(profile.paused && profile.pauseReason === 'explicit'); }); }
@@ -1153,17 +1160,23 @@ export class AIAssistant {
     return live;
   }
   async skipReplyWait(id) {
-    const profile = this.profile(id), cursor = this.cursors.get(id);
-    if (!cursor?.pending || this.activeRuns.has(id) || this.generatingProfiles.has(id) || profile.paused ||
-      !this.data.settings.enabled || !this.data.settings.reply || !this.replySelected(profile) || !this.modelReady() || !this.ready() || !this.available ||
-      this.manualHolds.size || this.now() < (this.userBusyUntil || 0) || this.now() < (profile.stopUntil || 0) || this.manualWaitUntil(profile) === Infinity)
-      throw new AppError('当前没有可立即处理的自动回复等待', 409);
-    const previous = profile.manualWait, currentTick = this.ticking ? this.tickFinished?.promise : null;
-    delete profile.manualWait; delete profile.groupContextWait;
-    profile.replyRetryAt = 0; profile.readRetryAt = 0; profile.sendRetryAt = 0;
-    this.skipReplyWaits.add(id);
-    try { await this.save(); }
-    catch (error) { if (previous) profile.manualWait = previous; this.skipReplyWaits.delete(id); throw error; }
+    const check = () => {
+      const profile = this.profile(id), cursor = this.cursors.get(id);
+      if (!cursor?.pending || this.activeRuns.has(id) || this.generatingProfiles.has(id) || profile.paused ||
+        !this.data.settings.enabled || !this.data.settings.reply || !this.replySelected(profile) || !this.modelReady() || !this.ready() || !this.available ||
+        this.manualHolds.size || this.now() < (this.userBusyUntil || 0) || this.now() < (profile.stopUntil || 0) || this.manualWaitUntil(profile) === Infinity)
+        throw new AppError('当前没有可立即处理的自动回复等待', 409);
+    };
+    check(); const currentTick = this.ticking ? this.tickFinished?.promise : null;
+    await this.exclusive(() => {
+      check();
+      return commitObjectConfiguration(this, id, profile => {
+        check();
+        delete profile.manualWait; delete profile.groupContextWait;
+        profile.replyRetryAt = 0; profile.readRetryAt = 0; profile.sendRetryAt = 0;
+        this.skipReplyWaits.add(id);
+      });
+    });
     void Promise.resolve(currentTick).then(() => this.tick({ background: true, urgentReplyId: id }));
     return { accepted: true, id };
   }
@@ -1260,6 +1273,62 @@ export class AIAssistant {
     this.data.tested = chat ? (testedMap[chat.id] || null) : null;
   }
 
+  modelConfigurationPayload(models, assignments, testedMap) {
+    const modelList = models.map(({ id, label, ...config }) => ({ id, label, sealed: this.vault.seal(config) }));
+    const chat = models.find(m => m.id === assignments.chat) || models[0] || null;
+    return {
+      models, assignments, testedMap, modelList,
+      config: chat || null,
+      data: {
+        modelList,
+        modelAssignments: { ...assignments },
+        modelTested: { ...testedMap },
+        provider: chat ? modelList.find(entry => entry.id === chat.id).sealed : null,
+        tested: chat ? (testedMap[chat.id] || null) : null,
+      },
+    };
+  }
+  modelConfigurationSemantics(models, assignments, legacyFallback = null) {
+    const effective = feature => {
+      const id = assignments[feature];
+      const model = models.find(row => row.id === id)
+        || models.find(row => row.id === assignments.chat)
+        || models[0]
+        || legacyFallback;
+      return model ? modelFingerprint(canonicalKeyValue(model)) : null;
+    };
+    return JSON.stringify({ chat: effective('chat'), learningAnalysis: effective('learningAnalysis') });
+  }
+  async persistModelConfiguration(payload, persist, { legacy = false, tested = false, draftIds = [] } = {}) {
+    const currentModels = this.models, currentAssignments = this.assignments;
+    const changed = legacy
+      ? (this.config == null ? null : modelFingerprint(canonicalKeyValue(this.config)))
+        !== (payload.config == null ? null : modelFingerprint(canonicalKeyValue(payload.config)))
+      : this.modelConfigurationSemantics(currentModels, currentAssignments, this.config) !== this.modelConfigurationSemantics(payload.models, payload.assignments, this.config);
+    const patch = legacy
+      ? { provider: this.vault.seal(payload.config), tested: tested ? providerFingerprint(payload.config) : null, analysisMode: 'shared' }
+      : payload.data;
+    await persist({ [configurationSnapshotPatch]: snapshot => {
+      Object.assign(snapshot, patch);
+      if (changed) {
+        if (snapshot.queue?.status === 'running') snapshot.queue.status = 'paused';
+        if (snapshot.queue) snapshot.queue.nextAt = null;
+        for (const profile of Object.values(snapshot.profiles || {})) delete profile.preparedReply;
+      }
+    } });
+    if (changed) {
+      this.invalidate(); this.pauseQueue(); this.bridge.clearContext?.(); this.retryAt = 0;
+    } else this.followUps.clear();
+    if (legacy) {
+      this.config = payload.config;
+      this.data.provider = patch.provider; this.data.tested = patch.tested; this.data.analysisMode = 'shared';
+    } else {
+      this.models = payload.models; this.assignments = payload.assignments; this.modelTested = payload.testedMap;
+      Object.assign(this.data, payload.data); this.config = payload.config;
+    }
+    for (const id of draftIds) this.modelDraftTests.delete(id);
+  }
+
   async useSharedAnalysis() {
     return this.exclusive(async () => {
       this.analysisRevision++; this.analysisController?.abort(); this.data.analysisMode = 'shared';
@@ -1267,7 +1336,7 @@ export class AIAssistant {
     });
   }
   async configure(value, scope = 'chat') {
-    return this.exclusive(async () => {
+    return this.exclusive(() => withConfigurationCommit(this, async persist => {
       const config = providerValue(value, this.providerConfig(scope));
       if (this.models.length) {
         const group = scope === 'analysis' ? 'learningAnalysis' : 'chat';
@@ -1276,10 +1345,14 @@ export class AIAssistant {
         const models = this.models.map(m => m.id === id ? { ...m, ...config } : m);
         const testedMap = { ...this.modelTested };
         if (!old || modelFingerprint(old) !== modelFingerprint(config)) testedMap[id] = null;
-        this.commitModels(models, { ...this.assignments, [group]: id }, testedMap);
-      } else this.commitProvider(config, scope, false);
-      await this.save(); return this.publicState();
-    });
+        const assignments = { ...this.assignments, [group]: id };
+        await this.persistModelConfiguration(this.modelConfigurationPayload(models, assignments, testedMap), persist, { draftIds: [id] });
+      } else {
+        const payload = { config };
+        await this.persistModelConfiguration(payload, persist, { legacy: true });
+      }
+      return this.publicState();
+    }));
   }
   async testProvider(scope = 'chat') {
     const config = this.providerConfig(scope);
@@ -1309,7 +1382,7 @@ export class AIAssistant {
     return this.assignments[group] || this.assignments.chat || this.models[0]?.id || null;
   }
   async saveModels(value) {
-    return this.exclusive(async () => {
+    return this.exclusive(() => withConfigurationCommit(this, async persist => {
       const entries = value?.models;
       if (!Array.isArray(entries) || !entries.length) throw new AppError('请至少添加一个模型');
       if (entries.length > 20) throw new AppError('最多添加 20 个模型');
@@ -1337,10 +1410,10 @@ export class AIAssistant {
         if (!fp && !previous.size && this.config && this.data.tested && modelFingerprint(m) === modelFingerprint(this.config)) fp = this.data.tested;
         testedMap[m.id] = fp;
       }
-      this.commitModels(models, assignments, testedMap);
-      this.modelDraftTests.clear();
-      await this.save(); return this.publicState();
-    });
+      const draftIds = [...new Set([...previous.keys(), ...models.map(model => model.id)])];
+      await this.persistModelConfiguration(this.modelConfigurationPayload(models, assignments, testedMap), persist, { draftIds });
+      return this.publicState();
+    }));
   }
   async testModel(value) {
     return this.exclusive(async () => {
@@ -1373,6 +1446,7 @@ export class AIAssistant {
     try { return await pending; } finally { if (this.scanPromise === pending) this.scanPromise = null; }
   }
   async scanContacts() {
+    if (this.pendingObjectConfiguration) await this.pendingObjectConfiguration.finished.promise;
     if (!this.ready()) throw new AppError('请先打开微信并登录');
     if (this.operation) throw new AppError('正在读取或分析聊天，请完成后再刷新联系人');
     // A replacement WeChat process must reauthenticate before any delivery.
@@ -1842,9 +1916,8 @@ export class AIAssistant {
   async cancel() { this.invalidate(); this.pauseQueue(); this.forgetContext(); for (const profile of this.profiles()) delete profile.continuation; this.notice = '已取消未完成的操作'; await this.save(); return this.publicState(); }
   pauseQueue() { if (this.data.queue.status === 'running') this.data.queue.status = 'paused'; this.data.queue.nextAt = null; this.followUps.clear(); }
   async settings(value) {
-    return this.exclusive(async () => {
+    return this.exclusive(() => withConfigurationCommit(this, async persist => {
       const previousSettings = this.data.settings;
-      const previousWatches = new Map(this.profiles().map(profile => [profile.id, structuredClone(profile.memoryWatch)]));
       if (value.mobileMaster) {
         if (typeof this.bridge.currentAccount !== 'function') throw new AppError('暂时无法确认当前微信账号，请稍后重试', 409, 'AI_ACCOUNT_UNVERIFIED');
         const identity = await this.bridge.currentAccount();
@@ -1861,38 +1934,92 @@ export class AIAssistant {
       if (next.autoLearning !== this.data.settings.autoLearning) {
         next.learningEpoch = (this.data.settings.learningEpoch || 0) + 1;
         next.learningSince = this.now();
-        for (const profile of this.profiles()) delete profile.memoryWatch;
       }
       if (value.takeover !== undefined) next.takeover = takeoverValue(value.takeover);
       if (value.replyScope !== undefined) { if (!['all', 'selected'].includes(value.replyScope)) throw new AppError('请选择回复范围'); next.replyScope = value.replyScope; }
       if (next.enabled && !this.modelReady()) throw new AppError('请先配置模型');
       if (value.enabled === true && !next.proactive && !next.reply) next.reply = true;
+      const account = this.data.account, queue = this.data.queue;
+      const field = (target, key) => ({ present: Object.hasOwn(target, key), value: structuredClone(target[key]) });
+      const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+      const watched = (target, keys) => ({ target, fields: keys.map(key => ({ key, before: field(target, key) })) });
+      const profiles = this.profiles().map(profile => watched(profile, ['memoryWatch','preparedReply','replyRoundVersion','replyRoundEndedAt','replyRoundEndReason','rounds','mentionRounds','groupReplyLimitBlocked','mentionLimitBlocked','groupWait','groupContextWait','paused','pauseReason','pausedAt','replyWatchSince','groupInbox','continuation']));
+      const records = [watched(this.data, ['replyWatchSince']), watched(queue, ['status','nextAt']), ...profiles];
+      const cursors = [...this.cursors].map(([key, cursor]) => ({ key, ...watched(cursor, ['pending','changedAt']) }));
+      const previousProfiles = new Set(Object.keys(this.data.profiles));
+      let created = [], settleObserved = () => {};
+      // New automatic permissions cannot run until this write commits. Closing
+      // still invalidates synchronously through the existing drain:false path.
+      const pendingEnable = ['enabled','autoLearning','reply','proactive'].some(key => next[key] === true && previousSettings[key] !== true) ? {} : null;
+      if (pendingEnable) this.pendingSettingsEnable = pendingEnable;
+      try {
       if (next.enabled && !this.data.settings.enabled) this.data.replyWatchSince = this.now();
       const beforeSelected = new Map(this.profiles().map(profile => [profile.id, this.replySelected(profile)]));
       const reopened = next.enabled && !this.data.settings.enabled || next.reply && !this.data.settings.reply;
-      this.invalidate(); this.data.settings = next;
+      this.invalidate({ preservePreparedReplies: true }); this.data.settings = next;
+      if (next.autoLearning !== previousSettings.autoLearning) for (const profile of this.profiles()) delete profile.memoryWatch;
       if (value.enabled === false || value.reply === false || reopened) for (const profile of this.profiles()) this.endReplyRound(profile, reopened ? 'reopened' : 'disabled');
       else for (const profile of this.profiles()) if (beforeSelected.get(profile.id) && !this.replySelected(profile)) this.endReplyRound(profile, 'disabled');
       this.ensureDefaultProfiles();
       if (!next.proactive) for (const profile of this.profiles()) delete profile.continuation;
       if (!next.enabled || !next.proactive) this.pauseQueue();
       if (!next.enabled) this.forgetContext({ preserveCursors: true });
-      try { await this.save(); }
+      // Keep group obligations live until commit. An observer may append a new
+      // message while storage is pending; settle only the IDs this switch saw.
+      const groupSettlements = [];
+      for (const record of profiles) if (record.target.kind === 'group') {
+        const before = record.fields.find(entry => entry.key === 'groupInbox').before;
+        const original = before.present ? this.vault.open(before.value) : { pending: [] };
+        const remaining = new Set(readGroupInbox(this.vault, record.target).pending.map(row => row.id));
+        const ids = original.pending.filter(row => !remaining.has(row.id)).map(row => row.id);
+        if (!ids.length) continue;
+        groupSettlements.push({ profile: record.target, ids });
+        if (before.present) record.target.groupInbox = structuredClone(before.value); else delete record.target.groupInbox;
+      }
+      settleObserved = data => {
+        if (data.account !== account) return;
+        for (const { profile, ids } of groupSettlements) if (data.profiles[profile.id]?.account === account) settleGroupBatch(this.vault, data.profiles[profile.id], { ids });
+      };
+      for (const record of [...records, ...cursors]) for (const entry of record.fields) entry.after = field(record.target, entry.key);
+      created = Object.entries(this.data.profiles).filter(([key]) => !previousProfiles.has(key)).map(([key, profile]) => ({ key, profile, after: structuredClone(profile) }));
+      await persist({ [configurationSnapshotPatch]: settleObserved });
+      }
       catch (error) {
-        this.data.settings = previousSettings; this.invalidate();
-        for (const [id, watch] of previousWatches) if (this.data.profiles[id]) { if (watch === undefined) delete this.data.profiles[id].memoryWatch; else this.data.profiles[id].memoryWatch = watch; }
+        if (this.data.account === account) {
+          if (this.data.settings === next) this.data.settings = previousSettings;
+          for (const record of [...records, ...cursors]) {
+            if (record.target.id && this.data.profiles[record.target.id] !== record.target || record.key && this.cursors.get(record.key) !== record.target || record.target === queue && this.data.queue !== queue) continue;
+            for (const entry of record.fields) if (!same(entry.before, entry.after ||= field(record.target, entry.key)) && same(field(record.target, entry.key), entry.after)) {
+              if (entry.before.present) record.target[entry.key] = structuredClone(entry.before.value); else delete record.target[entry.key];
+            }
+          }
+          for (const { key, profile, after } of created) if (this.data.profiles[key] === profile && same(profile, after)) delete this.data.profiles[key];
+        }
+        this.invalidate({ preservePreparedReplies: true });
         throw error;
       }
+      finally { if (this.pendingSettingsEnable === pendingEnable) this.pendingSettingsEnable = null; }
+      settleObserved(this.data);
       return this.publicState();
-    });
+    // Closing must invalidate running learning immediately, even behind an old
+    // write. The installed barrier and persist still preserve write ordering.
+    }, { drain: false }));
   }
   async saveStrategy(value, id, mode) {
     return this.exclusive(async () => {
       if (mode !== undefined && mode !== 'reply') throw new AppError('请选择要设置的策略类型');
       const strategy = mode === 'reply' ? replyStrategyValue(value) : strategyValue(value), profile = id ? this.profile(id) : null;
-      this.invalidate();
-      if (profile) profile[mode === 'reply' ? 'replyStrategy' : 'strategy'] = strategy; else this.data[mode === 'reply' ? 'replyStrategy' : 'strategy'] = strategy;
-      await this.save(); return this.publicState();
+      if (profile) {
+        await commitObjectConfiguration(this, id, candidate => { candidate[mode === 'reply' ? 'replyStrategy' : 'strategy'] = strategy; delete candidate.preparedReply; }, { invalidate: true });
+        return this.publicState();
+      }
+      return withConfigurationCommit(this, async persist => {
+        const key = mode === 'reply' ? 'replyStrategy' : 'strategy';
+        await persist({ [configurationSnapshotPatch]: snapshot => { snapshot[key] = structuredClone(strategy); } });
+        this.data[key] = strategy;
+        this.invalidate({ preservePreparedReplies: true });
+        return this.publicState();
+      });
     });
   }
   recordUncertainProactive(profile, task, text, operationId) {
@@ -1916,12 +2043,14 @@ export class AIAssistant {
   }
   async applyReplyLimitToKind(kind, maxRounds, scope = null) {
     const account = scope ? scope.account : this.data.account;
-    return this.exclusive(async () => {
+    return this.exclusive(() => withConfigurationCommit(this, async persist => {
       if (!['person', 'group'].includes(kind) || maxRounds == null) throw new AppError('上限设置无效');
       const identity = await this.bridge.currentAccount();
       const contacts = [...this.contacts.values()].filter(contact => contact.kind === kind).map(contact => contact.id).sort();
       if (!validKey(account) || account !== this.data.account || identity.account !== account || (scope && (!Array.isArray(scope.contacts) || scope.contacts.some(contact => typeof contact !== 'string') || JSON.stringify([...scope.contacts].sort()) !== JSON.stringify(contacts)))) throw new AppError('账号或对象范围已变化，请重新确认应用范围', 409, 'AI_SCOPE_CHANGED');
       maxRounds = replyLimitValue(maxRounds);
+      const pending = { account, kind }; this.pendingBulkReplyLimit = pending;
+      try {
       const previous = this.data.accountReplyRoundLimits[account], next = { ...this.replyRoundLimits(), [kind]: maxRounds };
       this.data.accountReplyRoundLimits[account] = next;
       const changes = [];
@@ -1930,7 +2059,7 @@ export class AIAssistant {
         const before = profile.replyStrategy, after = { ...before, maxRounds };
         profile.replyStrategy = after; changes.push({ profile, before, after }); count++;
       }
-      try { await this.save(); }
+      try { await persist(); }
       catch (error) {
         if (this.data.accountReplyRoundLimits[account] === next) {
           if (previous === undefined) delete this.data.accountReplyRoundLimits[account]; else this.data.accountReplyRoundLimits[account] = previous;
@@ -1941,10 +2070,11 @@ export class AIAssistant {
         throw error;
       }
       return { ...this.publicState(), appliedReplyLimit: { kind, maxRounds, count: [...this.contacts.values()].filter(target => target.kind === kind).length, configuredCount: count } };
-    });
+      } finally { if (this.pendingBulkReplyLimit === pending) this.pendingBulkReplyLimit = null; }
+    }));
   }
   async saveReplyProfile({ contact, style: value, strategy: reply, preserveSwitches = false, replyEnabled, styleSet, styleId, applyCombinedLearning = false, combinedLearningId, inheritStrategy, group, options, memory, timing, takeover, rhythm } = {}) {
-    return this.exclusive(async () => {
+    return this.exclusive(() => commitObjectConfiguration(this, digest(`${this.data.account}\0${contact}`), () => {
       const target = this.contacts.get(contact);
       if (!this.available || !this.data.account || !['person', 'group'].includes(target?.kind)) throw new AppError('请先获取并选择联系人或群聊');
       const style = styleValue(value, { manual: true }), replyStrategy = replyStrategyValue(reply);
@@ -2013,17 +2143,18 @@ export class AIAssistant {
       // 仅保存风格或策略（未带开关状态）不解除暂停。
       if (replyEnabled === true && (!wasEnabled || previous?.paused)) this.resumeForSavedReply(profile);
       if (!this.replySelected(profile)) this.endReplyRound(profile, 'disabled');
-      this.syncTargets(); await this.save(); return this.publicState();
-    });
+      this.syncTargets();
+    }));
   }
   async editProfile(id, value) {
     return this.exclusive(async () => {
-        const profile = this.profile(id); this.invalidate();
+      await commitObjectConfiguration(this, id, () => {
+        const profile = this.profile(id); delete profile.preparedReply;
       if (value.delete === true) { delete this.data.profiles[id]; this.data.replyTargets = this.data.replyTargets.filter(x => x !== id); this.data.proactiveTargets = this.data.proactiveTargets.filter(x => x !== id); this.syncTargets(); this.data.queue.items = this.data.queue.items.filter(x => x.id !== id); }
       else {
         const style = styleValue(value.style, { manual: true });
         if (profile.pendingStyle && value.paused === undefined && value.resetStrategy !== true) {
-          profile.pendingStyle = style; await this.save(); return this.publicState();
+          profile.pendingStyle = style; return;
         }
         // A resumed chat starts after the current history, including messages
         // received while paused. Never revive an old pending reply.
@@ -2046,14 +2177,17 @@ export class AIAssistant {
         this.syncTargets();
         if (value.resetStrategy === true) { delete profile.strategy; delete profile.replyStrategy; }
       }
-      await this.save(); return this.publicState();
+      }, { invalidate: true });
+      return this.publicState();
     });
   }
   async editMemory(id, value) {
     return this.exclusive(async () => {
-      const profile = this.profile(id);
-      this.invalidate(); Object.assign(profile, changeMemory(this.vault, profile, value, this.now()));
-      await this.save(); return this.publicState();
+      await commitObjectConfiguration(this, id, () => {
+        const profile = this.profile(id); delete profile.preparedReply;
+        Object.assign(profile, changeMemory(this.vault, profile, value, this.now()));
+      }, { invalidate: true });
+      return this.publicState();
     });
   }
   async mobileMasterState(instanceId) {
@@ -2080,25 +2214,29 @@ export class AIAssistant {
       const target = this.contacts.get(contactId);
       if (!this.available || !this.data.account || !['person', 'group'].includes(target?.kind)) throw new AppError('请先获取并选择联系人或群聊');
       const id = digest(`${this.data.account}\0${contactId}`);
-      const profile = this.data.profiles[id] || { id, account: this.data.account, contact: contactId, label: target.label, kind: target.kind };
-      if (profile.account !== this.data.account || profile.contact !== contactId) throw new AppError('联系人身份已变化，请刷新后重试');
-      this.invalidate();
-      Object.assign(profile, changeMemory(this.vault, profile, value, this.now()));
-      this.data.profiles[id] = profile;
-      await this.save(); return this.publicState();
+      await commitObjectConfiguration(this, id, () => {
+        const profile = this.data.profiles[id] || { id, account: this.data.account, contact: contactId, label: target.label, kind: target.kind };
+        if (profile.account !== this.data.account || profile.contact !== contactId) throw new AppError('联系人身份已变化，请刷新后重试');
+        delete profile.preparedReply;
+        Object.assign(profile, changeMemory(this.vault, profile, value, this.now()));
+        this.data.profiles[id] = profile;
+      }, { invalidate: true });
+      return this.publicState();
     });
   }
   // 「替换」：直接采用待确认的那一份，旧记忆整体进历史版本，可回滚。
   async applyPendingMemory(id) {
     return this.exclusive(async () => {
-      const profile = this.profile(id), pending = this.pendingMemoryOf(profile);
-      if (!pending) throw new AppError('没有待确认的记忆，请先学习一次');
-      if (profile.pendingMemorySource === 'combined') throw new AppError('请在学习结果中一起应用风格和记忆');
-      if (!pending.entries.length) throw new AppError('本次没有提取到明确记忆，已有记忆未改变');
-      this.invalidate();
-      Object.assign(profile, replaceMemory(this.vault, profile, { entries: pending.entries }, this.now()));
-      this.clearPendingMemory(profile);
-      await this.save();
+      await commitObjectConfiguration(this, id, () => {
+        const profile = this.profile(id), pending = this.pendingMemoryOf(profile);
+        if (!pending) throw new AppError('没有待确认的记忆，请先学习一次');
+        if (profile.pendingMemorySource === 'combined') throw new AppError('请在学习结果中一起应用风格和记忆');
+        if (!pending.entries.length) throw new AppError('本次没有提取到明确记忆，已有记忆未改变');
+        delete profile.preparedReply;
+        Object.assign(profile, replaceMemory(this.vault, profile, { entries: pending.entries }, this.now()));
+        this.clearPendingMemory(profile);
+      }, { invalidate: true });
+      const profile = this.profile(id);
       this.notice = `${profile.label}：聊天记忆已更新`;
       return this.publicState();
     });
@@ -2106,12 +2244,14 @@ export class AIAssistant {
   // 「取消」：丢弃待确认的那一份，已有记忆不动。
   async discardPendingMemory(id) {
     return this.exclusive(async () => {
+      await commitObjectConfiguration(this, id, () => {
+        const profile = this.profile(id);
+        if (!this.pendingMemoryOf(profile) && !profile.memoryMerge) throw new AppError('没有待确认的记忆');
+        delete profile.preparedReply;
+        if (profile.pendingMemorySource === 'combined') delete profile.pendingStyle;
+        this.clearPendingMemory(profile);
+      }, { invalidate: true });
       const profile = this.profile(id);
-      if (!this.pendingMemoryOf(profile) && !profile.memoryMerge) throw new AppError('没有待确认的记忆');
-      this.invalidate();
-      if (profile.pendingMemorySource === 'combined') delete profile.pendingStyle;
-      this.clearPendingMemory(profile);
-      await this.save();
       this.notice = `${profile.label}：已放弃本次学习到的记忆`;
       return this.publicState();
     });
@@ -2120,17 +2260,18 @@ export class AIAssistant {
   // 只是待确认，用户还要再选一次「替换」或「取消」。合并在后台跑，页面可继续查看。
   async mergePendingMemory(id) {
     return this.exclusive(async () => {
-      const profile = this.profile(id);
-      const pending = this.pendingMemoryOf(profile);
-      if (!pending) throw new AppError('没有待确认的记忆，请先学习一次');
-      if (profile.pendingMemorySource === 'combined') throw new AppError('请在学习结果中一起应用风格和记忆');
-      if (!pending.entries.length) throw new AppError('本次没有提取到明确记忆，已有记忆未改变');
-      if (profile.memoryMerge?.status === 'running') throw new AppError('正在合并记忆，请稍候');
-      if (!this.modelReady()) throw new AppError('请先配置模型');
-      this.invalidate();
-      this.setMemoryMerge(profile, { status: 'running', at: this.now() });
-      await this.save();
-      this.finishMemoryMerge(profile.id);
+      await commitObjectConfiguration(this, id, () => {
+        const profile = this.profile(id);
+        const pending = this.pendingMemoryOf(profile);
+        if (!pending) throw new AppError('没有待确认的记忆，请先学习一次');
+        if (profile.pendingMemorySource === 'combined') throw new AppError('请在学习结果中一起应用风格和记忆');
+        if (!pending.entries.length) throw new AppError('本次没有提取到明确记忆，已有记忆未改变');
+        if (profile.memoryMerge?.status === 'running') throw new AppError('正在合并记忆，请稍候');
+        if (!this.modelReady()) throw new AppError('请先配置模型');
+        delete profile.preparedReply;
+        this.setMemoryMerge(profile, { status: 'running', at: this.now() });
+      }, { invalidate: true });
+      this.finishMemoryMerge(id);
       return this.publicState();
     });
   }
@@ -2174,10 +2315,28 @@ export class AIAssistant {
   }
   async targets(ids, mode) {
     return this.exclusive(async () => {
-      if (mode !== undefined && !['reply', 'proactive'].includes(mode)) throw new AppError('请选择要配置的辅助类型');
-      if (!Array.isArray(ids) || ids.length > 200) throw new AppError('请选择辅助对象');
-      for (const id of ids) if (!this.eligible(this.profile(id))) throw new AppError('请先检测并配置选定对象');
-      this.invalidate();
+      const validate = () => {
+        if (mode !== undefined && !['reply', 'proactive'].includes(mode)) throw new AppError('请选择要配置的辅助类型');
+        if (!Array.isArray(ids) || ids.length > 200) throw new AppError('请选择辅助对象');
+        for (const id of ids) if (!this.eligible(this.profile(id))) throw new AppError('请先检测并配置选定对象');
+      };
+      validate();
+      const account = this.data.account, pending = { account }; this.pendingLegacyTargets = pending;
+      try { return await withConfigurationCommit(this, async persist => {
+      if (this.data.account !== account) throw new AppError('微信账号已变化，请重新选择辅助对象', 409, 'AI_SCOPE_CHANGED');
+      validate();
+      const data = this.data, queue = data.queue, cursorMap = this.cursors, previousCursors = new Map(cursorMap);
+      const field = (target, key) => ({ present: Object.hasOwn(target, key), value: structuredClone(target[key]) });
+      const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+      const watch = (target, keys) => ({ target, fields: keys.map(key => ({ key, before: field(target, key) })) });
+      const arrays = ['replyTargets','proactiveTargets','targets'].map(key => ({ key, before: data[key] }));
+      const records = [watch(data.settings, ['replyScope']), watch(queue, ['status','nextAt']), ...queue.items.map(item => watch(item, ['status','failedAt','reason'])), ...this.profiles().map(profile => watch(profile, ['replyWatchSince','continuation']))];
+      const previousEvents = [...data.events], previousEventIds = new Set(previousEvents.map(row => row.id));
+      const prepared = Object.values(data.profiles).filter(profile => profile.preparedReply).map(profile => ({ profile, reply: profile.preparedReply }));
+      const clearPrepared = snapshot => { for (const { profile, reply } of prepared) if (same(snapshot.profiles[profile.id]?.preparedReply, reply)) delete snapshot.profiles[profile.id].preparedReply; };
+      let removedCursors, addedEvents;
+      try {
+      this.invalidate({ preservePreparedReplies: true });
       if (mode !== 'proactive') {
         this.data.settings.replyScope = 'selected';
         for (const id of ids) if (!this.data.replyTargets.includes(id)) this.profile(id).replyWatchSince = this.now();
@@ -2186,7 +2345,29 @@ export class AIAssistant {
       if (mode !== 'reply') this.data.proactiveTargets = [...new Set(ids)];
       this.syncTargets(); this.pruneQueueTargets();
       for (const id of this.cursors.keys()) if (!this.data.targets.includes(id)) this.cursors.delete(id);
-      await this.save(); return this.publicState();
+      for (const row of arrays) row.after = data[row.key];
+      for (const record of records) for (const entry of record.fields) entry.after = field(record.target, entry.key);
+      removedCursors = [...previousCursors].filter(([key]) => !cursorMap.has(key));
+      addedEvents = new Set(data.events.filter(row => !previousEventIds.has(row.id)).map(row => row.id));
+      await persist({ [configurationSnapshotPatch]: clearPrepared });
+      }
+      catch (error) {
+        if (this.data === data && data.account === account) {
+          for (const row of arrays) if (data[row.key] === (row.after || data[row.key])) data[row.key] = row.before;
+          for (const record of records) {
+            if (record.target === queue && data.queue !== queue || record.target.id && data.profiles[record.target.id] !== record.target && !data.queue.items.includes(record.target)) continue;
+            for (const entry of record.fields) if (!same(entry.before, entry.after ||= field(record.target, entry.key)) && same(field(record.target, entry.key), entry.after)) { if (entry.before.present) record.target[entry.key] = structuredClone(entry.before.value); else delete record.target[entry.key]; }
+          }
+          if (this.cursors === cursorMap) for (const [key, cursor] of removedCursors || [...previousCursors].filter(([key]) => !cursorMap.has(key))) if (!cursorMap.has(key)) cursorMap.set(key, cursor);
+          addedEvents ||= new Set(data.events.filter(row => !previousEventIds.has(row.id)).map(row => row.id));
+          data.events = data.events.filter(row => !addedEvents.has(row.id));
+          const present = new Set(data.events.map(row => row.id)); data.events = [...data.events, ...previousEvents.filter(row => !present.has(row.id))].slice(0, 2000);
+        }
+        throw error;
+      }
+      if (this.data !== data || data.account !== account) throw new AppError('微信账号已变化，请重新选择辅助对象', 409, 'AI_SCOPE_CHANGED');
+      clearPrepared(data); return this.publicState();
+      }); } finally { if (this.pendingLegacyTargets === pending) this.pendingLegacyTargets = null; }
     });
   }
   async prepareTargets({ contacts } = {}) {
@@ -2826,7 +3007,7 @@ export class AIAssistant {
     }
   }
   async verifyProvider(value, scope = 'chat') {
-    return this.exclusive(async () => {
+    return this.exclusive(() => withConfigurationCommit(this, async persist => {
       const config = providerValue(value, this.providerConfig(scope)), revision = this.providerRevision(scope);
       await this.provider.test(config, this.controller.signal);
       if (revision !== this.providerRevision(scope)) throw new AppError('配置已变化，请重新验证');
@@ -2834,12 +3015,14 @@ export class AIAssistant {
         const group = scope === 'analysis' ? 'learningAnalysis' : 'chat';
         const id = this.assignments[group] || this.models[0].id;
         const models = this.models.map(m => m.id === id ? { ...m, ...config } : m);
-        this.commitModels(models, { ...this.assignments, [group]: id }, { ...this.modelTested, [id]: modelFingerprint(config) });
-      } else this.commitProvider(config, scope, true);
-      await this.save(); return this.publicState();
-    });
+        const testedMap = { ...this.modelTested, [id]: modelFingerprint(config) };
+        await this.persistModelConfiguration(this.modelConfigurationPayload(models, { ...this.assignments, [group]: id }, testedMap), persist, { draftIds: [id] });
+      } else await this.persistModelConfiguration({ config }, persist, { legacy: true, tested: true });
+      return this.publicState();
+    }));
   }
   startRun(id, operation, revision) {
+    if (id === this.pendingObjectConfiguration?.id) return null;
     if (this.activeRuns.has(id) || this.activeRuns.size >= concurrentRunLimit) return null;
     const task = Promise.resolve().then(operation).catch(error => this.tickError(error, revision, id)).finally(() => {
       if (this.activeRuns.get(id) === task) this.activeRuns.delete(id);
@@ -2984,6 +3167,8 @@ export class AIAssistant {
     this.memoryRuns.set(profile.id, task); task.catch(() => {});
   }
   async tick({ background = false, urgentReplyId = null } = {}) {
+    if (this.pendingLegacyTargets || this.pendingSettingsEnable) return;
+    if (this.proactiveV2.pendingMasterEnables) return;
     if (this.receiptChecking) return;
     if (!this.ticking && !this.closed && !this.operation && !this.scanOperation
       && this.profiles().some(p => p.delivery?.status === 'unknown' && this.now() >= (p.delivery.receiptCheckAt || 0))) await this.checkDeliveryReceipts();
@@ -3012,6 +3197,7 @@ export class AIAssistant {
       for (const id of watched) {
         if (revision !== this.revision) return;
         const profile = this.profile(id);
+        if (this.pendingBulkReplyLimit?.account === profile.account && this.pendingBulkReplyLimit.kind === profile.kind) continue;
         if (profile.kind === 'group' && profile.paused && profile.groupPauseReason === 'model' && profile.groupPausedUntil && this.now() >= profile.groupPausedUntil) {
           const baseline = await this.read(profile, signal);
           profile.paused = false; delete profile.groupPausedUntil; delete profile.groupPauseReason; delete profile.pauseReason;
@@ -3133,6 +3319,7 @@ export class AIAssistant {
       if (revision !== this.revision) return;
       if (this.activeRuns.has(id) || background && this.activeRuns.size >= 2) continue;
       const profile = this.data.profiles[id];
+      if (profile && this.pendingBulkReplyLimit?.account === profile.account && this.pendingBulkReplyLimit.kind === profile.kind) continue;
       if (!profile || pending.revision !== revision || !this.canDeliver(profile, 'reply', revision, signal) || !this.multiTurn(profile, 'reply')) { this.followUps.delete(id); continue; }
       if (this.now() < pending.dueAt) continue;
       const snapshot = await this.read(profile, signal);
@@ -3155,9 +3342,10 @@ export class AIAssistant {
     }
     return true;
   }
-  preparedReplyKeyMaterial(profile, strategy) {
+  preparedReplyKeyMaterial(profile, strategy, { legacyModel = false } = {}) {
     return { account: this.data.account, profile: profile.id, round: profile.replyRoundVersion || 0,
-      settings: this.data.settings, strategy, options: this.replyOptions(profile), groupOptions: profile.groupOptions, model: providerFingerprint(this.modelFor('chat')),
+      settings: this.data.settings, strategy, options: this.replyOptions(profile), groupOptions: profile.groupOptions,
+      model: legacyModel ? providerFingerprint(this.modelFor('chat')) : modelFingerprint(canonicalKeyValue(this.modelFor('chat'))),
       style: this.generationStyle(profile, strategy, 'reply'), memory: profile.memory,
       information: this.data.personalInformation?.[this.data.account], rules: [replyFixedRules, replySafetyPrompt, naturalAttributionPrompt] };
   }
@@ -3165,7 +3353,10 @@ export class AIAssistant {
     return digest(JSON.stringify(canonicalKeyValue(this.preparedReplyKeyMaterial(profile, strategy))));
   }
   legacyPreparedReplyKey(profile, strategy) {
-    return digest(JSON.stringify(this.preparedReplyKeyMaterial(profile, strategy)));
+    return digest(JSON.stringify(this.preparedReplyKeyMaterial(profile, strategy, { legacyModel: true })));
+  }
+  legacyCanonicalPreparedReplyKey(profile, strategy) {
+    return digest(JSON.stringify(canonicalKeyValue(this.preparedReplyKeyMaterial(profile, strategy, { legacyModel: true }))));
   }
   preparedReplyExpired(profile) {
     const row = profile.preparedReply;
@@ -3184,12 +3375,12 @@ export class AIAssistant {
       delete profile.preparedReply; return null;
     }
     const key = this.preparedReplyKey(profile, strategy);
-    if (row.keyVersion === 2) {
+    if (row.keyVersion === 3) {
       if (row.key !== key) { delete profile.preparedReply; return null; }
-    } else if (row.keyVersion === undefined) {
-      if (row.key !== this.legacyPreparedReplyKey(profile, strategy))
-        return { retireUnverifiedLegacy: true };
-      row.keyVersion = 2; row.key = key;
+    } else if (row.keyVersion === 2 || row.keyVersion === undefined) {
+      const oldKey = row.keyVersion === 2 ? this.legacyCanonicalPreparedReplyKey(profile, strategy) : this.legacyPreparedReplyKey(profile, strategy);
+      if (row.key !== oldKey) return { retireUnverifiedLegacy: true };
+      row.keyVersion = 3; row.key = key;
     } else return { retireUnverifiedLegacy: true };
     try {
       const plan = this.vault.open(row.body);
@@ -3585,7 +3776,7 @@ export class AIAssistant {
       }
       const plan = { segments, identityAsked, modelMs, multiTurn, followUp, wantsFollowUp: result.followUp === true };
       if (mode === 'reply' && !followUp) {
-        profile.preparedReply = { state: 'prepared', keyVersion: 2, createdAt: this.now(), latestIncomingId: fresh.messages.findLast(message => message.direction === 'other')?.id, context: fresh.revision, key: this.preparedReplyKey(profile, strategy), body: this.vault.seal(plan), ...(groupBatch ? { replyTo: groupBatch.ids } : {}) };
+        profile.preparedReply = { state: 'prepared', keyVersion: 3, createdAt: this.now(), latestIncomingId: fresh.messages.findLast(message => message.direction === 'other')?.id, context: fresh.revision, key: this.preparedReplyKey(profile, strategy), body: this.vault.seal(plan), ...(groupBatch ? { replyTo: groupBatch.ids } : {}) };
         await this.save();
       }
       const outcome = await this.deliverGeneratedReply(profile, fresh, mode, revision, signal, item, segments, strategy, trigger || mode, skipRate, groupBatch, plan);
@@ -3598,6 +3789,9 @@ export class AIAssistant {
     await this.save();
   }
   canDeliver(profile, mode, revision, signal) {
+    if (this.pendingLegacyTargets || this.pendingSettingsEnable) return false;
+    if (this.pendingBulkReplyLimit?.account === profile.account && this.pendingBulkReplyLimit.kind === profile.kind) return false;
+    if (this.proactiveV2.pendingMasterEnables) return false;
     if (mode === 'reply' && !validReplyLimit(this.strategy(profile, mode).maxRounds)) return false;
     if (mode === 'reply' && this.now() < this.manualWaitUntil(profile)) return false;
     const active = mode === 'reply' ? this.data.settings.reply && this.replySelected(profile) || this.continuing(profile) : this.data.settings.proactive;

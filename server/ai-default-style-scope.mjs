@@ -1,5 +1,6 @@
 import { AppError } from './files.mjs';
 import { styleValue } from './ai-schema.mjs';
+import { withConfigurationCommit } from './ai-configuration-commit.mjs';
 
 const validAccount = account => typeof account === 'string' && /^[a-f0-9]{64}$/.test(account);
 const snapshot = a => ({ learnedDefaultStyle: a.data.learnedDefaultStyle || null, defaultStyleSnapshot: a.data.defaultStyleSnapshot || null });
@@ -50,6 +51,7 @@ export async function verifyDefaultStyleAccount(a, account) {
 }
 
 export async function saveDefaultStyleChange(a, account, change) {
+  return withConfigurationCommit(a, async persist => {
   await verifyDefaultStyleAccount(a, account);
   rememberDefaultStyle(a);
   const before = structuredClone(snapshot(a)), encryptedBefore = a.data.accountDefaultStyles?.[account];
@@ -58,7 +60,7 @@ export async function saveDefaultStyleChange(a, account, change) {
   const profiles = a.profiles().map(profile => ({ profile, before: values(profile) }));
   const result = change(), candidate = JSON.stringify(snapshot(a));
   for (const entry of profiles) entry.after = values(entry.profile);
-  try { await a.save(); }
+  try { await persist(); }
   catch (error) {
     // Do not roll an old account's failure over a newly connected account,
     // or restore fields that another operation has since changed.
@@ -77,4 +79,5 @@ export async function saveDefaultStyleChange(a, account, change) {
   // configuration revision must not abort an otherwise valid reply task.
   a.defaultStyleRevision = (a.defaultStyleRevision || 0) + 1;
   return { ...a.publicState(), ...result };
+  });
 }

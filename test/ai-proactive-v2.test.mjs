@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm } from 'node:fs/promises';
 import { AIAssistant } from '../server/ai-service.mjs';
 import { proactiveSchedule, nextProactiveOccurrence } from '../server/ai-proactive-schedule.mjs';
 import { AIModelFixture, ChatFixture, modelConfig, key } from './ai-fixtures.mjs';
@@ -28,6 +28,13 @@ async function fixture(t, options = {}) {
 function input(bridge, values = {}) { return { command: 'create', name: '测试任务', taskType: 'greeting', contacts: [bridge.contacts[0].id], goal: '询问周末是否有空', requirements: '', schedule: { cycle: 'once' }, ...values }; }
 async function create(a, bridge, values) { const before = new Set(a.data.proactiveTasks.map(t => t.id)); await a.proactiveTaskAction(input(bridge, values)); return a.data.proactiveTasks.find(t => !before.has(t.id)); }
 async function ticks(a, count = 5) { for (let n = 0; n < count; n++) await a.tick(); }
+async function failNextAtomicRename(a, run) {
+  const target = a.file, backup = `${target}.fault-backup`;
+  await rename(target, backup); await mkdir(target);
+  try { await assert.rejects(run(), /rename/); }
+  finally { await rm(target, { recursive: true, force: true }); await rename(backup, target); }
+  return JSON.parse(await readFile(target, 'utf8'));
+}
 
 test('a proactive model skip gets one focused new-opening retry', async t => {
   const { a, bridge, provider } = await fixture(t);
@@ -148,6 +155,141 @@ test('creation is account-scoped idempotent, persists taskType and version, only
   await assert.rejects(a.proactiveTaskAction({ command: 'edit', id: task.id, version: 1, name: '覆盖' }), /已被修改/);
   await a.proactiveTaskAction({ command: 'delete', id: task.id });
   await a.proactiveTaskAction(payload); assert.equal(a.data.proactiveTasks.length, 1); assert.equal(a.publicState().proactiveTasks.length, 0);
+});
+
+test('proactive task writes roll back on filesystem failure and fence ticks until commit', async t => {
+  {
+    const { a, bridge, provider, root } = await fixture(t);
+    await failNextAtomicRename(a, () => a.proactiveTaskAction(input(bridge, { requestId: 'fault-create-001' })));
+    assert.equal(a.data.proactiveTasks.length, 0);
+    assert.deepEqual([a.data.settings.enabled, a.data.settings.proactive], [false, false]);
+    assert.equal(JSON.parse(await readFile(a.file, 'utf8')).proactiveTasks.length, 0);
+    await ticks(a); assert.equal(provider.calls.length, 0); assert.equal(bridge.sent.length, 0);
+    const saved = await a.proactiveTaskAction(input(bridge, { requestId: 'fault-create-001', schedule: { cycle: 'once', at: '2026-09-17T12:01' } }));
+    assert.equal(saved.proactiveTasks.length, 1);
+    const restarted = await (async () => { await a.close(); const b = new AIAssistant({ dataRoot: root, bridge, provider, now: () => baseTime, random: low, delay: async () => {} }); await b.init(); await b.scan(); return b; })();
+    t.after(async () => { if (!restarted.closed) await restarted.close(); });
+    assert.equal(restarted.data.proactiveTasks[0].status, 'running');
+    await ticks(restarted); assert.equal(bridge.sent.length, 0);
+  }
+  for (const command of ['pause', 'edit', 'delete']) {
+    const { a, bridge, provider, root } = await fixture(t);
+    const task = await create(a, bridge, { schedule: { cycle: 'once', at: '2026-09-17T12:01' } });
+    const request = { command, id: task.id, version: task.revision, ...(command === 'edit' ? { goal: '未提交修改' } : {}) };
+    const disk = await failNextAtomicRename(a, () => a.proactiveTaskAction(request));
+    const durable = disk.proactiveTasks[0];
+    assert.equal(task.status, 'running'); assert.equal(task.revision, 1);
+    assert.equal(durable.status, 'running'); assert.equal(durable.revision, 1);
+    if (command === 'edit') assert.equal(task.goal, '询问周末是否有空');
+    if (command === 'delete') assert.equal(task.deletedAt, undefined);
+    assert.equal(a.publicState().proactiveTasks[0].status, 'running');
+    await ticks(a); assert.equal(provider.calls.length, 0); assert.equal(bridge.sent.length, 0);
+    if (command === 'pause') {
+      await a.proactiveTaskAction({ command: 'pause', id: task.id, version: task.revision });
+      assert.equal(task.status, 'paused');
+    } else if (command === 'edit') {
+      await a.proactiveTaskAction({ command: 'edit', id: task.id, version: task.revision, goal: '成功保存的新目标' });
+      assert.equal(task.goal, '成功保存的新目标');
+    } else {
+      await a.proactiveTaskAction({ command: 'delete', id: task.id, version: task.revision });
+      assert.ok(task.deletedAt);
+    }
+    const restarted = await (async () => { await a.close(); const b = new AIAssistant({ dataRoot: root, bridge, provider, now: () => baseTime + 2 * 60000, random: low, delay: async () => {} }); await b.init(); await b.scan(); return b; })();
+    t.after(async () => { if (!restarted.closed) await restarted.close(); });
+    if (command === 'pause' || command === 'delete') { await ticks(restarted); assert.equal(bridge.sent.length, 0); }
+    if (command === 'edit') { await ticks(restarted); assert.equal(bridge.sent.length, 1); assert.equal(provider.calls.at(-1).input.strategy.purpose, '成功保存的新目标'); }
+  }
+  {
+    const { a, bridge, provider } = await fixture(t);
+    const edited = await create(a, bridge, { goal: '原目标', schedule: { cycle: 'once' }, contacts: [bridge.contacts[0].id] });
+    const independent = await create(a, bridge, { goal: '独立任务目标', contacts: [bridge.contacts[1].id] });
+    edited.nextAt = independent.nextAt = baseTime;
+    await a.save();
+    let release; let entered; const held = new Promise(resolve => { release = resolve; }); const began = new Promise(resolve => { entered = resolve; });
+    const originalSave = a.save.bind(a); let first = true;
+    a.save = (...args) => { if (first) { first = false; entered(); return held.then(() => originalSave(...args)); } return originalSave(...args); };
+    const pending = a.proactiveTaskAction({ command: 'edit', id: edited.id, version: edited.revision, goal: '提交中的新目标' });
+    await began;
+    assert.equal(a.proactiveV2.runnable(edited), false);
+    assert.equal(a.proactiveV2.runnable(independent), true);
+    await a.proactiveV2.tick({ background: true });
+    assert.ok(independent.run);
+    assert.equal(edited.run, undefined);
+    release();
+    await pending;
+    await Promise.allSettled([...a.proactiveV2.active.values()].map(entry => entry.promise));
+    assert.equal(edited.goal, '提交中的新目标');
+    assert.equal(JSON.parse(await readFile(a.file, 'utf8')).proactiveTasks.find(row => row.id === edited.id).goal, '提交中的新目标');
+    assert.equal(provider.calls[0].input.strategy.purpose, '独立任务目标');
+    assert.equal(provider.calls.some(call => call.input.strategy.purpose === '提交中的新目标'), false);
+  }
+  {
+    const { a, bridge, provider } = await fixture(t);
+    const contact = bridge.contacts[0].id;
+    await a.setReplyOptions({ contact, enabled: true });
+    await a.settings({ reply: true });
+    bridge.push(contact, 'other', '合成的新来信');
+    assert.equal(a.data.settings.enabled, false);
+    assert.equal(a.data.settings.reply, true);
+    let release; let entered;
+    const held = new Promise(resolve => { release = resolve; });
+    const began = new Promise(resolve => { entered = resolve; });
+    const originalSave = a.save.bind(a);
+    a.save = (...args) => { entered(); return held.then(() => originalSave(...args)); };
+    const pending = a.proactiveTaskAction(input(bridge, { requestId: 'fault-enable-001' }));
+    await began;
+    assert.equal(a.data.settings.enabled, true);
+    assert.equal(a.proactiveV2.pendingGlobalEnables, 1);
+    const target = a.file, backup = `${target}.fault-enable-backup`;
+    await rename(target, backup); await mkdir(target);
+    let actionError;
+    try {
+      await a.tick();
+      assert.equal(provider.calls.length, 0);
+      assert.equal(bridge.sent.length, 0);
+    } finally {
+      release();
+      try { await pending; } catch (error) { actionError = error; }
+      a.save = originalSave;
+      await rm(target, { recursive: true, force: true }); await rename(backup, target);
+    }
+    assert.match(actionError?.message || '', /rename/);
+    assert.equal(a.proactiveV2.pendingGlobalEnables, 0);
+    assert.equal(a.data.proactiveTasks.length, 0);
+    assert.equal(a.data.settings.enabled, false);
+    await a.tick();
+    assert.equal(provider.calls.length, 0);
+    assert.equal(bridge.sent.length, 0);
+  }
+});
+
+test('proactive create does not block replies when master was already enabled', async t => {
+  const { a, bridge } = await fixture(t);
+  const contact = bridge.contacts[0].id;
+  await a.saveStrategy({ purpose: '回应新来信', content: '简短自然地回复', persona: '朋友', replyGoal: '回应对方刚发的内容', facts: '', boundaries: '不承诺未确认事项', maxRounds: 3 }, undefined, 'reply');
+  await a.setReplyOptions({ contact, enabled: true });
+  await a.settings({ enabled: true, proactive: false, reply: true });
+  const profile = a.profiles().find(row => row.contact === contact);
+  assert.ok(profile);
+  assert.equal(a.canDeliver(profile, 'reply', a.revision, a.controller.signal), true);
+  let release; let entered;
+  const held = new Promise(resolve => { release = resolve; });
+  const began = new Promise(resolve => { entered = resolve; });
+  const originalSave = a.save.bind(a); let first = true;
+  a.save = (...args) => { if (first) { first = false; entered(); return held.then(() => originalSave(...args)); } return originalSave(...args); };
+  const pending = a.proactiveTaskAction(input(bridge, { requestId: 'fault-proactive-only-001' }));
+  try {
+    await began;
+    assert.equal(a.data.settings.enabled, true);
+    assert.equal(a.data.settings.proactive, true);
+    assert.equal(a.proactiveV2.pendingGlobalEnables, 1);
+    assert.equal(a.proactiveV2.pendingMasterEnables, 0);
+    assert.equal(a.canDeliver(profile, 'reply', a.revision, a.controller.signal), true);
+  } finally { release(); }
+  await pending;
+  a.save = originalSave;
+  assert.equal(a.proactiveV2.pendingGlobalEnables, 0);
+  assert.equal(a.proactiveV2.pendingMasterEnables, 0);
 });
 
 test('save is allowed without model, prerequisites exposed, switches prevent dispatch', async t => {

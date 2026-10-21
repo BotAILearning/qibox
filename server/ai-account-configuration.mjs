@@ -6,6 +6,7 @@ import { recordSource, isDeletedActivityRecord } from './ai-activity-records.mjs
 import { personalFields, retiredPersonalFields, normalizePersonalField } from './ai-personal-fields.mjs';
 import { learningEnabled, safeFactMessage, sensitiveMemory, explicitFactTime } from './ai-learning-policy.mjs';
 import { selectMemoryForChat } from './ai-memory-context.mjs';
+import { withConfigurationCommit } from './ai-configuration-commit.mjs';
 export { personalFields } from './ai-personal-fields.mjs';
 
 const withoutExpiry = ({ expiresAt, ...entry }) => entry;
@@ -81,7 +82,7 @@ export function migrateObjectStyles(profile) {
 }
 
 export async function accountConfiguration(a, value) {
-  return a.exclusive(async () => {
+  return a.exclusive(() => withConfigurationCommit(a, async persist => {
     if (!a.data.account) throw new AppError('请先连接当前微信账号');
     const type = value?.type;
     if (['personal-information', 'personal-suggestion', 'personal-history', 'personal-restore'].includes(type) && value.account !== undefined && value.account !== a.data.account)
@@ -144,11 +145,25 @@ export async function accountConfiguration(a, value) {
       a.data.personalInformation[a.data.account] = a.vault.seal(information);
       a.invalidate();
     } else if (type === 'global-reply-strategy') {
-      const previousLimit = a.globalReplyStrategy()?.maxRounds;
+      const current = a.globalReplyStrategy(), previousLimit = current?.maxRounds;
+      let input = value.strategy;
+      if (Object.hasOwn(value, 'changes') || Object.hasOwn(value, 'expected')) {
+        if (typeof value.account !== 'string' || !value.account || value.account !== a.data.account)
+          throw new AppError('微信账号已变化，请重新打开全局策略', 409, 'AI_SCOPE_CHANGED');
+        const fields = { replyGoal: '回复要求', facts: '可使用的已知信息', boundaries: '边界与注意事项' };
+        const object = item => item && typeof item === 'object' && !Array.isArray(item);
+        const keys = object(value.changes) ? Object.keys(value.changes) : [];
+        if (!object(value.expected) || !keys.length || Object.hasOwn(value, 'strategy') || keys.some(key => !Object.hasOwn(fields, key) || typeof value.changes[key] !== 'string' || typeof value.expected[key] !== 'string')
+          || Object.keys(value.expected).length !== keys.length || Object.keys(value.expected).some(key => !keys.includes(key)))
+          throw new AppError('全局策略修改内容无效，请重新打开后重试', 400, 'AI_GLOBAL_STRATEGY_PATCH_INVALID');
+        const conflicts = keys.filter(key => value.expected[key] !== (current[key] || ''));
+        if (conflicts.length) throw new AppError(`${conflicts.map(key => fields[key]).join('、')}已在其他页面修改；草稿已保留，请核对后再次保存`, 409, 'AI_GLOBAL_STRATEGY_CONFLICT');
+        input = { ...current, ...value.changes };
+      }
       // Editing requirements does not count as confirming an old limit. Keep
       // the exact existing value and leave its execution gate closed.
-      const stored = !validReplyLimit(previousLimit) && previousLimit != null && value.strategy?.maxRounds === previousLimit;
-      const strategy = replyStrategyValue(value.strategy, { stored });
+      const stored = !validReplyLimit(previousLimit) && previousLimit != null && input?.maxRounds === previousLimit;
+      const strategy = replyStrategyValue(input, { stored });
       a.data.globalReplyStrategies ||= {}; a.data.globalReplyStrategies[a.data.account] = strategy;
       a.invalidate();
     } else if (type === 'style') {
@@ -213,7 +228,7 @@ export async function accountConfiguration(a, value) {
         a.data.deletedActivityRecords = [...(a.data.deletedActivityRecords || []), ...confirmation.ids.map(id => ({ account: a.data.account, source: confirmation.source, id }))];
       }
       const replacements = new Map([...backups.keys()].map(key => [key, a.data[key]]));
-      try { await a.save(); } catch (error) {
+      try { await persist(); } catch (error) {
         for (const [key, rows] of backups) {
           if (rows === replacements.get(key)) continue;
           if (key === 'deletedActivityRecords') a.data[key] = a.data[key].filter(row => !(row.account === a.data.account && row.source === confirmation.source && ids.has(row.id)));
@@ -224,7 +239,7 @@ export async function accountConfiguration(a, value) {
       a.configurationConfirmations.delete(value.token);
       return { ...a.publicState(), clearedCount: taskCleanup ? clearedTasks.length : confirmation.ids.length };
     } else throw new AppError('设置操作无效');
-    await a.save(); return a.publicState();
+    await persist(); return a.publicState();
     } catch (error) { for (const restore of undo.reverse()) restore(); throw error; }
-  });
+  }));
 }

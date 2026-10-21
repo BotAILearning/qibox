@@ -117,12 +117,15 @@ for (const method of ['saveDefaultStyle','clearDefaultStyle','applyDefaultStyle'
 
 test('old-account write failure cannot restore its defaults into the newly connected account', async t => {
   const f = await fixture(t); await f.a.commitDefaultStyle({ summary: 'FIRST_SAVED_DEFAULT' });
-  const save = f.a.save; let entered, release;
+  const save = f.a.save; let entered, release, first = true;
   const started = new Promise(resolve => { entered = resolve; });
-  f.a.save = async () => { entered(); await new Promise(resolve => { release = resolve; }); throw Error('fixture old write failed'); };
+  f.a.save = async function (...args) { if (!first) return save.apply(this, args); first = false; entered(); await new Promise(resolve => { release = resolve; }); throw Error('fixture old write failed'); };
   const pending = f.a.commitDefaultStyle({ summary: 'FIRST_PENDING_DEFAULT' }); await started;
-  f.a.save = save; await f.switchTo(f.second); release();
+  // A normal scan save now waits for the pending commit to settle. Keep the
+  // account transition concurrent and release its one-shot failure first.
+  const switched = f.switchTo(f.second); await new Promise(resolve => setImmediate(resolve)); release();
   await assert.rejects(pending, /fixture old write failed/);
+  await switched; f.a.save = save;
   assert.equal(f.a.publicState().learnedDefaultStyle, null);
   await f.a.commitDefaultStyle({ summary: 'SECOND_SAVED_DEFAULT' }); await f.switchTo(f.first);
   assert.equal(f.a.publicState().learnedDefaultStyle.style.summary, 'FIRST_SAVED_DEFAULT');

@@ -4,6 +4,7 @@ import { defaultStyle, textField } from './ai-schema.mjs';
 import { messageSegments } from './ai-prompts.mjs';
 import { stripUnauthorizedProactiveVocatives } from './ai-reply-rules.mjs';
 import { proactiveSchedule, nextProactiveOccurrence, proactiveOccurrenceDeadline } from './ai-proactive-schedule.mjs';
+import { withConfigurationCommit } from './ai-configuration-commit.mjs';
 
 const terminal = new Set(['sent', 'skipped', 'failed', 'unknown', 'cancelled', 'reviewed']);
 // Recipients who failed inside one occurrence are re-queued for the next one.
@@ -30,7 +31,7 @@ function migratedSchedule(row, now) {
 }
 
 export class ProactiveTasks {
-  constructor(ai) { this.ai = ai; this.active = new Map(); this.index = 0; }
+  constructor(ai) { this.ai = ai; this.active = new Map(); this.pendingMutations = new Set(); this.pendingGlobalEnables = 0; this.pendingMasterEnables = 0; this.index = 0; }
   get tasks() { return this.ai.data.proactiveTasks; }
   init() {
     const a = this.ai, d = a.data;
@@ -130,9 +131,39 @@ export class ProactiveTasks {
     const a = this.ai;
     for (const c of task.contacts) a.data.profiles[c.profileId] ||= { id: c.profileId, account: task.account, contact: c.id, label: c.label, kind: 'person', source: 'default', preparedAt: a.now(), style: structuredClone(defaultStyle), paused: false, rounds: 0 };
   }
+  restoreTask(taskId, snapshot) {
+    const index = this.tasks.findIndex(row => row.id === taskId);
+    if (!snapshot) { if (index >= 0) this.tasks.splice(index, 1); return; }
+    if (index < 0) { this.tasks.push(structuredClone(snapshot)); return; }
+    const target = this.tasks[index];
+    for (const key of Object.keys(target)) delete target[key];
+    Object.assign(target, structuredClone(snapshot));
+  }
+  restoreActivation(snapshot) {
+    const d = this.ai.data;
+    if (!snapshot || d.proactiveVersion !== 2) return;
+    d.proactiveVersion = snapshot.version;
+    if (JSON.stringify(d.proactiveLegacy) === JSON.stringify(snapshot.after.proactiveLegacy)) d.proactiveLegacy = structuredClone(snapshot.proactiveLegacy);
+    if (d.queue.status === snapshot.after.queue.status) d.queue.status = snapshot.queue.status;
+    if (d.queue.nextAt === snapshot.after.queue.nextAt) d.queue.nextAt = snapshot.queue.nextAt;
+    for (const row of snapshot.schedules) {
+      const current = d.schedules.find(item => item.id === row.id && item.account === row.account);
+      const after = snapshot.after.schedules.find(item => item.id === row.id && item.account === row.account);
+      if (current && after && current.status === after.status && current.nextAt === after.nextAt) {
+        current.status = row.status;
+        current.nextAt = row.nextAt;
+      }
+    }
+    const added = new Set(snapshot.addedTaskIds);
+    for (let index = this.tasks.length - 1; index >= 0; index--) if (added.has(this.tasks[index].id)) this.tasks.splice(index, 1);
+    for (const [id, continuation] of snapshot.continuations) {
+      const profile = d.profiles[id];
+      if (profile && !profile.continuation && continuation) profile.continuation = structuredClone(continuation);
+    }
+  }
   action(value = {}) {
     return this.ai.exclusive(async () => {
-      const a = this.ai, command = value.command;
+      const a = this.ai, d = a.data, command = value.command;
       if (!['create', 'edit', 'pause', 'resume', 'end', 'retry', 'delete'].includes(command)) throw new AppError('主动聊天操作无效');
       if (value.requestId !== undefined && (typeof value.requestId !== 'string' || !/^[a-zA-Z0-9_-]{8,100}$/.test(value.requestId))) throw new AppError('创建请求标识无效');
       if (command === 'create' && value.requestId && this.tasks.some(t => t.account === a.data.account && t.requestId === value.requestId)) { await a.save(); return a.publicState(); }
@@ -158,12 +189,34 @@ export class ProactiveTasks {
         if (failed.length && !scheduledRetry) throw new AppError('请重试失败对象');
       }
       if (command === 'retry' && !task.run?.items.some(i => i.status === 'failed')) throw new AppError('没有可以安全重试的失败对象；不确定的发送不会重发');
+      const expectedRevision = task?.revision;
+      return withConfigurationCommit(a, async persist => {
+      if (task && (!this.tasks.includes(task) || task.revision !== expectedRevision)) throw new AppError('任务已被修改，请刷新后重试', 409);
+      const taskBefore = command === 'create' ? null : structuredClone(task);
+      const settingsBefore = { enabled: d.settings.enabled, proactive: d.settings.proactive, replyWatchSince: d.replyWatchSince };
+      const profilesBefore = new Set(Object.keys(d.profiles));
+      let replyWatchAfter = null;
+      const activationBefore = d.proactiveVersion === 2 ? null : {
+        version: d.proactiveVersion, proactiveLegacy: structuredClone(d.proactiveLegacy), queue: structuredClone(d.queue),
+        schedules: structuredClone(d.schedules), taskIds: new Set(this.tasks.map(row => row.id)),
+        continuations: Object.entries(d.profiles).map(([id, profile]) => [id, structuredClone(profile.continuation)])
+      };
       this.activate();
+      if (activationBefore) {
+        activationBefore.after = { proactiveLegacy: structuredClone(d.proactiveLegacy), queue: structuredClone(d.queue), schedules: structuredClone(d.schedules) };
+        activationBefore.addedTaskIds = this.tasks.filter(row => !activationBefore.taskIds.has(row.id)).map(row => row.id);
+      }
+      if (task) this.pendingMutations.add(task.id);
+      const pendingGlobalEnable = command === 'create' && (!settingsBefore.enabled || !settingsBefore.proactive);
+      const pendingMasterEnable = command === 'create' && !settingsBefore.enabled;
       if (command === 'create') {
         task = { id: randomUUID(), account: a.data.account, ...fields, ...(value.requestId ? { requestId: value.requestId } : {}), status: 'running', revision: 1, createdAt: a.now(), lastRunAt: null,
           ...nextProactiveOccurrence(fields.schedule, a.now(), a.random) };
+        this.pendingMutations.add(task.id);
         this.ensureProfiles(task); this.tasks.push(task);
-        if (!a.data.settings.enabled) a.data.replyWatchSince = a.now();
+        if (!a.data.settings.enabled) { a.data.replyWatchSince = a.now(); replyWatchAfter = a.data.replyWatchSince; }
+        if (pendingGlobalEnable) this.pendingGlobalEnables++;
+        if (pendingMasterEnable) this.pendingMasterEnables++;
         a.data.settings.enabled = true; a.data.settings.proactive = true;
       } else {
         // Only invalidate this task. Other independent tasks keep their work.
@@ -197,7 +250,29 @@ export class ProactiveTasks {
           if (task.nextAt === null && task.schedule.cycle === 'once') task.status = 'ended';
         }
       }
-      await a.save(); return a.publicState();
+      const changedTaskId = task.id;
+      const addedProfiles = command === 'create' || command === 'edit' ? task.contacts.filter(c => !profilesBefore.has(c.profileId)).map(c => ({ id: c.profileId, value: structuredClone(d.profiles[c.profileId]) })) : [];
+      try { await persist.call(a); }
+      catch (error) {
+        this.restoreTask(changedTaskId, taskBefore);
+        for (const profileRow of addedProfiles) {
+          const profile = d.profiles[profileRow.id];
+          if (profile && JSON.stringify(profile) === JSON.stringify(profileRow.value) && !this.tasks.some(row => row.contacts?.some(contact => contact.profileId === profileRow.id))) delete d.profiles[profileRow.id];
+        }
+        if (command === 'create') {
+          if (d.settings.enabled === true) d.settings.enabled = settingsBefore.enabled;
+          if (d.settings.proactive === true) d.settings.proactive = settingsBefore.proactive;
+          if (replyWatchAfter !== null && d.replyWatchSince === replyWatchAfter) d.replyWatchSince = settingsBefore.replyWatchSince;
+        }
+        this.restoreActivation(activationBefore);
+        throw error;
+      } finally {
+        this.pendingMutations.delete(changedTaskId);
+        if (pendingGlobalEnable) this.pendingGlobalEnables--;
+        if (pendingMasterEnable) this.pendingMasterEnables--;
+      }
+      return a.publicState();
+      });
     });
   }
   item(c) { return { id: randomUUID(), contact: c.id, label: c.label, ...(c.nickname ? { nickname: c.nickname } : {}), profileId: c.profileId, status: 'pending', attempts: 0 }; }
@@ -234,7 +309,7 @@ export class ProactiveTasks {
   }
   runnable(task) {
     const a = this.ai;
-    return !a.closed && !task.deletedAt && task.status === 'running' && task.account === a.data.account && a.data.settings.enabled && a.data.settings.proactive && a.available && a.ready() && a.modelReady() && !a.operation && !a.scanOperation && !a.manualHolds.size && a.now() >= (a.userBusyUntil || 0);
+    return !a.closed && !this.pendingGlobalEnables && !this.pendingMutations.has(task.id) && !task.deletedAt && task.status === 'running' && task.account === a.data.account && a.data.settings.enabled && a.data.settings.proactive && a.available && a.ready() && a.modelReady() && !a.operation && !a.scanOperation && !a.manualHolds.size && a.now() >= (a.userBusyUntil || 0);
   }
   async tick({ background = false } = {}) {
     const a = this.ai;

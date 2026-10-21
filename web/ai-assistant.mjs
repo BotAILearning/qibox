@@ -95,6 +95,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   const acknowledgedReplyLimitOverflow = new WeakMap();
   let replyLimitOverflowDialogOpen = false;
   let replyLimitConfirmController = null;
+  let globalReplyConfirmController = null;
   const confirmationControllers = new Set();
   async function productDialog(options = {}) {
     const current = generation, target = id, account = state?.account, controller = new AbortController();
@@ -659,6 +660,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   const hasPendingAnalysis = () => analysisQueueAccount !== null && analysisResult?.reports?.some(row => ['waiting', 'analyzing'].includes(row.status));
   function controls() {
     if (!state) return;
+    if (tab === 'global-reply') refreshGlobalReplyForm();
     const defaultCurrent = tab === 'default-style' && panel.querySelector('.ai-default-current');
     if (defaultCurrent && defaultCurrent.dataset.defaultStyleState !== defaultStyleSignature()) {
       const focused = defaultCurrent.contains(document.activeElement) ? document.activeElement : null;
@@ -1048,6 +1050,67 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       minutes: rhythm.takeover.minutes,
     } };
   }
+  const globalReplyFields = ['replyGoal', 'facts', 'boundaries'];
+  const globalReplyLabels = { replyGoal: '回复要求', facts: '可使用的已知信息', boundaries: '边界与注意事项' };
+  function globalReplyBaseline() {
+    const key = 'ai-global-reply-form', latest = accountFormBaseline(key), previous = accountFormBaselines.get(key), draft = accountFormDrafts.get(key);
+    if (previous && draft && previous.account === state.account && draft.account === state.account) {
+      latest.values = { ...latest.values };
+      for (const field of draft.fields) if (globalReplyFields.includes(field.name)) latest.values[field.name] = previous.values[field.name];
+      latest.conflicts = previous.conflicts || [];
+    }
+    return latest;
+  }
+  function refreshGlobalReplyForm() {
+    const key = 'ai-global-reply-form', form = panel.querySelector('#' + key);
+    if (!form) return;
+    const baseline = accountFormBaselines.get(key) || accountFormBaseline(key);
+    if (baseline.account !== state.account) return;
+    const latest = state.replyStrategy || {}, values = { ...baseline.values };
+    for (const key of globalReplyFields) {
+      const input = form.elements.namedItem(key); if (!input) continue;
+      if (String(input.value ?? '') === String(values[key] ?? '') || String(input.value ?? '') === String(latest[key] ?? '')) {
+        input.value = latest[key] || ''; values[key] = latest[key] || '';
+      }
+    }
+    accountFormBaselines.set(key, { ...baseline, values });
+    rememberDraft();
+  }
+  function objectDraftFromForm(form) {
+    const draft = { ...Object.fromEntries(formData(form)), ...objectRhythmDraft(form) };
+    for (const key of ['takeoverEnabled']) {
+      const input = form.querySelector(`[name=${key}]`); if (input) draft[key] = input.checked;
+    }
+    for (const key of ['replyDelay','replyMaxWait','segmentDelayMin','segmentDelayMax','followUpDelayMin','followUpDelayMax','takeoverMinutes']) {
+      const input = form.querySelector(`[name=${key}]`); if (input) draft[key] = input.value;
+    }
+    if (form.querySelector('[data-ai-wiki-entities]')) draft.memorySummary = JSON.stringify(wikiEntries(form));
+    for (const input of form.querySelectorAll('[data-object-option]')) draft[input.dataset.objectOption] = input.checked;
+    return draft;
+  }
+  function reconcileAppliedObjectLimit(contact, maxRounds) {
+    const form = $('#ai-object-form');
+    if (form?.dataset.contact !== contact) return;
+    const draft = objectDraftFromForm(form);
+    // A newer edit made while the request was pending is still unsaved.
+    let currentLimit;
+    try { currentLimit = parseReplyLimit(draft.maxRounds); } catch { return; }
+    if (currentLimit !== maxRounds) return;
+    const clean = document.createElement('div');
+    clean.innerHTML = objectPage(state, { ...objectView(), draft: undefined, dirty: false });
+    const baselineForm = clean.querySelector('#ai-object-form');
+    refreshObjectTiming(baselineForm, state);
+    const baseline = objectDraftFromForm(baselineForm);
+    const remaining = { ...draft }; delete remaining.maxRounds;
+    const normalized = value => Array.isArray(value) ? value.map(normalized) : value && typeof value === 'object'
+      ? Object.fromEntries(Object.keys(value).sort().map(key => [key, normalized(value[key])])) : value;
+    if (JSON.stringify(normalized({ ...remaining, maxRounds: baseline.maxRounds })) === JSON.stringify(normalized(baseline))) {
+      objectDrafts.delete(contact); objectDirtyContacts.delete(contact);
+    } else {
+      objectDrafts.set(contact, remaining); objectDirtyContacts.add(contact);
+    }
+    render();
+  }
   function rememberDraft() {
     if (!state) return;
     for (const formId of ['ai-takeover-form', 'ai-global-reply-form', 'ai-default-style-form']) {
@@ -1073,17 +1136,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     const object = $('#ai-object-form');
     if (object) {
       if (object.querySelector('[data-ai-dirty]')?.hidden === false) objectDirtyContacts.add(selectedObject);
-      const draft = { ...Object.fromEntries(formData(object)) };
-      Object.assign(draft, objectRhythmDraft(object));
-      for (const key of ['takeoverEnabled']) {
-        const input = object.querySelector(`[name=${key}]`); if (input) draft[key] = input.checked;
-      }
-      for (const key of ['replyDelay','replyMaxWait','segmentDelayMin','segmentDelayMax','followUpDelayMin','followUpDelayMax','takeoverMinutes']) {
-        const input = object.querySelector(`[name=${key}]`); if (input) draft[key] = input.value;
-      }
-      if (object.querySelector('[data-ai-wiki-entities]')) draft.memorySummary = JSON.stringify(wikiEntries(object));
-      for (const input of object.querySelectorAll('[data-object-option]')) draft[input.dataset.objectOption] = input.checked;
-      objectDrafts.set(selectedObject, draft);
+      objectDrafts.set(selectedObject, objectDraftFromForm(object));
     }
     rememberProvider();
     proactiveUI.remember();
@@ -1095,6 +1148,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     if (paste) learningDraft = Object.fromEntries(new FormData(paste));
   }
   async function navigate(next) {
+    if (next !== tab) { globalReplyConfirmController?.abort(); globalReplyConfirmController = null; }
     invalidateDateRange();
     rememberDraft();
     if (tab === 'provider') concealKey(true);
@@ -1149,7 +1203,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     const contentLayout = ['provider','personal-info','global-reply','default-style'].includes(tab) ? 'reading' : 'data';
     $('#ai-content').innerHTML = iconSprite + nav + (tab === 'overview' ? content : `<div class="ai-page-body qi-content" data-layout="${contentLayout}">${content}</div>`);
     if (tab === 'settings') accountFormBaselines.set('ai-takeover-form', accountFormBaseline('ai-takeover-form'));
-    if (tab === 'global-reply') accountFormBaselines.set('ai-global-reply-form', accountFormBaseline('ai-global-reply-form'));
+    if (tab === 'global-reply') accountFormBaselines.set('ai-global-reply-form', globalReplyBaseline());
     if (tab === 'default-style') accountFormBaselines.set('ai-default-style-form', accountFormBaseline('ai-default-style-form'));
     if (analysisExportDialog) {
       const dialog = $('#ai-report-export-dialog');
@@ -1214,6 +1268,45 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     let result;
     await workflow(async step => { result = await step(action, extras); }, success);
     return result;
+  }
+  async function saveGlobalReplyForm(form, data) {
+    const current = generation, target = id, account = state.account, key = form.id;
+    const active = () => current === generation && target === id && account === state?.account;
+    const baseline = accountFormBaselines.get(key) || accountFormBaseline(key), draft = accountFormDrafts.get(key);
+    const fields = draft?.account === account ? draft.fields.filter(field => globalReplyFields.includes(field.name)) : [];
+    if (!fields.length) { message('全局策略没有未保存的修改'); return; }
+    const changes = Object.fromEntries(fields.map(field => [field.name, String(data.get(field.name) || '')]));
+    const expected = Object.fromEntries(fields.map(field => [field.name, String(baseline.values[field.name] || '')]));
+    const conflicts = fields.map(field => field.name).filter(key => baseline.conflicts?.includes(key) && expected[key] !== String(state.replyStrategy?.[key] || ''));
+    if (conflicts.length) {
+      const observed = Object.fromEntries(conflicts.map(key => [key, String(state.replyStrategy?.[key] || '')]));
+      const controller = new AbortController(); globalReplyConfirmController?.abort(); globalReplyConfirmController = controller;
+      let accepted;
+      try { accepted = await productDialog({ title: '采用你的全局策略修改？', message: `${conflicts.map(key => globalReplyLabels[key]).join('、')}已被其他页面修改。确认后会采用这些字段的当前草稿，其他字段保留最新已保存的内容。`, confirm: '保存我的修改', signal: controller.signal }); }
+      finally { if (globalReplyConfirmController === controller) globalReplyConfirmController = null; }
+      if (!accepted || controller.signal.aborted || !active() || tab !== 'global-reply' || panel.querySelector('#' + key) !== form) return;
+      Object.assign(expected, observed);
+    }
+    let saved;
+    try { saved = await execute('configuration', { value: { type: 'global-reply-strategy', account, changes, expected } }, '全局回复策略已保存'); }
+    catch (error) {
+      if (error.code !== 'AI_GLOBAL_STRATEGY_CONFLICT' || !active()) throw error;
+      try { await call(); } catch { /* Keep the original conflict and draft if refreshing is unavailable. */ }
+      if (!active()) return;
+      refreshGlobalReplyForm();
+      const latest = accountFormBaselines.get(key);
+      if (latest?.account === account) latest.conflicts = fields.map(field => field.name).filter(key => expected[key] !== String(state.replyStrategy?.[key] || ''));
+      message(`${error.message}。再次保存时将请你确认是否采用冲突字段的草稿。`, true);
+      return;
+    }
+    if (!saved || !active()) return;
+    const remaining = accountFormDrafts.get(key);
+    if (remaining?.account === account) {
+      const fields = remaining.fields.filter(field => !Object.hasOwn(changes, field.name) || String(field.value) !== changes[field.name]);
+      if (fields.length) accountFormDrafts.set(key, { ...remaining, fields });
+      else accountFormDrafts.delete(key);
+    }
+    accountFormBaselines.set(key, accountFormBaseline(key)); render();
   }
   async function refreshContacts({ manual = false } = {}) {
     if (contactsLoading) return;
@@ -1296,7 +1389,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       void refreshContacts().catch(error => { if (current === generation) message(error.message, true); });
     }
   }
-  function hide() { invalidateDateRange(); rememberDraft(); rememberRecords(); concealKey(true); proactiveUI.closeOverlay(); if (learningDraft) learningDraft.text = ''; setPanelVisible(false); rail.querySelector('#ai-open').setAttribute('aria-expanded', 'false'); panel.querySelectorAll('[name=text], [name=styleText]').forEach(input => { input.value = ''; }); rail.querySelector('#ai-open').focus(); onClose?.(); }
+  function hide() { globalReplyConfirmController?.abort(); globalReplyConfirmController = null; invalidateDateRange(); rememberDraft(); rememberRecords(); concealKey(true); proactiveUI.closeOverlay(); if (learningDraft) learningDraft.text = ''; setPanelVisible(false); rail.querySelector('#ai-open').setAttribute('aria-expanded', 'false'); panel.querySelectorAll('[name=text], [name=styleText]').forEach(input => { input.value = ''; }); rail.querySelector('#ai-open').focus(); onClose?.(); }
   rail.querySelector('#ai-open').onclick = async () => {
     if (panel.hidden && !pass()) return;
     if (panel.hidden && !id && !(await ensureInstance())) { message('AI 辅助尚未就绪，请重新打开微信后再试', true); return; }
@@ -1728,7 +1821,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         }, '我的信息已保存'); return;
       }
       if (form.id === 'ai-global-reply-form') {
-        const saved = await execute('configuration', { value: { type: 'global-reply-strategy', strategy: { ...state.replyStrategy, replyGoal: data.get('replyGoal') || '', facts: data.get('facts') || '', boundaries: data.get('boundaries') || '' } } }, '全局回复策略已保存'); if (!saved) return; accountFormDrafts.delete(form.id); render(); return;
+        await saveGlobalReplyForm(form, data); return;
       }
       if (form.id === 'ai-model-form') await stageModel();
       if (form.id === 'ai-manual-reply-form') {
@@ -1856,7 +1949,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         return;
       }
       if (button.hasAttribute('data-ai-apply-limit-kind')) {
-        const form = button.closest('form'), value = parseReplyLimit(form.elements.maxRounds.value), kind = button.dataset.aiApplyLimitKind;
+        const form = button.closest('form'), value = parseReplyLimit(form.elements.maxRounds.value), kind = button.dataset.aiApplyLimitKind, contact = form.dataset.contact;
         const current = generation, target = id, account = state.account, contacts = state.contacts.filter(contact => contact.kind === kind).map(contact => contact.id).sort();
         const controller = new AbortController(); replyLimitConfirmController?.abort(); replyLimitConfirmController = controller;
         let accepted;
@@ -1864,7 +1957,10 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         finally { if (replyLimitConfirmController === controller) replyLimitConfirmController = null; }
         if (!accepted || controller.signal.aborted || current !== generation || target !== id || account !== state?.account) return;
         const result = await execute('apply-reply-limit', { value: { kind, maxRounds: value, account, contacts } }, `已应用到全部${kind === 'group' ? '群聊' : '联系人'}`);
-        if (result?.appliedReplyLimit) message(`已更新 ${result.appliedReplyLimit.count} 个${kind === 'group' ? '群聊' : '联系人'}的回复次数上限`);
+        if (result?.appliedReplyLimit && current === generation && target === id && account === state?.account && contact === selectedObject) {
+          reconcileAppliedObjectLimit(contact, value);
+          message(`已更新 ${result.appliedReplyLimit.count} 个${kind === 'group' ? '群聊' : '联系人'}的回复次数上限`);
+        }
         return;
       }
       if (button.hasAttribute('data-ai-wiki-remark')) {

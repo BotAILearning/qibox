@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdir, rename, rm } from 'node:fs/promises';
 import { AIAssistant } from '../server/ai-service.mjs';
 import { AIModelFixture, ChatFixture, modelConfig, key } from './ai-fixtures.mjs';
 import { temp, cleanup } from './fixtures.mjs';
@@ -45,6 +45,49 @@ test('definite pre-submit failure reuses the encrypted answer without a second g
   assert.equal(f.p.preparedReply, undefined); assert.equal(f.p.rounds, 1);
 });
 
+test('failed model save preserves a real prepared reply and its original retry window', async t => {
+  const f = await fixture(t); await f.incoming('合成来信：请生成一条短回复。');
+  const send = f.bridge.send.bind(f.bridge); let attempts = 0;
+  f.bridge.send = request => ++attempts === 1 ? notSent : send(request);
+  f.provider.next = async () => ({ action: 'send', text: '合成缓存答复：收到，谢谢。' });
+  f.advance(20000); await f.a.tick();
+  assert.equal(f.provider.calls.length, 1); assert.equal(attempts, 1);
+  const cached = f.p.preparedReply; assert.equal(cached.state, 'retry');
+  assert.ok(cached.body?.data, 'The generated answer must remain sealed at rest');
+  const retryStartedAt = cached.retryStartedAt;
+  const backup = `${f.a.file}.model-save-fault-backup`;
+  await rename(f.a.file, backup); await mkdir(f.a.file);
+  try {
+    await assert.rejects(f.a.configure({ ...modelConfig, model: 'uncommitted-model' }), error => ['EPERM', 'EISDIR'].includes(error.code));
+    assert.equal(f.a.config.model, modelConfig.model);
+    assert.equal(f.p.preparedReply, cached);
+    assert.equal(f.p.preparedReply.retryStartedAt, retryStartedAt);
+    assert.equal(f.provider.calls.length, 1);
+  } finally {
+    await rm(f.a.file, { recursive: true, force: true }); await rename(backup, f.a.file);
+  }
+  f.bridge.send = send; f.advance(30000); await f.a.tick();
+  assert.equal(f.provider.calls.length, 1, 'A failed settings save must not cause a second model generation');
+  assert.equal(f.bridge.sent.length, 1);
+  assert.deepEqual(f.bridge.sent.map(row => row.text), ['合成缓存答复：收到，谢谢。']);
+  assert.equal(f.p.preparedReply, undefined);
+});
+
+test('legacy configure with reordered equivalent keys reuses a real prepared answer', async t => {
+  const f = await fixture(t); await f.incoming('合成来信：请生成后保留这条待发送答复。');
+  const send = f.bridge.send.bind(f.bridge); f.bridge.send = () => notSent;
+  f.provider.next = async () => ({ action: 'send', text: '合成待复用答复：收到，我会记下。' });
+  f.advance(20000); await f.a.tick();
+  assert.equal(f.provider.calls.length, 1); assert.equal(f.p.preparedReply?.state, 'retry');
+  const before = f.p.preparedReply;
+  const reordered = Object.fromEntries(Object.entries(modelConfig).reverse());
+  await f.a.configure(reordered);
+  assert.equal(f.p.preparedReply, before, 'Equivalent legacy provider settings must retain the sealed answer');
+  f.bridge.send = send; f.advance(30000); await f.a.tick();
+  assert.equal(f.provider.calls.length, 1, 'A key-order-only legacy save must not trigger another generation');
+  assert.deepEqual(f.bridge.sent.map(row => row.text), ['合成待复用答复：收到，我会记下。']);
+});
+
 test('six definite failures use one generation and a later restart still reuses it', async t => {
   const f = await fixture(t); await f.incoming();
   const send = f.bridge.send.bind(f.bridge); let attempts = 0;
@@ -80,7 +123,7 @@ test('manual default style answer is reused across restart when initialization o
   const send = f.bridge.send.bind(f.bridge); f.bridge.send = () => notSent;
   f.provider.next = async () => ({ action: 'send', text: '合成答复：你好，很高兴认识你。' });
   f.advance(20000); await f.a.tick();
-  assert.equal(f.provider.calls.length, 1); assert.ok(f.p.preparedReply); assert.equal(f.p.preparedReply.keyVersion, 2);
+  assert.equal(f.provider.calls.length, 1); assert.ok(f.p.preparedReply); assert.equal(f.p.preparedReply.keyVersion, 3);
   await f.restart();
   const afterStyle = f.a.generationStyle(f.p, f.a.globalReplyStrategy(), 'reply');
   assert.deepEqual(canonical(afterStyle), canonical(beforeStyle), 'Initialization changed style key order only');
@@ -101,7 +144,7 @@ test('a legacy prepared answer with an exact legacy key is upgraded without rese
   f.bridge.send = () => notSent;
   f.provider.next = async () => ({ action: 'send', text: '仅用于兼容探针的确定未发送答复。' });
   f.advance(20000); await f.a.tick();
-  const row = f.p.preparedReply; assert.ok(row); assert.equal(row.keyVersion, 2);
+  const row = f.p.preparedReply; assert.ok(row); assert.equal(row.keyVersion, 3);
   const createdAt = row.createdAt, retryStartedAt = row.retryStartedAt;
   row.key = f.a.legacyPreparedReplyKey(f.p, f.a.strategy(f.p, 'reply'));
   delete row.keyVersion;
@@ -109,7 +152,7 @@ test('a legacy prepared answer with an exact legacy key is upgraded without rese
   f.advance(30000);
   await f.a.tick();
   assert.equal(f.provider.calls.length, 1); assert.equal(f.bridge.sent.length, 1);
-  assert.equal(row.keyVersion, 2); assert.equal(row.key, f.a.preparedReplyKey(f.p, f.a.strategy(f.p, 'reply')));
+  assert.equal(row.keyVersion, 3); assert.equal(row.key, f.a.preparedReplyKey(f.p, f.a.strategy(f.p, 'reply')));
   assert.equal(row.createdAt, createdAt); assert.equal(row.retryStartedAt, retryStartedAt);
 });
 
