@@ -43,6 +43,10 @@ import { historySummary, validReportId } from './ai-report-history.mjs';
 import { safeErrorText, captureErrorContext, publicErrorRecord, relatedErrorRecord } from './ai-error-details.mjs';
 
 const digest = value => createHash('sha256').update(value).digest('hex');
+const canonicalKeyValue = value => Array.isArray(value) ? value.map(canonicalKeyValue)
+  : value && typeof value === 'object'
+    ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonicalKeyValue(value[key])]))
+    : value;
 // Ceiling on concurrent per-profile runs, shared by proactive tasks and replies.
 const concurrentRunLimit = 6;
 // User-confirmed retry window for a generated reply that is definitely unsent.
@@ -3151,11 +3155,17 @@ export class AIAssistant {
     }
     return true;
   }
-  preparedReplyKey(profile, strategy) {
-    return digest(JSON.stringify({ account: this.data.account, profile: profile.id, round: profile.replyRoundVersion || 0,
+  preparedReplyKeyMaterial(profile, strategy) {
+    return { account: this.data.account, profile: profile.id, round: profile.replyRoundVersion || 0,
       settings: this.data.settings, strategy, options: this.replyOptions(profile), groupOptions: profile.groupOptions, model: providerFingerprint(this.modelFor('chat')),
       style: this.generationStyle(profile, strategy, 'reply'), memory: profile.memory,
-      information: this.data.personalInformation?.[this.data.account], rules: [replyFixedRules, replySafetyPrompt, naturalAttributionPrompt] }));
+      information: this.data.personalInformation?.[this.data.account], rules: [replyFixedRules, replySafetyPrompt, naturalAttributionPrompt] };
+  }
+  preparedReplyKey(profile, strategy) {
+    return digest(JSON.stringify(canonicalKeyValue(this.preparedReplyKeyMaterial(profile, strategy))));
+  }
+  legacyPreparedReplyKey(profile, strategy) {
+    return digest(JSON.stringify(this.preparedReplyKeyMaterial(profile, strategy)));
   }
   preparedReplyExpired(profile) {
     const row = profile.preparedReply;
@@ -3168,11 +3178,19 @@ export class AIAssistant {
     if (!row) return null;
     // Only a durable pre-submit plan or a definite not-sent result is reusable.
     // An intent interrupted during native submission remains receipt-only.
-    if (!['prepared', 'retry'].includes(row.state) || row.context !== snapshot.revision
-      || row.key !== this.preparedReplyKey(profile, strategy)
-      || JSON.stringify(row.replyTo || []) !== JSON.stringify(groupBatch?.ids || [])) {
+    const sameContext = row.context === snapshot.revision
+      && JSON.stringify(row.replyTo || []) === JSON.stringify(groupBatch?.ids || []);
+    if (!['prepared', 'retry'].includes(row.state) || !sameContext) {
       delete profile.preparedReply; return null;
     }
+    const key = this.preparedReplyKey(profile, strategy);
+    if (row.keyVersion === 2) {
+      if (row.key !== key) { delete profile.preparedReply; return null; }
+    } else if (row.keyVersion === undefined) {
+      if (row.key !== this.legacyPreparedReplyKey(profile, strategy))
+        return { retireUnverifiedLegacy: true };
+      row.keyVersion = 2; row.key = key;
+    } else return { retireUnverifiedLegacy: true };
     try {
       const plan = this.vault.open(row.body);
       if (!Array.isArray(plan.segments) || !plan.segments.length || plan.segments.length > 5
@@ -3205,7 +3223,7 @@ export class AIAssistant {
     }
     return outcome;
   }
-  async retirePreparedReply(profile, snapshot, groupBatch, detail) {
+  async retirePreparedReply(profile, snapshot, groupBatch, detail, errorCode = 'ai_reply_expired') {
     delete profile.preparedReply; delete profile.sendRetryAt;
     profile.handledIncomingId = snapshot.messages.findLast(message => message.direction === 'other')?.id || profile.handledIncomingId;
     if (groupBatch) settleGroupBatch(this.vault, profile, groupBatch);
@@ -3213,7 +3231,7 @@ export class AIAssistant {
     if (cursor) cursor.pending = groupBatch ? readGroupInbox(this.vault, profile).pending.length > 0 : false;
     this.followUps.delete(profile.id);
     this.replyStage(profile, 'failed', detail);
-    this.event('error', profile.id, 'reply', detail, { stage: 'send', errorCode: 'ai_reply_expired', messageId: profile.handledIncomingId });
+    this.event('error', profile.id, 'reply', detail, { stage: 'send', errorCode, messageId: profile.handledIncomingId });
     await this.save();
   }
   async generate(profile, snapshot, mode, revision, signal, item, { followUp = false, groupBatch = null } = {}) {
@@ -3278,6 +3296,10 @@ export class AIAssistant {
       await this.save(); return;
     }
     const prepared = mode === 'reply' && !followUp ? this.readPreparedReply(profile, snapshot, strategy, groupBatch) : null;
+    if (prepared?.retireUnverifiedLegacy) {
+      await this.retirePreparedReply(profile, snapshot, groupBatch,
+        '升级后无法核实旧答复所用配置，本条停止自动重试；新来信仍正常处理', 'ai_reply_cache_unverified'); return;
+    }
     if (prepared) {
       if (this.preparedReplyExpired(profile)) {
         await this.retirePreparedReply(profile, snapshot, groupBatch, '消息确定未发送，自动重试已满5分钟或时效无法确认；本条停止重试，新来信仍正常处理'); return;
@@ -3563,7 +3585,7 @@ export class AIAssistant {
       }
       const plan = { segments, identityAsked, modelMs, multiTurn, followUp, wantsFollowUp: result.followUp === true };
       if (mode === 'reply' && !followUp) {
-        profile.preparedReply = { state: 'prepared', createdAt: this.now(), latestIncomingId: fresh.messages.findLast(message => message.direction === 'other')?.id, context: fresh.revision, key: this.preparedReplyKey(profile, strategy), body: this.vault.seal(plan), ...(groupBatch ? { replyTo: groupBatch.ids } : {}) };
+        profile.preparedReply = { state: 'prepared', keyVersion: 2, createdAt: this.now(), latestIncomingId: fresh.messages.findLast(message => message.direction === 'other')?.id, context: fresh.revision, key: this.preparedReplyKey(profile, strategy), body: this.vault.seal(plan), ...(groupBatch ? { replyTo: groupBatch.ids } : {}) };
         await this.save();
       }
       const outcome = await this.deliverGeneratedReply(profile, fresh, mode, revision, signal, item, segments, strategy, trigger || mode, skipRate, groupBatch, plan);

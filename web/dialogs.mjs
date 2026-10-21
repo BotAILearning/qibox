@@ -17,8 +17,8 @@ export function productDialog({ title = '请确认', message = '', confirm = '�
   if (signal?.aborted) return Promise.resolve(null);
   return new Promise(resolve => {
     const origin = document.activeElement, dialog = document.createElement('dialog');
-    dialog.className = 'ai-confirm-dialog qbx-product-dialog';
-    dialog.innerHTML = `<button type="button" class="icon-button qbx-dialog-close" aria-label="关闭">×</button><h3>${escape(title)}</h3><p>${escape(message)}</p><form method="dialog">${input === undefined ? '' : `<label class="ai-field">名称<input name="answer" maxlength="40" required value="${escape(input)}"></label>`}<div class="ai-actions"><button type="button" class="secondary" data-cancel>取消</button><button type="submit" class="${danger ? 'danger' : 'primary'}">${escape(confirm)}</button></div></form>`;
+    dialog.className = 'ai-confirm-dialog qbx-product-dialog qiapp-dialog';
+    dialog.innerHTML = `<button type="button" class="qi-btn qbx-dialog-close" data-variant="ghost" data-icon aria-label="关闭">×</button><h3>${escape(title)}</h3><p>${escape(message)}</p><form method="dialog">${input === undefined ? '' : `<label class="ai-field">名称<input name="answer" maxlength="40" required value="${escape(input)}"></label>`}<div class="ai-actions"><button type="button" class="qi-btn" data-variant="secondary" data-cancel>取消</button><button type="submit" class="qi-btn" data-variant="${danger ? 'danger' : 'primary'}">${escape(confirm)}</button></div></form>`;
     const titleId = `qbx-dialog-title-${++dialogNumber}`;
     dialog.querySelector('h3').id = titleId; dialog.setAttribute('aria-labelledby', titleId);
     bindDialogFocus(dialog);

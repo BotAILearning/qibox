@@ -2386,7 +2386,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       replyContactSearch = ''; logRecords = []; logLoading = false; logEpoch++; logSignature = ''; logFilters = { source: 'reply' }; lastAutoScanAt = 0;
       panel.querySelector(':scope > .qibox-workspace-menu')?.remove();
       $('#ai-content').innerHTML = loadingContent; message('');
-      try { const result = await call(); if (!result) return; restoreRecords(); modeTargets('reply').forEach(id => replyProfiles.add(id)); render(); } catch (e) { if (attachedGeneration !== generation) return; $('#ai-content').innerHTML = '<div class="ai-entry-error" role="alert">设置读取失败，请返回后重试。</div>'; message(e.message, true); }
+      try { const result = await call(); if (result) { restoreRecords(); modeTargets('reply').forEach(id => replyProfiles.add(id)); render(); } } catch (e) { if (attachedGeneration !== generation) return; $('#ai-content').innerHTML = '<div class="ai-entry-error" role="alert">设置读取失败，请返回后重试。</div>'; message(e.message, true); }
       finally { if (attachedGeneration === generation) attaching = false; }
       if (attachedGeneration !== generation) return;
       const current = generation;

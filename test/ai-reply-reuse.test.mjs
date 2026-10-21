@@ -70,6 +70,78 @@ test('production-style contact reauthentication after restart preserves a same-a
   assert.equal(f.provider.calls.length, 1); assert.equal(f.bridge.sent.length, 1);
 });
 
+test('manual default style answer is reused across restart when initialization only reorders style keys', async t => {
+  const f = await fixture(t); await f.a.saveDefaultStyle({ summary: '合成风格：简短、自然、友好。' }); await f.incoming('合成问题：请简单问候。');
+  const profile = f.p;
+  assert.equal(profile.styleId ?? '', '', 'The profile must still use the account default style');
+  const beforeStyle = structuredClone(f.a.generationStyle(profile, f.a.globalReplyStrategy(), 'reply'));
+  const canonical = value => Array.isArray(value) ? value.map(canonical) : value && typeof value === 'object'
+    ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value;
+  const send = f.bridge.send.bind(f.bridge); f.bridge.send = () => notSent;
+  f.provider.next = async () => ({ action: 'send', text: '合成答复：你好，很高兴认识你。' });
+  f.advance(20000); await f.a.tick();
+  assert.equal(f.provider.calls.length, 1); assert.ok(f.p.preparedReply); assert.equal(f.p.preparedReply.keyVersion, 2);
+  await f.restart();
+  const afterStyle = f.a.generationStyle(f.p, f.a.globalReplyStrategy(), 'reply');
+  assert.deepEqual(canonical(afterStyle), canonical(beforeStyle), 'Initialization changed style key order only');
+  assert.notDeepEqual(Object.keys(afterStyle), Object.keys(beforeStyle), 'The fixture must exercise the natural initializer key-order change');
+  f.bridge.requiresContactScan = true;
+  const scan = f.bridge.scan.bind(f.bridge);
+  f.bridge.scan = async (...args) => { const result = await scan(...args); f.bridge.requiresContactScan = false; return result; };
+  f.advance(30000); await f.a.tick();
+  assert.ok(f.p.preparedReply, 'Same-account reauthentication must preserve the definitely-unsent answer');
+  f.bridge.send = send; await f.a.tick();
+  assert.equal(f.provider.calls.length, 1, 'Key order alone must not request a second model response');
+  assert.deepEqual(f.bridge.sent.map(x => x.text), ['合成答复：你好，很高兴认识你。']);
+});
+
+test('a legacy prepared answer with an exact legacy key is upgraded without resetting its retry window', async t => {
+  const f = await fixture(t); await f.incoming('合成问题：请保留刚生成的答复。');
+  const send = f.bridge.send.bind(f.bridge);
+  f.bridge.send = () => notSent;
+  f.provider.next = async () => ({ action: 'send', text: '仅用于兼容探针的确定未发送答复。' });
+  f.advance(20000); await f.a.tick();
+  const row = f.p.preparedReply; assert.ok(row); assert.equal(row.keyVersion, 2);
+  const createdAt = row.createdAt, retryStartedAt = row.retryStartedAt;
+  row.key = f.a.legacyPreparedReplyKey(f.p, f.a.strategy(f.p, 'reply'));
+  delete row.keyVersion;
+  f.bridge.send = send;
+  f.advance(30000);
+  await f.a.tick();
+  assert.equal(f.provider.calls.length, 1); assert.equal(f.bridge.sent.length, 1);
+  assert.equal(row.keyVersion, 2); assert.equal(row.key, f.a.preparedReplyKey(f.p, f.a.strategy(f.p, 'reply')));
+  assert.equal(row.createdAt, createdAt); assert.equal(row.retryStartedAt, retryStartedAt);
+});
+
+test('an unverifiable same-context legacy answer is retired without replay or regeneration, then new incoming content is handled', async t => {
+  const f = await fixture(t); await f.incoming('合成问题：旧答案已生成。');
+  const send = f.bridge.send.bind(f.bridge);
+  f.bridge.send = () => notSent;
+  f.provider.next = async () => ({ action: 'send', text: '旧合成答案不得发送。' });
+  f.advance(20000); await f.a.tick(); assert.equal(f.provider.calls.length, 1);
+  f.p.preparedReply.key = 'legacy-key-cannot-be-verified'; delete f.p.preparedReply.keyVersion;
+  f.advance(30000); await f.a.tick();
+  assert.equal(f.p.preparedReply, undefined); assert.equal(f.provider.calls.length, 1); assert.equal(f.bridge.sent.length, 0);
+  assert.ok(f.a.data.errorLog.some(event => event.context?.errorCode === 'ai_reply_cache_unverified'));
+  f.bridge.send = send;
+  f.provider.next = async () => ({ action: 'send', text: '新来信的新合成答案。' });
+  await f.incoming('新来信：请回答这个新问题。'); f.advance(20000); await f.a.tick();
+  assert.equal(f.provider.calls.length, 2); assert.deepEqual(f.bridge.sent.map(x => x.text), ['新来信的新合成答案。']);
+});
+
+test('an unknown prepared-answer key version fails closed for the same context', async t => {
+  const f = await fixture(t); await f.incoming('合成问题：未知key版本探针。');
+  const send = f.bridge.send.bind(f.bridge);
+  f.bridge.send = () => notSent;
+  f.provider.next = async () => ({ action: 'send', text: '不能相信未知key版本缓存。' });
+  f.advance(20000); await f.a.tick(); assert.equal(f.provider.calls.length, 1);
+  f.p.preparedReply.keyVersion = 99;
+  f.advance(30000); await f.a.tick();
+  assert.equal(f.p.preparedReply, undefined); assert.equal(f.provider.calls.length, 1); assert.equal(f.bridge.sent.length, 0);
+  assert.ok(f.a.data.errorLog.some(event => event.context?.errorCode === 'ai_reply_cache_unverified'));
+  f.bridge.send = send;
+});
+
 test('new incoming content retires the old answer and generates against the new conversation', async t => {
   const f = await fixture(t); await f.incoming();
   const send = f.bridge.send.bind(f.bridge); f.bridge.send = () => notSent;

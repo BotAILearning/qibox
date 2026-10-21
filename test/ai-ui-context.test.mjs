@@ -135,6 +135,7 @@ function surface({ without = [] } = {}) {
     unmount: selector => { const form = forms.get(selector); if (form) form.isConnected = false; forms.delete(selector); },
     navigate: aiNav => handlers.get('#ai-panel:click')({ target: { closest: () => buttonNode({ aiNav }) } }),
     change: target => { target.closest ||= () => null; return handlers.get('#ai-panel:change')({ target }); },
+    railChange: event => handlers.get('#ai-rail:change')(event),
     input: target => handlers.get('#ai-panel:input')({ target: { closest: () => null, ...target } }),
     submit: form => handlers.get('#ai-panel:submit')({ preventDefault() {}, target: form }),
     click: action => handlers.get('#ai-panel:click')({ target: { closest: () => buttonNode(action === 'new-proactive' ? { proactiveNew: '' } : { aiAction: action }) } }),
@@ -627,6 +628,37 @@ function captureIntervals(t) {
   t.after(() => { globalThis.setInterval = originalSet; globalThis.clearInterval = originalClear; });
   return intervals;
 }
+
+for (const status of [409, 500]) for (const initialFailure of [false, true]) test(`initial AI loading recovers after settings ${status} supersedes a late ${initialFailure ? 'failed' : 'successful'} read`, { timeout: 2000 }, async t => {
+  const originalDocument = globalThis.document, dom = surface(), intervals = captureIntervals(t);
+  globalThis.document = dom.document;
+  const entered = Promise.withResolvers(), released = Promise.withResolvers();
+  let reads = 0, settingsRequests = 0, now = Date.now();
+  t.mock.method(Date, 'now', () => now);
+  const snapshot = { ...availableState(), account: 'account-a', configurationRevision: '4:0' };
+  const controller = aiAssistant({ api: async (url, payload) => {
+    if (payload?.action === 'settings') { settingsRequests++; const error = new Error(`fixture settings ${status}`); error.status = status; throw error; }
+    reads++;
+    if (reads === 1) { entered.resolve(); await released.promise; if (initialFailure) throw new Error('fixture delayed first read failed'); }
+    if (url.includes('?view=live')) return { compact: true, account: snapshot.account, configurationRevision: snapshot.configurationRevision, profiles: [], live: [], settings: snapshot.settings, available: true };
+    return structuredClone(snapshot);
+  } });
+  t.after(() => { released.resolve(); controller.detach(); globalThis.document = originalDocument; });
+  const attaching = controller.attach('instance-a'); await entered.promise;
+  // The rail is available before its first full state. Its rejected action
+  // retires that older read, but must not retire background recovery forever.
+  await dom.railChange({ target: { checked: true } });
+  assert.equal(settingsRequests, 1); assert.equal(reads, 1);
+  released.resolve(); await attaching;
+  assert.equal(intervals.length, 1, 'The active attachment must install recovery polling even when its first read became obsolete');
+  await intervals[0]();
+  assert.equal(reads, 2); assert.equal(dom.node('[data-ai-panel-master]').checked, false);
+  assert.match(dom.node('#ai-content').innerHTML, /ai-object-list/);
+  assert.doesNotMatch(dom.node('#ai-content').innerHTML, /ai-entry-loading/);
+  now += 3000; await intervals[0]();
+  assert.equal(reads, 3, 'Polling must continue after the first successful recovery');
+  assert.equal(snapshot.settings.enabled, false); assert.equal(settingsRequests, 1);
+});
 
 test('a delayed old poll cannot replace a successfully saved switch state', { timeout: 2000 }, async t => {
   const originalDocument = globalThis.document, dom = surface(), intervals = captureIntervals(t);
