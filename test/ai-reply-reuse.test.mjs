@@ -173,14 +173,26 @@ test('a retry cannot submit after its remaining five-minute budget is exhausted 
   const f = await fixture(t); await f.incoming();
   f.bridge.send = () => notSent; f.advance(20000); await f.a.tick();
   f.advance(30000); f.p.preparedReply.retryStartedAt = f.a.now() - 299995;
-  let aborted = false;
+  // Trigger the deadline after entering native preparation. A real 5 ms timer
+  // can expire during the intent save on a busy NAS, correctly cancelling
+  // before send() and never exercising this particular boundary.
+  let aborted = false, entered = false;
+  const deadline = new AbortController(), timeoutBudgets = [];
+  const originalTimeout = AbortSignal.timeout;
+  t.mock.method(AbortSignal, 'timeout', ms => {
+    timeoutBudgets.push(ms);
+    return ms === 5 ? deadline.signal : originalTimeout(ms);
+  });
   f.bridge.send = async request => {
-    await new Promise(resolve => setTimeout(resolve, 20));
+    entered = true;
+    assert.equal(request.signal.aborted, false);
+    assert.ok(timeoutBudgets.includes(5), 'The retry must receive only its remaining five milliseconds');
+    deadline.abort(new DOMException('Retry deadline elapsed during native preparation', 'TimeoutError'));
     aborted = request.signal.aborted; request.signal.throwIfAborted();
     assert.fail('A native commit after the retry deadline must be blocked');
   };
   await f.a.tick();
-  assert.equal(aborted, true); assert.equal(f.bridge.sent.length, 0); assert.equal(f.provider.calls.length, 1);
+  assert.equal(entered, true); assert.equal(aborted, true); assert.equal(f.bridge.sent.length, 0); assert.equal(f.provider.calls.length, 1);
   assert.equal(f.p.delivery.status, 'unknown', 'an unclassified thrown submission error must remain receipt-only');
   assert.equal(f.p.preparedReply, undefined);
 });
