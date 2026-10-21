@@ -56,6 +56,20 @@ test('six definite failures use one generation and a later restart still reuses 
   assert.equal(f.provider.calls.length, 1); assert.equal(f.bridge.sent.length, 1);
 });
 
+test('production-style contact reauthentication after restart preserves a same-account unsent answer', async t => {
+  const f = await fixture(t); await f.incoming();
+  const send = f.bridge.send.bind(f.bridge); f.bridge.send = () => notSent;
+  f.advance(20000); await f.a.tick(); assert.ok(f.p.preparedReply);
+  await f.restart();
+  f.bridge.requiresContactScan = true;
+  const scan = f.bridge.scan.bind(f.bridge);
+  f.bridge.scan = async (...args) => { const result = await scan(...args); f.bridge.requiresContactScan = false; return result; };
+  f.advance(30000); await f.a.tick();
+  assert.ok(f.p.preparedReply, 'Reauthentication must not discard the persisted same-account answer');
+  f.bridge.send = send; await f.a.tick();
+  assert.equal(f.provider.calls.length, 1); assert.equal(f.bridge.sent.length, 1);
+});
+
 test('new incoming content retires the old answer and generates against the new conversation', async t => {
   const f = await fixture(t); await f.incoming();
   const send = f.bridge.send.bind(f.bridge); f.bridge.send = () => notSent;

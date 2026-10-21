@@ -1373,7 +1373,10 @@ export class AIAssistant {
   async scanContacts() {
     if (!this.ready()) throw new AppError('请先打开微信并登录');
     if (this.operation) throw new AppError('正在读取或分析聊天，请完成后再刷新联系人');
-    this.invalidate(); this.notice = ''; this.lastScanAttemptAt = this.now();
+    // A replacement WeChat process must reauthenticate before any delivery.
+    // Stable message IDs let that read-only scan retain a same-account unsent
+    // answer; the account-change branch below still invalidates it completely.
+    this.invalidate({ preservePreparedReplies: this.bridge.stableMessageIds === true }); this.notice = ''; this.lastScanAttemptAt = this.now();
     if (!this.bridge.stableMessageIds) this.forgetContext();
     const revision = this.revision, scanOperation = { phase: 'contacts', completed: 0, total: 0 };
     this.scanOperation = scanOperation;
