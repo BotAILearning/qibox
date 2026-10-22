@@ -22,6 +22,8 @@ import { replyRoleAnchor } from './ai-reply-role.mjs';
 import { annotateSourceDates, annotateChatTimes, staleTemporaryProactive, staleProactiveTimeClaim } from './ai-time-context.mjs';
 import { proactiveTimelinePrompt } from './ai-prompts.mjs';
 import path from 'node:path';
+import { readdirSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { chatMemoryPrompt, groupMemoryInstruction, mergeMemory, editMemory as changeMemory, pointInTimeMemory } from './ai-wiki.mjs';
 import { defaultTakeover, takeoverValue, effectiveTakeover, identityPrompt, asksIdentity } from './ai-reply-rules.mjs';
 import { activityMessages, isDeletedActivityRecord, deletedActivityIds, recordSource } from './ai-activity-records.mjs';
@@ -35,7 +37,7 @@ import { createHash, randomInt, randomUUID } from 'node:crypto';
 import { setTimeout as wait } from 'node:timers/promises';
 import { AppError, atomicJson, jsonFile } from './files.mjs';
 import { AIProvider, SecretStore, providerValue, providerFingerprint } from './ai-provider.mjs';
-import { unsupportedPersonalAnswer, unsupportedChatTime, personalQuestionClarification, knownDateCorrection, explicitTurnRepair, ownerConfirmationRepair } from './ai-personal-answer.mjs';
+import { unsupportedPersonalAnswer, unsupportedChatTime, personalQuestionClarification, knownDateCorrection, explicitTurnRepair, ownerConfirmationRepair, neutralGeneratedReplyRepair } from './ai-personal-answer.mjs';
 import { categories, styleOptions, avoidOptions, defaultStyle, styleSchema, styleValue, strategyValue, replyStrategyValue, replyLimitValue, validReplyLimit, strategyReady, textField } from './ai-schema.mjs';
 import { providerPresets, goalPresets, replyPresets } from './ai-presets.mjs';
 import { unsupportedTextAction, promisesMedia } from './ai-capabilities.mjs';
@@ -46,6 +48,21 @@ import { historySummary, validReportId } from './ai-report-history.mjs';
 import { safeErrorText, captureErrorContext, publicErrorRecord, relatedErrorRecord } from './ai-error-details.mjs';
 
 const digest = value => createHash('sha256').update(value).digest('hex');
+// A cached draft must not outlive the code that checked it. Fingerprint the
+// server sources once at module load, including imported guard helpers. This
+// reads code only and is independent of secrets, user data and model requests.
+const preparedReplyPolicyFingerprint = (() => {
+  const rows = [], root = path.dirname(fileURLToPath(import.meta.url));
+  const visit = (directory, prefix = '') => {
+    for (const entry of readdirSync(directory, {withFileTypes:true}).sort((a,b)=>a.name<b.name?-1:a.name>b.name?1:0)) {
+      const name = prefix + entry.name, file = path.join(directory, entry.name);
+      if (entry.isSymbolicLink()) throw new Error('Reply policy source must not be a symbolic link');
+      if (entry.isDirectory()) visit(file, name + '/');
+      else if (entry.isFile() && entry.name.endsWith('.mjs')) rows.push([name, digest(readFileSync(file))]);
+    }
+  };
+  visit(root); return digest(JSON.stringify(rows));
+})();
 const canonicalKeyValue = value => Array.isArray(value) ? value.map(canonicalKeyValue)
   : value && typeof value === 'object'
     ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonicalKeyValue(value[key])]))
@@ -3435,6 +3452,7 @@ export class AIAssistant {
     if (!['prepared', 'retry'].includes(row.state) || !sameContext) {
       delete profile.preparedReply; return null;
     }
+    if (row.policyFingerprint !== preparedReplyPolicyFingerprint) return { retireChangedPolicy: true };
     const key = this.preparedReplyKey(profile, strategy);
     if (row.keyVersion === 3) {
       if (row.key !== key) { delete profile.preparedReply; return null; }
@@ -3448,7 +3466,7 @@ export class AIAssistant {
       if (!Array.isArray(plan.segments) || !plan.segments.length || plan.segments.length > 5
         || plan.segments.some(value => typeof value !== 'string' && (!value || !['image', 'audio'].includes(value.mediaType) || typeof value.data !== 'string'))) throw new Error('Invalid prepared reply');
       return plan;
-    } catch { delete profile.preparedReply; return null; }
+    } catch { return { retireCorruptCache: true }; }
   }
   async deliverGeneratedReply(profile, snapshot, mode, revision, signal, item, segments, strategy, source, skipRate, groupBatch, plan) {
     const retryStartedAt = profile.preparedReply?.retryStartedAt;
@@ -3551,6 +3569,14 @@ export class AIAssistant {
     if (prepared?.retireUnverifiedLegacy) {
       await this.retirePreparedReply(profile, snapshot, groupBatch,
         '升级后无法核实旧答复所用配置，本条停止自动重试；新来信仍正常处理', 'ai_reply_cache_unverified'); return;
+    }
+    if (prepared?.retireChangedPolicy) {
+      await this.retirePreparedReply(profile, snapshot, groupBatch,
+        '回复规则已变化或旧规则无法核实，本条停止自动重试；新来信仍正常处理', 'ai_reply_policy_changed'); return;
+    }
+    if (prepared?.retireCorruptCache) {
+      await this.retirePreparedReply(profile, snapshot, groupBatch,
+        '已生成答复缓存损坏，无法安全恢复；本条停止自动重试，新来信仍正常处理', 'ai_reply_cache_invalid'); return;
     }
     if (prepared) {
       if (this.preparedReplyExpired(profile)) {
@@ -3794,9 +3820,11 @@ export class AIAssistant {
       const unsupported = segments.map(unsupportedTextAction).find(Boolean) || unsupportedTextAction(segments.join('\n')) || (segments.some(promisesMedia) ? 'media' : null);
       if (unsupported) { result.action = 'skip'; result.mediaSkipped = true; }
       let finalTexts = [...segments, ...(nativeAudioAllowed && result.media?.[0]?.text ? [result.media[0].text] : [])];
-      const finalContext = { kind: profile.kind, messages: modelMessages, pendingMessages, facts: [strategy.facts, ...replyFacts.map(row=>row.text), ...replyMemory.entries.map(row=>'联系人事实：'+row.text)].filter(Boolean).join('\n'), boundaries: strategy.boundaries, identityAsked, now: this.now(), timezone: currentChatTime(this.now(), selfContext(this, profile.kind)).timezone };
+      const finalContext = { kind: profile.kind, mode, followUp, messages: modelMessages, pendingMessages, facts: [strategy.facts, ...replyFacts.map(row=>row.text), ...replyMemory.entries.map(row=>'联系人事实：'+row.text)].filter(Boolean).join('\n'), boundaries: strategy.boundaries, identityAsked, now: this.now(), timezone: currentChatTime(this.now(), selfContext(this, profile.kind)).timezone };
       const confirmation = result.action === 'send' && mode === 'reply' && profile.kind === 'person' && !followUp && !result.media?.length ? ownerConfirmationRepair(finalTexts, finalContext) : '';
       if (confirmation) { result = {action:'send', text:confirmation, followUp:false, memoryUpdates:[]}; segments = [confirmation]; finalTexts = [confirmation]; }
+      const retained = result.action === 'send' && mode === 'reply' && !followUp && !result.media?.length ? neutralGeneratedReplyRepair(finalTexts, finalContext) : '';
+      if (retained) { result = {action:'send', text:retained, followUp:false, memoryUpdates:[]}; segments = [retained]; finalTexts = [retained]; }
       const personalViolation = unsupportedPersonalAnswer(finalTexts, finalContext) || unsupportedChatTime(finalTexts, finalContext);
       const clarification = personalViolation === 'unknown-self' ? personalQuestionClarification(pendingMessages) : ['future-notice', 'time-fact'].includes(personalViolation) ? knownDateCorrection(finalContext) : !personalViolation && result.action === 'send' && mode === 'reply' && profile.kind === 'person' && !followUp ? explicitTurnRepair(finalTexts, finalContext) : '';
       if (clarification) { result = {action:'send', text:clarification, followUp:false, memoryUpdates:[]}; segments = [clarification]; }
@@ -3852,7 +3880,7 @@ export class AIAssistant {
       }
       const plan = { segments, identityAsked, modelMs, multiTurn, followUp, wantsFollowUp: result.followUp === true };
       if (mode === 'reply' && !followUp) {
-        profile.preparedReply = { state: 'prepared', keyVersion: 3, createdAt: this.now(), latestIncomingId: fresh.messages.findLast(message => message.direction === 'other')?.id, context: fresh.revision, key: this.preparedReplyKey(profile, strategy), body: this.vault.seal(plan), ...(groupBatch ? { replyTo: groupBatch.ids } : {}) };
+        profile.preparedReply = { state: 'prepared', keyVersion: 3, policyFingerprint: preparedReplyPolicyFingerprint, createdAt: this.now(), latestIncomingId: fresh.messages.findLast(message => message.direction === 'other')?.id, context: fresh.revision, key: this.preparedReplyKey(profile, strategy), body: this.vault.seal(plan), ...(groupBatch ? { replyTo: groupBatch.ids } : {}) };
         await this.save();
       }
       const outcome = await this.deliverGeneratedReply(profile, fresh, mode, revision, signal, item, segments, strategy, trigger || mode, skipRate, groupBatch, plan);

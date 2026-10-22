@@ -1,5 +1,6 @@
 import { annotateChatTimes } from './ai-time-context.mjs';
 import { unsupportedProcessState } from './ai-process-facts.mjs';
+import { replySafetyViolation } from './ai-reply-safety.mjs';
 import { createHash } from 'node:crypto';
 // A local final check: it never invokes a provider or asks for another draft.
 const clean = value => String(value || '').normalize('NFKC').replace(/[\u200b-\u200d\u2060\ufeff*_`]/g, '');
@@ -19,7 +20,8 @@ const availabilityClaim = /^(?:我(?:现在|今天|这会儿|目前)?|(?:现在|
 const deferredArrangement = /(?:等我|我|得|先).{0,10}(?:看|查|确认|核对).{0,8}(?:安排|时间|日程).{0,10}(?:再|后|就).{0,6}(?:告诉|通知|联系|跟你确认|跟你说|和你确认)/;
 const futureNotice = /等我(?:确认|确定|定下来|有消息|有结果)(?:一下|下|时间)?(?:了|后|以后|之后)?[^。！？!?，,；;\n]{0,16}(?:再|就|会)?(?:告诉|通知|联系|回复|(?:跟|和)(?:你|您)(?:说|定(?:时间|下来|好)?)|给(?:你|您)发(?:消息|信息))(?:你|您)?(?:一声|一下)?$/;
 const confirmThenNotice = /我(?:先|再)?(?:确认|确定)(?:一下|下)?[^。！？!?，,；;\n]{0,16}(?:再|就|后|然后)(?:回|回复|告诉|通知|联系)(?:你|您)|我(?:先|再)?(?:确认|确定)(?:一下|下)?[^。！？!?，,；;\n]{0,16}(?:再|就|后|然后)(?:跟|和)(?:你|您)(?:说|定(?:时间|下来|好)?)/;
-const futureCheck = /我(?:这边)?(?:先|再|回头|稍后|到时候|到时|待会儿?)?(?:确认|确定)(?:一下|下)(?:具体)?(?:时间|几点|安排)?(?:再说)?$/;
+const futureCheck = /我(?:这边)?(?:得|需要|要|先|再|回头|稍后|到时候|到时|待会儿?)?(?:确认|确定)(?:一下|下)(?:具体)?(?:时间|几点|安排)?(?:再说)?$/;
+const nearbyLookupOffer = /^(?:我(?:这边)?(?:来|先|再|可以)?(?:帮|替)(?:你|您)|我(?:这边)?(?:来|先|再|可以)?)(?:看看|看一下|查查|查一下|找找|找一下|搜搜|搜一下|查|搜)(?:你(?:这|那)边)?(?:附近|周边)[^。！？!?，,；;\n]{1,48}$/u;
 const deferredNotice = /^(?:那|好[的吧]?|嗯)?(?:我)?(?:回头|稍后|到时候|到时|待会儿?)(?:再|就|会)?(?:告诉|通知|联系|回复|(?:跟|和)(?:你|您)说|给(?:你|您)发(?:消息|信息))(?:你|您)?(?:一声|一下)?$/;
 const deferredPlanning = /^(?:(?:具体)?(?:几点|时间))?(?:到时候|到时|回头|以后|稍后)(?:再|就|会)?(?:定|确定|确认|商量|约|对|核对)(?:下|一下|具体时间|时间|好)?$/;
 const eventThenNotice = /^等(?:到)?[^。！？!?；;\n]{1,32}(?:了|后|以后|之后)[，,]?\s*(?:我)?(?:再|就|会)(?:告诉(?:你|您)|通知(?:你|您)|联系(?:你|您)|回复(?:你|您)|(?:跟|和)(?:你|您)说|给(?:你|您)发(?:消息|信息))(?:一声|一下)?$/;
@@ -303,7 +305,7 @@ export function unsupportedPersonalAnswer(texts, { messages = [], pendingMessage
     const invitation = plannedInvitation.exec(part);
     if (invitation && !evidence.some(p => { const known = plannedInvitation.exec(p); return known && known.slice(1).join('\0') === invitation.slice(1).join('\0'); })) return 'future-notice';
     if (planNotDelegated && /^(?:那|就|我们|咱们|我|先){0,3}(?:定|约|安排|确定)(?:好|下|了|在|为|成)?(?:下周|这周|周[一二三四五六日天]|明天|后天|计划|安排)/.test(part)) return 'future-notice';
-    if ((futureNotice.test(part) || confirmThenNotice.test(part) || futureCheck.test(part) || deferredNotice.test(part) || deferredPlanning.test(part)) && !/^(?:不用|不必|别|不要)|不(?:会|承诺|保证)/.test(part)) return 'future-notice';
+    if ((futureNotice.test(part) || confirmThenNotice.test(part) || futureCheck.test(part) || nearbyLookupOffer.test(part) || deferredNotice.test(part) || deferredPlanning.test(part)) && !/^(?:不用|不必|别|不要)|不(?:会|承诺|保证)/.test(part)) return 'future-notice';
   }
   // Preserve existing, more specific execution/identity reasons when a draft
   // contains several violations; these additional fact checks remain final.
@@ -357,12 +359,103 @@ export function ownerConfirmationRepair(texts, {pendingMessages = [], messages =
   if (!clauses) return '';
   const first = clauses[1].trim(), confirmation = clean(first), tail = clean(clauses[2]).trim();
   if (!ownerConfirmation.test(confirmation) || (employment ? /位置/.test(confirmation) : /工作/.test(confirmation))) return '';
-  const uncertainty = /^我(?:这边)?(?:现在|目前|今天|暂时)?(?:也)?(?:还)?(?:不知道|(?:没法|无法|不能)(?:直接)?(?:确定|确认)|(?:没有|暂无)(?:相关)?(?:资料|信息|记录)|没确认|拿不准|不清楚|不太清楚|不确定|说不准)(.*)$/u.exec(tail);
+  const uncertainty = /^我(?:这边)?(?:现在|目前|今天|暂时)?(?:也)?(?:还)?(?:不知道|(?:没法|无法|不能)(?:直接)?(?:确定|确认)|(?:没有|暂无)(?:相关|具体|详细)?(?:资料|信息|记录)|没确认|拿不准|不清楚|不太清楚|不确定|说不准)(.*)$/u.exec(tail);
   if (!uncertainty) return '';
   const sameField = employment
     ? /^(?:(?:今天|现在|目前)?(?:具体)?(?:在哪(?:家|个)(?:公司|单位)(?:上班|工作)?|(?:哪家|哪个)(?:公司|单位)(?:上班|工作)?|(?:工作|上班)(?:的)?(?:公司|单位)|工作情况))?$/u
     : /^(?:(?:今天|现在|目前|这会儿)?(?:具体)?(?:在哪(?:个)?(?:地方)?|在哪里|位置|地点))?$/u;
   return sameField.test(uncertainty[1]) ? first : '';
+}
+
+const clockDate = '(?:今天|明天|后天|周[一二三四五六日天])';
+const clockDaypart = '(?:早上|上午|中午|下午|傍晚|晚上|凌晨|夜里)';
+const clockHour = '[零〇一二三四五六七八九十两\\d]{1,3}点';
+const clockEvent = '(?:见|碰面|集合|开会|开始|出发|截止|吃饭)';
+const simpleEventClock = new RegExp('^('+clockDate+')?('+clockDaypart+')?('+clockHour+')('+clockEvent+')[。！!]?$', 'u');
+function clockStates({messages = [], pendingMessages = [], now = Date.now(), timezone = 'Asia/Shanghai', kind = 'person'} = {}) {
+  const target = pendingMessages.find(m => m.direction === 'other');
+  const sender = target?.sender || target?.speaker?.id;
+  const source = [...new Map([...messages, ...pendingMessages].map((m, i) => [m.id || 'index:'+i, m])).values()].filter(m => !m.aiGenerated && !m.unresolved && m.speaker?.identified !== false
+    && Number.isSafeInteger(m.timestamp) && m.timestamp * 1000 <= now
+    && annotateChatTimes([m], now, timezone)[0].temporal.relation === 'today'
+    && (m.direction === 'self' && m.authorship === 'human' || m.direction === 'other' && (kind !== 'group' || sender && (m.sender || m.speaker?.id) === sender)))
+    .sort((a,b)=>a.timestamp-b.timestamp);
+  const states = new Map();let active;
+  for (const m of source) {
+    const text=clean(m.text).trim(), author=m.direction==='self'?'self':m.sender||m.speaker?.id||'other';
+    if (/[“”"'「」『』？?]/u.test(text) || hypothetical(text)) {active=undefined;continue;}
+    const event=simpleEventClock.exec(text);
+    if (event) {active={date:event[1]||'',daypart:event[2]||'',hour:event[3],event:event[4],author};states.set(active.date+'|'+active.event,active);continue;}
+    const correction=new RegExp('^(?:更正[，,])?(?:刚才'+clockHour+'那条作废[，,])?改成('+clockDaypart+')?('+clockHour+')[。！!]?$', 'u').exec(text);
+    if (correction && active?.author===author) {active={...active,daypart:correction[1]||'',hour:correction[2]};states.set(active.date+'|'+active.event,active);}
+    else active=undefined;
+  }
+  return states;
+}
+function eventClockSupport(text, context) {
+  const claim=simpleEventClock.exec(clean(text).trim());if(!claim)return null;
+  let known=clockStates(context).get((claim[1]||'')+'|'+claim[4]);
+  // An exact daypart already supplied in current input is not newly invented.
+  // This does not certify the fact's freshness or authorize other events. A
+  // daypart-free fact never licenses repair, and conflicting sources fail shut.
+  const literalFacts=clean(context.facts).split(/\r?\n/).filter(value=>!/[“”"'「」『』？?]/u.test(value)&&!hypothetical(value))
+    .map(value=>simpleEventClock.exec(value.trim())).filter(value=>value&&(value[1]||'')===(claim[1]||'')&&value[4]===claim[4]);
+  const fact=literalFacts.length&&new Set(literalFacts.map(value=>(value[2]||'')+'|'+value[3])).size===1?literalFacts[0]:null;
+  if(fact?.[2]&&fact[2]===claim[2]&&fact[3]===claim[3]&&(!known||known.hour===fact[3]&&(!known.daypart||known.daypart===fact[2])))
+    known={date:fact[1]||'',daypart:fact[2],hour:fact[3],event:fact[4],literalFactOnly:true};
+  return {claim,known,sameHour:known?.hour===claim[3]};
+}
+function addedClockPrecision(texts, context) {
+  // This new rule is bound to the initial incoming reply tested here. Existing
+  // proactive/continuation task semantics and older time checks stay separate.
+  if (context.mode && context.mode !== 'reply' || context.followUp) return false;
+  const assertedEvent = new RegExp('(?:^|[，,])\\s*(?:你|您|我们|咱们)?('+clockDate+')?('+clockDaypart+')('+clockHour+')('+clockEvent+')(?=[，,。！？!?；;\\n]|吗|么|$)', 'gu');
+  for (const text of texts) {
+    // Detection must cover an independent assertion inside a compound reply;
+    // the much narrower repair grammar is not a license for other assertions.
+    for (const sentence of sentences(text)) for (const match of sentence.matchAll(assertedEvent)) {
+      if (claimScope(sentence,match).attributed) continue;
+      const support=eventClockSupport((match[1]||'')+match[2]+match[3]+match[4],context);
+      if (!support?.sameHour || support.known?.daypart!==match[2]) return true;
+    }
+  }
+  return false;
+}
+
+// Preserve a complete piece the model already wrote, never synthesize facts or
+// retry a rejected draft. Callers restrict this to one text/no media/one incoming
+// reply; every retained piece still passes the ordinary final guards afterward.
+export function neutralGeneratedReplyRepair(texts, context = {}) {
+  if (context.mode && context.mode !== 'reply' || context.followUp || texts.length !== 1 || context.pendingMessages?.filter(m => m.direction === 'other').length !== 1) return '';
+  const reply = String(texts[0] || '').trim();
+  if (/[“”"'「」『』()（）\[\]{}<>;；\n]/u.test(reply) || hypothetical(reply)) return '';
+  const safe = value => /[\p{L}\p{N}]/u.test(value) && !replySafetyViolation([value]) && !unsupportedPersonalAnswer([value], context) && !unsupportedChatTime([value], context);
+  const tail = /^(.+[。！？!?])([^。！？!?]+)[。！!]?$/u.exec(reply);
+  if (tail) {
+    const prefix = tail[1].trim(), suffix = tail[2].trim();
+    const pureFault = new RegExp('^(?:这个|这件事|这事)?(?:确实)?(?:是)?我(?:刚才|刚刚|之前)?(?:确实|也|还)?' + historicalFault + '(?:了)?(?:[，,](?:抱歉|不好意思|对不起))?$', 'u');
+    const fault = pureFault.test(suffix) && unsupportedHistoricalSelf([suffix], {messages:[],facts:'',now:Date.now(),...context});
+    // These two finite retained forms cannot carry an arbitrary added factual
+    // sentence. Merely passing the general guards is not proof of every fact.
+    const refundDistinction = /^(?:你说得对[，,])?退款申请成功不(?:等于|代表)(?:已经|已)?到账[。]$/u.test(prefix)
+      && context.pendingMessages.some(m=>/退款|退了/.test(m.text)&&/到账/.test(m.text)&&/申请成功/.test(m.text));
+    const foodQuestion = /^(?:(?:好(?:呀|啊|的)?|行(?:呀|啊)?|嗯|那)[，,]?)?(?:你|您)?(?:想|准备|打算)(?:吃|喝)(?:点)?(?:什么|啥)[？?]$/u.test(prefix);
+    if ((fault && refundDistinction || nearbyLookupOffer.test(suffix) && foodQuestion) && safe(prefix)) return prefix;
+  }
+  // An unknown author can be stated without promising to go and identify them.
+  // Do not remove a named fact, an action, a quote or an arbitrary leading clause.
+  const unknownAuthor = /^(?:这个|这事)?我(?:这边)?(?:得|需要|要|先|再)?(?:确认|确定)(?:一下|下)[，,]((?:暂时|目前|现在)?(?:不确定|不清楚|不知道)是谁(?:订|定|安排)的[。！!]?)$/u.exec(reply);
+  const authorMaterial = context.messages?.some(m => !m.aiGenerated && !m.unresolved && m.direction !== 'system'
+    && (m.direction !== 'self' || m.authorship === 'human') && !/[“”"'「」『』？?]/u.test(m.text) && !hypothetical(m.text) && /订|定好|安排/.test(m.text));
+  if (unknownAuthor && !String(context.facts||'').trim() && !authorMaterial && safe(unknownAuthor[1])) return unknownAuthor[1];
+  // Drop only an unsupported daypart from a simple event sentence. Keep the
+  // generated date, literal hour and event unchanged; complex sentences fail shut.
+  const clock=eventClockSupport(reply,context);
+  if (clock?.claim[2] && clock.sameHour && clock.known?.daypart==='' && addedClockPrecision([reply], context)) {
+    const retained = reply.replace(clock.claim[2]+clock.claim[3],clock.claim[3]);
+    if (safe(retained)) return retained;
+  }
+  return '';
 }
 
 // Narrow repairs for explicit conversational corrections. They do not infer
@@ -443,7 +536,8 @@ export function knownDateCorrection({pendingMessages = [], messages = [], now = 
 
 // Check only explicit added precision and claims about when the counterpart
 // spoke. A message's send time does not prove an event happened that evening.
-export function unsupportedChatTime(texts, { messages = [], pendingMessages = [], facts = '', now = Date.now(), timezone = 'Asia/Shanghai' } = {}) {
+export function unsupportedChatTime(texts, { messages = [], pendingMessages = [], facts = '', now = Date.now(), timezone = 'Asia/Shanghai', kind = 'person', mode = 'reply', followUp = false } = {}) {
+  if (addedClockPrecision(texts, {messages, pendingMessages, facts, now, timezone, kind, mode, followUp})) return 'time-fact';
   const evidence = [...messages.filter(m => !m.aiGenerated && m.direction !== 'system').map(m => clean(m.text)), clean(facts)].join('\n');
   const nightWords = /昨晚|昨天晚上|昨日晚上/;
   const heardYesterday = annotateChatTimes(messages, now, timezone).some(m => m.direction === 'other' && !m.aiGenerated && m.temporal.relation === 'yesterday');
