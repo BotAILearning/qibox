@@ -3431,7 +3431,7 @@ export class AIAssistant {
       style: this.generationStyle(profile, strategy, 'reply'), memory: profile.memory,
       information: this.data.personalInformation?.[this.data.account], rules: [replyFixedRules, replySafetyPrompt, naturalAttributionPrompt] };
   }
-  async prepareExpressionTendency(profile, messages, snapshot, strategy, { followUp = false } = {}) {
+  prepareExpressionTendency(profile, messages, snapshot, strategy, { followUp = false } = {}) {
     const key = this.preparedReplyKey(profile, strategy);
     const previous = profile.styleTendencyPending;
     if (previous?.context === snapshot.revision && previous.key === key && previous.followUp === followUp
@@ -3461,9 +3461,9 @@ export class AIAssistant {
     profile.styleRoundSequence = styleRoundId;
     profile.styleTendency = planned.state;
     profile.styleTendencyPending = { context: snapshot.revision, key, followUp, styleRoundId, policyFingerprint: preparedReplyPolicyFingerprint };
-    // Persist the plan before any request. A failed request or definite-not-sent
-    // retry for this same context cannot silently select a different tendency.
-    await this.save();
+    // Existing error/pre-submit saves persist this metadata with the generated
+    // answer before native delivery. A new global write barrier here would
+    // incorrectly stop unrelated contacts during a pending configuration save.
     return planned.plan;
   }
   confirmExpressionTendency(profile, row) {
@@ -3746,7 +3746,7 @@ export class AIAssistant {
     const requiredGroupReply = mode === 'reply' && profile.kind === 'group' && trigger === 'atMe';
     const mustReply = mode === 'reply' && (requiredGroupReply || profile.kind !== 'group' && ((!followUp && !this.replyOptions(profile).judgeReply) || explicitAsk));
     const groupTriggerInstruction = requiredGroupReply ? `本轮已验证的${trigger === 'atMe' ? '@我' : '@所有人'}应回复可读取的来信；无法识别的图片或语音直接略过，不要求对方重发或转文字。` : explicitAsk && profile.kind !== 'group' ? '本轮来信包含明确问题，应针对可读取的文字回复；无法识别的图片或语音直接略过，不要求对方重发或转文字。' : '';
-    const tendencyPlan = mode === 'reply' ? await this.prepareExpressionTendency(profile, modelMessages, snapshot, strategy, { followUp }) : null;
+    const tendencyPlan = mode === 'reply' ? this.prepareExpressionTendency(profile, modelMessages, snapshot, strategy, { followUp }) : null;
     const expressionTendency = tendencyPlan ? { instruction: tendencyPlan.instruction,
       traits: Object.fromEntries(Object.entries(tendencyPlan.traits).map(([name, trait]) => [name, { preference: trait.preference, confidence: trait.confidence, rate: trait.rate }])) } : undefined;
     let result, safetyCorrection = '';

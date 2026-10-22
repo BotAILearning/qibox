@@ -12,6 +12,8 @@ export function replyImageCandidates(messages, pending, { limit = 3, recentLimit
   };
   for (const row of current) add(unique.get(row?.id));
   for (const row of current) if (row?.quote?.verified === true) add(unique.get(row.quote.messageId));
+  // A fresh image-only turn does not by itself refer back to other pictures.
+  if (!current.some(row => row?.type !== 'image' && row.unresolved !== true && typeof row.text === 'string' && row.text.trim())) return picked;
   const pendingIds = new Set(current.map(row => row?.id));
   const start = rows.findIndex(row => pendingIds.has(row?.id));
   const times = current.filter(row => Number.isSafeInteger(row?.timestamp)).map(row => row.timestamp);
