@@ -147,7 +147,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     list.querySelector(`[data-ai-object-index="${index}"]`)?.focus({ preventScroll: true });
   });
   let logRecords = [], logLoading = false, logEpoch = 0, logSignature = '';
-  let skipLoading = false, skipEpoch = 0, skipHistory = [], skipHistoryPage = null, skipPageLoading = false;
+  let skipLoading = false, skipEpoch = 0, skipHistory = [], skipHistoryPage = null, skipPageLoading = false, skipPageRequest = 0;
   const skipContent = new Map();
   const markReplyStatus = new Map();
   function skipState() {
@@ -183,14 +183,15 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   async function loadSkipPage() {
     const page = skipHistoryPage || state?.skipRecordsPage;
     if (!page?.hasMore || skipPageLoading) return;
-    const current = generation, target = id, account = state.account;
+    const current = generation, target = id, account = state.account, request = ++skipPageRequest;
+    const currentPage = () => current === generation && target === id && account === state?.account && request === skipPageRequest;
     skipPageLoading = true; drawSkips();
     try {
       const result = await api(`/instances/${target}/ai`, { action: 'skip-records', value: { limit: 50, before: page.nextBefore } });
-      if (current !== generation || target !== id || account !== state?.account) return;
+      if (!currentPage()) return;
       skipHistory = [...new Map([...skipState().skipRecords, ...result.records].map(row => [row.id, row])).values()]; skipHistoryPage = result.page;
-    } catch (error) { if (current === generation) message(error.message, true); }
-    finally { if (current === generation) { skipPageLoading = false; drawSkips(); void loadSkipContent(); } }
+    } catch (error) { if (currentPage()) message(error.message, true); }
+    finally { if (currentPage()) { skipPageLoading = false; drawSkips(); void loadSkipContent(); } }
   }
   const summaryResults = new Map();
   function showSummary(profileId, value) {
@@ -2046,12 +2047,31 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         return;
       }
       if ('aiDeleteRecord' in button.dataset) {
-        const current = generation, target = id, recordId = button.dataset.aiDeleteRecord, source = button.dataset.aiDeleteSource;
-        if (!await confirmRecordDelete(recordId, source) || current !== generation || target !== id) return;
-        await call('delete-activity-record', { value: { source, id: recordId } });
+        const current = generation, target = id, account = state?.account, scopeEpoch = scopeVerificationEpoch, confirmationEpoch = requestEpoch, recordId = button.dataset.aiDeleteRecord, source = button.dataset.aiDeleteSource;
+        const page = tab, view = $('#ai-content').firstElementChild, feedback = $('#ai-feedback');
+        const notice = feedback.textContent, noticeRole = feedback.getAttribute('role'), noticeHidden = feedback.hidden;
+        const valid = () => current === generation && target === id && account === state?.account && scopeVerified && scopeEpoch === scopeVerificationEpoch;
+        const samePresentation = () => page === tab && view === $('#ai-content').firstElementChild && notice === feedback.textContent && noticeRole === feedback.getAttribute('role') && noticeHidden === feedback.hidden;
+        if (!await confirmRecordDelete(recordId, source) || !valid() || confirmationEpoch !== requestEpoch) return;
+        let result;
+        try { result = await call('delete-activity-record', { value: { source, id: recordId } }); }
+        catch (error) { if (accountScopeError(error) || valid() && samePresentation()) throw error; return; }
+        if (!result || !valid() || result.account !== account) return;
         proactiveHistory = proactiveHistory.filter(record => !(source === 'proactive' && record.id === recordId));
         logRecords = logRecords.map(record => ({ ...record, messages: (record.messages || []).filter(message => !(message.id === recordId && (source === 'reply' || source === 'unknown'))) }));
-        rememberRecords(); render(); return;
+        if (source === 'skip') {
+          skipEpoch++; skipPageRequest++; skipLoading = false; skipPageLoading = false;
+          skipHistory = skipHistory.filter(record => record.id !== recordId);
+          skipContent.delete(recordId); markReplyStatus.delete(recordId);
+          if (skipHistoryPage) {
+            const remaining = skipState().skipRecords.sort((a, b) => b.at - a.at);
+            skipHistoryPage = { ...skipHistoryPage, total: result.skipRecordsPage?.total ?? Math.max(0, (skipHistoryPage.total || 0) - 1),
+              nextBefore: skipHistoryPage.nextBefore === recordId ? remaining.at(-1)?.id || result.skipRecordsPage?.nextBefore || null : skipHistoryPage.nextBefore };
+          }
+        }
+        rememberRecords();
+        if (samePresentation()) { render(); message('记录已删除'); }
+        return;
       }
       if ('aiClearErrors' in button.dataset) {
         // 折叠区标题里也放了「清空」，点按钮时不要连带展开 / 收起。

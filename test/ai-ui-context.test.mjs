@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { aiAssistant } from '../web/ai-assistant.mjs';
 import { categories, styleOptions, avoidOptions, defaultStyle } from '../server/ai-schema.mjs';
 import { replyPresets } from '../server/ai-presets.mjs';
+import { RecordCache } from '../web/ai-record-cache.mjs';
 
 let originalWindow;
 test.beforeEach(() => {
@@ -67,7 +68,7 @@ test('failed settings save keeps edited values marked as unsaved', async t => {
 // Exercise the real controller's async click handler at its API boundary. The
 // minimal DOM surface only supplies elements used by attach/render; no browser,
 // model service or native desktop is involved in these context-switch tests.
-function surface({ without = [] } = {}) {
+function surface({ without = [], freshForms = false } = {}) {
   const nodes = new Map(), handlers = new Map(), forms = new Map(), panelClicks = [];
   const attribute = key => 'data-' + key.replace(/[A-Z]/g, letter => '-' + letter.toLowerCase());
   const parsedForm = selector => {
@@ -104,14 +105,17 @@ function surface({ without = [] } = {}) {
       forms.delete(selector); return parsedForm(selector);
     }
     if (!nodes.has(selector)) {
-      let html = '', text = '', children = [];
+      let html = '', text = '', children = [], firstElement = null;
+      const classes = new Set(), attributes = new Map();
       nodes.set(selector, {
-      hidden: false, dataset: {}, options: [], classList: { toggle() {} },
+      hidden: false, dataset: {}, options: [], classList: { toggle(name, force) { if (force ?? !classes.has(name)) classes.add(name); else classes.delete(name); }, contains: name => classes.has(name) },
       ownerDocument: { createElement: tag => node(`created-${tag}`) },
-      writes: 0, get innerHTML() { return html; }, set innerHTML(value) { html = value; this.writes++; },
+      writes: 0, get innerHTML() { return html; }, set innerHTML(value) { html = value; firstElement = value ? {} : null; if (freshForms && selector === '#ai-content') forms.clear(); this.writes++; },
+      get firstElementChild() { return firstElement; },
       get textContent() { return children.length ? children.map(child => child.textContent || '').join('') : text; },
       set textContent(value) { text = value; children = []; },
-      setAttribute() {}, focus() { this.focused = true; }, contains() { return false; }, replaceChildren(...values) { children = values; }, append() {}, remove() {},
+      setAttribute(name, value) { attributes.set(name, String(value)); }, getAttribute: name => attributes.get(name) ?? null,
+      focus() { this.focused = true; }, contains() { return false; }, replaceChildren(...values) { children = values; }, append() {}, remove() {},
       close() { handlers.get(`${selector}:close`)?.(); }, showModal() {},
       querySelector: node, querySelectorAll: () => [],
       addEventListener(type, handler) { if (selector === '#ai-panel' && type === 'click') panelClicks.push(handler); handlers.set(`${selector}:${type}`, handler); },
@@ -123,6 +127,7 @@ function surface({ without = [] } = {}) {
     node,
     dismissFeedback: () => handlers.get('created-button:click')(),
     applyDialog: () => handlers.get('created-dialog:click')({ target: { closest: () => ({ hasAttribute: name => name === 'data-apply' }) } }),
+    answerRecordDelete: confirmed => handlers.get('created-dialog:click')({ target: { closest: () => ({ hasAttribute: name => confirmed && name === 'data-confirm' }) } }),
     form: (selector, entries) => {
       const attributes = new Map(), form = { id: selector.slice(1), entries, isConnected: true, querySelector: () => null, querySelectorAll: () => [],
         setAttribute(name, value) { attributes.set(name, String(value)); },
@@ -915,4 +920,291 @@ test('a late default paste result cannot clear a new instance material or overwr
   assert.equal(f.dom.node('#ai-feedback').textContent, notice);
   assert.equal(f.dom.node('#ai-content').writes, renders);
   assert.deepEqual(f.actions, ['learn']);
+});
+
+// Exercise the production delete click, confirmation, call/acceptState and record
+// cache together. API responses and the minimal DOM are local fixtures only.
+function recordDeletionSurface(t, deleteResult) {
+  const originalDocument = globalThis.document, OriginalFormData = globalThis.FormData, originalSave = RecordCache.prototype.save;
+  const dom = surface({ without: ['#ai-recent-errors', '#ai-skip-records'], freshForms: true }), actions = [], saved = [];
+  let account = 'account-a';
+  const at = '2026-10-22T06:00:00.000Z';
+  const replyRecords = () => [{ id: 'profile', messages: ['shared-id', 'kept-id'].map(id => ({ id, text: `${account}:${id}`, at, confirmed: true })) }];
+  const proactiveRecords = () => ['shared-id', 'kept-id'].map(id => ({ id, contact: 'contact', label: 'Fixture', taskId: 'task', text: `${account}:${id}`, at, status: 'sent' }));
+  const snapshot = () => ({ ...availableState(), account, activity: [{ id: 'profile', contact: 'contact', label: 'Fixture', kind: 'person', hasSent: true, replySentTimes: [at] }], proactiveRecords: [] });
+  RecordCache.prototype.save = function(instance, savedAccount, value) {
+    saved.push({ instance, account: savedAccount, value: structuredClone(value) });
+    return originalSave.call(this, instance, savedAccount, value);
+  };
+  globalThis.document = dom.document;
+  globalThis.FormData = class extends OriginalFormData { constructor(form) { super(); for (const [key, value] of form?.entries || []) this.append(key, value); } };
+  const controller = aiAssistant({ api: async (url, payload) => {
+    if (payload?.action) actions.push({ url, action: payload.action, value: payload.value });
+    if (payload?.action === 'delete-activity-record') return deleteResult({ snapshot, setAccount: value => { account = value; } });
+    if (payload?.action === 'activity-records') return { account, records: replyRecords() };
+    if (payload?.action === 'proactive-records') return { account, records: proactiveRecords(), page: { hasMore: false } };
+    return snapshot();
+  } });
+  t.after(() => { controller.detach(); RecordCache.prototype.save = originalSave; globalThis.document = originalDocument; globalThis.FormData = OriginalFormData; });
+  return { dom, controller, actions, saved, snapshot, setAccount: value => { account = value; },
+    async open(source = 'reply') { await dom.navigate('activity'); assert.equal(dom.node('#ai-feedback').textContent, '', 'record fixture navigation must succeed'); if (source === 'proactive') await dom.button({ aiRecordSource: source }); },
+    begin(source = 'reply') { return dom.button({ aiDeleteRecord: 'shared-id', aiDeleteSource: source }); },
+    cachedText(source = 'reply') {
+      const value = saved.at(-1)?.value;
+      return source === 'proactive' ? value?.proactiveHistory.map(row => row.text) : value?.logRecords.flatMap(row => row.messages.map(message => message.text));
+    },
+  };
+}
+
+test('record delete failure and cancellation retain data and error; successful retry clears the stale error', async t => {
+  let attempts = 0;
+  const f = recordDeletionSurface(t, ({ snapshot }) => {
+    if (++attempts === 1) throw new Error('操作未完成，请稍后重试');
+    return snapshot();
+  });
+  await f.controller.attach('instance-a'); await f.open();
+  const failed = f.begin(); f.dom.answerRecordDelete(true); await failed;
+  const feedback = f.dom.node('#ai-feedback'), before = f.cachedText();
+  assert.equal(feedback.textContent, '操作未完成，请稍后重试');
+  assert.equal(feedback.getAttribute('role'), 'alert'); assert.equal(feedback.classList.contains('error'), true);
+  assert.deepEqual(before, ['account-a:shared-id', 'account-a:kept-id'], JSON.stringify({ actions: f.actions, saved: f.saved }));
+  const cancelled = f.begin(); f.dom.answerRecordDelete(false); await cancelled;
+  assert.equal(attempts, 1); assert.equal(feedback.textContent, '操作未完成，请稍后重试');
+  assert.deepEqual(f.cachedText(), before);
+  const retried = f.begin(); f.dom.answerRecordDelete(true); await retried;
+  assert.deepEqual(f.cachedText(), ['account-a:kept-id']);
+  assert.equal(feedback.textContent, '记录已删除'); assert.equal(feedback.getAttribute('role'), 'status');
+  assert.equal(feedback.classList.contains('error'), false); assert.equal(feedback.hidden, false);
+  assert.equal(attempts, 2);
+});
+
+test('valid proactive record deletion removes only the selected local record', async t => {
+  const f = recordDeletionSurface(t, ({ snapshot }) => snapshot());
+  await f.controller.attach('instance-a'); await f.open('proactive');
+  const pending = f.begin('proactive'); f.dom.answerRecordDelete(true); await pending;
+  assert.deepEqual(f.cachedText('proactive'), ['account-a:kept-id']);
+  assert.equal(f.dom.node('#ai-feedback').textContent, '记录已删除');
+  assert.equal(f.actions.filter(row => row.action === 'delete-activity-record').length, 1);
+});
+
+for (const source of ['reply', 'proactive']) for (const change of ['account', 'account-error', 'instance', 'superseding-action']) {
+  test(`late ${source} record delete cannot alter same-ID cache after ${change} changes`, { timeout: 2000 }, async t => {
+    const entered = Promise.withResolvers(), release = Promise.withResolvers();
+    const f = recordDeletionSurface(t, async ({ snapshot }) => { const old = snapshot(); entered.resolve(); await release.promise; if (change === 'account-error') throw new Error('late old-account failure'); return old; });
+    let pending;
+    t.after(async () => { release.resolve(); await pending; });
+    await f.controller.attach('instance-a'); await f.open(source);
+    pending = f.begin(source); f.dom.answerRecordDelete(true); await entered.promise;
+    if (change.startsWith('account')) { f.setAccount('account-b'); await f.dom.click('scan'); }
+    else if (change === 'instance') { f.controller.detach(); await f.controller.attach('instance-b'); }
+    else await f.dom.click('scan');
+    await f.open(source);
+    const expectedAccount = change.startsWith('account') ? 'account-b' : 'account-a';
+    assert.deepEqual(f.cachedText(source), [`${expectedAccount}:shared-id`, `${expectedAccount}:kept-id`]);
+    const writes = f.dom.node('#ai-content').writes, saves = f.saved.length, feedback = f.dom.node('#ai-feedback').textContent;
+    release.resolve(); await pending;
+    assert.deepEqual(f.cachedText(source), [`${expectedAccount}:shared-id`, `${expectedAccount}:kept-id`]);
+    assert.equal(f.saved.length, saves, 'obsolete completion must not remember a filtered cache');
+    assert.equal(f.dom.node('#ai-content').writes, writes, 'obsolete completion must not repaint the current page');
+    assert.equal(f.dom.node('#ai-feedback').textContent, feedback);
+  });
+}
+
+test('account change while delete confirmation is open does not submit the old selection against the new account', async t => {
+  const f = recordDeletionSurface(t, ({ snapshot }) => snapshot());
+  await f.controller.attach('instance-a'); await f.open();
+  const pending = f.begin();
+  f.setAccount('account-b'); await f.dom.click('scan'); await f.open();
+  const before = f.cachedText(), writes = f.dom.node('#ai-content').writes;
+  f.dom.answerRecordDelete(true); await pending;
+  assert.equal(f.actions.filter(row => row.action === 'delete-activity-record').length, 0);
+  assert.deepEqual(f.cachedText(), before); assert.equal(f.dom.node('#ai-content').writes, writes);
+});
+
+test('an A to B to A account transition invalidates an already open delete confirmation', async t => {
+  const f = recordDeletionSurface(t, ({ snapshot }) => snapshot());
+  await f.controller.attach('instance-a'); await f.open();
+  const pending = f.begin();
+  f.setAccount('account-b'); await f.dom.click('scan');
+  f.setAccount('account-a'); await f.dom.click('scan'); await f.open();
+  const before = f.cachedText(), saves = f.saved.length, writes = f.dom.node('#ai-content').writes;
+  f.dom.answerRecordDelete(true); await pending;
+  assert.equal(f.actions.filter(row => row.action === 'delete-activity-record').length, 0);
+  assert.deepEqual(f.cachedText(), before); assert.equal(f.saved.length, saves); assert.equal(f.dom.node('#ai-content').writes, writes);
+});
+
+test('unverified delete response cannot filter or remember the previous account record cache', async t => {
+  const f = recordDeletionSurface(t, () => ({ scopeUnknown: true }));
+  await f.controller.attach('instance-a'); await f.open();
+  const saves = f.saved.length, before = f.cachedText();
+  const pending = f.begin(); f.dom.answerRecordDelete(true); await pending;
+  assert.equal(f.saved.length, saves); assert.deepEqual(f.cachedText(), before);
+  assert.doesNotMatch(f.dom.node('#ai-feedback').textContent, /记录已删除/);
+});
+
+test('a current delete identity-verification failure still conceals private state and displays its error', async t => {
+  const f = recordDeletionSurface(t, () => { throw Object.assign(new Error('账号身份暂时无法核实'), { code: 'AI_ACCOUNT_UNVERIFIED' }); });
+  await f.controller.attach('instance-a'); await f.open();
+  const before = f.cachedText(), saves = f.saved.length;
+  const pending = f.begin(); f.dom.answerRecordDelete(true); await pending;
+  assert.deepEqual(f.cachedText(), before); assert.equal(f.saved.length, saves);
+  assert.equal(f.dom.node('#ai-feedback').textContent, '账号身份暂时无法核实');
+  assert.equal(f.dom.node('#ai-feedback').getAttribute('role'), 'alert');
+  assert.match(f.dom.node('#ai-content').innerHTML, /正在读取当前微信的设置/);
+});
+
+test('a delete response that establishes a different account does not acknowledge the old deletion or cache its local result', async t => {
+  const f = recordDeletionSurface(t, ({ snapshot, setAccount }) => { setAccount('account-b'); return snapshot(); });
+  await f.controller.attach('instance-a'); await f.open();
+  const saves = f.saved.length, writes = f.dom.node('#ai-content').writes;
+  const pending = f.begin(); f.dom.answerRecordDelete(true); await pending;
+  assert.equal(f.saved.length, saves, 'account transition may reset state, but old deletion must not remember the new cache');
+  assert.equal(f.dom.node('#ai-content').writes, writes + 2, 'only account concealment and new account render are expected');
+  assert.doesNotMatch(f.dom.node('#ai-feedback').textContent, /记录已删除/);
+});
+
+for (const source of ['reply', 'proactive']) test(`late successful ${source} deletion updates its cache without replacing a new page's unsaved form`, { timeout: 2000 }, async t => {
+  const entered = Promise.withResolvers(), release = Promise.withResolvers();
+  const f = recordDeletionSurface(t, async ({ snapshot }) => { entered.resolve(); await release.promise; return snapshot(); });
+  let pending;
+  t.after(async () => { release.resolve(); await pending; });
+  await f.controller.attach('instance-a'); await f.open(source);
+  pending = f.begin(source); f.dom.answerRecordDelete(true); await entered.promise;
+  await f.dom.navigate('settings');
+  const form = f.dom.node('#ai-takeover-form'); form.elements.namedItem('replyDelay').value = '13';
+  const writes = f.dom.node('#ai-content').writes, notice = f.dom.node('#ai-feedback').textContent;
+  release.resolve(); await pending;
+  assert.deepEqual(f.cachedText(source), ['account-a:kept-id']);
+  assert.deepEqual({ renders: f.dom.node('#ai-content').writes, sameForm: f.dom.node('#ai-takeover-form') === form,
+    draft: f.dom.node('#ai-takeover-form').elements.namedItem('replyDelay').value, notice: f.dom.node('#ai-feedback').textContent },
+  { renders: writes, sameForm: true, draft: '13', notice });
+});
+
+for (const fails of [false, true]) test(`late ${fails ? 'failed' : 'successful'} deletion preserves a newer page validation error and its analysis material`, { timeout: 2000 }, async t => {
+  const entered = Promise.withResolvers(), release = Promise.withResolvers();
+  const f = recordDeletionSurface(t, async ({ snapshot }) => { entered.resolve(); await release.promise; if (fails) throw new Error('late old-page failure'); return snapshot(); });
+  let pending;
+  t.after(async () => { release.resolve(); await pending; });
+  await f.controller.attach('instance-a'); await f.open();
+  pending = f.begin(); f.dom.answerRecordDelete(true); await entered.promise;
+  await f.dom.navigate('analysis');
+  const form = f.dom.form('#ai-analysis-form', [['request', '保留这段新输入🙂'], ['from', ''], ['to', '']]);
+  await f.dom.submit(form);
+  const feedback = f.dom.node('#ai-feedback'), notice = feedback.textContent, writes = f.dom.node('#ai-content').writes;
+  assert.equal(notice, '请至少选择一位联系人');
+  release.resolve(); await pending;
+  assert.deepEqual(f.cachedText(), fails ? ['account-a:shared-id', 'account-a:kept-id'] : ['account-a:kept-id']);
+  assert.deepEqual({ renders: f.dom.node('#ai-content').writes, notice: feedback.textContent, role: feedback.getAttribute('role'), sameForm: f.dom.node('#ai-analysis-form') === form },
+    { renders: writes, notice, role: 'alert', sameForm: true });
+  assert.deepEqual(form.entries, [['request', '保留这段新输入🙂'], ['from', ''], ['to', '']]);
+  assert.equal(f.actions.filter(row => row.action === 'analyze').length, 0);
+});
+
+function skipDeletionSurface(t, { failDelete = false, beforePageReturn, unhydrated = false } = {}) {
+  const originalDocument = globalThis.document, dom = surface({ without: ['#ai-recent-errors'] }), actions = [];
+  const create = dom.document.createElement;
+  dom.document.createElement = tag => {
+    if (tag !== 'template') return create(tag);
+    let html = '';
+    return { content: {}, get innerHTML() { return html; }, set innerHTML(value) {
+      html = value;
+      const wrapper = /^<([a-z]+)\b[^>]*\bid="([^"]+)"[^>]*>([\s\S]*)<\/\1>$/.exec(value.trim());
+      this.content.firstElementChild = wrapper ? { id: wrapper[2], innerHTML: wrapper[3], nextElementSibling: null } : null;
+    } };
+  };
+  const skips = dom.node('#ai-skip-records'); skips.id = 'ai-skip-records'; skips.ownerDocument = dom.document;
+  const account = 'account-a', at = Date.parse('2026-10-22T06:00:00.000Z');
+  const rows = ['first-kept', 'paged-target', 'older-kept'].map((id, index) => ({ id, account, target: 'profile', at: at - index * 1000, source: 'system-skip', reasonCode: 'model-no-reply',
+    incomingMessages: unhydrated ? [] : [{ id: `incoming-${id}`, text: `合成来信-${id}`, senderName: 'Fixture' }] }));
+  let currentRows = [...rows], pageCalls = 0;
+  const page = offset => ({ total: currentRows.length, hasMore: offset + 1 < currentRows.length, nextBefore: offset + 1 < currentRows.length ? currentRows[offset].id : null, limit: 50 });
+  const snapshot = () => ({ ...availableState(), account, profiles: [{ id: 'profile', contact: 'contact', label: 'Fixture', kind: 'person' }], skipRecords: [currentRows[0]], skipRecordsPage: page(0) });
+  globalThis.document = dom.document;
+  const controller = aiAssistant({ api: async (_url, payload) => {
+    if (payload?.action) actions.push(structuredClone(payload));
+    if (payload?.action === 'activity-records') return { account, records: [] };
+    if (payload?.action === 'proactive-records') return { account, records: [], page: { hasMore: false } };
+    if (payload?.action === 'skip-record-content') return { account, records: currentRows.filter(row => payload.value.eventIds.includes(row.id)).map(row => ({ id: row.id, incomingMessages: [{ id: `incoming-${row.id}`, text: `合成来信-${row.id}`, senderName: 'Fixture' }] })) };
+    if (payload?.action === 'skip-records') {
+      const index = currentRows.findIndex(row => row.id === payload.value.before);
+      if (index < 0) throw new Error('记录分页游标已失效，请刷新');
+      const result = { account, records: currentRows.slice(index + 1, index + 2), page: page(index + 1) };
+      await beforePageReturn?.(++pageCalls, result); return result;
+    }
+    if (payload?.action === 'delete-activity-record') {
+      assert.deepEqual(payload.value, { source: 'skip', id: 'paged-target' });
+      if (failDelete) throw new Error('操作未完成，请稍后重试');
+      currentRows = currentRows.filter(row => row.id !== payload.value.id); return snapshot();
+    }
+    return snapshot();
+  } });
+  t.after(() => { controller.detach(); globalThis.document = originalDocument; });
+  return { dom, controller, actions,
+    async open() { await controller.attach('instance-a'); await dom.navigate('activity'); assert.equal(dom.node('#ai-feedback').textContent, ''); },
+    more: () => dom.button({ aiSkipMore: '' }),
+    begin: () => dom.button({ aiDeleteRecord: 'paged-target', aiDeleteSource: 'skip' }),
+    visible: () => [...skips.innerHTML.matchAll(/data-ai-skip-record="([^"]+)"/g)].map(match => match[1]),
+    markup: () => skips.innerHTML,
+  };
+}
+
+test('deleting a paged skip record removes only it and updates the loaded total', async t => {
+  const f = skipDeletionSurface(t); await f.open(); await f.more();
+  assert.deepEqual(f.visible(), ['first-kept', 'paged-target']); assert.match(f.markup(), /已加载 2 \/ 3 条/);
+  const pending = f.begin(); f.dom.answerRecordDelete(true); await pending;
+  assert.deepEqual(f.visible(), ['first-kept']); assert.match(f.markup(), /已加载 1 \/ 2 条/);
+  assert.equal(f.dom.node('#ai-feedback').textContent, '记录已删除');
+});
+
+test('deleting the skip pagination cursor keeps a valid earlier cursor and permits loading remaining records', async t => {
+  const f = skipDeletionSurface(t); await f.open(); await f.more();
+  const pending = f.begin(); f.dom.answerRecordDelete(true); await pending;
+  await f.more();
+  assert.equal(f.actions.filter(row => row.action === 'skip-records').at(-1).value.before, 'first-kept');
+  assert.deepEqual(f.visible(), ['first-kept', 'older-kept']); assert.match(f.markup(), /已加载 2 \/ 2 条/);
+  assert.doesNotMatch(f.dom.node('#ai-feedback').textContent, /游标已失效/);
+});
+
+test('failed or cancelled paged skip deletion retains the target, count and valid existing cursor', async t => {
+  const f = skipDeletionSurface(t, { failDelete: true }); await f.open(); await f.more();
+  const cancelled = f.begin(); f.dom.answerRecordDelete(false); await cancelled;
+  assert.equal(f.actions.filter(row => row.action === 'delete-activity-record').length, 0);
+  const failed = f.begin(); f.dom.answerRecordDelete(true); await failed;
+  assert.deepEqual(f.visible(), ['first-kept', 'paged-target']); assert.match(f.markup(), /已加载 2 \/ 3 条/);
+  assert.equal(f.dom.node('#ai-feedback').textContent, '操作未完成，请稍后重试');
+  await f.more();
+  assert.equal(f.actions.filter(row => row.action === 'skip-records').at(-1).value.before, 'paged-target');
+  assert.deepEqual(f.visible(), ['first-kept', 'paged-target', 'older-kept']);
+});
+
+test('a skip page captured before deletion cannot restore its obsolete total or finish a newer page request', { timeout: 2000 }, async t => {
+  const oldEntered = Promise.withResolvers(), oldRelease = Promise.withResolvers(), newEntered = Promise.withResolvers(), newRelease = Promise.withResolvers();
+  const f = skipDeletionSurface(t, { beforePageReturn: async call => {
+    if (call === 2) { oldEntered.resolve(); await oldRelease.promise; }
+    if (call === 3) { newEntered.resolve(); await newRelease.promise; }
+  } });
+  let oldPage, newPage;
+  t.after(async () => { oldRelease.resolve(); newRelease.resolve(); await Promise.all([oldPage, newPage]); });
+  await f.open(); await f.more(); oldPage = f.more(); await oldEntered.promise;
+  const pending = f.begin(); f.dom.answerRecordDelete(true); await pending;
+  assert.deepEqual(f.visible(), ['first-kept']); assert.match(f.markup(), /已加载 1 \/ 2 条/);
+  newPage = f.more(); await newEntered.promise;
+  oldRelease.resolve(); await oldPage;
+  assert.deepEqual(f.visible(), ['first-kept']); assert.match(f.markup(), /已加载 1 \/ 2 条/);
+  assert.match(f.markup(), /data-ai-skip-more disabled/);
+  newRelease.resolve(); await newPage;
+  assert.deepEqual(f.visible(), ['first-kept', 'older-kept']); assert.match(f.markup(), /已加载 2 \/ 2 条/);
+});
+
+test('retrying skip content while a page is pending does not discard that valid page or leave loading stuck', { timeout: 2000 }, async t => {
+  const entered = Promise.withResolvers(), release = Promise.withResolvers();
+  const f = skipDeletionSurface(t, { unhydrated: true, beforePageReturn: async call => { if (call === 1) { entered.resolve(); await release.promise; } } });
+  let pending;
+  t.after(async () => { release.resolve(); await pending; });
+  await f.open(); pending = f.more(); await entered.promise;
+  await f.dom.button({ aiRetrySkips: '' });
+  release.resolve(); await pending;
+  assert.deepEqual(f.visible(), ['first-kept', 'paged-target']);
+  assert.doesNotMatch(f.markup(), /data-ai-skip-more disabled/);
+  assert.equal(f.actions.filter(row => row.action === 'skip-records').length, 1);
 });
