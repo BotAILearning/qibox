@@ -3767,7 +3767,7 @@ export class AIAssistant {
       const unsupported = segments.map(unsupportedTextAction).find(Boolean) || unsupportedTextAction(segments.join('\n')) || (segments.some(promisesMedia) ? 'media' : null);
       if (unsupported) { result.action = 'skip'; result.mediaSkipped = true; }
       let finalTexts = [...segments, ...(nativeAudioAllowed && result.media?.[0]?.text ? [result.media[0].text] : [])];
-      const finalContext = { messages: modelMessages, pendingMessages, facts: [strategy.facts, ...replyFacts.map(row=>row.text), ...replyMemory.entries.map(row=>'联系人事实：'+row.text)].filter(Boolean).join('\n'), boundaries: strategy.boundaries, identityAsked, now: this.now(), timezone: currentChatTime(this.now(), selfContext(this, profile.kind)).timezone };
+      const finalContext = { kind: profile.kind, messages: modelMessages, pendingMessages, facts: [strategy.facts, ...replyFacts.map(row=>row.text), ...replyMemory.entries.map(row=>'联系人事实：'+row.text)].filter(Boolean).join('\n'), boundaries: strategy.boundaries, identityAsked, now: this.now(), timezone: currentChatTime(this.now(), selfContext(this, profile.kind)).timezone };
       const confirmation = result.action === 'send' && mode === 'reply' && profile.kind === 'person' && !followUp && !result.media?.length ? ownerConfirmationRepair(finalTexts, finalContext) : '';
       if (confirmation) { result = {action:'send', text:confirmation, followUp:false, memoryUpdates:[]}; segments = [confirmation]; finalTexts = [confirmation]; }
       const personalViolation = unsupportedPersonalAnswer(finalTexts, finalContext) || unsupportedChatTime(finalTexts, finalContext);

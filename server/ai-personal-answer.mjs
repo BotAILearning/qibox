@@ -123,6 +123,58 @@ function unsupportedUnstatedRecipient(texts, { messages, pendingMessages, facts,
   }
   return false;
 }
+// This is a narrow name check, not a classifier for every "you are" predicate.
+const nameToken = value => clean(value).trim().replace(/[呢呀啊哦啦吧]$/u, '');
+function personName(value) {
+  return /^(?:[阿小老][\p{Script=Han}]{1,3}|[张王李赵陈刘杨黄周吴徐孙马朱胡郭何林高罗郑][\p{Script=Han}]{1,2}|[A-Z][a-z]{1,20})$/u.test(value)
+    && !/[的地得不没未]/u.test(value)
+    && !/^(?:老师|老板|老人|老实人|老好人|老员工|老同事|老朋友|小学生|小孩子|小朋友|小心|阿姨|阿婆|阿公|阿爸|阿妈|Doctor|Driver|Teacher|Engineer|Student)$/u.test(value);
+}
+function declaredNames(value) {
+  const names = [];
+  for (const clause of declarativeClauses(value)) {
+    const explicit = /^(?:我(?:本人|自己)?(?:名叫|叫|的名字是|的姓名是|名字叫|姓名叫)|(?:以后)?叫我)([\p{L}\p{N}· -]{1,32})$/u.exec(clause);
+    if (explicit) names.push(nameToken(explicit[1]));
+    const familiar = /^我(?:本人|自己)?是(.{1,12})$/u.exec(clause);
+    if (familiar && personName(nameToken(familiar[1]))) names.push(nameToken(familiar[1]));
+  }
+  return names;
+}
+function unsupportedRecipientName(texts, {messages, pendingMessages, facts, now, kind}) {
+  const pending = pendingMessages.filter(message => message.direction === 'other' && !message.aiGenerated);
+  if (pending.length !== 1) return false;
+  const denied = new Set();
+  for (const clause of declarativeClauses(pending[0].text)) {
+    const explicit = /^我(?:本人|自己)?(?:不叫|不是叫|名字不是|姓名不是)([\p{L}\p{N}· -]{1,32})$/u.exec(clause);
+    const familiar = /^我(?:本人|自己)?(?:不是|并非)(.{1,12})$/u.exec(clause);
+    if (explicit) denied.add(nameToken(explicit[1]));
+    if (familiar && personName(nameToken(familiar[1]))) denied.add(nameToken(familiar[1]));
+  }
+  const claims = [];
+  for (const clause of declarativeClauses(texts.join(''))) {
+    const explicit = /^(?:你|您)(?:的(?:名字|姓名|称呼)(?:是|叫|为)|名叫)([\p{L}\p{N}· -]{1,32})$/u.exec(clause);
+    if (explicit) claims.push(nameToken(explicit[1]));
+    const familiar = /^(?:你|您)(是|叫)(.{1,12})$/u.exec(clause);
+    if (familiar && personName(nameToken(familiar[2])) && (familiar[1] === '叫' || denied.size)) claims.push(nameToken(familiar[2]));
+  }
+  if (!claims.length) return false;
+  const target = pending[0].speaker?.id, known = new Set();
+  const sameActor = message => message.direction === 'other' && (target ? message.speaker?.id === target : !message.speaker);
+  const sourceAllowed = message => !message.aiGenerated && !message.unresolved && Number.isSafeInteger(message.timestamp) && message.timestamp * 1000 <= now;
+  if (kind !== 'group' || target && pending[0].speaker?.identified !== false) {
+    for (const message of [...messages.filter(sameActor), ...pending]) {
+      if (!sourceAllowed(message)) continue;
+      if (message !== pending[0] && !sameActor(message)) continue;
+      for (const name of declaredNames(message.text)) known.add(name);
+    }
+  }
+  if (kind === 'person') for (const clause of declarativeClauses(facts)) {
+    const match = /^(?:联系人事实[：:])?对方(?:的(?:名字|姓名)|名字|姓名)?(?:是|叫|名叫)([\p{L}\p{N}· -]{1,32})$/u.exec(clause);
+    if (match) known.add(nameToken(match[1]));
+  }
+  // The current writer's explicit denial outranks older declarations/facts.
+  return claims.some(name => denied.has(name) || !known.has(name));
+}
 function unsupportedRecipientArrival(texts, {messages, pendingMessages, facts, now}) {
   const targetIds = new Set(pendingMessages.filter(message => message.direction === 'other' && message.speaker?.id).map(message => message.speaker.id));
   const arrival = /(?:^|[，,])\s*(?:原来|看来|结果|那)?(?:你(?:人)?|您(?:人)?|人)(?:已经|都|早就|刚刚?|先)?(?:到(?:现场|那里|这儿|地方|场)?了|都?到现场了|白跑了?一趟)/;
@@ -143,8 +195,8 @@ function unsupportedRecipientArrival(texts, {messages, pendingMessages, facts, n
   return false;
 }
 
-export function unsupportedPersonalAnswer(texts, { messages = [], pendingMessages = [], facts = '', boundaries = '', now = Date.now(), identityAsked = false } = {}) {
-  const context = {messages, pendingMessages, facts, now};
+export function unsupportedPersonalAnswer(texts, { messages = [], pendingMessages = [], facts = '', boundaries = '', now = Date.now(), identityAsked = false, kind } = {}) {
+  const context = {messages, pendingMessages, facts, now, kind};
   if (unsupportedRecipientHelp(texts, { messages, facts })) return 'recipient-fact';
   const moved = /^(?:哦|哦哦|原来|嗯)?\s*(?:你|您)?(?:已经|刚刚?|现在)?搬(?:家)?(?:到|去|来)([^。！？!?，,；;\s]{1,24})/;
   const relocationEvidence=[...messages.filter(m=>m.direction==='other'&&!m.aiGenerated).flatMap(m=>parts(m.text)).filter(p=>!/[“”"「」]|没|不|准备|打算|如果|假如|明天/.test(p)&&/^我(?:已经|刚刚?|现在)?搬(?:家)?(?:到|去|来)/.test(p)),...parts(facts).filter(p=>/^对方(?:已经|刚刚?|现在)?搬(?:家)?(?:到|去|来)/.test(p))];
@@ -210,6 +262,7 @@ export function unsupportedPersonalAnswer(texts, { messages = [], pendingMessage
   // contains several violations; these additional fact checks remain final.
   if (unsupportedHistoricalSelf(texts, context)) return 'personal-fact';
   if (unsupportedUnstatedRecipient(texts, context)) return 'recipient-fact';
+  if (unsupportedRecipientName(texts, context)) return 'recipient-fact';
   if (unsupportedRecipientArrival(texts, context)) return 'recipient-fact';
   return '';
 }
@@ -256,7 +309,7 @@ export function ownerConfirmationRepair(texts, {pendingMessages = [], messages =
   if (!clauses) return '';
   const first = clauses[1].trim(), confirmation = clean(first), tail = clean(clauses[2]).trim();
   if (!ownerConfirmation.test(confirmation) || (employment ? /位置/.test(confirmation) : /工作/.test(confirmation))) return '';
-  const uncertainty = /^我(?:这边)?(?:现在|目前|今天|暂时)?(?:还)?(?:不知道|没法确定|没确认)(.*)$/u.exec(tail);
+  const uncertainty = /^我(?:这边)?(?:现在|目前|今天|暂时)?(?:还)?(?:不知道|没法确定|不能确定|没确认)(.*)$/u.exec(tail);
   if (!uncertainty) return '';
   const sameField = employment
     ? /^(?:(?:今天|现在|目前)?(?:具体)?(?:在哪(?:家|个)(?:公司|单位)(?:上班|工作)?|(?:哪家|哪个)(?:公司|单位)(?:上班|工作)?|(?:工作|上班)(?:的)?(?:公司|单位)|工作情况))?$/u
