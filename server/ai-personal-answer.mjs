@@ -44,6 +44,9 @@ function claimScope(sentence, match) {
 }
 const normalizedClaim = value => clean(value).replace(/[\p{P}\p{S}\s]/gu, '').replace(/(?:了|过|呢|呀|啊|啦|哦|吧|哈)+$/u, '');
 const historicalFault = '(?:认错|记错|说错|听错|看错|想错|理解错|理解反|搞错|弄错|搞混|记混|弄混|(?:记|搞|弄|听|说|看|理解)岔|混淆|误解|误会|没(?:有|能)?(?:分清|区分清楚|理解清楚)|(?:表达|说)(?:得)?(?:不清楚|不严谨|不准确))';
+// A retrospective failure to understand is an owner-state claim too. Keep
+// explicit past time required, so ordinary current clarification stays valid.
+const retrospectiveUnderstanding = '没(?:有|能)?(?:弄|搞|听|看|想|理解)(?:清楚|明白)';
 // An omitted "if" needs a complete prospective/imperative consequence,
 // not just "again" or a subject followed by "then" before a past event.
 const conditionalFaultConsequence = /^[，,]\s*(?:我|你|您|他|她|我们|你们|他们|她们|咱们|对方)?就(?:(?:会|要|能|可以|得|应该|不用|不必)[^，,。！？!?；;\n]{1,40}|(?:再|先)?(?:提醒|纠正|改正|核对|确认|核实|检查|复查|重查|告诉)(?![了过])[^，,。！？!?；;\n]{0,40})[。！!；;]?$/;
@@ -63,8 +66,9 @@ function historicalClaims(value) {
     const elidedFault = new RegExp('^(?:(?:嗯|哦|啊|对|是的|好(?:的)?|明白(?:了)?|知道(?:了)?)[，,\\s]*)*(' + historicalFault + ')((?:了|过)(?:啊|呀|呢|啦|哦|哈)*)\\s*(?=[，,。！!；;]|$)', 'g');
     const expressions = [
       new RegExp('我(?:自己|本人)?(?:刚才|刚刚|之前|原先|先前|刚|以前|曾经|当时|本来|原本)?(?:还|也|竟然|差点儿?|真|一直|确实|居然|都|就|一度){0,6}(?:把[^，,。！？!?；;\\n]{1,32}?)?(' + historicalFault + '|以为|误以为|误认为|遇到过|碰到过|经历过)([^，,。！？!?；;\\n]*)', 'g'),
+      new RegExp('我(?:自己|本人)?(?:刚才|刚刚|之前|原先|先前|以前|曾经|当时)(?:还|也|确实|就)?(' + retrospectiveUnderstanding + ')([^，,。！？!?；;\\n]*)', 'g'),
       /我(?:自己|本人)?(?:刚才|刚刚|之前|原先|先前|以前|曾经|当时)(?:还|也|确实|就)?(说|讲|表示|答应|承诺|觉得|认为|想|纳闷|琢磨)(?:过|了)?([^，,。！？!?；;\n]*)/g,
-      new RegExp('(?:^|[，,])\\s*(?:刚才|刚刚|之前|先前|原先|以前|当时)(?:还|也|确实)?(' + historicalFault + ')([^，,。！？!?；;\\n]*)', 'g'),
+      new RegExp('(?:^|[，,])\\s*(?:刚才|刚刚|之前|先前|原先|以前|当时)(?:还|也|确实)?(' + historicalFault + '|' + retrospectiveUnderstanding + ')([^，,。！？!?；;\\n]*)', 'g'),
       new RegExp('(?:^|[，,])\\s*(?:抱歉|不好意思|对不起)[，,]?\\s*(?:刚才|刚刚|之前)?(?:还|也|确实)?(' + historicalFault + ')([^，,。！？!?；;\\n]*)(?=[，,。！!；;\\n]|$)', 'g'),
       // A standalone completed admission still describes the reply author
       // when "I" is omitted. Do not absorb questions, other subjects,
@@ -338,7 +342,7 @@ export function ownerConfirmationRepair(texts, {pendingMessages = [], messages =
   if (!clauses) return '';
   const first = clauses[1].trim(), confirmation = clean(first), tail = clean(clauses[2]).trim();
   if (!ownerConfirmation.test(confirmation) || (employment ? /位置/.test(confirmation) : /工作/.test(confirmation))) return '';
-  const uncertainty = /^我(?:这边)?(?:现在|目前|今天|暂时)?(?:也)?(?:还)?(?:不知道|没法确定|不能确定|没确认|拿不准|不清楚|不太清楚|不确定|说不准)(.*)$/u.exec(tail);
+  const uncertainty = /^我(?:这边)?(?:现在|目前|今天|暂时)?(?:也)?(?:还)?(?:不知道|(?:没法|无法|不能)(?:直接)?(?:确定|确认)|没确认|拿不准|不清楚|不太清楚|不确定|说不准)(.*)$/u.exec(tail);
   if (!uncertainty) return '';
   const sameField = employment
     ? /^(?:(?:今天|现在|目前)?(?:具体)?(?:在哪(?:家|个)(?:公司|单位)(?:上班|工作)?|(?:哪家|哪个)(?:公司|单位)(?:上班|工作)?|(?:工作|上班)(?:的)?(?:公司|单位)|工作情况))?$/u

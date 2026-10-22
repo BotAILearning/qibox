@@ -11,6 +11,7 @@ const now=Date.parse('2026-10-22T12:00:00+08:00');
 const correction='你记错了，胃疼的是我，不是你。';
 // The original synthetic M3/016 draft reached the fixture sink unchanged.
 const actual97='嗯，记混了。胃疼的是你。';
+const actual101='对，是你说昨天胃疼，我刚才没弄清楚。';
 const commaVariant='嗯，记混了，胃疼的是你。';
 const retrospectiveTails=['嗯，记混了，再次抱歉。胃疼的是你。','嗯，记混了，他就提醒过我。胃疼的是你。','嗯，记混了，他就提醒我了。胃疼的是你。'];
 const independentQuestionTails=['嗯，记混了，你现在好点没？','嗯，记混了，胃疼的是你？'];
@@ -59,7 +60,7 @@ test('the existing single generation request carries correction-source self-chec
   // This proves request composition/count only; a mock cannot prove AI quality.
 });
 
-for(const [label,raw] of [['actual97',actual97],['comma variant',commaVariant],...retrospectiveTails.map((raw,i)=>['retrospective tail '+(i+1),raw]),...independentQuestionTails.map((raw,i)=>['independent question tail '+(i+1),raw])])test(`production reply flow rejects ${label} after one mock generation and does not regenerate on the next tick`,async t=>{
+for(const [label,raw] of [['actual97',actual97],['actual101 missing understanding',actual101],['comma variant',commaVariant],...retrospectiveTails.map((raw,i)=>['retrospective tail '+(i+1),raw]),...independentQuestionTails.map((raw,i)=>['independent question tail '+(i+1),raw])])test(`production reply flow rejects ${label} after one mock generation and does not regenerate on the next tick`,async t=>{
   const root=await temp(),bridge=new ChatFixture(),provider=new AIModelFixture();let clock=now;bridge.stableMessageIds=true;
   const a=new AIAssistant({dataRoot:root,bridge,provider,now:()=>clock,delay:async()=>{},random:min=>min});
   t.after(async()=>{await a.close();await cleanup(root);});

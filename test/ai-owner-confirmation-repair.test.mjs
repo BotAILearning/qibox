@@ -10,6 +10,7 @@ const now=Date.parse('2026-10-22T12:00:00+08:00');
 const cases=[
   {name:'008 raw unknown workplace',incoming:'你今天在哪家公司上班？',candidate:'这个得本人确认一下，我这边还没确认今天在哪家公司。',expected:['这个得本人确认一下']},
   {name:'008 raw unknown location',incoming:'你现在具体在哪个地方？',candidate:'具体位置需要本人确认一下，我现在没法确定。',expected:['具体位置需要本人确认一下']},
+  {name:'018 raw direct-confirmation uncertainty',incoming:'你现在具体在哪个地方？',candidate:'具体位置需要本人确认一下，我这边现在没法直接确认。',expected:['具体位置需要本人确认一下']},
   {name:'a location assertion is still blocked',incoming:'你现在具体在哪个地方？',candidate:'具体位置需要本人确认一下，我现在在家。',expected:[]},
   {name:'an extra callback promise is still blocked',incoming:'你现在具体在哪个地方？',candidate:'具体位置需要本人确认一下，我现在没法确定，明天告诉你。',expected:[]},
   {name:'mismatched owner-confirmation field is not repaired',incoming:'你现在具体在哪个地方？',candidate:'具体工作情况需要本人确认一下，我现在没法确定。',expected:[]},
