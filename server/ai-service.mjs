@@ -8,7 +8,7 @@ import { mediaCapability, mediaOutputPrompt, generateMediaOutput } from './ai-me
 import { readableMediaInput } from './ai-media-input.mjs';
 import { replyImageCandidates } from './ai-reply-image-context.mjs';
 import { buildAttributionContext, attributionContextPrompt } from './ai-attribution-context.mjs';
-import { learnStyleTendency, planStyleTendency, commitStyleTendencyRound } from './ai-style-tendency.mjs';
+import { learnStyleTendency, planStyleTendency, commitStyleTendencyRound, styleTendencyContextFromMessages } from './ai-style-tendency.mjs';
 import { learningEnabled, learningEpoch, learningCurrent, learningRules, sensitiveMemory, deduplicateLearnedFacts, explicitFactTime } from './ai-learning-policy.mjs';
 import { replyFixedRules } from './ai-reply-prompt.mjs';
 import { timingDefaults, timingValue, effectiveTiming, mergeDueAt } from './ai-timing.mjs';
@@ -3431,7 +3431,7 @@ export class AIAssistant {
       style: this.generationStyle(profile, strategy, 'reply'), memory: profile.memory,
       information: this.data.personalInformation?.[this.data.account], rules: [replyFixedRules, replySafetyPrompt, naturalAttributionPrompt] };
   }
-  prepareExpressionTendency(profile, messages, snapshot, strategy, { followUp = false } = {}) {
+  prepareExpressionTendency(profile, messages, snapshot, strategy, { followUp = false, pendingMessages = [] } = {}) {
     const key = this.preparedReplyKey(profile, strategy);
     const previous = profile.styleTendencyPending;
     if (previous?.context === snapshot.revision && previous.key === key && previous.followUp === followUp
@@ -3457,7 +3457,7 @@ export class AIAssistant {
       Number.isSafeInteger(state.roundHighWatermark) ? state.roundHighWatermark : 0,
       ...Object.keys(state.plans).map(Number).filter(Number.isSafeInteger));
     const styleRoundId = highest + 1;
-    const planned = planStyleTendency({ state, account: profile.account, contact: profile.contact, styleRoundId, now: this.now() });
+    const planned = planStyleTendency({ state, account: profile.account, contact: profile.contact, styleRoundId, context: styleTendencyContextFromMessages(pendingMessages), now: this.now() });
     profile.styleRoundSequence = styleRoundId;
     profile.styleTendency = planned.state;
     profile.styleTendencyPending = { context: snapshot.revision, key, followUp, styleRoundId, policyFingerprint: preparedReplyPolicyFingerprint };
@@ -3746,7 +3746,7 @@ export class AIAssistant {
     const requiredGroupReply = mode === 'reply' && profile.kind === 'group' && trigger === 'atMe';
     const mustReply = mode === 'reply' && (requiredGroupReply || profile.kind !== 'group' && ((!followUp && !this.replyOptions(profile).judgeReply) || explicitAsk));
     const groupTriggerInstruction = requiredGroupReply ? `本轮已验证的${trigger === 'atMe' ? '@我' : '@所有人'}应回复可读取的来信；无法识别的图片或语音直接略过，不要求对方重发或转文字。` : explicitAsk && profile.kind !== 'group' ? '本轮来信包含明确问题，应针对可读取的文字回复；无法识别的图片或语音直接略过，不要求对方重发或转文字。' : '';
-    const tendencyPlan = mode === 'reply' ? this.prepareExpressionTendency(profile, modelMessages, snapshot, strategy, { followUp }) : null;
+    const tendencyPlan = mode === 'reply' ? this.prepareExpressionTendency(profile, modelMessages, snapshot, strategy, { followUp, pendingMessages }) : null;
     const expressionTendency = tendencyPlan ? { instruction: tendencyPlan.instruction,
       traits: Object.fromEntries(Object.entries(tendencyPlan.traits).map(([name, trait]) => [name, { preference: trait.preference, confidence: trait.confidence, rate: trait.rate }])) } : undefined;
     let result, safetyCorrection = '';

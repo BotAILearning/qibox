@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   commitStyleTendencyRound, learnStyleTendency, planStyleTendency, scopeStyleTendencyKey,
+  styleTendencyContextFromMessages,
 } from '../server/ai-style-tendency.mjs';
 
 const account = 'a'.repeat(64), contact = 'b'.repeat(64), otherContact = 'c'.repeat(64);
@@ -138,6 +139,32 @@ test('ordinary questions do not imply rhetorical style; contextual restraint doe
   assert.match(serious.traits.laughter.guidance, /语境偏严肃/u);
   assert.equal(serious.traits.rhetorical.preference, 'sometimes');
   assert.match(serious.instruction, /不是配额或必须项/u);
+});
+
+test('current pending-message tone uses explicit signals only and keeps manual style priority', () => {
+  const serious = styleTendencyContextFromMessages([
+    { direction: 'self', text: '别把这条旧消息算成本轮语气' },
+    { direction: 'other', text: '这件事请认真说，别开玩笑。' },
+  ]);
+  assert.deepEqual(serious, { serious: true, sensitive: false, banter: false, relationshipConfirmed: false, questionNeeded: false });
+  const seriousPlan = planStyleTendency({ state: learned([sample('h1', '逗你呢哈哈'), sample('h2', '逗你呢哈哈'), sample('h3', '逗你呢哈哈')]), account, contact, styleRoundId: 20, context: serious }).plan;
+  assert.match(seriousPlan.traits.teasing.guidance, /语境偏严肃/u);
+  assert.equal(seriousPlan.manualStylePriority, true);
+
+  const playful = styleTendencyContextFromMessages([{ direction: 'other', text: '刚才逗你呢，开个玩笑。' }]);
+  assert.equal(playful.banter, true);
+  assert.equal(playful.serious, false);
+  assert.equal(playful.relationshipConfirmed, false);
+  assert.equal(playful.questionNeeded, false);
+
+  const neutral = styleTendencyContextFromMessages([
+    { direction: 'other', text: '小王说安排还没定，你今天有空吗？' },
+    { direction: 'self', text: '请认真点' },
+  ]);
+  assert.deepEqual(neutral, { serious: false, sensitive: false, banter: false, relationshipConfirmed: false, questionNeeded: false });
+  const privateTopic = styleTendencyContextFromMessages([{ direction: 'other', text: '这件事请保密，不要外传。' }]);
+  assert.equal(privateTopic.sensitive, true);
+  assert.equal(privateTopic.banter, false);
 });
 
 test('the same round reuses its original prepared plan even when new context or learning arrives', () => {

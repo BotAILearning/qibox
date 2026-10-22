@@ -51,3 +51,9 @@ test('only verified quote relations enter the compact attribution index', () => 
   assert.deepEqual(context.imageEvidence, []);
   assert.deepEqual(context.memoryEvidence, []);
 });
+
+test('image amounts and ratios do not establish elapsed time, period progress, or usage speed', () => {
+  assert.match(attributionContextPrompt, /比例、余额或消耗量本身不证明经过时长、统计周期进度或消耗速度/);
+  assert.match(attributionContextPrompt, /起止时间或比较基准/);
+  assert.match(attributionContextPrompt, /不补造月初、月末等时间背景/);
+});

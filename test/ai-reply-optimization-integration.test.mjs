@@ -47,3 +47,33 @@ test('confirmed multi-segment prefix is one style round and never trains a new h
   f.provider.next=async()=>({action:'send',segments:['合成答复第一部分。','合成答复第二部分。'],followUp:false});await f.receive('合成多段测试');
   assert.equal(f.bridge.sent.length,2);assert.equal(f.p().styleTendency.roundCount,1);assert.deepEqual(f.p().sentMessages.map(x=>x.styleRoundId),[1,1]);assert.equal(f.p().styleTendency.roundLedger['1'].operationIds.length,2);
 });
+test('production generation plans current explicit tone before the same model call and retains manual priority',async t=>{
+  const f=await fixture(t);
+  f.provider.next=async input=>{const plan=f.p().styleTendency.plans['1'];assert.equal(plan.context.serious,true);assert.equal(plan.context.banter,false);assert.equal(plan.manualStylePriority,true);assert.equal(input.style.summary,'用户明确设置：自然短句，保留原设置。');assert.match(input.expressionTendency.instruction,/先遵守用户明确保存的风格/u);return reply('好的，按你说的来。');};
+  await f.receive('请认真说这件事，别开玩笑');assert.equal(f.provider.calls.length,1);assert.equal(f.bridge.sent.length,1);
+});
+test('repeated execution-unsafe drafts exhaust the in-call safety retry, close that incoming once, then accept new mail after restart',async t=>{
+  const f=await fixture(t);let drafts=0;
+  const unsafeDraft=async()=>{drafts++;if(drafts===1)f.provider.next=unsafeDraft;return reply(drafts===1?'嗯，定了我再跟你说。':'好，定了我再告诉你');};
+  f.provider.next=unsafeDraft;
+  const incoming=f.push('other','行，没定就等你确认');
+  await f.a.tick();f.advance(301000);await f.a.tick();
+  assert.equal(f.provider.calls.length,2,'one generation uses the existing bounded safety retry');
+  assert.equal(f.bridge.sent.length,0);
+  assert.match(f.provider.calls[1].system,/上一份正文声称或承诺执行没有证据的操作/u);
+  const profile=f.p();
+  assert.equal(profile.handledIncomingId,incoming.id);
+  assert.equal(f.a.cursors.get(profile.id).pending,false);
+  assert.equal(f.a.data.events.filter(row=>row.code==='skip'&&row.messageId===incoming.id).length,1);
+
+  f.advance(301000);await f.a.tick();
+  assert.equal(f.provider.calls.length,2,'a later tick must not reopen the rejected incoming');
+  await f.restart();f.advance(301000);await f.a.tick();
+  assert.equal(f.provider.calls.length,2,'restart must preserve the handled incoming boundary');
+
+  f.provider.next=async()=>reply('新来信已收到。');
+  await f.receive('这是新的合成来信',301000);
+  assert.equal(f.provider.calls.length,3);
+  assert.equal(f.bridge.sent.length,1);
+  assert.equal(f.bridge.sent[0].text,'新来信已收到。');
+});
