@@ -16,6 +16,10 @@ export function readableMediaInput(input, { dropImages = false } = {}) {
     if (conversation.pendingBySender) conversation.pendingBySender = conversation.pendingBySender.map(row => ({ ...row, messageIds: (row.messageIds || []).filter(id => ids.has(id)) })).filter(row => row.messageIds.length);
   }
   return { ...input, messages, ...(conversation ? { conversation } : {}),
+    ...(input.attributionContext ? { attributionContext: { ...input.attributionContext,
+      imageEvidence: dropImages ? [] : (input.attributionContext.imageEvidence || []).filter(row => ids.has(row.messageId)),
+      quoteEvidence: (input.attributionContext.quoteEvidence || []).filter(row => ids.has(row.messageId)),
+    } } : {}),
     ...(input.groupState ? { groupState: { ...input.groupState, triggerMessages: (input.groupState.triggerMessages || []).filter(keep) } } : {}),
     ...(dropImages ? { images: [], onlyImages: false, capabilities: { ...input.capabilities, receiveImages: false } } : {}) };
 }

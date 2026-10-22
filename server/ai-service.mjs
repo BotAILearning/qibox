@@ -6,6 +6,9 @@ import { commitObjectConfiguration } from './ai-object-configuration.mjs';
 import { verifyAccountScope, accountRequestScope } from './ai-account-scope.mjs';
 import { mediaCapability, mediaOutputPrompt, generateMediaOutput } from './ai-media-output.mjs';
 import { readableMediaInput } from './ai-media-input.mjs';
+import { replyImageCandidates } from './ai-reply-image-context.mjs';
+import { buildAttributionContext, attributionContextPrompt } from './ai-attribution-context.mjs';
+import { learnStyleTendency, planStyleTendency, commitStyleTendencyRound } from './ai-style-tendency.mjs';
 import { learningEnabled, learningEpoch, learningCurrent, learningRules, sensitiveMemory, deduplicateLearnedFacts, explicitFactTime } from './ai-learning-policy.mjs';
 import { replyFixedRules } from './ai-reply-prompt.mjs';
 import { timingDefaults, timingValue, effectiveTiming, mergeDueAt } from './ai-timing.mjs';
@@ -266,7 +269,7 @@ export class AIAssistant {
         const attempt = interruptedAttempt; profile.sentMessages ||= [];
         const receipt = profile.sentMessages.find(row => row.operationId === attempt.operationId && row.confirmed !== false && row.deliveryConfidence !== 'unknown' && validKey(row.id));
         if (receipt) this.confirmDeliveryReceipt(profile, receipt);
-        else if (!profile.sentMessages.some(row => row.id === attempt.operationId || row.operationId === attempt.operationId)) profile.sentMessages.push({ id: attempt.operationId, operationId: attempt.operationId, at: attempt.at, source: 'reply', ...(Number.isSafeInteger(attempt.replyRoundVersion) ? { replyRoundVersion: attempt.replyRoundVersion } : {}), body: attempt.body, baseline: attempt.baseline, confirmed: false, deliveryConfidence: 'unknown' });
+        else if (!profile.sentMessages.some(row => row.id === attempt.operationId || row.operationId === attempt.operationId)) profile.sentMessages.push({ id: attempt.operationId, operationId: attempt.operationId, at: attempt.at, source: 'reply', ...(Number.isSafeInteger(attempt.replyRoundVersion) ? { replyRoundVersion: attempt.replyRoundVersion } : {}), body: attempt.body, ...(Number.isSafeInteger(attempt.styleRoundId) ? { styleRoundId: attempt.styleRoundId } : {}), baseline: attempt.baseline, confirmed: false, deliveryConfidence: 'unknown' });
         if (profile.kind !== 'group') { profile.handledIncomingId = attempt.baseline || profile.handledIncomingId; if (profile.replyCursor) profile.replyCursor.pending = false; }
       }
       if (profile.pauseReason === 'uncertain') {
@@ -1094,7 +1097,7 @@ export class AIAssistant {
     return { records: selected.map(row => this.publicSkipRecord(row)), page: { total: rows.length, hasMore, nextBefore: hasMore ? selected.at(-1).id : null, limit } };
   }
   publicProfile(profile) {
-    const { groupInbox, generatedIds, sentMessages, replyCursor, memoryHistory, preparedReply, ...view } = profile;
+    const { groupInbox, generatedIds, sentMessages, replyCursor, memoryHistory, preparedReply, styleTendency, styleTendencyPending, styleRoundSequence, ...view } = profile;
     return { ...view, replyLimitNeedsReview: !validReplyLimit(this.strategy(profile, 'reply').maxRounds), effectiveTiming: effectiveTiming(this.data.settings, profile), effectiveTakeover: effectiveTakeover(this.data.settings, profile), generatedIds, sentMessages: sentMessages?.map(({ body, ...row }) => row), memoryHistory: (memoryHistory || []).map(row => ({ id: row.id, at: row.at })), memory: readMemory(this.vault, profile), pendingMemory: this.pendingMemoryOf(profile), memoryMerge: profile.memoryMerge || null, pendingMemoryAt: profile.pendingMemoryAt || null, pendingMemorySource: profile.pendingMemorySource || null, memorySuggestion: profile.memorySuggestion ? readMemory(this.vault, profile, 'memorySuggestion') : null };
   }
   publicLiveState(contact) {
@@ -1249,7 +1252,7 @@ export class AIAssistant {
     const latestIncoming = messages.findLast(message => message.direction === 'other');
     const generate = (correction = '') => this.provider.complete(this.modelFor('proactive'), `${generationPrompt}${contextualStylePrompt}${speakerIdentityPrompt}${naturalChatPrompt}${longTermMemoryPrompt}${timelinePrompt}${reflectiveReplyPrompt}${conversationPrompt}${addressingPrompt}${personalContextPrompt}${presentTimePrompt}${identityPrompt(false)}${proactivePrompt(strategy)}${proactiveTimelinePrompt} 当前只能发送纯文字，不承诺发送媒体、文件或执行付款。本次是独立主动聊天任务，不自动续聊，不更新风格或记忆。${generationProtocol({ multiTurn, followUpAllowed: false, memoryUpdates: false, allowSkip: false })}${extra}${replySafetyPrompt}${naturalAttributionPrompt}${correction}${currentTimeAnchor(time)}`, {
       mode: 'proactive', continuation: false, multiTurn, allowSegments: true, followUp: false, followUpAllowed: false, updateStyle: false, judgeReply: false,
-      kind: profile.kind, replyPerspective: replyPerspective(profile), roleAnchor: replyRoleAnchor(profile), strategy, style, contextualStyle: contextualReplyStyle(messages), styleOwner: 'self', addressing: { styleScope: 'current-chat', currentStyle: style },
+      kind: profile.kind, replyPerspective: replyPerspective(profile), roleAnchor: replyRoleAnchor(profile), strategy, style, contextualStyle: contextualReplyStyle(messages, { kind: profile.kind }), styleOwner: 'self', addressing: { styleScope: 'current-chat', currentStyle: style },
       ...time,
       myInformation: selfContext(this, profile.kind, `${task.goal} ${latestIncoming?.text || ""}`), memory: selectMemoryForChat(readMemory(this.vault, profile), { query: `${task.goal}\n${latestIncoming?.text || ''}`, now: this.now() }), capabilities: { sendText: true, sendMedia: false, files: false, calls: false, executeExternalActions: false },
       conversation: { latestIncomingId: latestIncoming?.id || null, lastSelfId: recentSelfMessages.length ? snapshot.messages.filter(message => message.direction === 'self').at(-1)?.id || null : null,
@@ -2896,6 +2899,7 @@ export class AIAssistant {
     }
   }
   confirmDeliveryReceipt(profile, row) {
+    this.confirmExpressionTendency(profile, row);
     const operationId = row.operationId;
     for (const delivery of [profile.delivery, profile.proactiveDelivery]) if (operationId && delivery?.operationId === operationId && delivery.status !== 'sent') {
       delivery.status = 'sent';
@@ -3220,7 +3224,7 @@ export class AIAssistant {
   }
   automaticStyleSamples(profile, messages) {
     const known = new Set(profile.styleLearning?.evidence || []), since = this.data.settings.learningSince || 0;
-    return contextualReplyStyle(messages).samples.filter(row => known.has(row.id) || Number.isSafeInteger(row.timestamp) && row.timestamp * 1000 > since);
+    return contextualReplyStyle(messages, { kind: profile.kind }).samples.filter(row => known.has(row.id) || Number.isSafeInteger(row.timestamp) && row.timestamp * 1000 > since);
   }
   automaticStyleAllowed(profile, messages) {
     if (!learningEnabled(this) || profile.replyStyleSource === 'manual' || profile.styleId && profile.styleId !== 'learned' || profile.locked?.length) return false;
@@ -3427,6 +3431,46 @@ export class AIAssistant {
       style: this.generationStyle(profile, strategy, 'reply'), memory: profile.memory,
       information: this.data.personalInformation?.[this.data.account], rules: [replyFixedRules, replySafetyPrompt, naturalAttributionPrompt] };
   }
+  async prepareExpressionTendency(profile, messages, snapshot, strategy, { followUp = false } = {}) {
+    const key = this.preparedReplyKey(profile, strategy);
+    const previous = profile.styleTendencyPending;
+    if (previous?.context === snapshot.revision && previous.key === key && previous.followUp === followUp
+      && previous.policyFingerprint === preparedReplyPolicyFingerprint && Number.isSafeInteger(previous.styleRoundId)) {
+      const plan = profile.styleTendency?.plans?.[String(previous.styleRoundId)];
+      if (plan) return plan;
+    }
+    const usable = new Set(contextualReplyStyle(messages, { kind: profile.kind, maxSamples: 64, maxChars: 12000, maxPairs: 0 }).samples.map(row => row.id));
+    let block = null;
+    const samples = [];
+    for (const row of messages) {
+      if (row.direction !== 'self' || row.authorship !== 'human' || !usable.has(row.id)) { block = null; continue; }
+      block ||= row.id;
+      samples.push({ ...row, styleRoundId: `human:${block}` });
+    }
+    const recentSends = [];
+    for (const row of (profile.sentMessages || []).slice(-80)) {
+      if (row.source !== 'reply' || row.confirmed !== true || row.deliveryConfidence !== 'confirmed' || !Number.isSafeInteger(row.styleRoundId)) continue;
+      try { recentSends.push({ ...row, text: this.vault.open(row.body)?.text || '' }); } catch { /* Invalid old style evidence is ignored. */ }
+    }
+    const state = learnStyleTendency({ account: profile.account, contact: profile.contact, existing: profile.styleTendency, samples, recentSends, now: this.now() });
+    const highest = Math.max(Number.isSafeInteger(profile.styleRoundSequence) ? profile.styleRoundSequence : 0,
+      Number.isSafeInteger(state.roundHighWatermark) ? state.roundHighWatermark : 0,
+      ...Object.keys(state.plans).map(Number).filter(Number.isSafeInteger));
+    const styleRoundId = highest + 1;
+    const planned = planStyleTendency({ state, account: profile.account, contact: profile.contact, styleRoundId, now: this.now() });
+    profile.styleRoundSequence = styleRoundId;
+    profile.styleTendency = planned.state;
+    profile.styleTendencyPending = { context: snapshot.revision, key, followUp, styleRoundId, policyFingerprint: preparedReplyPolicyFingerprint };
+    // Persist the plan before any request. A failed request or definite-not-sent
+    // retry for this same context cannot silently select a different tendency.
+    await this.save();
+    return planned.plan;
+  }
+  confirmExpressionTendency(profile, row) {
+    if (row.source !== 'reply' || row.confirmed !== true || row.deliveryConfidence !== 'confirmed' || !Number.isSafeInteger(row.styleRoundId)) return;
+    profile.styleTendency = commitStyleTendencyRound(profile.styleTendency, { account: profile.account, contact: profile.contact,
+      styleRoundId: row.styleRoundId, operationId: row.operationId, status: 'confirmed', at: row.at });
+  }
   preparedReplyKey(profile, strategy) {
     return digest(JSON.stringify(canonicalKeyValue(this.preparedReplyKeyMaterial(profile, strategy))));
   }
@@ -3474,7 +3518,7 @@ export class AIAssistant {
       signal = AbortSignal.any([signal, AbortSignal.timeout(Math.max(1, retryStartedAt + preparedReplyRetryMs - this.now()))]);
     }
     const sendStartedAt = this.now();
-    const outcome = await this.deliver(profile, snapshot, mode, revision, signal, item, segments, strategy, source, skipRate, groupBatch, plan.identityAsked);
+    const outcome = await this.deliver(profile, snapshot, mode, revision, signal, item, segments, strategy, source, skipRate, groupBatch, plan.identityAsked, plan.styleRoundId);
     if (profile.preparedReply && (outcome !== 'pending' || profile.preparedReply.state !== 'retry')) delete profile.preparedReply;
     if (profile.delivery?.status === 'sent') {
       const receivedAt = mode === 'reply' ? snapshot.messages.findLast(message => message.direction === 'other')?.timestamp * 1000 : null;
@@ -3630,10 +3674,14 @@ export class AIAssistant {
     // Historical image placeholders are not visible pictures in this request.
     // Keep that explicit when a later text refers back to an unavailable image.
     for (const message of modelMessages) if (message.type === 'image') message.unresolved = true;
-    for (const message of pendingMessages.filter(m => m.type === 'image').slice(0,3)) {
+    for (const message of replyImageCandidates(modelMessages, pendingMessages)) {
       try {
         const image = await this.bridge.readImage?.({account:this.data.account,contact:profile.contact,messageId:message.id,signal});
-        if (image) { images.push(image); delete message.unresolved; if (image.thumbnail) message.imageQuality = 'thumbnail'; }
+        if (image && image.messageId === message.id) {
+          images.push(image); delete message.unresolved;
+          if (image.thumbnail) message.imageQuality = 'thumbnail';
+          if (!conversation.pendingIncomingIds.includes(message.id)) message.imageContext = 'recent-or-verified-reference';
+        }
       } catch(error) { if (signal.aborted || error.code === 'ai_account_changed') throw error; message.unresolved = true; }
     }
     if (!this.canDeliver(profile, mode, revision, signal)) return;
@@ -3666,6 +3714,8 @@ export class AIAssistant {
     const pendingText = mode === 'proactive' ? `${strategy.purpose}\n${strategy.content}` : pendingMessages.map(x => x.text).join('\n');
     const replyFacts = selfContext(this, profile.kind, pendingText);
     const replyMemory = selectMemoryForChat(readMemory(this.vault, profile), {query:pendingText || strategy.replyGoal || strategy.purpose || '',now:this.now()});
+    const { quoteEvidence, imageEvidence, memoryEvidence } = buildAttributionContext({ messages: modelMessages, images, memory: replyMemory });
+    const attributionContext = { quoteEvidence, imageEvidence, memoryEvidence };
     if (mode === 'reply') {
       try { await this.summarizePendingReplies(profile, modelMessages, signal); }
       catch (error) {
@@ -3696,6 +3746,9 @@ export class AIAssistant {
     const requiredGroupReply = mode === 'reply' && profile.kind === 'group' && trigger === 'atMe';
     const mustReply = mode === 'reply' && (requiredGroupReply || profile.kind !== 'group' && ((!followUp && !this.replyOptions(profile).judgeReply) || explicitAsk));
     const groupTriggerInstruction = requiredGroupReply ? `本轮已验证的${trigger === 'atMe' ? '@我' : '@所有人'}应回复可读取的来信；无法识别的图片或语音直接略过，不要求对方重发或转文字。` : explicitAsk && profile.kind !== 'group' ? '本轮来信包含明确问题，应针对可读取的文字回复；无法识别的图片或语音直接略过，不要求对方重发或转文字。' : '';
+    const tendencyPlan = mode === 'reply' ? await this.prepareExpressionTendency(profile, modelMessages, snapshot, strategy, { followUp }) : null;
+    const expressionTendency = tendencyPlan ? { instruction: tendencyPlan.instruction,
+      traits: Object.fromEntries(Object.entries(tendencyPlan.traits).map(([name, trait]) => [name, { preference: trait.preference, confidence: trait.confidence, rate: trait.rate }])) } : undefined;
     let result, safetyCorrection = '';
     const identityAsked = mode === 'reply' && asksIdentity(pendingMessages);
     const allowIdentity = identityAsked && this.data.settings.acknowledgeAI;
@@ -3706,8 +3759,8 @@ export class AIAssistant {
         const sendImages = this.replyOptions(profile).sendImages && mediaReady, sendAudio = this.replyOptions(profile).sendAudio && mediaReady && this.bridge.supportsNativeVoiceOutput === true;
         result = onlyImages && !images.length && profile.kind !== 'group' ? { action: 'skip', mediaSkipped: true } : await this.provider.complete(
           this.modelFor('chat'),
-          `${replyFixedRules}${learningEnabled(this) ? learningRules : ' 自动学习已关闭，不提取或返回本人资料、风格更新和聊天记忆更新。'}${contextualStylePrompt}${speakerIdentityPrompt}${personalContextPrompt}${presentTimePrompt}${learningEnabled(this) ? chatMemoryPrompt : ''}${profile.kind === 'group' ? groupMemoryInstruction : ' 单聊中，对方姓名写入 name；只有用户确实直接这样称呼对方且对象明确时，才把称呼写入 addressing。'}${identityPrompt(allowIdentity)}${conversationPrompt}${replySummaryContext} ${mediaOutputPrompt} 只能发送文字和capabilities明确允许的生成图片或微信原生语音，不能读取或下载任意文件，不能拨打或接听电话，仅能理解实际附带的图片；未附带的图片与未转写的语音直接略过，不回复这些内容，不要求重发或转文字，不猜测内容；只回应本轮可读取的文字、微信转写或实际附带的图片。${groupTriggerInstruction}${groupBatch?.sender ? ` 本轮只回复成员ID ${groupBatch.sender} 对应的消息 ${groupBatch.ids.join(',')}，其余成员的消息仅作背景。需要称呼时仅使用members中该ID对应的真实称呼，不编造姓名。` : ''}${profile.groupContextWait?.trigger === 'atMe' ? ' 上轮已等待补充信息，本次必须回复；信息仍不足时用一句简短问题澄清，不能再次wait。' : ''}${currentTask}${currentStyle}${profile.kind === 'group' ? groupPrompt(trigger, allowSegments, profile.groupOptions?.realtimeMode) : ''}${generationProtocol({ multiTurn, allowSegments, group: profile.kind === 'group', followUpAllowed: profile.kind !== 'group' && !followUp && multiTurn, updateStyle: this.automaticStyleAllowed(profile, modelMessages), memoryUpdates: learningEnabled(this), allowSkip: !mustReply, allowStop: true })}${reflectiveReplyPrompt}${currentTimeAnchor(time)}${mode === 'reply' && !followUp ? ' 本轮只回应conversation.pendingIncomingMessages列出的来信；其中excerpt=true时按ID查阅messages全文。messages中pending=false的旧问题和已发回复只作背景，不能再补答。' : ''}${replySafetyPrompt}${naturalAttributionPrompt}${safetyCorrection}`,
-          { identityPolicy: { asked: identityAsked, allowDisclosure: !!allowIdentity }, images: images, onlyImages: onlyImages, capabilityConcern: reason, mode, continuation, multiTurn, allowSegments, followUp, followUpAllowed: profile.kind !== 'group' && !followUp && multiTurn, kind: profile.kind, replyPerspective: replyPerspective(profile), roleAnchor: replyRoleAnchor(profile), conversation, addressing, memory: replyMemory, ...time, myInformation: replyFacts, groupState, capabilities: { sendText: true, wechatVoiceText: true, files: false, calls: false, executeExternalActions: false, sendImages, sendAudio, receiveImages: images.length > 0, sendMedia: sendImages || sendAudio }, strategy, style, contextualStyle: contextualReplyStyle(modelMessages), styleOwner: 'self', ...(learningEnabled(this) ? {styleLearningMessageIds: this.automaticStyleSamples(profile, modelMessages).map(row=>row.id)} : {}), judgeReply: profile.kind === 'group' ? trigger !== 'atMe' : followUp || this.replyOptions(profile).judgeReply, updateStyle: this.automaticStyleAllowed(profile, modelMessages), messages: annotateChatTimes(modelMessages, this.now(), time.timezone).map(message => ({ ...withSpeaker(message, profile), pending: conversation.pendingIncomingIds.includes(message.id), aiGenerated: message.aiGenerated === true || (profile.generatedIds || []).includes(message.id) })) }, signal, { validate: value => validateCurrentTimeReply(validateReplyResult(value, { multiTurn, allowSegments, group: profile.kind === 'group' }), time) }
+          `${replyFixedRules}${attributionContextPrompt}${learningEnabled(this) ? learningRules : ' 自动学习已关闭，不提取或返回本人资料、风格更新和聊天记忆更新。'}${contextualStylePrompt}${speakerIdentityPrompt}${personalContextPrompt}${presentTimePrompt}${learningEnabled(this) ? chatMemoryPrompt : ''}${profile.kind === 'group' ? groupMemoryInstruction : ' 单聊中，对方姓名写入 name；只有用户确实直接这样称呼对方且对象明确时，才把称呼写入 addressing。'}${identityPrompt(allowIdentity)}${conversationPrompt}${replySummaryContext} ${mediaOutputPrompt} 只能发送文字和capabilities明确允许的生成图片或微信原生语音，不能读取或下载任意文件，不能拨打或接听电话，仅能理解实际附带的图片；未附带的图片与未转写的语音直接略过，不回复这些内容，不要求重发或转文字，不猜测内容；只回应本轮可读取的文字、微信转写或实际附带的图片。${groupTriggerInstruction}${groupBatch?.sender ? ` 本轮只回复成员ID ${groupBatch.sender} 对应的消息 ${groupBatch.ids.join(',')}，其余成员的消息仅作背景。需要称呼时仅使用members中该ID对应的真实称呼，不编造姓名。` : ''}${profile.groupContextWait?.trigger === 'atMe' ? ' 上轮已等待补充信息，本次必须回复；信息仍不足时用一句简短问题澄清，不能再次wait。' : ''}${currentTask}${currentStyle}${profile.kind === 'group' ? groupPrompt(trigger, allowSegments, profile.groupOptions?.realtimeMode) : ''}${generationProtocol({ multiTurn, allowSegments, group: profile.kind === 'group', followUpAllowed: profile.kind !== 'group' && !followUp && multiTurn, updateStyle: this.automaticStyleAllowed(profile, modelMessages), memoryUpdates: learningEnabled(this), allowSkip: !mustReply, allowStop: true })}${reflectiveReplyPrompt}${currentTimeAnchor(time)}${mode === 'reply' && !followUp ? ' 本轮只回应conversation.pendingIncomingMessages列出的来信；其中excerpt=true时按ID查阅messages全文。messages中pending=false的旧问题和已发回复只作背景，不能再补答。' : ''}${replySafetyPrompt}${naturalAttributionPrompt}${safetyCorrection}`,
+          { identityPolicy: { asked: identityAsked, allowDisclosure: !!allowIdentity }, images: images, onlyImages: onlyImages, capabilityConcern: reason, mode, continuation, multiTurn, allowSegments, followUp, followUpAllowed: profile.kind !== 'group' && !followUp && multiTurn, kind: profile.kind, replyPerspective: replyPerspective(profile), roleAnchor: replyRoleAnchor(profile), conversation, addressing, attributionContext, expressionTendency, memory: replyMemory, ...time, myInformation: replyFacts, groupState, capabilities: { sendText: true, wechatVoiceText: true, files: false, calls: false, executeExternalActions: false, sendImages, sendAudio, receiveImages: images.length > 0, sendMedia: sendImages || sendAudio }, strategy, style, contextualStyle: contextualReplyStyle(modelMessages, { kind: profile.kind }), styleOwner: 'self', ...(learningEnabled(this) ? {styleLearningMessageIds: this.automaticStyleSamples(profile, modelMessages).map(row=>row.id)} : {}), judgeReply: profile.kind === 'group' ? trigger !== 'atMe' : followUp || this.replyOptions(profile).judgeReply, updateStyle: this.automaticStyleAllowed(profile, modelMessages), messages: annotateChatTimes(modelMessages, this.now(), time.timezone).map(message => ({ ...withSpeaker(message, profile), pending: conversation.pendingIncomingIds.includes(message.id), aiGenerated: message.aiGenerated === true || (profile.generatedIds || []).includes(message.id) })) }, signal, { validate: value => validateCurrentTimeReply(validateReplyResult(value, { multiTurn, allowSegments, group: profile.kind === 'group' }), time) }
         );
         // An unrelated group trigger can be saved while this result is in
         // flight. Keep it behind the object fence instead of discarding it;
@@ -3880,7 +3933,7 @@ export class AIAssistant {
           catch (error) { if (signal.aborted) return; this.notice = error instanceof AppError ? error.message : '媒体生成暂未完成，本轮保留文字回复'; this.event('media-fallback', profile.id, trigger || mode, this.notice); }
         }
       }
-      const plan = { segments, identityAsked, modelMs, multiTurn, followUp, wantsFollowUp: result.followUp === true };
+      const plan = { segments, identityAsked, modelMs, multiTurn, followUp, wantsFollowUp: result.followUp === true, ...(tendencyPlan ? { styleRoundId: tendencyPlan.styleRoundId } : {}) };
       if (mode === 'reply' && !followUp) {
         profile.preparedReply = { state: 'prepared', keyVersion: 3, policyFingerprint: preparedReplyPolicyFingerprint, createdAt: this.now(), latestIncomingId: fresh.messages.findLast(message => message.direction === 'other')?.id, context: fresh.revision, key: this.preparedReplyKey(profile, strategy), body: this.vault.seal(plan), ...(groupBatch ? { replyTo: groupBatch.ids } : {}) };
         await this.save();
@@ -3903,7 +3956,7 @@ export class AIAssistant {
     const active = mode === 'reply' ? this.data.settings.reply && this.replySelected(profile) || this.continuing(profile) : this.data.settings.proactive;
     return revision === this.revision && !signal.aborted && this.data.settings.enabled && this.modelReady() && strategyReady(this.strategy(profile, mode), mode) && active && this.selected(profile, mode) && !profile.paused && (!Number.isFinite(profile.stopUntil) || this.now() >= profile.stopUntil) && this.available && this.ready() && !this.manualHolds.size && this.now() >= (this.userBusyUntil || 0) && this.now() >= Math.max(this.sendBlockedUntil || 0, profile.sendRetryAt || 0);
   }
-  async deliver(profile, fresh, mode, revision, signal, item, segments, strategy, source = mode, skipRate = false, groupBatch = null, identityAsked = false) {
+  async deliver(profile, fresh, mode, revision, signal, item, segments, strategy, source = mode, skipRate = false, groupBatch = null, identityAsked = false, styleRoundId = null) {
     const assertSafe = texts => {
       const violation = replySafetyViolation(texts.filter(text => typeof text === 'string'), {
         allowIdentity: mode === 'reply' && identityAsked && this.data.settings.acknowledgeAI,
@@ -3962,7 +4015,7 @@ export class AIAssistant {
       if (item) { item.status = 'sending'; item.segmentsSent = sent; item.segmentsTotal = segments.length; }
       if (mode === 'reply' && !sent) this.replyStage(profile, 'sending');
       if (profile.preparedReply) profile.preparedReply.state = 'sending';
-      profile.delivery = { operationId, body: this.vault.seal({ text }), baseline: fresh.messages.at(-1)?.id, status: 'sending', at: this.now(), source: mode === 'reply' ? 'reply' : 'proactive', ...(mode === 'reply' ? { replyRoundVersion } : {}), segmentsSent: sent, segmentsTotal: segments.length, ...(groupBatch ? { replyTo: groupBatch.ids, recipient: groupBatch.sender } : {}) }; await this.save();
+      profile.delivery = { operationId, body: this.vault.seal({ text }), baseline: fresh.messages.at(-1)?.id, status: 'sending', at: this.now(), source: mode === 'reply' ? 'reply' : 'proactive', ...(mode === 'reply' ? { replyRoundVersion, ...(Number.isSafeInteger(styleRoundId) ? { styleRoundId } : {}) } : {}), segmentsSent: sent, segmentsTotal: segments.length, ...(groupBatch ? { replyTo: groupBatch.ids, recipient: groupBatch.sender } : {}) }; await this.save();
       if (!this.canDeliver(profile, mode, revision, signal) || mode === 'reply' && (profile.rounds || 0) >= this.strategy(profile, mode).maxRounds) {
         profile.delivery.status = sent ? 'sent' : 'cancelled'; profile.delivery.interrupted = sent > 0;
         if (item?.status === 'sending') item.status = sent ? 'done' : this.selected(profile, mode) ? 'pending' : 'skipped';
@@ -4022,7 +4075,7 @@ export class AIAssistant {
         if (mode === 'reply') this.replyStage(profile, delivery.status === 'stale' ? 'cancelled' : 'confirming', delivery.status === 'stale' ? '聊天有新消息，重新判断' : '发送结果待核实，不会重复发送');
         if (item) item.status = delivery.status === 'stale' ? sent ? 'done' : 'pending' : 'skipped';
         if (delivery.status !== 'stale') {
-          profile.sentMessages = [...(profile.sentMessages || []), { id: operationId, operationId, at: this.now(), body: this.vault.seal({ text }), source: mode === 'reply' ? 'reply' : 'proactive', ...(mode === 'reply' ? { replyRoundVersion } : {}), confirmed: false, deliveryConfidence: 'unknown', baseline: fresh.messages.at(-1)?.id, ...(mediaFile ? { media: { type: mediaFile.mediaType, name: mediaFile.name }, ...(delivery.voiceReceipt ? { voiceReceipt: delivery.voiceReceipt } : {}) } : {}), ...(source !== mode ? { trigger: source } : {}), ...(item?.taskId ? { taskId: item.taskId } : {}), ...(groupBatch ? { replyTo: groupBatch.ids, recipient: groupBatch.sender } : {}) }];
+          profile.sentMessages = [...(profile.sentMessages || []), { id: operationId, operationId, at: this.now(), body: this.vault.seal({ text }), source: mode === 'reply' ? 'reply' : 'proactive', ...(mode === 'reply' ? { replyRoundVersion, ...(Number.isSafeInteger(styleRoundId) ? { styleRoundId } : {}) } : {}), confirmed: false, deliveryConfidence: 'unknown', baseline: fresh.messages.at(-1)?.id, ...(mediaFile ? { media: { type: mediaFile.mediaType, name: mediaFile.name }, ...(delivery.voiceReceipt ? { voiceReceipt: delivery.voiceReceipt } : {}) } : {}), ...(source !== mode ? { trigger: source } : {}), ...(item?.taskId ? { taskId: item.taskId } : {}), ...(groupBatch ? { replyTo: groupBatch.ids, recipient: groupBatch.sender } : {}) }];
           // Unknown receipts remain audit-only; do not create pending chat rows
           // or a manual recovery gate.
         if (mode === 'reply') {
@@ -4044,7 +4097,8 @@ export class AIAssistant {
       if (groupReply && currentRound && (source === 'atMe' || source === 'atAll')) profile.mentionRounds = (profile.mentionRounds || 0) + 1;
       if (sent === 1 && currentRound) delete profile.manualWait;
       profile.generatedIds = [...(profile.generatedIds || []), delivery.messageId];
-      profile.sentMessages = [...(profile.sentMessages || []), { id: delivery.messageId, operationId, at: this.now(), body: this.vault.seal({ text }), source: mode === 'reply' ? 'reply' : 'proactive', ...(mode === 'reply' ? { replyRoundVersion } : {}), ...(mediaFile ? { media: { type: mediaFile.mediaType, name: mediaFile.name }, ...(delivery.voiceReceipt ? { voiceReceipt: delivery.voiceReceipt } : {}) } : {}), ...(source !== mode ? { trigger: source } : {}), ...(item?.taskId ? { taskId: item.taskId } : {}), ...(groupBatch ? { replyTo: groupBatch.ids, recipient: groupBatch.sender } : {}) }];
+      profile.sentMessages = [...(profile.sentMessages || []), { id: delivery.messageId, operationId, confirmed: true, deliveryConfidence: 'confirmed', at: this.now(), body: this.vault.seal({ text }), source: mode === 'reply' ? 'reply' : 'proactive', ...(mode === 'reply' ? { replyRoundVersion, ...(Number.isSafeInteger(styleRoundId) ? { styleRoundId } : {}) } : {}), ...(mediaFile ? { media: { type: mediaFile.mediaType, name: mediaFile.name }, ...(delivery.voiceReceipt ? { voiceReceipt: delivery.voiceReceipt } : {}) } : {}), ...(source !== mode ? { trigger: source } : {}), ...(item?.taskId ? { taskId: item.taskId } : {}), ...(groupBatch ? { replyTo: groupBatch.ids, recipient: groupBatch.sender } : {}) }];
+      this.confirmExpressionTendency(profile, profile.sentMessages.at(-1));
       profile.delivery.status = 'sent'; profile.delivery.segmentsSent = sent;
       delete profile.sendRetryAt;
       const retryError = this.data.events.find(entry => entry.code === 'error' && entry.account === this.data.account && entry.target === profile.id && entry.source === mode);

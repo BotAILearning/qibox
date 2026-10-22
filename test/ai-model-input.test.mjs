@@ -51,3 +51,10 @@ test('automatic style sample references match the compacted transcript', () => {
     assert.deepEqual(wire.decode(wire.input),input);
   }
 });
+
+test('human interaction examples retain paired bodies and the same request-local IDs as the original transcript',()=>{
+  const incoming={id:'b'.repeat(64),direction:'other',text:'这是你的原话吗？'},reply={id:'c'.repeat(64),direction:'self',authorship:'human',text:'对，我说的。'};
+  const input={mode:'reply',messages:[incoming,reply],contextualStyle:{samples:[reply],pairedExamples:[{relation:'adjacent-context',incoming:{id:incoming.id,text:incoming.text},reply:{id:reply.id,text:reply.text}}]}};
+  const wire=encodeModelRequest('当前聊天',compactModelInput(input)),pair=wire.input.contextualStyle.pairedExamples[0];
+  assert.equal(pair.incoming.id,wire.input.messages[0].id);assert.equal(pair.reply.id,wire.input.messages[1].id);assert.equal(pair.incoming.text,incoming.text);assert.equal(pair.reply.text,reply.text);assert.deepEqual(wire.decode(wire.input),input);
+});
