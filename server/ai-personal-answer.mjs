@@ -281,7 +281,8 @@ export function explicitTurnRepair(texts, { pendingMessages = [], messages = [],
   // Only a complete actor-only correction can make the unchanged last human
   // question redundant. Remove that whole question, never a quoted/conditional
   // clause or part of a compound question, and keep a nonempty existing reply.
-  if (/^(?:你(?:记错|搞错|弄错|理解错|记混)了[，,])?[^，,。！？!?；;\n]{1,24}的是我(?:自己)?[，,]不是你(?:自己)?[。！!]?$/u.test(incoming)
+  const actorCorrection = /^(?:你(?:记错|搞错|弄错|理解错|记混)了[，,])?([^，,。！？!?；;\n]{1,24})的是我(?:自己)?[，,]不是你(?:自己)?[。！!]?$/u.exec(incoming);
+  if (actorCorrection
       && !/说|问|转述|引用|并非|不代表/.test(incoming) && !hypothetical(incoming)) {
     const last = messages.findLast(message => message.direction === 'self' && message.authorship === 'human' && !message.aiGenerated
       && Number.isSafeInteger(message.timestamp) && message.timestamp * 1000 <= now);
@@ -293,6 +294,21 @@ export function explicitTurnRepair(texts, { pendingMessages = [], messages = [],
       for (const match of repeated.reverse()) repaired = repaired.slice(0, match.index) + repaired.slice(match.index + match[0].length);
       repaired = repaired.trim();
       if (/[\p{L}\p{N}]/u.test(repaired) && repaired !== reply) return repaired;
+      // A comma can attach a complete repeated tail question to a short
+      // acknowledgement. Keep only a literal actor confirmation or a bare
+      // acknowledgement; never cut a compound question or new information.
+      if (!/[，,]/.test(question) && /^[^。！？!?；;\n]+[？?]$/u.test(reply)
+          && !/[“”"'「」『』]/.test(incoming + reply) && !hypothetical(reply)) {
+        const comma = Math.max(reply.lastIndexOf('，'), reply.lastIndexOf(','));
+        const prefix = reply.slice(0, comma).trim(), tail = reply.slice(comma + 1).trim();
+        if (comma > 0 && questionKey(tail) === questionKey(question)) {
+          const key = normalizedClaim(prefix);
+          const acknowledgement = /^(?:(?:哦|啊|嗯)?对+|明白(?:了)?|知道(?:了)?|好(?:的)?|收到|嗯|哦|啊)/u.exec(key);
+          const rest = acknowledgement ? key.slice(acknowledgement[0].length) : key;
+          const actor = normalizedClaim(actorCorrection[1]);
+          if ((acknowledgement && !rest) || rest === `是你${actor}` || rest === `是你自己${actor}`) return prefix;
+        }
+      }
     }
   }
   return '';
