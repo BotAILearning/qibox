@@ -181,12 +181,12 @@ class UserInstances {
     }
     const [{ WechatScheduler, scheduleWindow }, { AIAssistant }, { DataChatBridge }] = await Promise.all([import('./scheduler.mjs'), import('./ai-service.mjs'), import('./ai-data.mjs')]);
     const scheduler = new WechatScheduler({ dataRoot, runtime,
-      ready: () => !this.owner.closing && !meta.removedAt && !instance.busy && this.consent.accepted && !!this.library.installed() && !this.library.uninstalling && !this.library.updating && !this.library.updateHolds?.has(dataRoot),
+      ready: () => !this.owner.closing && !meta.removedAt && !instance.removing && !instance.busy && this.consent.accepted && !!this.library.installed() && !this.library.uninstalling && !this.library.updating && !this.library.updateHolds?.has(dataRoot),
       start: () => instance.exclusive(async () => { await instance.preparing; await this.owner.start(runtime); }),
       stop: () => instance.exclusive(() => runtime.stop()) });
     await scheduler.init(); instance.scheduler = scheduler;
     instance.ai = new AIAssistant({ dataRoot, bridge: runtime.aiBridge || new DataChatBridge(runtime), provider: this.aiProvider,
-      ready: () => !this.owner.closing && !meta.removedAt && this.consent.accepted && runtime.status === 'running' && !this.library.updating && !this.library.updateHolds?.has(dataRoot) });
+      ready: () => !this.owner.closing && !meta.removedAt && !instance.removing && this.consent.accepted && runtime.status === 'running' && !this.library.updating && !this.library.updateHolds?.has(dataRoot) });
     runtime.manualInput = event => instance.ai.manualInput(event);
     try { await instance.ai.init(); instance.ai.begin(); }
     catch (error) {
@@ -216,11 +216,12 @@ class UserInstances {
   }
   get(id) {
     if (!validId(id) || !this.instances.has(id) || this.instances.get(id).meta.removedAt) throw new AppError('应用不存在', 404);
+    if (this.instances.get(id).removing) throw new AppError('应用正在移除，请稍后重试', 409, 'INSTANCE_REMOVING');
     return this.instances.get(id);
   }
   list() {
     return { instances: [...this.instances.values()].filter(x => !x.meta.removedAt).map(x => ({ ...x.meta, runtime: { ...x.runtime.publicState(), manualRecovery: false }, schedule: x.scheduler.publicState(), busy: !!x.busy })),
-      retained: this.catalog.filter(x => x.removedAt && (this.appCatalog || APP_CATALOG).some(app => app.id === x.appId)).map(x => ({ id: x.id, appId: x.appId, name: x.name, removedAt: x.removedAt })) };
+      retained: this.catalog.filter(x => x.removedAt && (this.appCatalog || APP_CATALOG).some(app => app.id === x.appId)).map(x => ({ id: x.id, appId: x.appId, name: x.name, removedAt: x.removedAt, ...(x.dataDeletionStartedAt ? { dataDeletionPending: true } : {}) })) };
   }
   requireUniqueName(name, exceptId) {
     // Retained data reserves its name too. Call inside mutate so concurrent
@@ -256,7 +257,8 @@ class UserInstances {
     await item.scheduler.interact();
     return item.exclusive(async () => { this.get(id); this.requireConsent(); await item.preparing; await this.owner.start(item.runtime); return item.runtime.publicState(); });
   }
-  async stop(id) { const item = this.get(id); await item.ai.suspend(); await item.scheduler.pause(); return item.exclusive(async () => { await item.loginRecovery; await item.runtime.stop(); return item.runtime.publicState(); }); }
+  async stopItem(item) { await item.ai.suspend(); await item.scheduler.pause(); return item.exclusive(async () => { await item.loginRecovery; await item.runtime.stop(); return item.runtime.publicState(); }); }
+  async stop(id) { return this.stopItem(this.get(id)); }
   async schedule(id, value) {
     this.requireConsent(); this.requireInstalled();
     return this.mutate(async () => {
@@ -270,31 +272,58 @@ class UserInstances {
   }
   async remove(id, { deleteData = false, confirmName } = {}) {
     if (typeof deleteData !== 'boolean') throw new AppError('请选择是否保留数据');
-    return this.mutate(async () => {
+    return this.mutate(() => this.removeEntry(id, { deleteData, confirmName }));
+  }
+  // Caller holds mutate. Bulk uninstall uses the same per-instance durable
+  // intent without nesting the queue or staging deletion of untouched entries.
+  async removeEntry(id, { deleteData, confirmName }) {
       const meta = this.catalog.find(x => x.id === id); if (!meta || !validId(id)) throw new AppError('应用不存在', 404);
       if (meta.appId === 'wechat' && this.library.updating) throw new AppError('正在更新微信，请稍候', 409);
       if (deleteData && confirmName !== `确认删除${meta.name}`) throw new AppError(`请输入：确认删除${meta.name}`);
-      if (!meta.removedAt) {
-        const item = this.get(id); await this.stop(id); await item.ai.close(); await item.scheduler.close(); await item.tail;
-        await item.runtime.remove?.();
-      }
-      const next = this.catalog.map(x => x.id === id ? { ...x, removedAt: new Date().toISOString() } : x);
-      await atomicJson(this.file, next); this.catalog = next;
-      if (this.instances.has(id)) { this.instances.get(id).meta.removedAt = next.find(x => x.id === id).removedAt; this.instances.delete(id); }
-      if (deleteData) {
-        await rm(within(this.root, path.join(this.root, 'instances', id)), { recursive: true, force: true });
-        const remaining = this.catalog.filter(x => x.id !== id); await atomicJson(this.file, remaining); this.catalog = remaining;
-      }
-      return { removed: true, retained: !deleteData };
-    });
+      if (meta.dataDeletionStartedAt && !deleteData) throw new AppError('此实例的数据清理尚未完成，请确认后继续删除数据', 409, 'INSTANCE_DATA_DELETION_PENDING');
+      const item = this.instances.get(id); let committed = !!meta.removedAt, eraseStarted = false, erased = false;
+      if (item) item.removing = true;
+      try {
+        // Stop is reversible through the ordinary start controls. Do not
+        // destroy AI/scheduler objects until their removal is durable.
+        if (item && !meta.removedAt) await this.stopItem(item);
+        const next = this.catalog.map(x => x.id === id ? { ...x, removedAt: x.removedAt || new Date().toISOString(),
+          ...(deleteData ? { dataDeletionStartedAt: x.dataDeletionStartedAt || new Date().toISOString() } : {}) } : x);
+        await atomicJson(this.file, next); this.catalog = next; committed = true;
+        if (item) { Object.assign(item.meta, next.find(x => x.id === id)); await this.finishRemoval(item); }
+        if (deleteData) {
+          eraseStarted = true;
+          await rm(within(this.root, path.join(this.root, 'instances', id)), { recursive: true, force: true }); erased = true;
+          const remaining = this.catalog.filter(x => x.id !== id); await atomicJson(this.file, remaining); this.catalog = remaining;
+        }
+        return { removed: true, retained: !deleteData };
+      } catch (error) {
+        if (!committed) throw error;
+        const message = eraseStarted
+          ? erased ? '应用及其数据已删除，但目录收尾保存失败；请重试完成清理' : '应用已移除，但数据清理未完成，部分数据可能已删除；请重试清理'
+          : deleteData ? '应用已移除，但关闭资源未完成，尚未开始删除数据；请重试清理' : '应用已移除且数据已保留，但关闭资源未完成；请重试或恢复使用';
+        throw new AppError(message, 500, eraseStarted ? 'INSTANCE_DATA_CLEANUP_INCOMPLETE' : 'INSTANCE_REMOVE_INCOMPLETE');
+      } finally { if (item) item.removing = false; }
+  }
+  async finishRemoval(item) {
+    const closed = await Promise.allSettled([() => item.ai.close(), () => item.scheduler.close(), () => item.tail].map(action => Promise.resolve().then(action)));
+    const failure = closed.find(result => result.status === 'rejected'); if (failure) throw failure.reason;
+    await item.runtime.remove?.();
+    this.instances.delete(item.meta.id);
   }
   async restore(id, name) {
     this.requireConsent();
     return this.mutate(async () => {
       const old = this.catalog.find(x => x.id === id && x.removedAt); if (!old) throw new AppError('未找到保留的数据', 404);
+      if (old.dataDeletionStartedAt) throw new AppError('此实例已开始删除数据，不能作为完整保留数据恢复；请继续清理', 409, 'INSTANCE_DATA_DELETION_PENDING');
       this.requireInstalled(old.appId);
       name = instanceName(name === undefined ? old.name : name);
       this.requireUniqueName(name, id);
+      const unfinished = this.instances.get(id);
+      if (unfinished) {
+        try { await this.finishRemoval(unfinished); }
+        catch { throw new AppError('原实例资源仍未关闭，请稍后重试恢复', 409, 'INSTANCE_REMOVE_INCOMPLETE'); }
+      }
       const { removedAt, ...meta } = old;
       meta.name = name;
       const item = await this.load(meta);
@@ -307,16 +336,10 @@ class UserInstances {
   }
   async clearData() {
     return this.mutate(async () => {
-      for (const item of this.instances.values()) if (item.meta.appId === 'wechat') {
-        await this.stop(item.meta.id); await item.ai.close(); await item.scheduler.close(); await item.tail;
-      }
       // An uninstall may remove shared executables, but this data operation is
       // restricted to the requesting user's own homes, including retained ones.
-      for (const meta of this.catalog.filter(x => x.appId === 'wechat')) {
-        await rm(within(this.root, path.join(this.root, 'instances', meta.id)), { recursive: true, force: true });
-        this.instances.delete(meta.id);
-      }
-      this.catalog = this.catalog.filter(x => x.appId !== 'wechat'); await atomicJson(this.file, this.catalog);
+      for (const meta of [...this.catalog.filter(x => x.appId === 'wechat')])
+        await this.removeEntry(meta.id, { deleteData: true, confirmName: `确认删除${meta.name}` });
       return { cleared: true };
     });
   }

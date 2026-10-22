@@ -577,7 +577,7 @@ function removeInstance(item, retained = false) {
   });
 }
 function retainedDialog(adding = false) {
-  const entries = retainedFor(marketAppId).map(x => `<div class="retained-row"><strong>${esc(x.name)}</strong><div><button type="button" class="quiet" data-restore="${x.id}" ${definition(marketAppId).library.installed && !definition(marketAppId).library.job?.status?.includes('uninstall') ? '' : 'disabled'}>恢复使用</button><button type="button" class="quiet danger-link" data-purge="${x.id}">删除数据</button></div></div>`).join('');
+  const entries = retainedFor(marketAppId).map(x => `<div class="retained-row"><strong>${esc(x.name)}${x.dataDeletionPending ? `<span class="retained-cleanup-note" id="cleanup-${x.id}">数据清理未完成，无法恢复</span>` : ''}</strong><div><button type="button" class="quiet" data-restore="${x.id}" ${x.dataDeletionPending ? `aria-describedby="cleanup-${x.id}"` : ''} ${!x.dataDeletionPending && definition(marketAppId).library.installed && !definition(marketAppId).library.job?.status?.includes('uninstall') ? '' : 'disabled'}>恢复使用</button><button type="button" class="quiet danger-link" data-purge="${x.id}">删除数据</button></div></div>`).join('');
   dialog('保留的数据', `<p>${state.library.installed ? '选择原来的应用，恢复后登录原微信。' : '请先安装微信，再恢复保留的数据。'}</p>${entries || '<p>暂无保留的数据。</p>'}`, `${adding ? '<button type="button" id="create-fresh" class="quiet">新建微信</button>' : ''}<button type="button" data-close class="secondary">关闭</button>`);
 }
 function restoreNameDialog(item) {
@@ -588,6 +588,7 @@ function restoreNameDialog(item) {
 }
 async function restoreInstance(item, button) {
   if (!item) throw new Error('未找到保留的数据，请刷新页面');
+  if (item.dataDeletionPending) throw new Error('数据清理未完成，无法恢复；请确认后继续删除数据');
   if (nameTaken(item.name, item.id)) return restoreNameDialog(item);
   button.disabled = true;
   const generation = modalGeneration;

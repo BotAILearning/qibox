@@ -44,18 +44,39 @@ function claimScope(sentence, match) {
 }
 const normalizedClaim = value => clean(value).replace(/[\p{P}\p{S}\s]/gu, '').replace(/(?:了|过|呢|呀|啊|啦|哦|吧|哈)+$/u, '');
 const historicalFault = '(?:认错|记错|说错|听错|看错|想错|理解错|理解反|搞错|弄错|搞混|记混|弄混|(?:记|搞|弄|听|说|看|理解)岔|混淆|误解|误会|没(?:有|能)?(?:分清|区分清楚|理解清楚)|(?:表达|说)(?:得)?(?:不清楚|不严谨|不准确))';
+// An omitted "if" needs a complete prospective/imperative consequence,
+// not just "again" or a subject followed by "then" before a past event.
+const conditionalFaultConsequence = /^[，,]\s*(?:我|你|您|他|她|我们|你们|他们|她们|咱们|对方)?就(?:(?:会|要|能|可以|得|应该|不用|不必)[^，,。！？!?；;\n]{1,40}|(?:再|先)?(?:提醒|纠正|改正|核对|确认|核实|检查|复查|重查|告诉)(?![了过])[^，,。！？!?；;\n]{0,40})[。！!；;]?$/;
+function conditionalFaultTail(value) {
+  if (!conditionalFaultConsequence.test(value)) return false;
+  // A completed event can put 了 after the object, not just the verb.
+  // Explicit prospective modals and a recipient instruction ending in 好了
+  // retain their future/imperative meaning. Verb-adjacent 过 is checked above;
+  // lexical 过 in 过年, 错过, 通过 or 难过 is not completed aspect here.
+  if (!/了(?:啊|呀|呢|啦|哦|哈|吧)*[。！!；;]?$/.test(value)) return true;
+  return /^[，,]\s*(?:我|你|您|他|她|我们|你们|他们|她们|咱们|对方)?就(?:会|要|能|可以|得|应该|不用|不必)/.test(value)
+    || /^[，,]\s*(?:你|您|你们)就/.test(value) && /好了[。！!；;]?$/.test(value);
+}
 function historicalClaims(value) {
   const result = [];
   for (const sentence of sentences(value)) {
+    const elidedFault = new RegExp('^(?:(?:嗯|哦|啊|对|是的|好(?:的)?|明白(?:了)?|知道(?:了)?)[，,\\s]*)*(' + historicalFault + ')((?:了|过)(?:啊|呀|呢|啦|哦|哈)*)\\s*(?=[，,。！!；;]|$)', 'g');
     const expressions = [
       new RegExp('我(?:自己|本人)?(?:刚才|刚刚|之前|原先|先前|刚|以前|曾经|当时|本来|原本)?(?:还|也|竟然|差点儿?|真|一直|确实|居然|都|就|一度){0,6}(?:把[^，,。！？!?；;\\n]{1,32}?)?(' + historicalFault + '|以为|误以为|误认为|遇到过|碰到过|经历过)([^，,。！？!?；;\\n]*)', 'g'),
       /我(?:自己|本人)?(?:刚才|刚刚|之前|原先|先前|以前|曾经|当时)(?:还|也|确实|就)?(说|讲|表示|答应|承诺|觉得|认为|想|纳闷|琢磨)(?:过|了)?([^，,。！？!?；;\n]*)/g,
       new RegExp('(?:^|[，,])\\s*(?:刚才|刚刚|之前|先前|原先|以前|当时)(?:还|也|确实)?(' + historicalFault + ')([^，,。！？!?；;\\n]*)', 'g'),
       new RegExp('(?:^|[，,])\\s*(?:抱歉|不好意思|对不起)[，,]?\\s*(?:刚才|刚刚|之前)?(?:还|也|确实)?(' + historicalFault + ')([^，,。！？!?；;\\n]*)(?=[，,。！!；;\\n]|$)', 'g'),
+      // A standalone completed admission still describes the reply author
+      // when "I" is omitted. Do not absorb questions, other subjects,
+      // conditions or reassurance such as "mixing it up is understandable".
+      elidedFault,
     ];
     for (const expression of expressions) for (const match of sentence.matchAll(expression)) {
       const {prefix, attributed: scopedAttribution} = claimScope(sentence, match);
       if (scopedAttribution || /(?:不是说|并非|不是|没有说|没说|不代表)[^，,。]{0,16}$/.test(prefix)) continue;
+      if (expression === elidedFault && (/[？?]$/.test(sentence)
+        || /^[，,]\s*(?:那)?(?:也|都)?(?:很|挺|蛮)?(?:正常|没关系|没事|不要紧|不奇怪)/.test(sentence.slice(match[0].length))
+        || conditionalFaultTail(sentence.slice(match[0].length)))) continue;
       result.push({verb: match[1], detail: normalizedClaim(match[2]), recent: /刚才|刚刚/.test(match[0])});
     }
   }

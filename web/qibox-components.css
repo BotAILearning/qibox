@@ -123,6 +123,7 @@
 .qiapp-product .instance-grid { grid-template-columns: repeat(auto-fill,minmax(132px,1fr)); gap: 18px 12px; }
 .qiapp-product .store-card { padding: 16px; gap: 12px; }
 .qiapp-product :is(.modal-actions,.file-transfer-actions,.retained-row>div) { flex-wrap: wrap; gap: 10px; }
+.qiapp-product .retained-cleanup-note { display: block; font-size: 13px; font-weight: 400; line-height: 1.6; color: var(--qi-text-secondary); }
 .qiapp-product :is(.store-card-main>div,.mobile-instance-info,.mobile-ai-info) { min-width: 0; }
 
 #ai-panel #ai-content { container: qbx-content / inline-size; }
