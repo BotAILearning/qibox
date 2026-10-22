@@ -51,6 +51,7 @@ function historicalClaims(value) {
       new RegExp('我(?:自己|本人)?(?:刚才|刚刚|之前|原先|先前|刚|以前|曾经|当时|本来|原本)?(?:还|也|竟然|差点儿?|真|一直|确实|居然|都|就|一度){0,6}(?:把[^，,。！？!?；;\\n]{1,32}?)?(' + historicalFault + '|以为|误以为|误认为|遇到过|碰到过|经历过)([^，,。！？!?；;\\n]*)', 'g'),
       /我(?:自己|本人)?(?:刚才|刚刚|之前|原先|先前|以前|曾经|当时)(?:还|也|确实|就)?(说|讲|表示|答应|承诺|觉得|认为|想|纳闷|琢磨)(?:过|了)?([^，,。！？!?；;\n]*)/g,
       new RegExp('(?:^|[，,])\\s*(?:刚才|刚刚|之前|先前|原先|以前|当时)(?:还|也|确实)?(' + historicalFault + ')([^，,。！？!?；;\\n]*)', 'g'),
+      new RegExp('(?:^|[，,])\\s*(?:抱歉|不好意思|对不起)[，,]?\\s*(?:刚才|刚刚|之前)?(?:还|也|确实)?(' + historicalFault + ')([^，,。！？!?；;\\n]*)(?=[，,。！!；;\\n]|$)', 'g'),
     ];
     for (const expression of expressions) for (const match of sentence.matchAll(expression)) {
       const {prefix, attributed: scopedAttribution} = claimScope(sentence, match);
@@ -70,6 +71,55 @@ function unsupportedHistoricalSelf(texts, {messages, facts, now}) {
       || ['说', '讲', '表示'].includes(claim.verb) && claim.detail && !hypothetical(source) && !/[“”"「」]|[？?]/.test(source)
         && parts(source).some(part => normalizedClaim(part) === claim.detail));
     if (!supported) return true;
+  }
+  return false;
+}
+function* declarativeClauses(value) {
+  for (const sentence of sentences(value)) {
+    if (hypothetical(sentence) || /[？?]$/.test(sentence)) continue;
+    for (const match of sentence.matchAll(/(?:^|[，,])\s*([^，,。！？!?；;\n]+)/g)) {
+      if (!reported(sentence.slice(0, match.index))) yield match[1].trim();
+    }
+  }
+}
+function proposition(value, subject, required = false) {
+  let text = normalizedClaim(value).replace(/^(?:其实|确实|真的)/u, '');
+  if (subject.test(text)) text = text.replace(subject, ''); else if (required) return null;
+  text = text.replace(/^(?:其实|确实|真的)/u, '');
+  const negative = /^(?:并不是|不是|并非|没有|不|没)/.exec(text);
+  if (negative) text = text.slice(negative[0].length);
+  // "每天都" and "每天" express the same frequency; keep every other
+  // frequency, actor and predicate literal. This is not semantic inference.
+  const core = text.replace(/^(每(?:天|周|月|年))都/u, '$1');
+  return core ? { core, negative: !!negative } : null;
+}
+function unsupportedUnstatedRecipient(texts, { messages, pendingMessages, facts, now }) {
+  const pending = pendingMessages.filter(message => message.direction === 'other' && !message.aiGenerated);
+  if (pending.length !== 1) return false;
+  const unstated = [...declarativeClauses(pending[0].text)].flatMap(clause => {
+    const match = /^(?:我)?(?:也|并|还)?(?:没(?:有)?说|没(?:有)?提(?:过)?|未说|未提|没(?:有)?确认|未确认)(?:过)?(.{1,48})$/u.exec(clause);
+    const claim = match && proposition(match[1], /^我(?:本人|自己)?/u);
+    return claim ? [claim] : [];
+  });
+  if (!unstated.length) return false;
+  const target = pending[0].speaker?.id, evidence = [];
+  for (const message of messages) {
+    if (message.aiGenerated || !Number.isSafeInteger(message.timestamp) || message.timestamp * 1000 > now) continue;
+    const recipient = message.direction === 'other' && (target ? message.speaker?.id === target : !message.speaker);
+    if (!recipient && !(message.direction === 'self' && message.authorship === 'human')) continue;
+    for (const clause of declarativeClauses(message.text)) {
+      const claim = proposition(clause, recipient ? /^我(?:本人|自己)?/u : /^(?:你|您)/u, true);
+      if (claim) evidence.push(claim);
+    }
+  }
+  for (const clause of declarativeClauses(facts)) {
+    const claim = proposition(clause.replace(/^联系人事实[：:]/u, ''), /^对方/u, true);
+    if (claim) evidence.push(claim);
+  }
+  for (const clause of declarativeClauses(texts.join(''))) {
+    const claim = proposition(clause, /^(?:你|您)/u);
+    if (claim && unstated.some(unknown => unknown.core === claim.core)
+        && !evidence.some(known => known.core === claim.core && known.negative === claim.negative)) return true;
   }
   return false;
 }
@@ -159,6 +209,7 @@ export function unsupportedPersonalAnswer(texts, { messages = [], pendingMessage
   // Preserve existing, more specific execution/identity reasons when a draft
   // contains several violations; these additional fact checks remain final.
   if (unsupportedHistoricalSelf(texts, context)) return 'personal-fact';
+  if (unsupportedUnstatedRecipient(texts, context)) return 'recipient-fact';
   if (unsupportedRecipientArrival(texts, context)) return 'recipient-fact';
   return '';
 }
