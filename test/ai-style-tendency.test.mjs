@@ -165,6 +165,7 @@ test('current pending-message tone uses explicit signals only and keeps manual s
   const privateTopic = styleTendencyContextFromMessages([{ direction: 'other', text: '这件事请保密，不要外传。' }]);
   assert.equal(privateTopic.sensitive, true);
   assert.equal(privateTopic.banter, false);
+  assert.equal(styleTendencyContextFromMessages([{direction:'other',text:'先不聊玩笑了，文件里有个金额不对'}]).serious,true);
 });
 
 test('the same round reuses its original prepared plan even when new context or learning arrives', () => {

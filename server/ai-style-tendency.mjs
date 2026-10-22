@@ -209,7 +209,7 @@ export function styleTendencyContextFromMessages(messages = []) {
     .filter(row => row && row.direction === 'other' && typeof row.text === 'string')
     .map(row => row.text.normalize('NFKC'))
     .join('\n');
-  const serious = /(?:认真(?:点|说|聊|回答)?|严肃(?:点|说|聊)?|正经(?:点|说|聊)?|别(?:再)?开玩笑|不要开玩笑|不开玩笑|这(?:件事|个问题)很重要|请严肃对待)/u.test(text);
+  const serious = /(?:认真(?:点|说|聊|回答)?|严肃(?:点|说|聊)?|正经(?:点|说|聊)?|别(?:再)?开玩笑|不要开玩笑|不开玩笑|(?:先)?(?:不|别)(?:再)?(?:聊|说)玩笑|这(?:件事|个问题)很重要|请严肃对待)/u.test(text);
   const sensitive = /(?:这是隐私|属于隐私|请保密|要保密|注意保密|不要外传|别外传|不要公开|别公开|不要告诉别人|别告诉别人)/u.test(text);
   const banter = !serious && !sensitive && /(?:开个玩笑|开玩笑(?:呢|啦|的)?|逗你呢|逗我呢|别当真|说着玩(?:呢|的)?|笑死我了|哈哈{2,}|嘿嘿{2,}|嘻嘻{2,})/u.test(text);
   return { serious, sensitive, banter, relationshipConfirmed: false, questionNeeded: false };

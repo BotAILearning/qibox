@@ -52,6 +52,11 @@ test('production generation plans current explicit tone before the same model ca
   f.provider.next=async input=>{const plan=f.p().styleTendency.plans['1'];assert.equal(plan.context.serious,true);assert.equal(plan.context.banter,false);assert.equal(plan.manualStylePriority,true);assert.equal(input.style.summary,'用户明确设置：自然短句，保留原设置。');assert.match(input.expressionTendency.instruction,/先遵守用户明确保存的风格/u);return reply('好的，按你说的来。');};
   await f.receive('请认真说这件事，别开玩笑');assert.equal(f.provider.calls.length,1);assert.equal(f.bridge.sent.length,1);
 });
+test('the same production generation exposes its actual file and future-notification limits',async t=>{
+  const f=await fixture(t);
+  f.provider.next=async input=>{assert.equal(input.currentTurnOnly,true);assert.equal(input.capabilities.readFiles,false);assert.equal(input.capabilities.futureNotification,false);return reply('目前还没确定。');};
+  await f.receive('行，没定就等你确认');assert.equal(f.provider.calls.length,1);assert.match(f.provider.calls[0].system,/没有“确认后再通知”的任务/u);assert.equal(f.bridge.sent.length,1);assert.equal(f.bridge.sent[0].text,'目前还没确定。');
+});
 test('repeated execution-unsafe drafts exhaust the in-call safety retry, close that incoming once, then accept new mail after restart',async t=>{
   const f=await fixture(t);let drafts=0;
   const unsafeDraft=async()=>{drafts++;if(drafts===1)f.provider.next=unsafeDraft;return reply(drafts===1?'嗯，定了我再跟你说。':'好，定了我再告诉你');};
