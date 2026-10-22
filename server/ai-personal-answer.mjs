@@ -23,6 +23,7 @@ const deferredNotice = /^(?:那|好[的吧]?|嗯)?(?:我)?(?:回头|稍后|到�
 const deferredPlanning = /^(?:(?:具体)?(?:几点|时间))?(?:到时候|到时|回头|以后|稍后)(?:再|就|会)?(?:定|确定|确认|商量|约|对|核对)(?:下|一下|具体时间|时间|好)?$/;
 const eventThenNotice = /^等(?:到)?[^。！？!?；;\n]{1,32}(?:了|后|以后|之后)[，,]?\s*(?:我)?(?:再|就|会)(?:告诉(?:你|您)|通知(?:你|您)|联系(?:你|您)|回复(?:你|您)|(?:跟|和)(?:你|您)说|给(?:你|您)发(?:消息|信息))(?:一声|一下)?$/;
 const unknownSelf = /^(?:这个|这边|这事)?我(?:这边|自己|现在|暂时|还真|目前)?(?:的)?(?:具体情况|情况|位置|工作)?(?:还|也|真|暂时)?(?:说不(?:太)?上来|说不太上|说不上来|不知道|不清楚|不太清楚)/;
+const ownerConfirmation = /^(?:这个|这事|具体(?:位置|工作情况))?(?:要|需要|得)(?:由)?本人(?:来)?确认(?:一下|下)?$/;
 const privacyReason = /^(?:我(?:这边|现在|目前)?(?:的)?(?:位置|地点)?|这个|这边|位置)[^。！？!?，,；;\n]{0,8}不(?:太)?方便(?:说|透露)/;
 const plannedDelivery = /^(?:那|好[的吧]?|嗯)?(?:我)?(下次|回头|明天|周[一二三四五六日天])(?:再|就|会)?(?:给|帮|替)(?:你|您)(带|拿|送|取)(?:点|些|一点|一些)?(.{1,24})$/;
 const plannedInvitation = /^(?:那|好[的吧]?|嗯)?(?:我)?(下次|回头|明天|周[一二三四五六日天])(.{0,24}?)(叫上|喊上|约|带上)(?:你|您)(.{0,12})$/;
@@ -48,7 +49,7 @@ function historicalClaims(value) {
   for (const sentence of sentences(value)) {
     const expressions = [
       new RegExp('我(?:自己|本人)?(?:刚才|刚刚|之前|原先|先前|刚|以前|曾经|当时|本来|原本)?(?:还|也|竟然|差点儿?|真|一直|确实|居然|都|就|一度){0,6}(?:把[^，,。！？!?；;\\n]{1,32}?)?(' + historicalFault + '|以为|误以为|误认为|遇到过|碰到过|经历过)([^，,。！？!?；;\\n]*)', 'g'),
-      /我(?:自己|本人)?(?:刚才|刚刚|之前|原先|先前|以前|曾经|当时)(?:还|也|确实)?(说|讲|表示|答应|承诺|觉得|认为|想)(?:过|了)?([^，,。！？!?；;\n]*)/g,
+      /我(?:自己|本人)?(?:刚才|刚刚|之前|原先|先前|以前|曾经|当时)(?:还|也|确实|就)?(说|讲|表示|答应|承诺|觉得|认为|想|纳闷|琢磨)(?:过|了)?([^，,。！？!?；;\n]*)/g,
       new RegExp('(?:^|[，,])\\s*(?:刚才|刚刚|之前|先前|原先|以前|当时)(?:还|也|确实)?(' + historicalFault + ')([^，,。！？!?；;\\n]*)', 'g'),
     ];
     for (const expression of expressions) for (const match of sentence.matchAll(expression)) {
@@ -130,7 +131,7 @@ export function unsupportedPersonalAnswer(texts, { messages = [], pendingMessage
     // A direct question about an unknown personal fact must not be answered
     // with a new euphemism for that fact. Preserve supported assertions and
     // neutral clarifications; everything else remains visibly unsent.
-    if (directPersonalQuestion && !(privacyAllowed && privacyReason.test(part)) && !/^(?:嗯+|哦+|哈哈(?:好)?|好(?:的)?|怎么(?:了|啦|突然(?:问|这么问))|咋(?:了|啦)|(?:有|是)?什么事|有什么事(?:吗|呀)?|找我有事(?:吗|呀)?|你找我(?:有什么|啥)事(?:吗|呀)?)$/.test(part)
+    if (directPersonalQuestion && !(privacyAllowed && privacyReason.test(part)) && !ownerConfirmation.test(part) && !/^(?:嗯+|哦+|哈哈(?:好)?|好(?:的)?|怎么(?:了|啦|突然(?:问|这么问))|咋(?:了|啦)|(?:有|是)?什么事|有什么事(?:吗|呀)?|找我有事(?:吗|呀)?|你找我(?:有什么|啥)事(?:吗|呀)?)$/.test(part)
         && !evidence.some(p=>sameAssertion(p)===sameAssertion(part))) return 'personal-fact';
     const place = livePlace.exec(part);
     if (place && !evidence.some(p => livePlace.exec(p)?.[1] === place[1])) return 'personal-fact';
@@ -190,7 +191,7 @@ export function personalQuestionClarification(pendingMessages = []) {
 
 // Narrow repairs for explicit conversational corrections. They do not infer
 // personal facts, override multi-message requests, or issue another model call.
-export function explicitTurnRepair(texts, { pendingMessages = [] } = {}) {
+export function explicitTurnRepair(texts, { pendingMessages = [], messages = [], now = Date.now() } = {}) {
   const pending = pendingMessages.filter(m => m.direction === 'other');
   if (pending.length !== 1) return '';
   const incoming = clean(pending[0].text).trim(), reply = texts.join('');
@@ -202,6 +203,23 @@ export function explicitTurnRepair(texts, { pendingMessages = [] } = {}) {
     return reply.replace(/^(?:早上好|早安|早呀|早啊|早)/, '嗯');
   const preferenceOnly = /^(?:不用|不要|别)(?:每句话|每句|每轮|总是|总|老是)(?:都)?(?:问(?:我)?(?:问题)?|反问(?:我)?|提问)(?:[，,](?:随便|正常|自然)(?:聊(?:两句|几句)?|聊天)?(?:就行|即可|就好)?)?[。！!]?$/u.test(incoming);
   if (preferenceOnly && /[？?]|(?:最近|近来)(?:怎么样|咋样|如何)/.test(reply)) return '好，随便聊聊就行。';
+  // Only a complete actor-only correction can make the unchanged last human
+  // question redundant. Remove that whole question, never a quoted/conditional
+  // clause or part of a compound question, and keep a nonempty existing reply.
+  if (/^(?:你(?:记错|搞错|弄错|理解错|记混)了[，,])?[^，,。！？!?；;\n]{1,24}的是我(?:自己)?[，,]不是你(?:自己)?[。！!]?$/u.test(incoming)
+      && !/说|问|转述|引用|并非|不代表/.test(incoming) && !hypothetical(incoming)) {
+    const last = messages.findLast(message => message.direction === 'self' && message.authorship === 'human' && !message.aiGenerated
+      && Number.isSafeInteger(message.timestamp) && message.timestamp * 1000 <= now);
+    const question = clean(last?.text).trim();
+    const questionKey = value => normalizedClaim(value).replace(/^(?:那么|那)/u, '');
+    if (/^[^。！？!?；;\n]+[？?]$/u.test(question) && !/[“”"「」]/.test(question) && !hypothetical(question)) {
+      const repeated = [...reply.matchAll(/[^。！？!?；;\n]+[？?]/gu)].filter(match => !/[“”"「」]/.test(match[0]) && !hypothetical(match[0]) && questionKey(match[0]) === questionKey(question));
+      let repaired = reply;
+      for (const match of repeated.reverse()) repaired = repaired.slice(0, match.index) + repaired.slice(match.index + match[0].length);
+      repaired = repaired.trim();
+      if (/[\p{L}\p{N}]/u.test(repaired) && repaired !== reply) return repaired;
+    }
+  }
   return '';
 }
 
