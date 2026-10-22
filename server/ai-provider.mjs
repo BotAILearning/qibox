@@ -28,9 +28,9 @@ export function providerValue(value, previous = {}, { discovery = false } = {}) 
   return result;
 }
 export const providerFingerprint = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
-// Retries only cover failures that are worth another attempt: a timeout, a rate
-// limit or a server-side error. Wrong keys, unknown models and malformed
-// answers fail immediately so the user sees the real cause.
+// The existing bounded retry path covers transport/server failures and the
+// explicitly classified format, schema, incomplete-response and time errors.
+// Authentication and unknown-model errors do not get that retry treatment.
 export const MODEL_RETRY_LIMIT = 2;
 const DEFAULT_OUTPUT_BUDGET = 8192, BULK_OUTPUT_BUDGET = 16384;
 // Learning over a whole history and merging two memory sets return many entries
