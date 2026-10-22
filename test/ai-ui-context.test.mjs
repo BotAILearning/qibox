@@ -220,10 +220,11 @@ test('analysis exposes cancellation immediately, blocks duplicate submit, and ig
   await dom.submit(form); assert.deepEqual(actions, ['analyze']);
   await dom.click('cancel');
   const cancelledMessage = dom.node('#ai-feedback').textContent;
-  assert.match(cancelledMessage, /已取消/);
+  assert.match(cancelledMessage, /已停止后续分析/);
+  assert.match(cancelledMessage, /已保存报告保留在历史中/);
   released.resolve(); await pending;
   assert.doesNotMatch(dom.node('#ai-content').innerHTML, /late cancelled body|late-report/);
-  assert.match(dom.node('#ai-content').innerHTML, /已取消分析/);
+  assert.match(dom.node('#ai-content').innerHTML, /已停止后续分析；已保存报告可在历史报告中查看/);
   assert.equal(dom.node('#ai-feedback').textContent, cancelledMessage);
   assert.deepEqual(actions, ['analyze', 'cancel']);
 });
