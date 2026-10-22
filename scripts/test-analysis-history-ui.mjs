@@ -288,8 +288,21 @@ try {
   await page.getByRole('button', { name: '开始分析', exact: true }).click();
   await page.locator('[data-analysis-status=analyzing]').first().waitFor();
   await page.locator('#ai-operation [data-ai-action=cancel]').waitFor();
+  const cancelAcknowledgement = page.waitForResponse(response => response.request().method() === 'POST' && response.url().includes(`/api/instances/${meta.id}/ai`) && response.request().postDataJSON()?.action === 'cancel');
+  let cancelAcknowledged = false;
+  const scopeRestored = page.waitForResponse(async response => {
+    if (!cancelAcknowledged || response.request().method() !== 'GET' || !new URL(response.url()).pathname.endsWith(`/api/instances/${meta.id}/ai`) || response.status() !== 200) return false;
+    const value = await response.json();
+    return value.account === bridge.account && value.scopeUnknown !== true;
+  });
   await page.locator('#ai-operation [data-ai-action=cancel]').click();
+  const acknowledgement = await cancelAcknowledgement;
+  assert.equal(acknowledgement.status(), 200);
+  assert.equal((await acknowledgement.json()).scopeUnknown, true, 'urgent cancellation conceals private state until a read-only account check');
+  cancelAcknowledged = true;
   await settled();
+  await scopeRestored;
+  await page.locator('[data-analysis-status=cancelled]').first().waitFor();
   assert.equal(queuedAnalyzeCalls.length - beforeCancel, 1, 'cancel stops before posting the next contact');
   assert.equal(provider.calls.length - modelCallsBeforeCancel, 1, 'in-flight contact was the only model request');
   assert.equal(await page.locator('[data-analysis-status=cancelled]').count(), 2);
@@ -420,6 +433,7 @@ try {
   console.log(JSON.stringify(report, null, 2));
 } catch (error) {
   report.failure = error.stack;
+  try { await browser?.contexts()[0]?.pages()[0]?.screenshot({ path: path.join(output, 'failure.png'), fullPage: true }); } catch { /* Keep the original test failure if the page has already closed. */ }
   await writeFile(path.join(output, 'report.json'), JSON.stringify(report, null, 2));
   throw error;
 } finally {
