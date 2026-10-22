@@ -309,7 +309,7 @@ export function ownerConfirmationRepair(texts, {pendingMessages = [], messages =
   if (!clauses) return '';
   const first = clauses[1].trim(), confirmation = clean(first), tail = clean(clauses[2]).trim();
   if (!ownerConfirmation.test(confirmation) || (employment ? /位置/.test(confirmation) : /工作/.test(confirmation))) return '';
-  const uncertainty = /^我(?:这边)?(?:现在|目前|今天|暂时)?(?:还)?(?:不知道|没法确定|不能确定|没确认)(.*)$/u.exec(tail);
+  const uncertainty = /^我(?:这边)?(?:现在|目前|今天|暂时)?(?:也)?(?:还)?(?:不知道|没法确定|不能确定|没确认|拿不准|不清楚|不太清楚|不确定|说不准)(.*)$/u.exec(tail);
   if (!uncertainty) return '';
   const sameField = employment
     ? /^(?:(?:今天|现在|目前)?(?:具体)?(?:在哪(?:家|个)(?:公司|单位)(?:上班|工作)?|(?:哪家|哪个)(?:公司|单位)(?:上班|工作)?|(?:工作|上班)(?:的)?(?:公司|单位)|工作情况))?$/u
@@ -319,7 +319,7 @@ export function ownerConfirmationRepair(texts, {pendingMessages = [], messages =
 
 // Narrow repairs for explicit conversational corrections. They do not infer
 // personal facts, override multi-message requests, or issue another model call.
-export function explicitTurnRepair(texts, { pendingMessages = [], messages = [], now = Date.now() } = {}) {
+export function explicitTurnRepair(texts, { pendingMessages = [], messages = [], now = Date.now(), timezone = 'Asia/Shanghai' } = {}) {
   const pending = pendingMessages.filter(m => m.direction === 'other');
   if (pending.length !== 1) return '';
   const incoming = clean(pending[0].text).trim(), reply = texts.join('');
@@ -336,13 +336,26 @@ export function explicitTurnRepair(texts, { pendingMessages = [], messages = [],
   // clause or part of a compound question, and keep a nonempty existing reply.
   const actorCorrection = /^(?:你(?:记错|搞错|弄错|理解错|记混)了[，,])?([^，,。！？!?；;\n]{1,24})的是我(?:自己)?[，,]不是你(?:自己)?[。！!]?$/u.exec(incoming);
   if (actorCorrection
-      && !/说|问|转述|引用|并非|不代表/.test(incoming) && !hypothetical(incoming)) {
+      && !/说|问|转述|引用|并非|不代表|[“”"'「」『』]/.test(incoming) && !hypothetical(incoming)) {
     const last = messages.findLast(message => message.direction === 'self' && message.authorship === 'human' && !message.aiGenerated
       && Number.isSafeInteger(message.timestamp) && message.timestamp * 1000 <= now);
     const question = clean(last?.text).trim();
     const questionKey = value => normalizedClaim(value).replace(/^(?:那么|那)/u, '');
-    if (/^[^。！？!?；;\n]+[？?]$/u.test(question) && !/[“”"「」]/.test(question) && !hypothetical(question)) {
-      const repeated = [...reply.matchAll(/[^。！？!?；;\n]+[？?]/gu)].filter(match => !/[“”"「」]/.test(match[0]) && !hypothetical(match[0]) && questionKey(match[0]) === questionKey(question));
+    if (/^[^。！？!?；;\n]+[？?]$/u.test(question) && !/[“”"'「」『』]/.test(question) && !hypothetical(question)) {
+      const today = annotateChatTimes([last], now, timezone)[0].temporal.relation === 'today';
+      const humanKey = questionKey(question);
+      // Calendar words in old questions refer to their original viewer date.
+      // Only a small current-state core can treat today's "today/now" as tone;
+      // activity, scheduling and negated/compound questions stay literal.
+      const stateQuestion = /^(?:今天|现在)((?:好点|好些|舒服点)(?:没|了吗)|感觉怎么样|还(?:疼|难受|累)吗)$/u;
+      const sameQuestion = value => {
+        const key = questionKey(value);
+        if (/^(?:今天|现在)/u.test(humanKey) && !today) return false;
+        if (key === humanKey) return true;
+        const humanState = today && stateQuestion.exec(humanKey), currentState = today && stateQuestion.exec(key);
+        return !!humanState && !!currentState && humanState[1] === currentState[1];
+      };
+      const repeated = [...reply.matchAll(/[^。！？!?；;\n]+[？?]/gu)].filter(match => !/[“”"'「」『』]/.test(match[0]) && !hypothetical(match[0]) && sameQuestion(match[0]));
       let repaired = reply;
       for (const match of repeated.reverse()) repaired = repaired.slice(0, match.index) + repaired.slice(match.index + match[0].length);
       repaired = repaired.trim();
@@ -354,12 +367,12 @@ export function explicitTurnRepair(texts, { pendingMessages = [], messages = [],
           && !/[“”"'「」『』]/.test(incoming + reply) && !hypothetical(reply)) {
         const comma = Math.max(reply.lastIndexOf('，'), reply.lastIndexOf(','));
         const prefix = reply.slice(0, comma).trim(), tail = reply.slice(comma + 1).trim();
-        if (comma > 0 && questionKey(tail) === questionKey(question)) {
+        if (comma > 0 && sameQuestion(tail)) {
           const key = normalizedClaim(prefix);
           const acknowledgement = /^(?:(?:哦|啊|嗯)?对+|明白(?:了)?|知道(?:了)?|好(?:的)?|收到|嗯|哦|啊)/u.exec(key);
           const rest = acknowledgement ? key.slice(acknowledgement[0].length) : key;
           const actor = normalizedClaim(actorCorrection[1]);
-          if ((acknowledgement && !rest) || rest === `是你${actor}` || rest === `是你自己${actor}`) return prefix;
+          if ((acknowledgement && !rest) || rest === `是你${actor}` || rest === `是你自己${actor}` || rest === `${actor}是你` || rest === `${actor}的是你`) return prefix;
         }
       }
     }
