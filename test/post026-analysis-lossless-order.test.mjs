@@ -134,3 +134,14 @@ for(const userRequest of ['按主题分类，讨论顺序。','按时间倒序�
 test('an already ordered exact-bound report is preserved byte for byte',async t=>{
  const{result}=await run(t,ordered);assert.equal(result.status,'complete');assert.equal(result.report,ordered);
 });
+const speakerAnchor=m=>`${m.speaker==='本人'?'你':m.speaker}：${m.beijingTime}“${m.text}”`;
+const actualSpeakerFirstThematic=`报名意向的变化\n${[0,1,4,5].map(i=>speakerAnchor(messages[i])).join('\n')}\n\n培训地点更正\n${[2,3].map(i=>speakerAnchor(messages[i])).join('\n')}\n\n付款信息\n${[6,7].map(i=>speakerAnchor(messages[i])).join('\n')}`;
+test('speaker-first thematic output with the actual 09:02 before 09:00 sequence is rejected without a second call',async t=>{
+ const{a,result}=await run(t,actualSpeakerFirstThematic);assert.equal(result.status,'error');assert.match(result.error,/原文不一致/);assert.equal(a.analysisHistory().length,0);
+});
+test('speaker-first chronological report saves and reopens in the exact 1-to-8 source order',async t=>{
+ const f=await fixture(t);let calls=0;const report=`按时间线\n${messages.map(speakerAnchor).join('\n')}\n实际付款状态仍未知。`;
+ f.provider.complete=async(_config,system,input)=>{calls++;assert.equal(input.request,request);assert.match(system,/整篇报告按原始sequence从早到晚连续组织/);assert.match(system,/不要按主题把较晚消息提前/);return{report};};
+ const result=(await f.a.analyze({contacts:[f.contact],request,from:'2026-10-21',to:'2026-10-22'})).reports[0];assert.equal(calls,1);assert.equal(result.status,'complete');assert.equal(result.report,report);
+ const reopened=await f.restart();assert.equal(reopened.analysisReport(result.historyId).report,report);assert.equal(calls,1);
+});

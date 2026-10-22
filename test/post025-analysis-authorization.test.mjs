@@ -58,6 +58,20 @@ test('explicit chronological request rejects a new complete line-leading anchor 
 test('chronological anchors exclude body quotations, as-of summaries and repeated recaps',()=>{
  for(const report of ['2026-10-22 09:00:00，更正地点。\n2026-10-22 09:02:00，确认参加。\n截至2026-10-21 16:00:00，当时未确认。', '2026-10-22 09:00:00，更正地点。\n2026-10-22 09:02:00，确认参加。\n回顾2026-10-21 16:00:00，当时未确认。','2026-10-22 09:00:00，更正地点。\n2026-10-22 09:02:00，确认参加。\n2026-10-22 09:00:00，重复回顾已引用的地点更正。','2026-10-22 09:02:00，确认参加。\n“2026-10-22 09:00:00，更正地点。”是原文引用。','正文回顾2026-10-22 09:00:00；随后说明2026-10-21 16:00:00。'])assert.equal(analysisEvidenceViolation(report,messages,{request}),'',report);
 });
+const speakerAnchor=m=>`${m.speaker==='本人'?'你':m.speaker}：${m.beijingTime}“${m.text}”`;
+const thematicOutOfOrder=`报名意向的变化\n${[0,1,4,5].map(i=>speakerAnchor(messages[i])).join('\n')}\n\n地点的更正\n${[2,3].map(i=>speakerAnchor(messages[i])).join('\n')}\n\n付款信息\n${[6,7].map(i=>speakerAnchor(messages[i])).join('\n')}`;
+test('speaker-first exact source anchors reject the actual thematic chapter inversion',()=>{
+ assert.equal(analysisEvidenceViolation(thematicOutOfOrder,messages,{request}),'timeline-order');
+});
+test('speaker-first anchors accept chronology and ignore ambiguous sources, quoted dates and retrospective duplicate anchors',()=>{
+ const ordered=`时间线\n${messages.map(speakerAnchor).join('\n')}\n回顾旧情况：2026-10-21 16:00:00时尚未确认。\n${speakerAnchor(messages[0])}`;
+ assert.equal(analysisEvidenceViolation(ordered,messages,{request}),'');
+ const duplicate=[...messages,{...messages[2],sequence:9}];
+ const ambiguous=`时间线\n${speakerAnchor(messages[4])}\n${speakerAnchor(messages[2])}`;
+ assert.equal(analysisEvidenceViolation(ambiguous,duplicate,{request}),'');
+ for(const otherRequest of ['按主题分类，讨论顺序。','按时间倒序整理。'])
+  assert.equal(analysisEvidenceViolation(thematicOutOfOrder,messages,{request:otherRequest}),'');
+});
 async function fixture(t){const root=await temp(),bridge=new ChatFixture(),provider=new AIModelFixture(),a=new AIAssistant({dataRoot:root,bridge,provider});await a.init();clearInterval(a.timer);clearInterval(a.warmupTimer);t.after(async()=>{await a.close();await cleanup(root);});await a.configure(modelConfig);await a.scan();const contact=bridge.contacts[0].id;bridge.readRange=async args=>({account:args.account,contact:args.contact,messages:messages.map(m=>({id:key('analysis-authorization-'+m.sequence),direction:m.speaker==='本人'?'self':'other',text:m.text,timestamp:Date.parse(m.beijingTime.replace(' ','T')+'+08:00')/1000}))});return{root,a,provider,contact};}
 for(const[label,report]of [['actual298',actual298],['payment-only','这既否定了本人代付。'],['timeline-only',backwards]])test(`production ${label} is rejected after one complete and retains prior saved report and request`,async t=>{
  const{root,a,provider,contact}=await fixture(t);let calls=0;provider.complete=async()=>{calls++;return{report:calls===1?'原先已保存的有效报告。':report};};

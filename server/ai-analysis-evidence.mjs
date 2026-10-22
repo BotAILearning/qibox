@@ -6,7 +6,7 @@ export function analysisOrderMode(request = '') {
   if (clauses.some(s => /(?:按|按照|依照)(?:主题|话题|事项)(?:分类|分组|整理|组织|展开|排序)?/u.test(s))) return 'thematic';
   return clauses.some(s => /(?:按|按照)(?:时间|原始|原文|消息|发送)?顺序|(?:按|按照|以)时间线|(?:保留|保持)(?:原始|原文|消息|时间)顺序/u.test(s)) ? 'chronological' : '';
 }
-function timelineViolation(text, request) {
+function timelineViolation(text, messages, request) {
   if (analysisOrderMode(request) !== 'chronological') return false;
   let last = ''; const seen = new Set();
   for (const line of text.split('\n')) {
@@ -15,6 +15,27 @@ function timelineViolation(text, request) {
     const time = match[1]; seen.add(time);
     if (last && time < last) return true;
     last = time;
+  }
+  // Some reports put the speaker before a complete quoted source line. Only
+  // treat an anchor as chronological evidence when speaker, full timestamp,
+  // full original text, and source row identify exactly one message.
+  let lastSequence = 0;
+  const usedSequences = new Set();
+  for (const line of text.split('\n')) {
+    const anchor = /^\s*(?:[-*]\s*)?(本人|你|对方)[：:]\s*(\d{4}-\d{2}-\d{2} [0-2]\d:[0-5]\d:[0-5]\d)([“「])/u.exec(line);
+    if (!anchor) continue;
+    const speaker = anchor[1] === '你' ? '本人' : anchor[1];
+    const rest = line.slice(anchor[0].length);
+    const closingQuote = anchor[3] === '「' ? '」' : '”';
+    const matches = messages.filter(message => message.speaker === speaker
+      && message.beijingTime === anchor[2]
+      && rest.startsWith(`${String(message.text || '').normalize('NFKC')}${closingQuote}`));
+    if (matches.length !== 1) continue;
+    const sequence = matches[0].sequence;
+    if (!Number.isSafeInteger(sequence) || usedSequences.has(sequence)) continue;
+    if (sequence < lastSequence) return true;
+    usedSequences.add(sequence);
+    lastSequence = sequence;
   }
   return false;
 }
@@ -72,7 +93,7 @@ function paymentEventViolation(text, messages) {
 export function analysisEvidenceViolation(report, messages, {request = ''} = {}) {
   const text=String(report||'').normalize('NFKC');
   if (paymentEventViolation(text, messages)) return 'payment-event';
-  if (timelineViolation(text, request)) return 'timeline-order';
+  if (timelineViolation(text, messages, request)) return 'timeline-order';
   for(const line of text.split('\n')) {
     const sequence=/^\s*(?:[-*]\s*)?sequence\s+(\d+)[,，]\s*(本人|你|对方|未知)[,，]\s*(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/iu.exec(line);
     if(sequence) {
