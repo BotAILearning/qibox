@@ -34,6 +34,25 @@ test('waits for already queued writes before staging configuration', async () =>
   queued.resolve(); await operation; assert.equal(entered, true);
 });
 
+test('commit verification follows the write drain and repeats after a write arrives during identity verification', async () => {
+  const a=fixture(),oldWrites=Promise.withResolvers(),identityEntered=Promise.withResolvers(),identityRelease=Promise.withResolvers(),newWrites=Promise.withResolvers();
+  const save=a.save;let verified=0,changed=false,staged=false;a.writes=oldWrites.promise;
+  const operation=withConfigurationCommit(a,()=>{staged=true;},{verify:async()=>{verified++;if(verified===1){identityEntered.resolve();await identityRelease.promise;}if(changed)throw Error('identity changed');}});
+  const rejected=assert.rejects(operation,/identity changed/);
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(verified,0);assert.equal(a.save,save);
+  oldWrites.resolve();await identityEntered.promise;assert.equal(a.save,save,'A slow identity read must not occupy the save barrier');
+  a.writes=newWrites.promise;identityRelease.resolve();await new Promise(resolve=>setImmediate(resolve));assert.equal(staged,false);assert.equal(verified,1);
+  changed=true;newWrites.resolve();await rejected;assert.equal(verified,2);assert.equal(staged,false);assert.equal(a.save,save);assert.deepEqual(a.snapshots,[]);
+});
+
+test('a close that starts during commit verification is joined before identity is reverified', async () => {
+  const a=fixture(),entered=Promise.withResolvers(),release=Promise.withResolvers(),stop=Promise.withResolvers();let verified=0,staged=false,changed=false;
+  const operation=withConfigurationCommit(a,()=>{staged=true;},{verify:async()=>{if(++verified===1){entered.resolve();await release.promise;}if(changed)throw Error('identity changed after stop');}});
+  const rejected=assert.rejects(operation,/identity changed after stop/);await entered.promise;
+  a.urgentSettingsStop=stop;release.resolve();await new Promise(resolve=>setImmediate(resolve));assert.equal(staged,false);assert.equal(verified,1);
+  changed=true;a.urgentSettingsStop=null;stop.resolve();await rejected;assert.equal(verified,2);assert.equal(staged,false);
+});
+
 test('drain:false installs the barrier and invalidates synchronously while persist remains behind older writes', async () => {
   const a = fixture(), queued = Promise.withResolvers(); a.writes = queued.promise;
   a.save = function () { const snapshot = structuredClone(this.data); const write = this.writes.then(() => { this.snapshots.push(snapshot); }); this.writes = write; return write; };
@@ -51,6 +70,34 @@ test('nested commit fails explicitly and restores the ordinary save method', asy
   const a = fixture(), original = a.save;
   await assert.rejects(withConfigurationCommit(a, () => withConfigurationCommit(a, () => {})), /cannot be nested/);
   assert.equal(a.save, original); await a.save(); assert.equal(a.snapshots.length, 1);
+});
+
+test('a nested commit inside an urgent close still fails instead of waiting on its own completion', { timeout: 1000 }, async () => {
+  const a = fixture(), stopped = Promise.withResolvers(), original = a.save;
+  a.urgentSettingsStop = stopped;
+  try { await assert.rejects(withConfigurationCommit(a, () => withConfigurationCommit(a, () => {}), { urgentStop: true }), /cannot be nested/); }
+  finally { a.urgentSettingsStop = null; stopped.resolve(); }
+  assert.equal(a.save, original);
+});
+
+for (const urgentRunning of [false, true]) test(`a callback inherited from a completed transaction can commit${urgentRunning ? ' after waiting for a different urgent close' : ''}`, { timeout: 1000 }, async () => {
+  const a = fixture(), release = Promise.withResolvers(); let deferred, committed = false;
+  await withConfigurationCommit(a, async () => {
+    deferred = (async () => { await release.promise; await withConfigurationCommit(a, async persist => { committed = true; await persist(); }); })();
+  });
+  let urgent;
+  const entered = Promise.withResolvers(), held = Promise.withResolvers(), finished = Promise.withResolvers();
+  if (urgentRunning) {
+    a.urgentSettingsStop = finished;
+    urgent = withConfigurationCommit(a, async () => { entered.resolve(); await held.promise; }, { urgentStop: true });
+    await entered.promise;
+  }
+  release.resolve(); await new Promise(resolve => setImmediate(resolve));
+  if (urgentRunning) {
+    assert.equal(committed, false, 'The inherited callback must join the new close, not nest or bypass it');
+    held.resolve(); await urgent; a.urgentSettingsStop = null; finished.resolve();
+  }
+  await deferred; assert.equal(committed, true); assert.equal(a.snapshots.length, 1);
 });
 
 for (const phase of ['validation', 'rollback']) test(`${phase} exception still releases a waiting ordinary save`, async () => {

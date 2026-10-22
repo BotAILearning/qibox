@@ -57,9 +57,11 @@ test('new proactive HTTP workflow enforces ownership, CSRF, validation and idemp
     const action = command => ({ action: 'proactive-task', value: { command, id: task.id } });
     assert.equal((await call(route, '1002', action('pause'), other)).status, 404);
     const paused = await call(route, '1001', action('pause'), token);
-    assert.equal(paused.value.proactiveTasks[0].status, 'paused');
+    assert.equal(paused.value.scopeUnknown, true); assert.equal(paused.value.proactiveTasks.length, 0);
+    assert.equal((await call(route, '1001')).value.proactiveTasks[0].status, 'paused');
     const ended = await call(route, '1001', action('end'), token);
-    assert.equal(ended.value.proactiveTasks[0].status, 'ended');
+    assert.equal(ended.status, 200); assert.equal(ended.value.proactiveTasks[0].status, 'ended');
+    assert.equal((await call(route, '1001')).value.proactiveTasks[0].status, 'ended');
     assert.equal((await call(route, '1001', { action: 'proactive-records' })).status, 403);
     assert.equal((await call(route, '1002', { action: 'proactive-records' }, other)).status, 404);
     const records = await call(route, '1001', { action: 'proactive-records', value: { taskId: task.id } }, token);

@@ -27,7 +27,7 @@ function fixture(handler) {
     async invokeData(action, args, context) {
       calls.push({ action, args });
       const result = await handler?.(action, args, context) ?? (action === 'account'
-        ? { account }
+        ? { available: true, account }
         : ['contacts', 'identity'].includes(action)
         ? { available: true, account, contacts: [person, { ...person, id: second, native: { ...person.native, contact: key('native-b') } }] }
         : { ...structuredClone(snapshot), contact: args.contact });

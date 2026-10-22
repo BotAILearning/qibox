@@ -5,6 +5,7 @@ import { messageSegments } from './ai-prompts.mjs';
 import { stripUnauthorizedProactiveVocatives } from './ai-reply-rules.mjs';
 import { proactiveSchedule, nextProactiveOccurrence, proactiveOccurrenceDeadline } from './ai-proactive-schedule.mjs';
 import { withConfigurationCommit } from './ai-configuration-commit.mjs';
+import { verifyAccountScope } from './ai-account-scope.mjs';
 
 const terminal = new Set(['sent', 'skipped', 'failed', 'unknown', 'cancelled', 'reviewed']);
 // Recipients who failed inside one occurrence are re-queued for the next one.
@@ -163,7 +164,7 @@ export class ProactiveTasks {
   }
   action(value = {}) {
     return this.ai.exclusive(async () => {
-      const a = this.ai, d = a.data, command = value.command;
+      const a = this.ai, d = a.data, command = value.command, account = d.account;
       if (!['create', 'edit', 'pause', 'resume', 'end', 'retry', 'delete'].includes(command)) throw new AppError('主动聊天操作无效');
       if (value.requestId !== undefined && (typeof value.requestId !== 'string' || !/^[a-zA-Z0-9_-]{8,100}$/.test(value.requestId))) throw new AppError('创建请求标识无效');
       if (command === 'create' && value.requestId && this.tasks.some(t => t.account === a.data.account && t.requestId === value.requestId)) { await a.save(); return a.publicState(); }
@@ -272,7 +273,7 @@ export class ProactiveTasks {
         if (pendingMasterEnable) this.pendingMasterEnables--;
       }
       return a.publicState();
-      });
+      }, { verify: command !== 'pause' ? () => verifyAccountScope(a, account) : undefined });
     });
   }
   item(c) { return { id: randomUUID(), contact: c.id, label: c.label, ...(c.nickname ? { nickname: c.nickname } : {}), profileId: c.profileId, status: 'pending', attempts: 0 }; }

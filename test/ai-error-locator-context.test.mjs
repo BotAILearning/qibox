@@ -71,7 +71,7 @@ async function fixture(t, fail = false) {
     return snapshot();
   } });
   t.after(() => { released.resolve(); controller.detach(); globalThis.document = originalDocument; globalThis.window = originalWindow; });
-  await controller.attach('instance-a'); controller.show(); await dom.navigate('activity');
+  await controller.attach('instance-a'); await controller.show(); await dom.navigate('activity');
   assert.equal(dom.node('#ai-panel').hidden, false);
   assert.ok(dom.node('#ai-recent-errors')?.isConnected);
   const trigger = dom.button({ aiErrorRecordTarget: 'synthetic-error' });
@@ -84,7 +84,7 @@ async function fixture(t, fail = false) {
 for (const destination of ['instance-switch', 'hidden', 'page-return']) {
   test(`a delayed locator success cannot change records or focus after ${destination}`, { timeout: 2000 }, async t => {
     const f = await fixture(t);
-    if (destination === 'instance-switch') { f.controller.detach(); await f.controller.attach('instance-b'); f.controller.show(); }
+    if (destination === 'instance-switch') { f.controller.detach(); await f.controller.attach('instance-b'); await f.controller.show(); }
     else if (destination === 'hidden') { await f.dom.hide(); assert.equal(f.dom.node('#ai-panel').hidden, true); }
     else { await f.dom.navigate('overview'); await f.dom.navigate('activity'); }
     const content = f.dom.node('#ai-content'), feedback = f.dom.node('#ai-feedback');
@@ -102,7 +102,7 @@ for (const destination of ['instance-switch', 'hidden', 'page-return']) {
 for (const destination of ['instance-switch', 'hidden', 'page-return', 'same-view']) {
   test(`a delayed locator failure ${destination === 'same-view' ? 'remains actionable in' : 'cannot contaminate'} ${destination}`, { timeout: 2000 }, async t => {
     const f = await fixture(t, true);
-    if (destination === 'instance-switch') { f.controller.detach(); await f.controller.attach('instance-b'); f.controller.show(); }
+    if (destination === 'instance-switch') { f.controller.detach(); await f.controller.attach('instance-b'); await f.controller.show(); }
     else if (destination === 'hidden') { await f.dom.hide(); assert.equal(f.dom.node('#ai-panel').hidden, true); }
     else if (destination === 'page-return') { await f.dom.navigate('overview'); await f.dom.navigate('activity'); }
     const content = f.dom.node('#ai-content'), feedback = f.dom.node('#ai-feedback');

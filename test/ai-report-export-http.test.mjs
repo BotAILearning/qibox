@@ -6,10 +6,11 @@ import { unzipSync, strFromU8 } from 'fflate';
 import { createApplication } from '../server/index.mjs';
 import { root } from '../scripts/tooling.mjs';
 import { temp, cleanup, runtimeFactory, extractor, fetcher, packageSha256 } from './fixtures.mjs';
+import { ChatFixture, key } from './ai-fixtures.mjs';
 
 test('报告下载接口要求当前用户和 CSRF，并只导出当前账号快照', async () => {
-  const dataRoot = await temp();
-  const app = await createApplication({ appRoot: root, dataRoot, runtimeFactory, extract: extractor, fetcher, trustedHashes: [packageSha256] });
+  const dataRoot = await temp(), bridge = new ChatFixture();
+  const app = await createApplication({ appRoot: root, dataRoot, runtimeFactory: (...args) => ({ ...runtimeFactory(...args), aiBridge: bridge }), extract: extractor, fetcher, trustedHashes: [packageSha256] });
   const socketPath = process.platform === 'win32' ? String.raw`\\.\pipe\qibox-test-export-${process.pid}` : path.join(dataRoot, 'export.sock');
   await new Promise(resolve => app.server.listen(socketPath, resolve));
   const call = (route, uid, data, csrf) => new Promise((resolve, reject) => {
@@ -30,9 +31,9 @@ test('报告下载接口要求当前用户和 CSRF，并只导出当前账号快
     await call('/install/download', '1001', {}, token); await app.library.working;
     const instance = JSON.parse((await call('/instances', '1001', { name: '导出测试' }, token)).bytes);
     const space = await app.users.get('1001'), ai = space.get(instance.id).ai;
+    await call(`/instances/${instance.id}/start`, '1001', {}, token); await ai.scan();
     const reportId = '11111111-1111-4111-8111-000000000001';
-    ai.data.account = 'account-a';
-    ai.data.analysisReports = [{ id: reportId, account: 'account-a', label: '测试联系人', createdAt: Date.now(),
+    ai.data.analysisReports = [{ id: reportId, account: bridge.account, label: '测试联系人', createdAt: Date.now(),
       requestedRange: { from: null, to: null }, actualRange: { from: '2026-09-01', to: '2026-09-02' },
       count: 2, report: '这是一份已保存的分析报告。' }];
     await ai.save();
@@ -50,7 +51,7 @@ test('报告下载接口要求当前用户和 CSRF，并只导出当前账号快
     assert.equal(downloaded.headers['cache-control'], 'no-store');
     const xml = strFromU8(unzipSync(downloaded.bytes)['word/document.xml']);
     assert.match(xml, /这是一份已保存的分析报告/);
-    ai.data.account = 'account-b';
+    bridge.account = key('report-export-account-b'); await ai.scan();
     const foreign = await call(route, '1001', request, token);
     assert.equal(foreign.status, 404);
     assert.doesNotMatch(foreign.bytes.toString(), /这是一份已保存的分析报告/);

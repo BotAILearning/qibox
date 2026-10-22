@@ -323,6 +323,11 @@ export function createProactiveUI({ panel, getState, context, isBusy, mutate, re
   return {
     page: () => proactivePage(getState(), { ...view, submitting: !!pendingSubmit }), remember, click, change, submit, refresh,
     closeOverlay: () => { if (contactDialog) { contactDialog.close(); contactDialog = null; return true; } if (dialog) { closeDialog(); return true; } if (view.menu) { view.menu = ''; refresh(true); return true; } return false; },
+    concealOverlays: () => {
+      contactDialog?.close(); contactDialog = null;
+      returnFocus = null; closeDialog();
+      view.menu = '';
+    },
     closeMenu: () => {
       if (!view.menu) return;
       view.menu = '';

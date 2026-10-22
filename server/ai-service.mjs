@@ -1,8 +1,9 @@
 import { replyRhythm } from './ai-reply-rhythm.mjs';
 import { initDefaultStyleAccounts, rememberDefaultStyle, switchDefaultStyleAccount, verifyDefaultStyleAccount, saveDefaultStyleChange } from './ai-default-style-scope.mjs';
 import { initReplyLimitAccounts, replyLimitsForAccount, migrateReplyLimitIdentity } from './ai-reply-limit-scope.mjs';
-import { configurationSnapshotPatch, withConfigurationCommit } from './ai-configuration-commit.mjs';
+import { configurationSnapshotPatch, withConfigurationCommit, configurationCommitPending } from './ai-configuration-commit.mjs';
 import { commitObjectConfiguration } from './ai-object-configuration.mjs';
+import { verifyAccountScope, accountRequestScope } from './ai-account-scope.mjs';
 import { mediaCapability, mediaOutputPrompt, generateMediaOutput } from './ai-media-output.mjs';
 import { readableMediaInput } from './ai-media-input.mjs';
 import { learningEnabled, learningEpoch, learningCurrent, learningRules, sensitiveMemory, deduplicateLearnedFacts, explicitFactTime } from './ai-learning-policy.mjs';
@@ -401,7 +402,14 @@ export class AIAssistant {
     options?.[configurationSnapshotPatch]?.(snapshot);
     const operation = this.writes.then(() => atomicJson(this.file, snapshot)); this.writes = operation.catch(() => {}); return operation;
   }
-  exclusive(action) { const task = this.actions.then(action); this.actions = task.catch(() => {}); return task; }
+  exclusive(action) {
+    const task = this.actions.then(async () => {
+      const account = accountRequestScope(this);
+      if (account) await verifyAccountScope(this, account);
+      return action();
+    });
+    this.actions = task.catch(() => {}); return task;
+  }
   async commitAutomaticLearning(epoch, valid, apply) {
     // Do not expose or snapshot results while storage is still busy. A switch
     // change can invalidate them before this short, serialized commit begins.
@@ -1917,7 +1925,21 @@ export class AIAssistant {
   async cancel() { this.invalidate(); this.pauseQueue(); this.forgetContext(); for (const profile of this.profiles()) delete profile.continuation; this.notice = '已取消未完成的操作'; await this.save(); return this.publicState(); }
   pauseQueue() { if (this.data.queue.status === 'running') this.data.queue.status = 'paused'; this.data.queue.nextAt = null; this.followUps.clear(); }
   async settings(value) {
-    return this.exclusive(() => withConfigurationCommit(this, async persist => {
+    // Verify before joining the write queue: a slow identity reader must not
+    // hold a later emergency close behind its verification.
+    const stopOnly = Object.entries(value).length > 0 && Object.entries(value).every(([key, val]) => ['enabled', 'reply', 'proactive', 'autoLearning'].includes(key) && val === false);
+    const stopFence = stopOnly ? {} : null;
+    if (stopOnly) {
+      this.settingsStopEpoch = (this.settingsStopEpoch || 0) + 1;
+      this.pendingSettingsStop = stopFence;
+      this.invalidate({ preservePreparedReplies: true });
+    }
+    const stopEpoch = this.settingsStopEpoch || 0;
+    const expectedAccount = this.data.account;
+    if (expectedAccount && !stopOnly) await verifyAccountScope(this, expectedAccount);
+    const apply = () => withConfigurationCommit(this, async persist => {
+      if (!stopOnly && stopEpoch !== (this.settingsStopEpoch || 0)) throw new AppError('开关已关闭，请重新确认设置', 409, 'AI_SETTINGS_CHANGED');
+      if (!stopOnly && expectedAccount !== this.data.account) throw new AppError('微信账号已变化，请重新读取设置', 409, 'AI_SCOPE_CHANGED');
       const previousSettings = this.data.settings;
       if (value.mobileMaster) {
         if (typeof this.bridge.currentAccount !== 'function') throw new AppError('暂时无法确认当前微信账号，请稍后重试', 409, 'AI_ACCOUNT_UNVERIFIED');
@@ -2004,7 +2026,14 @@ export class AIAssistant {
       return this.publicState();
     // Closing must invalidate running learning immediately, even behind an old
     // write. The installed barrier and persist still preserve write ordering.
-    }, { drain: false }));
+    }, { drain: false, urgentStop: stopOnly, verify: expectedAccount && !stopOnly ? () => verifyAccountScope(this, expectedAccount) : undefined });
+    const urgent = stopOnly && !configurationCommitPending(this) ? Promise.withResolvers() : null;
+    if (urgent) this.urgentSettingsStop = urgent;
+    try { return await (urgent ? apply() : this.exclusive(apply)); }
+    finally {
+      if (urgent) { if (this.urgentSettingsStop === urgent) this.urgentSettingsStop = null; urgent.resolve(); }
+      if (stopFence && this.pendingSettingsStop === stopFence) this.pendingSettingsStop = null;
+    }
   }
   async saveStrategy(value, id, mode) {
     return this.exclusive(async () => {
@@ -2014,13 +2043,14 @@ export class AIAssistant {
         await commitObjectConfiguration(this, id, candidate => { candidate[mode === 'reply' ? 'replyStrategy' : 'strategy'] = strategy; delete candidate.preparedReply; }, { invalidate: true });
         return this.publicState();
       }
+      const account = this.data.account;
       return withConfigurationCommit(this, async persist => {
         const key = mode === 'reply' ? 'replyStrategy' : 'strategy';
         await persist({ [configurationSnapshotPatch]: snapshot => { snapshot[key] = structuredClone(strategy); } });
         this.data[key] = strategy;
         this.invalidate({ preservePreparedReplies: true });
         return this.publicState();
-      });
+      }, { verify: account ? () => verifyAccountScope(this, account) : undefined });
     });
   }
   recordUncertainProactive(profile, task, text, operationId) {
@@ -2368,7 +2398,7 @@ export class AIAssistant {
       }
       if (this.data !== data || data.account !== account) throw new AppError('微信账号已变化，请重新选择辅助对象', 409, 'AI_SCOPE_CHANGED');
       clearPrepared(data); return this.publicState();
-      }); } finally { if (this.pendingLegacyTargets === pending) this.pendingLegacyTargets = null; }
+      }, { verify: account ? () => verifyAccountScope(this, account) : undefined }); } finally { if (this.pendingLegacyTargets === pending) this.pendingLegacyTargets = null; }
     });
   }
   async prepareTargets({ contacts } = {}) {
@@ -3171,7 +3201,7 @@ export class AIAssistant {
     this.memoryRuns.set(profile.id, task); task.catch(() => {});
   }
   async tick({ background = false, urgentReplyId = null } = {}) {
-    if (this.pendingLegacyTargets || this.pendingSettingsEnable) return;
+    if (this.pendingLegacyTargets || this.pendingSettingsEnable || this.pendingSettingsStop) return;
     if (this.proactiveV2.pendingMasterEnables) return;
     if (this.receiptChecking) return;
     if (!this.ticking && !this.closed && !this.operation && !this.scanOperation
@@ -3806,7 +3836,7 @@ export class AIAssistant {
     await this.save();
   }
   canDeliver(profile, mode, revision, signal) {
-    if (this.pendingLegacyTargets || this.pendingSettingsEnable) return false;
+    if (this.pendingLegacyTargets || this.pendingSettingsEnable || this.pendingSettingsStop) return false;
     if (this.pendingBulkReplyLimit?.account === profile.account && this.pendingBulkReplyLimit.kind === profile.kind) return false;
     if (this.proactiveV2.pendingMasterEnables) return false;
     if (mode === 'reply' && !validReplyLimit(this.strategy(profile, mode).maxRounds)) return false;

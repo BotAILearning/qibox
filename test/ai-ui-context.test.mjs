@@ -763,7 +763,7 @@ for (const destination of ['instance-b', 'instance-a', 'hide-reopen', 'navigate-
       controller.detach(); await controller.attach(destination); dom.node('#ai-open').onclick(); await dom.navigate('provider'); await dom.button({ aiModelEdit: 'legacy' });
       currentInput = mountProvider().elements.apiKey;
     } else if (destination === 'hide-reopen') {
-      dom.node('#ai-close').onclick(); dom.node('#ai-open').onclick();
+      dom.node('#ai-close').onclick(); await dom.node('#ai-open').onclick();
     } else if (destination === 'navigate-back') {
       await dom.navigate('overview'); await dom.navigate('provider');
     } else if (destination === 'cancel-reveal') {

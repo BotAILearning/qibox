@@ -2,6 +2,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { AppError } from './files.mjs';
 import { withConfigurationCommit, configurationSnapshotPatch } from './ai-configuration-commit.mjs';
 import { readGroupInbox, settleGroupBatch } from './ai-group-inbox.mjs';
+import { verifyAccountScope } from './ai-account-scope.mjs';
 
 const copy = value => value === undefined ? undefined : structuredClone(value);
 function changedFields(before, after, omitted = []) {
@@ -43,6 +44,7 @@ function cursorValue(cursor) {
 // and history that arrive independently while storage is busy must survive.
 export async function commitObjectConfiguration(a, id, change, { invalidate = false } = {}) {
   const account = a.data.account, finished = Promise.withResolvers(), pending = { id, account, finished };
+  if (account) await verifyAccountScope(a, account);
   a.pendingObjectConfiguration = pending;
   try {
     return await withConfigurationCommit(a, async persist => {
@@ -111,7 +113,7 @@ export async function commitObjectConfiguration(a, id, change, { invalidate = fa
         if (skipped) maps.skipReplyWaits.add(id); else maps.skipReplyWaits.delete(id);
       }
       return a.publicState();
-    });
+    }, { verify: account ? () => verifyAccountScope(a, account) : undefined });
   } finally {
     if (a.pendingObjectConfiguration === pending) a.pendingObjectConfiguration = null;
     finished.resolve();

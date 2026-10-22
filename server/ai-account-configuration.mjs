@@ -7,6 +7,7 @@ import { personalFields, retiredPersonalFields, normalizePersonalField } from '.
 import { learningEnabled, safeFactMessage, sensitiveMemory, explicitFactTime } from './ai-learning-policy.mjs';
 import { selectMemoryForChat } from './ai-memory-context.mjs';
 import { withConfigurationCommit } from './ai-configuration-commit.mjs';
+import { verifyAccountScope } from './ai-account-scope.mjs';
 export { personalFields } from './ai-personal-fields.mjs';
 
 const withoutExpiry = ({ expiresAt, ...entry }) => entry;
@@ -82,7 +83,14 @@ export function migrateObjectStyles(profile) {
 }
 
 export async function accountConfiguration(a, value) {
+  const expectedAccount = a.data.account;
+  if (['personal-information', 'personal-suggestion', 'personal-history', 'personal-restore'].includes(value?.type) && value.account !== undefined && value.account !== expectedAccount)
+    throw new AppError('微信账号已变化，请重新打开我的信息', 409, 'account_changed');
+  if (['clear-records', 'clear-ended-tasks'].includes(value?.type) && value.token && a.configurationConfirmations.get(value.token)?.account !== expectedAccount)
+    throw new AppError('确认已过期，请重新操作');
+  if (expectedAccount) await verifyAccountScope(a, expectedAccount);
   return a.exclusive(() => withConfigurationCommit(a, async persist => {
+    if (expectedAccount !== a.data.account) throw new AppError('微信账号已变化，请重新打开设置', 409, 'AI_SCOPE_CHANGED');
     if (!a.data.account) throw new AppError('请先连接当前微信账号');
     const type = value?.type;
     if (['personal-information', 'personal-suggestion', 'personal-history', 'personal-restore'].includes(type) && value.account !== undefined && value.account !== a.data.account)
@@ -241,5 +249,5 @@ export async function accountConfiguration(a, value) {
     } else throw new AppError('设置操作无效');
     await persist(); return a.publicState();
     } catch (error) { for (const restore of undo.reverse()) restore(); throw error; }
-  }));
+  }, { verify: expectedAccount ? () => verifyAccountScope(a, expectedAccount) : undefined }));
 }

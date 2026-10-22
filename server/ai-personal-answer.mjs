@@ -1,4 +1,5 @@
 import { annotateChatTimes } from './ai-time-context.mjs';
+import { createHash } from 'node:crypto';
 // A local final check: it never invokes a provider or asks for another draft.
 const clean = value => String(value || '').normalize('NFKC').replace(/[\u200b-\u200d\u2060\ufeff*_`]/g, '');
 const parts = value => clean(value).split(/[。！？!?，,；;\n]/).map(x => x.trim()).filter(Boolean);
@@ -26,7 +27,73 @@ const privacyReason = /^(?:我(?:这边|现在|目前)?(?:的)?(?:位置|地点)
 const plannedDelivery = /^(?:那|好[的吧]?|嗯)?(?:我)?(下次|回头|明天|周[一二三四五六日天])(?:再|就|会)?(?:给|帮|替)(?:你|您)(带|拿|送|取)(?:点|些|一点|一些)?(.{1,24})$/;
 const plannedInvitation = /^(?:那|好[的吧]?|嗯)?(?:我)?(下次|回头|明天|周[一二三四五六日天])(.{0,24}?)(叫上|喊上|约|带上)(?:你|您)(.{0,12})$/;
 
+// Keep quotation and conditional scope until after attribution. A counterpart's
+// correction alone is not evidence that the account owner previously made a
+// mistake, had a thought or said something. These final checks never regenerate.
+const outsideQuotes = value => clean(value).replace(/“[^”]*”|「[^」]*」|『[^』]*』|"[^"]*"/g, quote => `〈引用${createHash('sha256').update(quote).digest('hex')}〉`);
+const sentences = value => (outsideQuotes(value).match(/[^。！？!?；;\n]+[。！？!?；;\n]?/g) || []).map(text => text.trim()).filter(Boolean);
+const hypothetical = text => /(?:如果|假如|假设|要是|倘若|万一|即使|即便)/.test(text);
+const reported = prefix => /(?:你|您|他|她|别人|对方)(?:们)?[^。！？!?；;]{0,12}(?:说|写|认为|以为|觉得|问)[，,:：\s]*$/.test(prefix)
+  || /^(?![^，,]*我)[\u4e00-\u9fffA-Za-z·]{1,12}(?:说|表示|认为|提到|写道|问)[，,:：\s]*$/.test(prefix.trim());
+function claimScope(sentence, match) {
+  const start = match.index + (/^[，,]\s*/.exec(match[0])?.[0].length || 0);
+  const prefix = sentence.slice(0, start), localPrefix = prefix.split(/但是|不过|然而|但/).at(-1);
+  const clause = sentence.slice(start).split(/[，,]/)[0];
+  return {prefix, clause, attributed: hypothetical(localPrefix) || reported(prefix) || /[？?]$/.test(clause)};
+}
+const normalizedClaim = value => clean(value).replace(/[\p{P}\p{S}\s]/gu, '').replace(/(?:了|过|呢|呀|啊|啦|哦|吧|哈)+$/u, '');
+const historicalFault = '(?:认错|记错|说错|听错|看错|想错|理解错|理解反|搞错|弄错|搞混|记混|(?:记|搞|弄|听|说|看|理解)岔|混淆|误解|误会|没(?:有|能)?(?:分清|区分清楚|理解清楚)|(?:表达|说)(?:得)?(?:不清楚|不严谨|不准确))';
+function historicalClaims(value) {
+  const result = [];
+  for (const sentence of sentences(value)) {
+    const expressions = [
+      new RegExp('我(?:自己|本人)?(?:刚才|刚刚|之前|原先|先前|刚|以前|曾经|当时|本来|原本)?(?:还|也|竟然|差点儿?|真|一直|确实|居然|都|就|一度){0,6}(?:把[^，,。！？!?；;\\n]{1,32}?)?(' + historicalFault + '|以为|误以为|误认为|遇到过|碰到过|经历过)([^，,。！？!?；;\\n]*)', 'g'),
+      /我(?:自己|本人)?(?:刚才|刚刚|之前|原先|先前|以前|曾经|当时)(?:还|也|确实)?(说|讲|表示|答应|承诺|觉得|认为|想)(?:过|了)?([^，,。！？!?；;\n]*)/g,
+      new RegExp('(?:^|[，,])\\s*(?:刚才|刚刚|之前|先前|原先|以前|当时)(?:还|也|确实)?(' + historicalFault + ')([^，,。！？!?；;\\n]*)', 'g'),
+    ];
+    for (const expression of expressions) for (const match of sentence.matchAll(expression)) {
+      const {prefix, attributed: scopedAttribution} = claimScope(sentence, match);
+      if (scopedAttribution || /(?:不是说|并非|不是|没有说|没说|不代表)[^，,。]{0,16}$/.test(prefix)) continue;
+      result.push({verb: match[1], detail: normalizedClaim(match[2]), recent: /刚才|刚刚/.test(match[0])});
+    }
+  }
+  return result;
+}
+function unsupportedHistoricalSelf(texts, {messages, facts, now}) {
+  const human = messages.filter(message => message.direction === 'self' && message.authorship === 'human' && !message.aiGenerated
+    && Number.isSafeInteger(message.timestamp) && message.timestamp * 1000 <= now);
+  const supplied = parts(facts).filter(text => /^我(?:本人)?/.test(text));
+  for (const claim of historicalClaims(texts.join(''))) {
+    const sources = [...human.filter(message => !claim.recent || now - message.timestamp * 1000 <= 86400000).map(message => message.text), ...supplied];
+    const supported = sources.some(source => historicalClaims(source).some(known => known.verb === claim.verb && known.detail === claim.detail)
+      || ['说', '讲', '表示'].includes(claim.verb) && claim.detail && !hypothetical(source) && !/[“”"「」]|[？?]/.test(source)
+        && parts(source).some(part => normalizedClaim(part) === claim.detail));
+    if (!supported) return true;
+  }
+  return false;
+}
+function unsupportedRecipientArrival(texts, {messages, pendingMessages, facts, now}) {
+  const targetIds = new Set(pendingMessages.filter(message => message.direction === 'other' && message.speaker?.id).map(message => message.speaker.id));
+  const arrival = /(?:^|[，,])\s*(?:原来|看来|结果|那)?(?:你(?:人)?|您(?:人)?|人)(?:已经|都|早就|刚刚?|先)?(?:到(?:现场|那里|这儿|地方|场)?了|都?到现场了|白跑了?一趟)/;
+  const evidence = [
+    ...messages.filter(message => !message.aiGenerated && Number.isSafeInteger(message.timestamp) && message.timestamp * 1000 <= now && now - message.timestamp * 1000 <= 86400000
+      && (message.direction === 'other' && (targetIds.size === 0 || targetIds.size === 1 && targetIds.has(message.speaker?.id)) || message.direction === 'self' && message.authorship === 'human'))
+      .flatMap(message => sentences(message.text).filter(text => !hypothetical(text) && !/[？?]/.test(clean(message.text))).flatMap(text => text.split(/[，,]/)).filter(text =>
+        new RegExp('^(?:' + (message.direction === 'other' ? '我(?:人)?' : '你(?:人)?|您(?:人)?') + ')(?:已经|都|早就|刚刚?)?(?:到(?:现场|那里|这儿|地方|场)?了|白跑了?一趟)').test(text))),
+    ...parts(facts).filter(text => /^对方(?:已经|都|早就|刚刚?)?(?:到(?:现场|那里|这儿|地方|场)?了|白跑了?一趟)/.test(text)),
+  ];
+  for (const sentence of sentences(texts.join(''))) {
+    for (const claim of sentence.matchAll(new RegExp(arrival.source, 'g'))) {
+      const scope = claimScope(sentence, claim);
+      if (scope.attributed || /(?:到了|到场了)(?:就|再|才|也)/.test(scope.clause)) continue;
+      if (!evidence.some(source => /白跑/.test(claim[0]) ? /白跑/.test(source) : !/白跑/.test(source))) return true;
+    }
+  }
+  return false;
+}
+
 export function unsupportedPersonalAnswer(texts, { messages = [], pendingMessages = [], facts = '', boundaries = '', now = Date.now(), identityAsked = false } = {}) {
+  const context = {messages, pendingMessages, facts, now};
   if (unsupportedRecipientHelp(texts, { messages, facts })) return 'recipient-fact';
   const moved = /^(?:哦|哦哦|原来|嗯)?\s*(?:你|您)?(?:已经|刚刚?|现在)?搬(?:家)?(?:到|去|来)([^。！？!?，,；;\s]{1,24})/;
   const relocationEvidence=[...messages.filter(m=>m.direction==='other'&&!m.aiGenerated).flatMap(m=>parts(m.text)).filter(p=>!/[“”"「」]|没|不|准备|打算|如果|假如|明天/.test(p)&&/^我(?:已经|刚刚?|现在)?搬(?:家)?(?:到|去|来)/.test(p)),...parts(facts).filter(p=>/^对方(?:已经|刚刚?|现在)?搬(?:家)?(?:到|去|来)/.test(p))];
@@ -88,6 +155,10 @@ export function unsupportedPersonalAnswer(texts, { messages = [], pendingMessage
     if (planNotDelegated && /^(?:那|就|我们|咱们|我|先){0,3}(?:定|约|安排|确定)(?:好|下|了|在|为|成)?(?:下周|这周|周[一二三四五六日天]|明天|后天|计划|安排)/.test(part)) return 'future-notice';
     if ((futureNotice.test(part) || confirmThenNotice.test(part) || futureCheck.test(part) || deferredNotice.test(part) || deferredPlanning.test(part)) && !/^(?:不用|不必|别|不要)|不(?:会|承诺|保证)/.test(part)) return 'future-notice';
   }
+  // Preserve existing, more specific execution/identity reasons when a draft
+  // contains several violations; these additional fact checks remain final.
+  if (unsupportedHistoricalSelf(texts, context)) return 'personal-fact';
+  if (unsupportedRecipientArrival(texts, context)) return 'recipient-fact';
   return '';
 }
 

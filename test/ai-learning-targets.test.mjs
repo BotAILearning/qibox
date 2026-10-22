@@ -16,6 +16,7 @@ async function fixture(t, { long = false, count = 3 } = {}) {
     account: key('learning-account'),
     contacts: Array.from({ length: count }, (_, i) => ({ id: key(`target-${i}`), label: `联系人${i}`, kind: 'person' })),
     async scan() { return { available: true, account: this.account, contacts: this.contacts }; },
+    async currentAccount() { return { account: this.account }; },
     async read({ contact }) { return { account: this.account, contact, messages: [{ id: key(`snapshot-${contact}`), direction: 'self', text: '快照发言' }], revision: key(`rev-${contact}`) }; },
   };
   const messages = long

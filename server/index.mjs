@@ -25,6 +25,7 @@ import { readWechatAvatar } from './ai-avatar.mjs';
 import { StaticAssets, webChunkRoutes } from './static-assets.mjs';
 import { protectGatewaySocket } from './gateway-socket.mjs';
 import { gatewayPeerVerifier } from './gateway-peer.mjs';
+import { currentAccountState, verifyAccountScope, unverifiedAccountState, accountIndependentAction, accountStopAction, withAccountRequestScope } from './ai-account-scope.mjs';
 
 const moduleRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const equal = (a, b) => typeof a === 'string' && typeof b === 'string' && Buffer.byteLength(a) === Buffer.byteLength(b) && timingSafeEqual(Buffer.from(a), Buffer.from(b));
@@ -155,6 +156,7 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
         }
         if (req.method === 'GET' && aiAvatarMatch) {
           space.requireConsent(); const item = space.get(aiAvatarMatch[1]); if (item.meta.appId !== 'wechat') throw new AppError('此应用不支持 AI', 409);
+          await verifyAccountScope(item.ai);
           const controller = new AbortController();
           res.once('close', () => { if (!res.writableEnded) controller.abort(); });
           const url = item.ai.avatarUrl(aiAvatarMatch[2]);
@@ -166,7 +168,8 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
         }
         if (req.method === 'GET' && (aiMatch || aiReportMatch)) {
           space.requireConsent(); const item = space.get((aiMatch || aiReportMatch)[1]); if (item.meta.appId !== 'wechat') throw new AppError('此应用不支持 AI', 409);
-          return send(res, 200, aiReportMatch ? item.ai.analysisReport(aiReportMatch[2]) : url.searchParams.get('view') === 'live' ? item.ai.publicLiveState(url.searchParams.get('contact')) : item.ai.publicState());
+          if (aiReportMatch) { await verifyAccountScope(item.ai); return send(res, 200, item.ai.analysisReport(aiReportMatch[2])); }
+          return send(res, 200, await currentAccountState(item.ai, { live: url.searchParams.get('view') === 'live', contact: url.searchParams.get('contact') }));
         }
         if (req.method !== 'POST') throw new AppError('请求方式不支持', 405);
         check(req, user);
@@ -212,6 +215,7 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
         if (aiReportExportMatch) {
           const item = space.get(aiReportExportMatch[1]);
           if (item.meta.appId !== 'wechat') throw new AppError('此应用不支持 AI', 409);
+          await verifyAccountScope(item.ai);
           const controller = new AbortController();
           res.once('close', () => { if (!res.writableEnded) controller.abort(); });
           const file = await exportAnalysisReports(item.ai, data, { signal: controller.signal });
@@ -253,7 +257,18 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
               return { apiKey: config.apiKey, baseUrl: config.baseUrl, protocol: config.protocol || 'openai', modelId: data.modelId || null };
             } };
           if (!Object.hasOwn(handlers, data.action)) throw new AppError('AI 操作无效');
-          return send(res, 200, await handlers[data.action]());
+          const independent = accountIndependentAction(data.action), stopping = accountStopAction(data);
+          const account = !independent && !stopping && data.action !== 'scan' ? await verifyAccountScope(ai) : null;
+          const result = account ? await withAccountRequestScope(ai, account, handlers[data.action]) : await handlers[data.action]();
+          // Safe stops finish without waiting for identity. Instance model
+          // operations stay available, but neither may reveal an old account.
+          if (stopping && result?.account !== undefined) return send(res, 200, unverifiedAccountState(ai));
+          if (independent && result?.account !== undefined) {
+            let state;
+            try { state = await currentAccountState(ai); } catch { state = unverifiedAccountState(ai); }
+            return send(res, 200, state);
+          }
+          return send(res, 200, result);
         }
         if (installRoute === '/api/install/uninstall') {
           if (!user.isAdmin) throw new AppError('请由 NAS 管理员卸载微信', 403);

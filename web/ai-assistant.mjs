@@ -49,6 +49,8 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     return !!id;
   }
   let id, state, tab = 'overview', timer, lastPollAt = 0, generation = 0, requestEpoch = 0, workToken = 0, analysisQueueToken = 0, analysisQueueAccount = null, polling = false, busy = false, attaching = false;
+  let scopeVerified = false, scopeChecking = false, scopeVerificationEpoch = 0;
+  const accountScopeError = error => ['AI_ACCOUNT_UNVERIFIED', 'AI_SCOPE_CHANGED', 'ai_account_changed', 'ai_wechat_logged_out', 'ai_data_unavailable'].includes(error?.code);
   let dateRangeOperation = null;
   function invalidateDateRange() { dateRangeOperation?.controller.abort(); dateRangeOperation = null; if ($('#ai-feedback')?.textContent.includes('正在读取聊天日期…')) message(''); }
   let personalDraft = null, personalDraftAccount = null;
@@ -589,14 +591,21 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     }
   }
   async function call(action, extras = {}, compact = false) {
-    const current = generation, target = id, epoch = action ? ++requestEpoch : requestEpoch;
+    const current = generation, target = id, epoch = action ? ++requestEpoch : requestEpoch, scopeEpoch = scopeVerificationEpoch;
     // 未挂载实例时不要用空 id 发请求（会落到不存在的路由上），先补挂载或明确提示。
     if (!target) throw new Error('AI 辅助尚未就绪，请重新打开微信后再试');
     if (['save-default-style', 'commit-default-style', 'clear-default-style', 'apply-default-style', 'cancel-default-style'].includes(action) || action === 'learn' && extras.value?.asDefault) extras = { ...extras, value: { ...extras.value, account: state?.account || null } };
     let result;
     try { result = await api(`/instances/${target}/ai${compact && state ? '?view=live' + (selectedObject ? '&contact=' + encodeURIComponent(selectedObject) : '') : ''}`, action ? { action, ...extras } : undefined, ['learn', 'scan'].includes(action) ? 30 * 60 * 1000 : 130000); }
-    catch (error) { if (current !== generation || target !== id || epoch !== requestEpoch) return null; throw error; }
+    catch (error) {
+      if (current !== generation || target !== id || epoch !== requestEpoch) return null;
+      if (accountScopeError(error)) concealUnverifiedAccount();
+      throw error;
+    }
     if (current !== generation || target !== id || epoch !== requestEpoch) return null;
+    // A previously dispatched response cannot uncover private fields after a
+    // later identity failure. Re-read state only; never repeat its action.
+    if (scopeEpoch !== scopeVerificationEpoch && !result.scopeUnknown) return call(undefined, {}, compact);
     // The action acknowledges a queued request; it does not return an AI state.
     // Keep the current account and drafts if the follow-up read temporarily fails.
     if (action === 'skip-reply-wait' && result.accepted === true) {
@@ -606,6 +615,8 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     return acceptState(result);
   }
   async function acceptState(result) {
+    if (result.scopeUnknown) { concealUnverifiedAccount(); return null; }
+    const wasUnverified = !scopeVerified;
     const initialState = !state;
     const accountChanged = state && state.account !== result.account;
     if (accountChanged) {
@@ -644,11 +655,24 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     }
     if (result.compact && (result.account !== state?.account || result.configurationRevision !== state?.configurationRevision)) return call();
     if (result.compact) { const updates = new Map(result.profiles.map(profile => [profile.id, profile])); result = { ...state, ...result, profiles: state.profiles.map(profile => updates.has(profile.id) ? { ...profile, ...updates.get(profile.id) } : profile) }; }
-    state = result;
+    scopeVerified = true; state = result;
     // Repaint every page immediately so old private text cannot remain in the
     // form after its draft has been discarded.
-    if (accountChanged || initialState) render();
+    if (accountChanged || initialState || wasUnverified) render();
     return result;
+  }
+  function concealUnverifiedAccount() {
+    if (scopeVerified) rememberDraft();
+    scopeVerificationEpoch++;
+    scopeVerified = false;
+    concealKey(true);
+    contactDialog?.close();
+    proactiveUI.concealOverlays();
+    invalidateDateRange();
+    replyLimitConfirmController?.abort(); replyLimitConfirmController = null;
+    for (const controller of confirmationControllers) controller.abort();
+    panel.querySelector(':scope > .qibox-workspace-menu')?.remove();
+    $('#ai-content').innerHTML = loadingContent;
   }
   function selectProfiles(includePaste = true) { return (state?.profiles || []).filter(p => includePaste || p.contact && state.contacts.some(c => c.id === p.contact)); }
   function scopeOptions(selected = '') { return option('', '通用策略', !selected) + selectProfiles().map(p => option(p.id, p.label, p.id === selected)).join(''); }
@@ -659,7 +683,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   }
   const hasPendingAnalysis = () => analysisQueueAccount !== null && analysisResult?.reports?.some(row => ['waiting', 'analyzing'].includes(row.status));
   function controls() {
-    if (!state) return;
+    if (!state || !scopeVerified) return;
     if (tab === 'global-reply') refreshGlobalReplyForm();
     const defaultCurrent = tab === 'default-style' && panel.querySelector('.ai-default-current');
     if (defaultCurrent && defaultCurrent.dataset.defaultStyleState !== defaultStyleSignature()) {
@@ -1185,7 +1209,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     textarea.style.overflowY = naturalHeight > limit ? 'auto' : 'hidden';
   }
   function render() {
-    if (!state) return;
+    if (!state || !scopeVerified) return;
     revealRevision++;
     const view = `${tab}:${editingProfile || editingReplyContact || (tab === 'overview' ? selectedObject : '')}:${tab === 'proactive' ? !!$('#ai-proactive-form') : ''}`;
     const objectScroll = rememberedObjectScroll();
@@ -1378,22 +1402,22 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     message(state.notice || (target === 'memory' ? '聊天记忆学习完成，请在下方「聊天记忆」中确认后应用' : target === 'style' ? '聊天风格已更新' : '风格学习完成'), /失败/.test(state.notice || ''));
   }
   function show() {
-    setPanelVisible(true); rail.querySelector('#ai-open').setAttribute('aria-expanded', 'true'); if (state) render(); (window.matchMedia?.('(max-width:639px)')?.matches ? $('#ai-mobile-back') : $('#ai-close')).focus();
-    if (!state) {
-      if (!$('#ai-content .ai-entry-loading')) $('#ai-content').innerHTML = loadingContent;
-      if (id && !attaching) { const current = generation; void call().then(result => { if (result && current === generation && !panel.hidden) render(); }).catch(error => { if (current === generation) message(error.message, true); }); }
-      return;
-    }
-    if (tab === 'overview' && needsContacts() && !busy) {
-      const current = generation;
-      void refreshContacts().catch(error => { if (current === generation) message(error.message, true); });
-    }
+    setPanelVisible(true); rail.querySelector('#ai-open').setAttribute('aria-expanded', 'true');
+    concealUnverifiedAccount();
+    (window.matchMedia?.('(max-width:639px)')?.matches ? $('#ai-mobile-back') : $('#ai-close')).focus();
+    if (!id || attaching || scopeChecking) return;
+    const current = generation; scopeChecking = true; requestEpoch++;
+    return call().then(async result => {
+      if (!result || current !== generation || panel.hidden) return;
+      if (tab === 'overview' && needsContacts() && !busy) await refreshContacts();
+    }).catch(error => { if (current === generation) message(error.message, true); })
+      .finally(() => { if (current === generation) scopeChecking = false; });
   }
   function hide() { globalReplyConfirmController?.abort(); globalReplyConfirmController = null; invalidateDateRange(); rememberDraft(); rememberRecords(); concealKey(true); proactiveUI.closeOverlay(); if (learningDraft) learningDraft.text = ''; setPanelVisible(false); rail.querySelector('#ai-open').setAttribute('aria-expanded', 'false'); panel.querySelectorAll('[name=text], [name=styleText]').forEach(input => { input.value = ''; }); rail.querySelector('#ai-open').focus(); onClose?.(); }
   rail.querySelector('#ai-open').onclick = async () => {
     if (panel.hidden && !pass()) return;
     if (panel.hidden && !id && !(await ensureInstance())) { message('AI 辅助尚未就绪，请重新打开微信后再试', true); return; }
-    panel.hidden ? show() : hide();
+    return panel.hidden ? show() : hide();
   };
   $('#ai-close').onclick = hide;
   // The app bar owns mobile navigation. Content retains the same return actions
@@ -2467,6 +2491,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     show,
     attached: () => !!id,
     async attach(instanceId) {
+      scopeVerified = false; scopeChecking = false;
       analysisHistoryQuery = ''; analysisHistoryPage = 0; analysisHistoryReturn = null;
       for (const controller of confirmationControllers) controller.abort();
       replyLimitConfirmController?.abort(); replyLimitConfirmController = null;
@@ -2490,9 +2515,23 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         if (current === generation && !panel.hidden) refreshReplyCountdowns(panel);
         if ((typeof document.visibilityState === 'string' && (panel.hidden || document.hidden)) || Date.now() - lastPollAt < 2500) return;
         lastPollAt = Date.now();
-        if (polling || current !== generation) return; polling = true;
+        if (polling || scopeChecking || current !== generation) return; polling = true;
         try {
-          if (busy) { const epoch = requestEpoch; const result = await api(`/instances/${id}/ai?view=live`).catch(() => null); if (current !== generation || epoch !== requestEpoch || !busy || !result) return; if (state && result.account !== state.account) { await acceptState(result); if (current === generation) message('微信账号已变化，已停止旧账号操作', true); return; } if (analysisQueueAccount !== null && result.account !== analysisQueueAccount) { analysisQueueToken++; analysisQueueAccount = null; for (const report of analysisResult?.reports || []) if (report.status === 'waiting' || report.status === 'analyzing') { report.status = 'cancelled'; report.error = ''; } render(); message('微信账号已变化，已停止剩余联系人分析', true); return; } $('#ai-operation').hidden = !result.operation && !contactsLoading && !hasPendingAnalysis(); $('#ai-operation-text').textContent = operationText(result.operation) || (contactsLoading ? '正在获取联系人…' : hasPendingAnalysis() ? '正在分析聊天记录…' : ''); }
+          if (busy) {
+            const epoch = requestEpoch, scopeEpoch = scopeVerificationEpoch;
+            let result;
+            try { result = await api(`/instances/${id}/ai?view=live`); }
+            catch (error) {
+              if (current === generation && epoch === requestEpoch && accountScopeError(error)) { concealUnverifiedAccount(); message(error.message, true); }
+              return;
+            }
+            if (current !== generation || epoch !== requestEpoch || scopeEpoch !== scopeVerificationEpoch || !busy || !result) return;
+            if (result.scopeUnknown) { concealUnverifiedAccount(); return; }
+            if (state && result.account !== state.account) { await acceptState(result); if (current === generation) message('微信账号已变化，已停止旧账号操作', true); return; }
+            if (analysisQueueAccount !== null && result.account !== analysisQueueAccount) { analysisQueueToken++; analysisQueueAccount = null; for (const report of analysisResult?.reports || []) if (report.status === 'waiting' || report.status === 'analyzing') { report.status = 'cancelled'; report.error = ''; } render(); message('微信账号已变化，已停止剩余联系人分析', true); return; }
+            $('#ai-operation').hidden = !result.operation && !contactsLoading && !hasPendingAnalysis();
+            $('#ai-operation-text').textContent = operationText(result.operation) || (contactsLoading ? '正在获取联系人…' : hasPendingAnalysis() ? '正在分析聊天记录…' : '');
+          }
           else { const result = await call(undefined, {}, true); if (result) { controls(); if (tab === 'activity' && !panel.hidden && !logLoading && logSignature !== JSON.stringify([state.activity || [], state.activityHistory || []])) await loadActivity(); } }
         } catch (e) { if (current === generation && !panel.hidden) message(e.message, true); }
         finally { if (current === generation) polling = false; }
