@@ -189,6 +189,34 @@ function declaredNames(value) {
   }
   return names;
 }
+function otherPersonCorrection({ pendingMessages = [], kind, now = Date.now() }) {
+  const pending = pendingMessages.filter(message => message.direction === 'other');
+  if (pending.length !== 1 || pending[0].aiGenerated || pending[0].unresolved || pending[0].speaker?.identified === false
+      || kind === 'group' && !pending[0].speaker?.id || Number.isFinite(pending[0].timestamp) && pending[0].timestamp * 1000 > now) return null;
+  const match = /^我(?:本人|自己)?不是([^，,。！？!?；;\n]{1,12})[，,](?:别|不要)把另一个人的(安排|计划|经历|工作)套到我这里[。！!]?$/u.exec(clean(pending[0].text).trim());
+  return match && personName(match[1]) ? { name: match[1], topic: match[2] } : null;
+}
+function reversedOtherPersonCorrection(texts, context) {
+  const correction = otherPersonCorrection(context);
+  if (!correction) return false;
+  const expression = new RegExp('(?:^|[，,])\\s*' + correction.topic + '(?:是(?:你|您)的|归(?:你|您))(?:[啊呀呢啦哦])?(?=[，,。！？!?；;\\n]|$)', 'gu');
+  for (const sentence of sentences(texts.join(''))) for (const match of sentence.matchAll(expression)) {
+    const scope = claimScope(sentence, match);
+    if (scope.attributed || /(?:^|[，,])\s*(?:你|您|他|她|别人|对方)(?:们)?(?:刚才|刚刚|之前|曾经)?(?:说过|说了|表示过|提到过|写过)[，,：:\s]*$/u.test(scope.prefix)) continue;
+    const tail = sentence.slice(match.index + match[0].length);
+    // A confirmation question can ask about this very clause. An unrelated
+    // question later in the sentence cannot erase the ownership assertion.
+    if (/^[，,]\s*(?:是(?:这样)?吗|对(?:吗|吧)|是吧|真的(?:吗)?|没错吧|不是吗|对不对|是不是(?:这样)?)[？?]$/u.test(tail)) continue;
+    return true;
+  }
+  return false;
+}
+export function otherPersonCorrectionRepair(texts, context = {}) {
+  if (texts.length !== 1 || context.mode && context.mode !== 'reply' || context.followUp || context.kind === 'group') return '';
+  const other = otherPersonCorrection(context);
+  return other && new RegExp('^(?:明白|知道了|好)[，,]' + other.topic + '是你的[，,]不套到' + other.name + '身上[。！!]?$','u').test(texts[0])
+    ? `明白，不把另一个人的${other.topic}归到你这里。` : '';
+}
 function unsupportedRecipientName(texts, {messages, pendingMessages, facts, now, kind}) {
   const pending = pendingMessages.filter(message => message.direction === 'other' && !message.aiGenerated);
   if (pending.length !== 1) return false;
@@ -311,6 +339,7 @@ export function unsupportedPersonalAnswer(texts, { messages = [], pendingMessage
   // contains several violations; these additional fact checks remain final.
   if (unsupportedHistoricalSelf(texts, context)) return 'personal-fact';
   if (unsupportedUnstatedRecipient(texts, context)) return 'recipient-fact';
+  if (reversedOtherPersonCorrection(texts, context)) return 'recipient-fact';
   if (unsupportedRecipientName(texts, context)) return 'recipient-fact';
   if (unsupportedRecipientArrival(texts, context)) return 'recipient-fact';
   if (unsupportedProcessState(texts, context)) return 'process-fact';
@@ -386,8 +415,8 @@ function clockStates({messages = [], pendingMessages = [], now = Date.now(), tim
     if (/[“”"'「」『』？?]/u.test(text) || hypothetical(text)) {active=undefined;continue;}
     const event=simpleEventClock.exec(text);
     if (event) {active={date:event[1]||'',daypart:event[2]||'',hour:event[3],event:event[4],author};states.set(active.date+'|'+active.event,active);continue;}
-    const correction=new RegExp('^(?:更正[，,])?(?:刚才'+clockHour+'那条作废[，,])?改成('+clockDaypart+')?('+clockHour+')[。！!]?$', 'u').exec(text);
-    if (correction && active?.author===author) {active={...active,daypart:correction[1]||'',hour:correction[2]};states.set(active.date+'|'+active.event,active);}
+    const correction=new RegExp('^(?:更正[，,])?(?:刚才('+clockHour+')那条作废[，,])?改成('+clockDaypart+')?('+clockHour+')[。！!]?$', 'u').exec(text);
+    if (correction && active?.author===author) {active={...active,daypart:correction[2]||'',hour:correction[3],cancelledHour:correction[1]===active.hour?correction[1]:undefined};states.set(active.date+'|'+active.event,active);}
     else active=undefined;
   }
   return states;
@@ -455,16 +484,29 @@ export function neutralGeneratedReplyRepair(texts, context = {}) {
     const retained = reply.replace(clock.claim[2]+clock.claim[3],clock.claim[3]);
     if (safe(retained)) return retained;
   }
+  // A literal cancellation can accompany the same simple event. Keep it only
+  // when that exact old hour was explicitly cancelled by the same source author.
+  const clauses = reply.split(/[，,]/u);
+  if (clauses.length === 2) {
+    const event = eventClockSupport(clauses[0], context);
+    const cancellation = new RegExp('^('+clockHour+')那条作废[。！!]?$','u').exec(clauses[1]);
+    if (event?.claim[2] && event.sameHour && event.known?.daypart === '' && cancellation && cancellation[1] === event.known.cancelledHour) {
+      const retained = reply.replace(event.claim[2]+event.claim[3],event.claim[3]);
+      if (safe(retained)) return retained;
+    }
+  }
   return '';
 }
 
 // Narrow repairs for explicit conversational corrections. They do not infer
 // personal facts, override multi-message requests, or issue another model call.
-export function explicitTurnRepair(texts, { pendingMessages = [], messages = [], now = Date.now(), timezone = 'Asia/Shanghai' } = {}) {
+export function explicitTurnRepair(texts, { pendingMessages = [], messages = [], now = Date.now(), timezone = 'Asia/Shanghai', kind } = {}) {
   const pending = pendingMessages.filter(m => m.direction === 'other');
   if (pending.length !== 1) return '';
   const incoming = clean(pending[0].text).trim(), reply = texts.join('');
   if (/[“”"「」]/.test(incoming)) return '';
+  const otherRepair = otherPersonCorrectionRepair(texts, { pendingMessages, kind, now });
+  if (otherRepair) return otherRepair;
   if (/^我说我[^。！？!?]{1,60}[，,]没说你(?:也|还|要|会)[^。！？!?]{1,60}[。！!]?$/u.test(incoming)) return '明白，你说的是你自己的情况。';
   if (/我(?:还)?(?:没|未)(?:有)?(?:定|确定)/.test(incoming) && /(?:别|不要|不用)(?:替|帮)我(?:约|定|安排)/.test(incoming)
       && /我自己(?:来)?定|我的安排/.test(reply)) return '好，你自己决定就行。';

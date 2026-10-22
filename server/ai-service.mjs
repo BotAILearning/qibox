@@ -37,7 +37,7 @@ import { createHash, randomInt, randomUUID } from 'node:crypto';
 import { setTimeout as wait } from 'node:timers/promises';
 import { AppError, atomicJson, jsonFile } from './files.mjs';
 import { AIProvider, SecretStore, providerValue, providerFingerprint } from './ai-provider.mjs';
-import { unsupportedPersonalAnswer, unsupportedChatTime, personalQuestionClarification, knownDateCorrection, explicitTurnRepair, ownerConfirmationRepair, neutralGeneratedReplyRepair } from './ai-personal-answer.mjs';
+import { unsupportedPersonalAnswer, unsupportedChatTime, personalQuestionClarification, knownDateCorrection, explicitTurnRepair, ownerConfirmationRepair, neutralGeneratedReplyRepair, otherPersonCorrectionRepair } from './ai-personal-answer.mjs';
 import { categories, styleOptions, avoidOptions, defaultStyle, styleSchema, styleValue, strategyValue, replyStrategyValue, replyLimitValue, validReplyLimit, strategyReady, textField } from './ai-schema.mjs';
 import { providerPresets, goalPresets, replyPresets } from './ai-presets.mjs';
 import { unsupportedTextAction, promisesMedia } from './ai-capabilities.mjs';
@@ -3825,6 +3825,8 @@ export class AIAssistant {
       if (confirmation) { result = {action:'send', text:confirmation, followUp:false, memoryUpdates:[]}; segments = [confirmation]; finalTexts = [confirmation]; }
       const retained = result.action === 'send' && mode === 'reply' && !followUp && !result.media?.length ? neutralGeneratedReplyRepair(finalTexts, finalContext) : '';
       if (retained) { result = {action:'send', text:retained, followUp:false, memoryUpdates:[]}; segments = [retained]; finalTexts = [retained]; }
+      const attribution = result.action === 'send' && mode === 'reply' && profile.kind === 'person' && !followUp && !result.media?.length ? otherPersonCorrectionRepair(finalTexts, finalContext) : '';
+      if (attribution) { result = {action:'send', text:attribution, followUp:false, memoryUpdates:[]}; segments = [attribution]; finalTexts = [attribution]; }
       const personalViolation = unsupportedPersonalAnswer(finalTexts, finalContext) || unsupportedChatTime(finalTexts, finalContext);
       const clarification = personalViolation === 'unknown-self' ? personalQuestionClarification(pendingMessages) : ['future-notice', 'time-fact'].includes(personalViolation) ? knownDateCorrection(finalContext) : !personalViolation && result.action === 'send' && mode === 'reply' && profile.kind === 'person' && !followUp ? explicitTurnRepair(finalTexts, finalContext) : '';
       if (clarification) { result = {action:'send', text:clarification, followUp:false, memoryUpdates:[]}; segments = [clarification]; }
