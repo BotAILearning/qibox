@@ -8,9 +8,10 @@ import { temp, cleanup } from './fixtures.mjs';
 const now = Date.parse('2026-10-22T20:00:00+08:00');
 const incoming = '我不是阿海，别把另一个人的安排套到我这里。';
 const raw = '明白，安排是你的，不套到阿海身上。';
+const reverseDenial = '明白，你的安排不归到阿海那里。';
 const context = text => ({ now, kind: 'person', messages: [], pendingMessages: [{ direction: 'other', text, timestamp: now / 1000 }] });
 
-test('actual023 #258 cannot reverse an explicit other-person arrangement correction', async t => {
+for (const [number, answer] of [[258,raw],[286,reverseDenial]]) test(`actual #${number} cannot reverse an explicit other-person arrangement correction`, async t => {
   const root = await temp(), bridge = new ChatFixture(), provider = new AIModelFixture();
   let clock = now;
   bridge.stableMessageIds = true;
@@ -22,7 +23,7 @@ test('actual023 #258 cannot reverse an explicit other-person arrangement correct
   await a.setReplyOptions({ contact, enabled: true, judgeReply: false });
   await a.settings({ enabled: true }); await a.tick();
   assert.equal(provider.calls.length, 0);
-  provider.next = async () => ({ action: 'send', text: raw, followUp: false });
+  provider.next = async () => ({ action: 'send', text: answer, followUp: false });
   Object.assign(bridge.push(contact, 'other', incoming), { timestamp: now / 1000 });
   await a.tick(); clock += 20000; await a.tick(); clock += 20000; await a.tick();
   assert.equal(provider.calls.length, 1);
@@ -34,6 +35,8 @@ test('actual023 #258 cannot reverse an explicit other-person arrangement correct
 test('only a complete literal reversal can receive the finite attribution repair', () => {
   assert.equal(unsupportedPersonalAnswer([raw], context(incoming)), 'recipient-fact');
   assert.equal(explicitTurnRepair([raw], context(incoming)), '明白，不把另一个人的安排归到你这里。');
+  assert.equal(unsupportedPersonalAnswer([reverseDenial], context(incoming)), 'recipient-fact');
+  assert.equal(explicitTurnRepair([reverseDenial], context(incoming)), '明白，不把另一个人的安排归到你这里。');
   for (const text of [
     '明白，安排是你的。明天我帮你订票。',
     '你很有钱，安排是你的，不套到阿海身上。',

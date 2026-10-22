@@ -16,7 +16,7 @@ const context = {
   pendingMessages:[source('所以几点？',ts-60)],
 };
 
-test('actual023 GQ04 preserves a proven cancellation while removing invented daypart', async t => {
+for (const [number,answer,expectedText] of [[277,raw,expected],[288,'明天早上十点集合，九点那条已经作废了。','明天十点集合，九点那条已经作废了。']]) test(`actual #${number} GQ04 preserves a proven cancellation while removing invented daypart`, async t => {
   const root=await temp(), bridge=new ChatFixture(), provider=new AIModelFixture(); let clock=now;
   bridge.stableMessageIds=true;
   const a=new AIAssistant({dataRoot:root,bridge,provider,now:()=>clock,delay:async()=>{},random:min=>min});
@@ -26,10 +26,10 @@ test('actual023 GQ04 preserves a proven cancellation while removing invented day
   for (const m of context.messages) Object.assign(bridge.push(contact,m.direction,m.text),m);
   await a.setGroupOptions({contact,atMe:true});await a.settings({enabled:true});await a.tick();
   assert.equal(provider.calls.length,0);
-  provider.next=async()=>({action:'send',text:raw,followUp:false});
+  provider.next=async()=>({action:'send',text:answer,followUp:false});
   Object.assign(bridge.push(contact,'other','所以几点？'),context.pendingMessages[0],{mentions:{verified:true,self:true,all:false,others:false}});
   await a.tick();clock+=20000;await a.tick();clock+=20000;await a.tick();
-  assert.equal(provider.calls.length,1);assert.deepEqual(bridge.sent.map(x=>x.text),[expected]);
+  assert.equal(provider.calls.length,1);assert.deepEqual(bridge.sent.map(x=>x.text),[expectedText]);
   clock+=20000;await a.tick();assert.equal(provider.calls.length,1);
 });
 

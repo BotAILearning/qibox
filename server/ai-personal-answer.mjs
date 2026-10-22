@@ -196,10 +196,11 @@ function otherPersonCorrection({ pendingMessages = [], kind, now = Date.now() })
   const match = /^我(?:本人|自己)?不是([^，,。！？!?；;\n]{1,12})[，,](?:别|不要)把另一个人的(安排|计划|经历|工作)套到我这里[。！!]?$/u.exec(clean(pending[0].text).trim());
   return match && personName(match[1]) ? { name: match[1], topic: match[2] } : null;
 }
+const inverseAttribution = ({name,topic}) => '(?:你|您)的' + topic + '不(?:归(?:到)?|套到|算到)' + name + '(?:那里|这里|身上|头上)?';
 function reversedOtherPersonCorrection(texts, context) {
   const correction = otherPersonCorrection(context);
   if (!correction) return false;
-  const expression = new RegExp('(?:^|[，,])\\s*' + correction.topic + '(?:是(?:你|您)的|归(?:你|您))(?:[啊呀呢啦哦])?(?=[，,。！？!?；;\\n]|$)', 'gu');
+  const expression = new RegExp('(?:^|[，,])\\s*(?:' + correction.topic + '(?:是(?:你|您)的|归(?:你|您))|' + inverseAttribution(correction) + ')(?:[啊呀呢啦哦])?(?=[，,。！？!?；;\\n]|$)', 'gu');
   for (const sentence of sentences(texts.join(''))) for (const match of sentence.matchAll(expression)) {
     const scope = claimScope(sentence, match);
     if (scope.attributed || /(?:^|[，,])\s*(?:你|您|他|她|别人|对方)(?:们)?(?:刚才|刚刚|之前|曾经)?(?:说过|说了|表示过|提到过|写过)[，,：:\s]*$/u.test(scope.prefix)) continue;
@@ -214,7 +215,7 @@ function reversedOtherPersonCorrection(texts, context) {
 export function otherPersonCorrectionRepair(texts, context = {}) {
   if (texts.length !== 1 || context.mode && context.mode !== 'reply' || context.followUp || context.kind === 'group') return '';
   const other = otherPersonCorrection(context);
-  return other && new RegExp('^(?:明白|知道了|好)[，,]' + other.topic + '是你的[，,]不套到' + other.name + '身上[。！!]?$','u').test(texts[0])
+  return other && new RegExp('^(?:明白|知道了|好)[，,](?:' + other.topic + '是你的[，,]不套到' + other.name + '身上|' + inverseAttribution(other) + ')[。！!]?$','u').test(texts[0])
     ? `明白，不把另一个人的${other.topic}归到你这里。` : '';
 }
 function unsupportedRecipientName(texts, {messages, pendingMessages, facts, now, kind}) {
@@ -489,7 +490,7 @@ export function neutralGeneratedReplyRepair(texts, context = {}) {
   const clauses = reply.split(/[，,]/u);
   if (clauses.length === 2) {
     const event = eventClockSupport(clauses[0], context);
-    const cancellation = new RegExp('^('+clockHour+')那条作废[。！!]?$','u').exec(clauses[1]);
+    const cancellation = new RegExp('^('+clockHour+')那条(?:已经|已)?作废(?:了)?[。！!]?$','u').exec(clauses[1]);
     if (event?.claim[2] && event.sameHour && event.known?.daypart === '' && cancellation && cancellation[1] === event.known.cancelledHour) {
       const retained = reply.replace(event.claim[2]+event.claim[3],event.claim[3]);
       if (safe(retained)) return retained;
