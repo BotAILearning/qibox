@@ -240,6 +240,30 @@ export function personalQuestionClarification(pendingMessages = []) {
     ? '怎么了，找我有事吗？' : '';
 }
 
+// Keep an already generated, neutral owner-confirmation clause only. The
+// discarded clause must contain nothing except uncertainty about the one
+// unknown field just asked; all ordinary final guards still check the result.
+export function ownerConfirmationRepair(texts, {pendingMessages = [], messages = [], facts = ''} = {}) {
+  if (texts.length !== 1 || !personalQuestionClarification(pendingMessages)) return '';
+  const question = clean(pendingMessages.find(message => message.direction === 'other').text);
+  const employment = /公司|单位/.test(question);
+  // Be conservative when supplied facts or possible owner field records exist.
+  const field = employment ? /公司|单位|上班|下班|工作|职业|任职|入职/ : /位置|地点|地址|行踪|在家|办公室|学校|医院|外地|路上|我.{0,8}(?:在|到|去|回)/;
+  if (clean(facts).trim() || messages.some(message => message.direction === 'self' && field.test(clean(message.text)))) return '';
+  const reply = String(texts[0] || '').trim();
+  if (/[“”"'「」『』()（）\[\]{}<>？?；;\n]/u.test(reply) || hypothetical(reply)) return '';
+  const clauses = /^([^，,。！？!?；;\n]+)[，,。]([^，,。！？!?；;\n]+)[。]?$/u.exec(reply);
+  if (!clauses) return '';
+  const first = clauses[1].trim(), confirmation = clean(first), tail = clean(clauses[2]).trim();
+  if (!ownerConfirmation.test(confirmation) || (employment ? /位置/.test(confirmation) : /工作/.test(confirmation))) return '';
+  const uncertainty = /^我(?:这边)?(?:现在|目前|今天|暂时)?(?:还)?(?:不知道|没法确定|没确认)(.*)$/u.exec(tail);
+  if (!uncertainty) return '';
+  const sameField = employment
+    ? /^(?:(?:今天|现在|目前)?(?:具体)?(?:在哪(?:家|个)(?:公司|单位)(?:上班|工作)?|(?:哪家|哪个)(?:公司|单位)(?:上班|工作)?|(?:工作|上班)(?:的)?(?:公司|单位)|工作情况))?$/u
+    : /^(?:(?:今天|现在|目前|这会儿)?(?:具体)?(?:在哪(?:个)?(?:地方)?|在哪里|位置|地点))?$/u;
+  return sameField.test(uncertainty[1]) ? first : '';
+}
+
 // Narrow repairs for explicit conversational corrections. They do not infer
 // personal facts, override multi-message requests, or issue another model call.
 export function explicitTurnRepair(texts, { pendingMessages = [], messages = [], now = Date.now() } = {}) {

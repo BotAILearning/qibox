@@ -44,14 +44,24 @@ test('learned memory is encrypted, used only for this contact, and never updates
   await a.learn({ contacts: [p.contact] });
   assert.equal(a.publicState().profiles.find(x => x.id === p.id).memory.summary, '对方偏好 MEMORY_PRIVATE_MARKER');
   assert.doesNotMatch(await readFile(path.join(root, 'ai-assistant.json'), 'utf8'), /MEMORY_PRIVATE_MARKER/);
-  await a.tick(); bridge.push(p.contact, 'other', '普通问题'); await a.tick(); advance(10000);
-  provider.next = async input => { assert.match(input.memory.summary, /MEMORY_PRIVATE_MARKER/); return { action: 'send', text: '好的。', memory: { summary: 'UNSOLICITED' } }; };
+  await a.tick(); bridge.push(p.contact, 'other', '普通问题'); await a.tick();
+  advance((a.publicState().profiles.find(x=>x.id===p.id).effectiveTiming.replyDelay+1)*1000);
+  const learnedInputs=[];
+  provider.next = async input => { learnedInputs.push(structuredClone(input)); return { action: 'send', text: '好的。', memory: { summary: 'UNSOLICITED' } }; };
   await a.tick();
+  assert.equal(learnedInputs.length,1,'the learned contact must actually reach generation');
+  assert.match(learnedInputs[0].memory.summary,/MEMORY_PRIVATE_MARKER/);
+  assert.deepEqual(bridge.sent.map(x=>x.contact),[p.contact]);
   assert.match(a.publicState().profiles.find(x => x.id === p.id).memory.summary, /MEMORY_PRIVATE_MARKER/);
   const second = a.profiles().find(x => x.contact === bridge.contacts[1].id);
-  bridge.push(second.contact, 'other', '其他对象'); await a.tick(); advance(10000);
-  provider.next = async input => { assert.equal(input.memory.summary, ''); return { action: 'skip' }; };
+  bridge.push(second.contact, 'other', '其他对象'); await a.tick();
+  advance((a.publicState().profiles.find(x=>x.id===second.id).effectiveTiming.replyDelay+1)*1000);
+  const otherInputs=[];
+  provider.next = async input => { otherInputs.push(structuredClone(input)); return { action: 'skip' }; };
   await a.tick();
+  assert.equal(otherInputs.length,1,'the other contact must actually reach generation');
+  assert.equal(otherInputs[0].memory.summary,'');
+  assert.deepEqual(otherInputs[0].messages.filter(x=>x.pending).map(x=>x.text),['其他对象']);
 });
 
 test('nonempty manual memory survives learning; explicitly deleted facts stay suppressed', async t => {
