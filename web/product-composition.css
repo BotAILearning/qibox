@@ -1,5 +1,17 @@
 /* Product structure for the reviewed 2026-10-20 / @qiapp/ui0.3.0 standard.
    Shared controls own their dimensions, states, action palette and shapes. */
+/* Startup settings retain the time pair; resource fields follow the form's
+   actual content width, so long labels never share a line with their input. */
+.qiapp-product #idle-window.time-fields { grid-template-columns: minmax(0,1fr); gap: 16px; container: qibox-idle-settings / inline-size; }
+.qiapp-product #idle-window .idle-time-pair { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+.qiapp-product #idle-window .idle-resource-grid { display: grid; grid-template-columns: minmax(0,1fr); gap: 16px; align-items: start; }
+.qiapp-product #idle-window .idle-setting-field { display: grid; gap: 8px; min-width: 0; align-content: start; }
+.qiapp-product #idle-window .idle-setting-field > input { display: block; margin-top: 0; }
+.qiapp-product #idle-window .idle-resource-grid input { width: min(100%,120px); min-width: 0; max-width: 100%; }
+.qiapp-product #idle-window .idle-resource-help { grid-column: 1 / -1; margin: 0; }
+@container qibox-idle-settings (min-width:584px) {
+  .qiapp-product #idle-window .idle-resource-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
 .qiapp-product { --qbx-module-radius: var(--qi-radius-panel); }
 .qiapp-product .content { max-width: var(--qi-workspace-max); }
 .qiapp-product .brand { font-size: 18px; line-height: 24px; }
