@@ -74,9 +74,17 @@ function historicalClaims(value) {
     for (const expression of expressions) for (const match of sentence.matchAll(expression)) {
       const {prefix, attributed: scopedAttribution} = claimScope(sentence, match);
       if (scopedAttribution || /(?:不是说|并非|不是|没有说|没说|不代表)[^，,。]{0,16}$/.test(prefix)) continue;
-      if (expression === elidedFault && (/[？?]$/.test(sentence)
-        || /^[，,]\s*(?:那)?(?:也|都)?(?:很|挺|蛮)?(?:正常|没关系|没事|不要紧|不奇怪)/.test(sentence.slice(match[0].length))
-        || conditionalFaultTail(sentence.slice(match[0].length)))) continue;
+      if (expression === elidedFault) {
+        const tail = sentence.slice(match[0].length);
+        // A short confirmation question can ask about this very claim; an
+        // independent later question cannot erase the completed admission.
+        const asksThisClaim = /^[，,]\s*(?:是(?:这样)?吗|对(?:吗|吧)|是吧|真的(?:吗)?|没错吧|不是吗|对不对|是不是(?:这样)?)[？?]$/.test(tail);
+        // Preserve conditional requests phrased as questions while keeping
+        // completed 了 in "提醒我了吗？" visible to the existing tail check.
+        const consequence = tail.replace(/(?:吗|么|没(?:有)?)?[？?]$/, '。');
+        if (asksThisClaim || /^[，,]\s*(?:那)?(?:也|都)?(?:很|挺|蛮)?(?:正常|没关系|没事|不要紧|不奇怪)/.test(tail)
+          || conditionalFaultTail(consequence)) continue;
+      }
       result.push({verb: match[1], detail: normalizedClaim(match[2]), recent: /刚才|刚刚/.test(match[0])});
     }
   }

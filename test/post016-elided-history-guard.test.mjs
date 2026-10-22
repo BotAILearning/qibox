@@ -13,11 +13,12 @@ const correction='你记错了，胃疼的是我，不是你。';
 const actual97='嗯，记混了。胃疼的是你。';
 const commaVariant='嗯，记混了，胃疼的是你。';
 const retrospectiveTails=['嗯，记混了，再次抱歉。胃疼的是你。','嗯，记混了，他就提醒过我。胃疼的是你。','嗯，记混了，他就提醒我了。胃疼的是你。'];
+const independentQuestionTails=['嗯，记混了，你现在好点没？','嗯，记混了，胃疼的是你？'];
 const human=(text,extra={})=>({direction:'self',authorship:'human',aiGenerated:false,timestamp:Math.floor(now/1000)-60,text,...extra});
 const context=(extra={})=>({now,messages:[human('那今天好点没？')],pendingMessages:[{direction:'other',text:correction}],...extra});
 
 test('a completed elided owner-fault declaration needs an independent owner source',()=>{
-  for(const raw of [actual97,commaVariant,...retrospectiveTails,'嗯，记混了，他就提醒了我。','嗯，记混了，他就纠正我的说法了。',
+  for(const raw of [actual97,commaVariant,...retrospectiveTails,...independentQuestionTails,'嗯，记混了，他就提醒我了吗？','嗯，记混了，他就提醒了我。','嗯，记混了，他就纠正我的说法了。',
     '嗯，记混了，我就再核对一遍了。','嗯，记混了，他就提醒我了呀。','嗯，记混了；胃疼的是你。','记混了。','嗯，认错了。','哦，理解反了。','对，记错了。','明白了，弄错了。','记混过。','记混了呀。'])
     assert.equal(unsupportedPersonalAnswer([raw],context()),'personal-fact',raw);
 });
@@ -30,12 +31,14 @@ test('questions, other actors, reported or conditional faults and general reassu
     '记混了，我就再核对一遍。','记混了，你就纠正我。','记混了，就确认一下。',
     '记混了，他就要提醒我了。','记混了，就要提醒我了。','记混了，你就提醒我过年回家。','记混了，你就提醒我好了。',
     '记混了，你就提醒我别错过。','记混了，我就再确认是否通过。','记混了，你就提醒我不要难过。',
+    '记混了？','记混了，是这样吗？','记混了，对吗？','如果记混了，你就提醒我好吗？','记混了，你就提醒我好吗？',
+    '记混了，他就要提醒我了吗？','记混了，我就再确认是否通过？','小王说，记混了，你现在好点没？','你说“嗯，记混了”，现在好点没？',
     '不是我记混了。','是他记混了，不是我。','这两个名字容易记混。','说的是他记混了。'])
     assert.equal(unsupportedPersonalAnswer([raw],context()),'',raw);
 });
 
 test('elided declarations keep real human-source support without promoting AI, unknown, future, quoted or other-actor text',()=>{
-  for(const raw of [actual97,'记混了。']){
+  for(const raw of [actual97,'记混了。',...independentQuestionTails]){
     for(const text of ['我记混了。','记混了。'])assert.equal(unsupportedPersonalAnswer([raw],context({messages:[human(text)]})),'',text);
     assert.equal(unsupportedPersonalAnswer([raw],context({facts:'我记混了。'})),'');
     for(const source of [human('我记混了。',{aiGenerated:true}),human('我记混了。',{authorship:'unknown'}),human('他记混了。'),human('“我记混了”。'),human('我记混了。',{timestamp:Math.floor(now/1000)+60})])
@@ -56,7 +59,7 @@ test('the existing single generation request carries correction-source self-chec
   // This proves request composition/count only; a mock cannot prove AI quality.
 });
 
-for(const [label,raw] of [['actual97',actual97],['comma variant',commaVariant],...retrospectiveTails.map((raw,i)=>['retrospective tail '+(i+1),raw])])test(`production reply flow rejects ${label} after one mock generation and does not regenerate on the next tick`,async t=>{
+for(const [label,raw] of [['actual97',actual97],['comma variant',commaVariant],...retrospectiveTails.map((raw,i)=>['retrospective tail '+(i+1),raw]),...independentQuestionTails.map((raw,i)=>['independent question tail '+(i+1),raw])])test(`production reply flow rejects ${label} after one mock generation and does not regenerate on the next tick`,async t=>{
   const root=await temp(),bridge=new ChatFixture(),provider=new AIModelFixture();let clock=now;bridge.stableMessageIds=true;
   const a=new AIAssistant({dataRoot:root,bridge,provider,now:()=>clock,delay:async()=>{},random:min=>min});
   t.after(async()=>{await a.close();await cleanup(root);});

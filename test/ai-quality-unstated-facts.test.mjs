@@ -23,8 +23,19 @@ test('original007 omitted-subject apology is a sourced historical claim rather t
 });
 
 test('ordinary present apologies, third-person reports, conditions, questions and denials do not become owner mistake claims',()=>{
-  for(const text of ['抱歉让你误会了。','抱歉让你担心了。','明白，胃疼的是你。','抱歉，他搞混了。','他说“抱歉搞混了”。','他说，抱歉搞混了。','小王说，抱歉搞混了。','如果搞混了，请你纠正。','如果抱歉搞混了是他的原话，就按引用看。','抱歉，搞混了吗？','不是说抱歉搞混了。','抱歉，没搞混。','搞混了。'])
+  for(const text of ['抱歉让你误会了。','抱歉让你担心了。','明白，胃疼的是你。','抱歉，他搞混了。','他说“抱歉搞混了”。','他说，抱歉搞混了。','小王说，抱歉搞混了。','如果搞混了，请你纠正。','如果抱歉搞混了是他的原话，就按引用看。','抱歉，搞混了吗？','不是说抱歉搞混了。','抱歉，没搞混。','抱歉。','不好意思。','对不起。','抱歉，胃疼的是你。'])
     assert.equal(unsupportedPersonalAnswer([text],{now}),'',text);
+});
+
+test('a bare completed owner mistake requires independent evidence even when the subject is omitted',()=>{
+  // This old008 ordinary-example assertion now follows the confirmed017
+  // history rule: a present apology and an admission of a prior fault differ.
+  const text='搞混了。';
+  assert.equal(unsupportedPersonalAnswer([text],{now}),'personal-fact');
+  for(const source of ['我搞混了。',text])assert.equal(unsupportedPersonalAnswer([text],{now,messages:[human(source)]}),'',source);
+  assert.equal(unsupportedPersonalAnswer([text],{now,facts:'我搞混了。'}),'');
+  for(const source of [other('你搞混了。'),human('我搞混了。',{authorship:'unknown'}),human('我搞混了。',{aiGenerated:true}),human('我今天喝茶。'),human('我搞混了。',{timestamp:Math.floor(now/1000)+60})])
+    assert.equal(unsupportedPersonalAnswer([text],{now,messages:[source]}),'personal-fact',JSON.stringify(source));
 });
 
 test('original007 unstated frequency must not become either a negative or positive recipient fact',()=>{
@@ -65,6 +76,9 @@ for(const scenario of [
   {name:'007 raw unstated frequency',incoming,candidate:'嗯，明白，你只是喜欢茶，不是每天都喝咖啡。',expected:[]},
   {name:'literal same-turn acknowledgement',incoming,candidate:'对，你只说喜欢茶，没说每天都喝咖啡。',expected:['对，你只说喜欢茶，没说每天都喝咖啡。']},
   {name:'independent recipient declaration',incoming,history:[other('我不是每天都喝咖啡。')],candidate:'你不是每天喝咖啡。',expected:['你不是每天喝咖啡。']},
+  {name:'bare completed owner mistake without a source',incoming:'你记错了，胃疼的是我，不是你。',history:[human('那今天好点没？')],candidate:'搞混了。',expected:[]},
+  {name:'pure current apology with actor confirmation',incoming:'你记错了，胃疼的是我，不是你。',history:[human('那今天好点没？')],candidate:'抱歉，胃疼的是你。',expected:['抱歉，胃疼的是你。']},
+  {name:'bare owner mistake with independent human support',incoming:'你记错了，胃疼的是我，不是你。',history:[human('我搞混了。')],candidate:'搞混了。',expected:['搞混了。']},
 ])test(`one-request production pipeline: ${scenario.name}`,async t=>{
  const root=await temp(),bridge=new ChatFixture(),provider=new AIModelFixture();let clock=now;bridge.stableMessageIds=true;const contact=bridge.contacts[0].id;
  const a=new AIAssistant({dataRoot:root,bridge,provider,now:()=>clock,delay:async()=>{},random:min=>min});
