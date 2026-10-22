@@ -58,3 +58,13 @@ test('human interaction examples retain paired bodies and the same request-local
   const wire=encodeModelRequest('当前聊天',compactModelInput(input)),pair=wire.input.contextualStyle.pairedExamples[0];
   assert.equal(pair.incoming.id,wire.input.messages[0].id);assert.equal(pair.reply.id,wire.input.messages[1].id);assert.equal(pair.incoming.text,incoming.text);assert.equal(pair.reply.text,reply.text);assert.deepEqual(wire.decode(wire.input),input);
 });
+
+test('subjectId values use the same request-local opaque reference and decode losslessly',()=>{
+  const subjectId='contact:'+'d'.repeat(64),messageId='e'.repeat(64);
+  const input={mode:'reply',messages:[{id:messageId,direction:'other',text:'合成来信'}],memory:{entries:[{text:'合成事实',subjectId,evidence:[messageId]}]},memoryEvidence:[{subjectId}]};
+  const wire=encodeModelRequest('合成',input);
+  assert.notEqual(wire.input.memory.entries[0].subjectId,subjectId);
+  assert.equal(wire.input.memory.entries[0].subjectId,wire.input.memoryEvidence[0].subjectId);
+  assert.equal(wire.input.memory.entries[0].subjectId,wire.id(subjectId));
+  assert.deepEqual(wire.decode(wire.input),input);
+});

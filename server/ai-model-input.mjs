@@ -36,7 +36,7 @@ export function encodeModelRequest(system, input) {
   const source = JSON.stringify(input) + system;
   let prefix = 'qref'; while (source.includes(prefix)) prefix += 'x';
   const identities = new Map(), originals = new Map();
-  const keys = new Set(['id', 'account', 'contact', 'messageId', 'sender', 'senderId', 'latestIncomingId', 'lastSelfId']);
+  const keys = new Set(['id', 'account', 'contact', 'subjectId', 'messageId', 'sender', 'senderId', 'latestIncomingId', 'lastSelfId']);
   const arrays = new Set(['messageIds', 'newMessageIds', 'styleLearningMessageIds', 'pendingIncomingIds', 'incomingSinceLastSelf', 'requiredReplyIds', 'ids', 'evidence']);
   const opaque = /^(?:(?:account|contact|member|chat|unknown-member|message):)?[a-f0-9]{64}$/;
   const reference = value => {
