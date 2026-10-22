@@ -38,6 +38,44 @@ function normalizeDefaultReport(text, request) {
   return chapters.join('\n\n');
 }
 
+// Only move complete, source-bound chapter blocks. Never rewrite their text.
+function normalizeChronologicalChapters(text, messages, options) {
+  if (analysisOrderMode(options.request) !== 'chronological' || messages.length < 2) return text;
+  if (messages.some((message, index) => message.sequence !== index + 1
+    || !['本人', '对方'].includes(message.speaker) || typeof message.text !== 'string'
+    || !message.text || /[\r\n]/u.test(message.text)
+    || !/^\d{4}-\d{2}-\d{2} [0-2]\d:[0-5]\d:[0-5]\d$/u.test(message.beijingTime)
+    || (index > 0 && message.beijingTime < messages[index - 1].beijingTime))) return text;
+  const parts = text.split(/(\r?\n[\t ]*\r?\n(?:[\t ]*\r?\n)*)/u);
+  if (parts.length < 3) return text;
+  const used = new Set(), chapters = [];
+  for (let index = 0; index < parts.length; index += 2) {
+    const block = parts[index], lines = block.split(/\r?\n/u);
+    if (lines.length < 2 || !/^[^\s#，。！？!?：:\r\n][^，。！？!?：:\r\n]{0,19}$/u.test(lines[0])) return text;
+    const sequences = [];
+    for (const line of lines.slice(1)) {
+      const anchor = line.match(/^(\d{4}-\d{2}-\d{2} [0-2]\d:[0-5]\d:[0-5]\d)[，,][\t ]*(你|本人|对方)(?:更正并确认|明确说|说|回复|更正|确认|表示|补充)?[：:]“/u);
+      if (!anchor) return text;
+      const speaker = anchor[2] === '你' ? '本人' : anchor[2];
+      const matches = messages.filter(message => message.beijingTime === anchor[1] && message.speaker === speaker
+        && line.slice(anchor[0].length).startsWith(`${message.text}”`));
+      if (matches.length !== 1) return text;
+      const message = matches[0], suffix = line.slice(anchor[0].length + message.text.length + 1);
+      if (/\d{4}-\d{2}-\d{2} [0-2]\d:[0-5]\d:[0-5]\d/u.test(suffix) || used.has(message.sequence)) return text;
+      if (sequences.length && message.sequence !== sequences.at(-1) + 1) return text;
+      used.add(message.sequence); sequences.push(message.sequence);
+    }
+    chapters.push({ block, first: sequences[0], last: sequences.at(-1) });
+  }
+  if (used.size !== messages.length) return text;
+  const ordered = chapters.slice().sort((left, right) => left.first - right.first);
+  if (ordered.some((chapter, index) => index > 0 && chapter.first <= ordered[index - 1].last)) return text;
+  if (ordered.every((chapter, index) => chapter === chapters[index])) return text;
+  // Separators stay byte-for-byte at their original positions; whole blocks move.
+  const sorted = ordered.map((chapter, index) => chapter.block + (parts[index * 2 + 1] || '')).join('');
+  return analysisEvidenceViolation(sorted, messages, options) ? text : sorted;
+}
+
 export function tailWithinLimit(input, maxChars = ANALYSIS_INPUT_CHARS) {
   const messages = input.filter(message => typeof message?.text === 'string' && message.text.trim());
   const totalChars = messages.reduce((sum, message) => sum + Array.from(message.text).length, 0);
@@ -129,10 +167,11 @@ export async function analyzeContacts(assistant, value) {
           return { reportText };
         } });
         check();
-        const reportText = typeof validated?.reportText === 'string'
+        let reportText = typeof validated?.reportText === 'string'
           ? validated.reportText
           : normalizeDefaultReport(typeof validated?.report === 'string' ? validated.report.trim() : '', options.request);
         if (!reportText) throw new AppError('模型没有返回有效报告正文，请重试', 502, 'ai_model_schema');
+        if (!truncated) reportText = normalizeChronologicalChapters(reportText, inputMessages, options);
         if (analysisEvidenceViolation(reportText, inputMessages, options)) throw new AppError('模型报告的消息归属、时间或标识汇总与原文不一致，本次未保存。原有报告和分析要求已保留，请核对后重试', 502, 'ai_analysis_evidence');
         const report = { ...head, status: 'complete', count: messages.length, rangeCount: material.count,
           readableCount: sourceMessages.length, analyzedCount: messages.length, ...(mediaCoverage ? { contentParsedCount } : {}), analyzedChars: coverage.analyzedChars,
