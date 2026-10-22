@@ -2699,35 +2699,47 @@ export class AIAssistant {
     return { summary, range, count: material.length, total, aiReplyCount, truncated: total > material.length || snapshot.truncated === true, from: material[0].time * 1000, to: material.at(-1).time * 1000 };
   }
   async deleteActivityRecord({ source, id } = {}) {
-    return this.exclusive(async () => {
+    const account = accountRequestScope(this) || this.data.account;
+    return this.exclusive(() => withConfigurationCommit(this, async persist => {
       if (!['reply', 'proactive', 'unknown', 'skip'].includes(source) || typeof id !== 'string' || !id) throw new AppError('运行记录无效');
-      const account = this.data.account;
-      const before = { proactiveRecords: [...(this.data.proactiveRecords || [])], skipLog: this.data.skipLog, events: this.data.events, deletedActivityRecords: this.data.deletedActivityRecords };
+      const removed = {}, matches = row => row.account === account && row.id === id;
+      // Receipt reconciliation clones tombstones and changes message IDs. A
+      // private symbol follows those clones without entering JSON snapshots.
+      const deletionToken = Symbol('activity-record-delete');
+      let tombstone;
       if (source === 'proactive') {
-        const index = (this.data.proactiveRecords || []).findIndex(record => record.account === account && record.id === id);
+        const index = (this.data.proactiveRecords || []).findIndex(matches);
         if (index < 0) throw new AppError('运行记录不存在', 404);
+        removed.proactiveRecords = [{ row: this.data.proactiveRecords[index], index }];
         this.data.proactiveRecords.splice(index, 1);
       } else if (source === 'skip') {
         const row = [...(this.data.skipLog || []).filter(event => event.account === account && event.id === id), ...(this.data.events || []).filter(event => event.account === account && event.id === id && event.code === 'skip')].find(event => this.profiles().some(p => p.id === event.target && p.account === account));
         if (!row) throw new AppError('运行记录不存在', 404);
-        this.data.skipLog = this.data.skipLog.filter(event => !(event.account === account && event.id === id));
-        this.data.events = (this.data.events || []).filter(event => !(event.account === account && event.id === id));
+        for (const name of ['skipLog', 'events']) {
+          removed[name] = (this.data[name] || []).flatMap((row, index) => matches(row) ? [{ row, index }] : []);
+          this.data[name] = (this.data[name] || []).filter(row => !matches(row));
+        }
       } else {
         const profile = this.profiles().find(candidate => candidate.account === account && (candidate.sentMessages || []).some(message => message.id === id && recordSource(message) === source));
         if (!profile || isDeletedActivityRecord(this, source, id)) throw new AppError('运行记录不存在', 404);
         this.data.deletedActivityRecords ||= [];
         this.data.deletedActivityRecords = this.data.deletedActivityRecords.filter(row => !(row.account === account && row.source === source && row.id === id));
-        this.data.deletedActivityRecords.unshift({ account, source, id, at: this.now() });
+        tombstone = { account, source, id, at: this.now(), [deletionToken]: true };
+        this.data.deletedActivityRecords.unshift(tombstone);
       }
-      try { await this.save(); } catch (error) {
-        for (const [key, rows] of Object.entries(before)) {
-          if (key === 'deletedActivityRecords') this.data[key] = (this.data[key] || []).filter(row => !(row.account === account && row.source === source && row.id === id));
-          else if (rows) { const current = this.data[key] || [], existing = new Set(current.map(row => row.id)); this.data[key] = [...current, ...rows.filter(row => row.id === id && !existing.has(row.id))].sort((a,b) => (b.at || 0) - (a.at || 0)); }
+      try { await persist(); } catch (error) {
+        if (tombstone) this.data.deletedActivityRecords = (this.data.deletedActivityRecords || []).filter(row => !row[deletionToken]);
+        for (const [name, rows] of Object.entries(removed)) {
+          const current = this.data[name] ||= [];
+          for (const { row, index } of rows) if (!current.some(candidate => candidate.account === row.account && candidate.id === row.id)) current.splice(Math.min(index, current.length), 0, row);
+          current.sort((a, b) => (b.at || 0) - (a.at || 0));
         }
         throw error;
       }
+      if (tombstone) for (const row of this.data.deletedActivityRecords || []) delete row[deletionToken];
+      await verifyAccountScope(this, account);
       return this.publicState();
-    });
+    }, { verify: () => verifyAccountScope(this, account) }));
   }
   async markReplyNeeded({ profileId, eventId, messageId } = {}) {
     return this.exclusive(async () => {
