@@ -2,6 +2,56 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { activateWechatWindow, wechatWindowVisible, restoreWechatWindow, DesktopWindowState } from '../server/desktop.mjs';
 import { Runtime } from '../server/runtime.mjs';
+test('reconnection preserves an active owned modal attached to the visible main window', async () => {
+  const actions = [];
+  const options = { root: '/runtime', env: {}, pid: 100, command: async (bin, args) => {
+    if (bin.endsWith('xdotool')) {
+      if (args[0] === 'getactivewindow') return '222\n';
+      actions.push(args); throw Error('Main window cannot take focus while a modal is open');
+    }
+    if (args[0] === '--root') return '_NET_CLIENT_LIST(WINDOW) = 0x123, 222\n';
+    return `WM_CLASS(STRING) = "wechat", "wechat"\nWM_STATE(WM_STATE) = 1, 0\n_NET_WM_WINDOW_TYPE(ATOM) = ${args[1] === '222' ? '_NET_WM_WINDOW_TYPE_UTILITY, ' : ''}_NET_WM_WINDOW_TYPE_NORMAL\n_NET_WM_PID(CARDINAL) = 100\n${args[1] === '222' ? '_NET_WM_STATE(ATOM) = _NET_WM_STATE_MODAL\nWM_TRANSIENT_FOR(WINDOW) = 0x123\n' : ''}`;
+  }};
+  assert.equal(await activateWechatWindow(options), false);
+  assert.deepEqual(actions, []);
+});
+test('modal focus exception requires a visible owned dialog and its visible owned parent', async t => {
+  const base = { kind: 'UTILITY', pid: 100, state: 1, modal: true, parent: '0x123', mainPid: 100, mainState: 1, ownerPid: 100, active: '222', klass: 'wechat' };
+  const cases = [
+    ['owned dialog', { kind: 'DIALOG' }, true],
+    ['plain utility', { modal: false }, false],
+    ['different process', { pid: 200 }, false],
+    ['different class', { klass: 'other' }, false],
+    ['minimized modal', { state: 3 }, false],
+    ['missing parent', { parent: '' }, false],
+    ['unrelated parent', { parent: '999' }, false],
+    ['foreign parent', { mainPid: 200 }, false],
+    ['hidden parent', { mainState: 3 }, false],
+    ['owner unspecified', { ownerPid: undefined }, false],
+    ['inactive modal', { active: '999' }, false],
+    ['tooltip', { kind: 'UTILITY, _NET_WM_WINDOW_TYPE_TOOLTIP' }, false],
+    ['menu', { kind: 'DIALOG, _NET_WM_WINDOW_TYPE_POPUP_MENU' }, false],
+  ];
+  for (const [name, change, accepted] of cases) await t.test(name, async () => {
+    const f = { ...base, ...change }, actions = []; let active = f.active;
+    const options = { root: '/runtime', env: {}, pid: f.ownerPid, command: async (bin, args) => {
+      if (bin.endsWith('xdotool')) {
+        if (args[0] === 'getactivewindow') return active;
+        actions.push(args); active = String(Number(args[2])); return '';
+      }
+      if (args[0] === '--root') return '_NET_CLIENT_LIST(WINDOW) = 0x123, 222\n';
+      const modal = args[1] === '222';
+      return `WM_CLASS(STRING) = "${modal ? f.klass : 'wechat'}", "wechat"\nWM_STATE(WM_STATE) = ${modal ? f.state : f.mainState}, 0\n_NET_WM_WINDOW_TYPE(ATOM) = _NET_WM_WINDOW_TYPE_${modal ? f.kind : 'NORMAL'}\n_NET_WM_PID(CARDINAL) = ${modal ? f.pid : f.mainPid}\n${modal ? `WM_TRANSIENT_FOR(WINDOW) = ${f.parent}\n_NET_WM_STATE(ATOM) = ${f.modal ? '_NET_WM_STATE_MODAL' : ''}\n` : ''}`;
+    }};
+    try {
+      const result = await activateWechatWindow(options);
+      assert.equal(result, !accepted);
+    } catch (error) {
+      assert.equal(accepted, false); assert.match(error.message, /unavailable/);
+    }
+    assert.equal(actions.length, accepted ? 0 : (f.mainPid !== 100 || f.mainState !== 1) ? 0 : 1);
+  });
+});
 test('Qt utility window sharing NORMAL and main PID does not block reconnection', async () => {
   let active = '222'; const activated = [];
   const options = { root: '/runtime', env: {}, pid: 100, command: async (bin, args) => {
