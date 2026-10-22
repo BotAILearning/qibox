@@ -1,4 +1,5 @@
 import { annotateChatTimes } from './ai-time-context.mjs';
+import { unsupportedProcessState } from './ai-process-facts.mjs';
 import { createHash } from 'node:crypto';
 // A local final check: it never invokes a provider or asks for another draft.
 const clean = value => String(value || '').normalize('NFKC').replace(/[\u200b-\u200d\u2060\ufeff*_`]/g, '');
@@ -117,35 +118,48 @@ function* declarativeClauses(value) {
 }
 function proposition(value, subject, required = false) {
   let text = normalizedClaim(value).replace(/^(?:其实|确实|真的)/u, '');
-  if (subject.test(text)) text = text.replace(subject, ''); else if (required) return null;
+  let hasSubject = subject.test(text);
+  if (hasSubject) text = text.replace(subject, '');
   text = text.replace(/^(?:其实|确实|真的)/u, '');
+  let time = /^(?:现在|今天|目前|这会儿)/u.exec(text)?.[0] || '';
+  if (time) text = text.slice(time.length);
   const negative = /^(?:并不是|不是|并非|没有|不|没)/.exec(text);
   if (negative) text = text.slice(negative[0].length);
+  // Chinese permits both "you are not ..." and "it is not you ...".
+  // Only remove the same literal subject, never another named actor.
+  if (!hasSubject && subject.test(text)) { hasSubject = true; text = text.replace(subject, ''); }
+  if (required && !hasSubject) return null;
+  if (!time) { time = /^(?:现在|今天|目前|这会儿)/u.exec(text)?.[0] || ''; if (time) text = text.slice(time.length); }
+  text = text.replace(/^人(?=在(?:家|公司|办公室|单位|学校|医院|外地|路上)(?:呢|里|$))/u, '');
   // "每天都" and "每天" express the same frequency; keep every other
   // frequency, actor and predicate literal. This is not semantic inference.
-  const core = text.replace(/^(每(?:天|周|月|年))都/u, '$1');
+  const core = time + text.replace(/^(每(?:天|周|月|年))都/u, '$1');
   return core ? { core, negative: !!negative } : null;
 }
-function unsupportedUnstatedRecipient(texts, { messages, pendingMessages, facts, now }) {
+function unsupportedUnstatedRecipient(texts, { messages, pendingMessages, facts, now, timezone, kind }) {
   const pending = pendingMessages.filter(message => message.direction === 'other' && !message.aiGenerated);
   if (pending.length !== 1) return false;
   const unstated = [...declarativeClauses(pending[0].text)].flatMap(clause => {
-    const match = /^(?:我)?(?:也|并|还)?(?:没(?:有)?说|没(?:有)?提(?:过)?|未说|未提|没(?:有)?确认|未确认)(?:过)?(.{1,48})$/u.exec(clause);
+    const match = /^(?:我)?(?:也|并|还)?(?:没(?:有)?说|没(?:有)?提(?:过)?|未说|未提|没(?:有)?确认|未确认)(?:过)?(.{1,48})$/u.exec(clause)
+      || /^(?:别|不要)(?:以为|认为|推断|认定)(.{1,48})$/u.exec(clause);
     const claim = match && proposition(match[1], /^我(?:本人|自己)?/u);
     return claim ? [claim] : [];
   });
   if (!unstated.length) return false;
   const target = pending[0].speaker?.id, evidence = [];
-  for (const message of messages) {
-    if (message.aiGenerated || !Number.isSafeInteger(message.timestamp) || message.timestamp * 1000 > now) continue;
+  for (const message of [...messages, ...pending]) {
+    if (message.aiGenerated || message.unresolved || message.speaker?.identified === false || !Number.isSafeInteger(message.timestamp) || message.timestamp * 1000 > now) continue;
     const recipient = message.direction === 'other' && (target ? message.speaker?.id === target : !message.speaker);
+    if (recipient && kind === 'group' && !message.speaker?.id) continue;
     if (!recipient && !(message.direction === 'self' && message.authorship === 'human')) continue;
     for (const clause of declarativeClauses(message.text)) {
       const claim = proposition(clause, recipient ? /^我(?:本人|自己)?/u : /^(?:你|您)/u, true);
-      if (claim) evidence.push(claim);
+      const sameDay = !/^今天/u.test(claim?.core || '') || annotateChatTimes([message], now, timezone)[0].temporal.relation === 'today';
+      if (claim && sameDay && (!/^(?:现在|今天|目前|这会儿)/u.test(claim.core) || now - message.timestamp * 1000 <= 86400000)) evidence.push(claim);
     }
   }
   for (const clause of declarativeClauses(facts)) {
+    if (kind === 'group' && (!target || pending[0].speaker?.identified === false)) continue;
     const claim = proposition(clause.replace(/^联系人事实[：:]/u, ''), /^对方/u, true);
     if (claim) evidence.push(claim);
   }
@@ -228,8 +242,8 @@ function unsupportedRecipientArrival(texts, {messages, pendingMessages, facts, n
   return false;
 }
 
-export function unsupportedPersonalAnswer(texts, { messages = [], pendingMessages = [], facts = '', boundaries = '', now = Date.now(), identityAsked = false, kind } = {}) {
-  const context = {messages, pendingMessages, facts, now, kind};
+export function unsupportedPersonalAnswer(texts, { messages = [], pendingMessages = [], facts = '', boundaries = '', now = Date.now(), timezone = 'Asia/Shanghai', identityAsked = false, kind } = {}) {
+  const context = {messages, pendingMessages, facts, now, timezone, kind};
   if (unsupportedRecipientHelp(texts, { messages, facts })) return 'recipient-fact';
   const moved = /^(?:哦|哦哦|原来|嗯)?\s*(?:你|您)?(?:已经|刚刚?|现在)?搬(?:家)?(?:到|去|来)([^。！？!?，,；;\s]{1,24})/;
   const relocationEvidence=[...messages.filter(m=>m.direction==='other'&&!m.aiGenerated).flatMap(m=>parts(m.text)).filter(p=>!/[“”"「」]|没|不|准备|打算|如果|假如|明天/.test(p)&&/^我(?:已经|刚刚?|现在)?搬(?:家)?(?:到|去|来)/.test(p)),...parts(facts).filter(p=>/^对方(?:已经|刚刚?|现在)?搬(?:家)?(?:到|去|来)/.test(p))];
@@ -297,6 +311,7 @@ export function unsupportedPersonalAnswer(texts, { messages = [], pendingMessage
   if (unsupportedUnstatedRecipient(texts, context)) return 'recipient-fact';
   if (unsupportedRecipientName(texts, context)) return 'recipient-fact';
   if (unsupportedRecipientArrival(texts, context)) return 'recipient-fact';
+  if (unsupportedProcessState(texts, context)) return 'process-fact';
   return '';
 }
 
@@ -380,13 +395,13 @@ export function explicitTurnRepair(texts, { pendingMessages = [], messages = [],
       // Calendar words in old questions refer to their original viewer date.
       // Only a small current-state core can treat today's "today/now" as tone;
       // activity, scheduling and negated/compound questions stay literal.
-      const stateQuestion = /^(?:今天|现在)((?:好点|好些|舒服点)(?:没|了吗)|感觉怎么样|还(?:疼|难受|累)吗)$/u;
+      const stateQuestion = /^(?:今天|现在)((?:好点|好些|舒服点))(?:没(?:有)?|了吗)$|^(?:今天|现在)(感觉怎么样|还(?:疼|难受|累)吗)$/u;
       const sameQuestion = value => {
         const key = questionKey(value);
         if (/^(?:今天|现在)/u.test(humanKey) && !today) return false;
         if (key === humanKey) return true;
         const humanState = today && stateQuestion.exec(humanKey), currentState = today && stateQuestion.exec(key);
-        return !!humanState && !!currentState && humanState[1] === currentState[1];
+        return !!humanState && !!currentState && (humanState[1] || humanState[2]) === (currentState[1] || currentState[2]);
       };
       const repeated = [...reply.matchAll(/[^。！？!?；;\n]+[？?]/gu)].filter(match => !/[“”"'「」『』]/.test(match[0]) && !hypothetical(match[0]) && sameQuestion(match[0]));
       let repaired = reply;
