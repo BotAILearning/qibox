@@ -369,10 +369,13 @@ export function explicitTurnRepair(texts, { pendingMessages = [], messages = [],
         const prefix = reply.slice(0, comma).trim(), tail = reply.slice(comma + 1).trim();
         if (comma > 0 && sameQuestion(tail)) {
           const key = normalizedClaim(prefix);
-          const acknowledgement = /^(?:(?:哦|啊|嗯)?对+|明白(?:了)?|知道(?:了)?|好(?:的)?|收到|嗯|哦|啊)/u.exec(key);
+          // A pure current apology can precede that same literal actor
+          // confirmation, but cannot replace it or absorb a past-fault claim.
+          const apology = /^(?:哈哈)?(?:不好意思|抱歉|对不起)/u.exec(key);
+          const acknowledgement = apology || /^(?:(?:哦|啊|嗯)?对+|明白(?:了)?|知道(?:了)?|好(?:的)?|收到|嗯|哦|啊)/u.exec(key);
           const rest = acknowledgement ? key.slice(acknowledgement[0].length) : key;
           const actor = normalizedClaim(actorCorrection[1]);
-          if ((acknowledgement && !rest) || rest === `是你${actor}` || rest === `是你自己${actor}` || rest === `${actor}是你` || rest === `${actor}的是你`) return prefix;
+          if ((!apology && acknowledgement && !rest) || rest === `是你${actor}` || rest === `是你自己${actor}` || rest === `${actor}是你` || rest === `${actor}的是你`) return prefix;
         }
       }
     }
