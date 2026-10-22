@@ -988,62 +988,77 @@ export class AIAssistant {
     return structuredClone(report);
   }
   async deleteAnalysisReport(id) {
-    validReportId(id);
-    const index = this.data.analysisReports.findIndex(item => item?.id === id && item.account === this.data.account);
-    if (index < 0) throw new AppError('分析报告不存在或不属于当前微信账号', 404);
-    const [removed] = this.data.analysisReports.splice(index, 1);
-    try { await this.save(); }
-    catch (error) { this.data.analysisReports.splice(index, 0, removed); throw error; }
-    return { history: this.analysisHistory() };
+    const account = accountRequestScope(this) || this.data.account;
+    return this.exclusive(() => withConfigurationCommit(this, async persist => {
+      validReportId(id);
+      const index = this.data.analysisReports.findIndex(item => item?.id === id && item.account === account);
+      if (index < 0) throw new AppError('分析报告不存在或不属于当前微信账号', 404);
+      const [removed] = this.data.analysisReports.splice(index, 1);
+      try { await persist(); }
+      catch (error) { this.data.analysisReports.splice(index, 0, removed); throw error; }
+      await verifyAccountScope(this, account);
+      return { history: this.analysisHistory() };
+    }, { verify: () => verifyAccountScope(this, account) }));
   }
-  async saveAnalysisReport(result, { account, request, requestedRange }) {
-    if (!this.data.account || (account && this.data.account !== account)) throw new AppError('微信账号已变化，请重新检测', 409);
-    const report = {
-      schemaVersion: 1,
-      id: randomUUID(),
-      account: this.data.account,
-      contact: result.contact,
-      label: result.label,
-      ...(result.nickname ? { nickname: result.nickname } : {}),
-      createdAt: this.now(),
-      requestedRange: requestedRange || { from: null, to: null },
-      actualRange: result.actualRange || null,
-      request: textField(request ?? '', 4000, false),
-      count: result.count,
-      ...(Number.isSafeInteger(result.readableCount) ? { readableCount: result.readableCount } : {}),
-      ...(Number.isSafeInteger(result.analyzedCount) ? { analyzedCount: result.analyzedCount } : {}),
-      ...(Number.isSafeInteger(result.contentParsedCount) ? { contentParsedCount: result.contentParsedCount } : {}),
-      ...(Number.isSafeInteger(result.analyzedChars) ? { analyzedChars: result.analyzedChars } : {}),
-      ...(Number.isSafeInteger(result.totalChars) ? { totalChars: result.totalChars } : {}),
-      ...(Number.isSafeInteger(result.omittedMessages) ? { omittedMessages: result.omittedMessages } : {}),
-      ...(Number.isSafeInteger(result.partialMessages) ? { partialMessages: result.partialMessages } : {}),
-      ...(result.sourceRange ? { sourceRange: structuredClone(result.sourceRange) } : {}),
-      ...(Number.isSafeInteger(result.rangeCount) && result.rangeCount > result.count ? { rangeCount: result.rangeCount } : {}),
-      ...(Number.isSafeInteger(result.sampledCount) ? { sampledCount: result.sampledCount } : {}),
-      ...(result.sampledRange ? { sampledRange: structuredClone(result.sampledRange) } : {}),
-      skipped: result.skipped || 0,
-      truncated: result.truncated === true,
-      truncatedReasons: Array.isArray(result.truncatedReasons) ? [...new Set(result.truncatedReasons.filter(value => typeof value === 'string').slice(0, 4))] : [],
-      metrics: structuredClone(result.metrics || {}),
-      ...(result.mediaCoverage ? { mediaCoverage: structuredClone(result.mediaCoverage) } : {}),
-      // Keep the old string report shape as the canonical body. Readers can
-      // display newer metadata without requiring a new model protocol.
-      report: textField(result.report, 24000, true),
-    };
-    this.data.analysisReports.push(report);
-    try { await this.save(); }
-    catch (error) {
-      const index = this.data.analysisReports.findIndex(item => item?.id === report.id);
-      if (index >= 0) this.data.analysisReports.splice(index, 1);
-      throw error;
-    }
-    if (account && this.data.account !== account) {
-      const index = this.data.analysisReports.findIndex(item => item?.id === report.id);
-      if (index >= 0) this.data.analysisReports.splice(index, 1);
-      await this.save().catch(() => {});
-      throw new AppError('分析已取消或微信账号已变化', 409);
-    }
-    return report;
+  async saveAnalysisReport(result, { account, request, requestedRange, revision, signal }) {
+    account ||= this.data.account;
+    return this.exclusive(() => withConfigurationCommit(this, async persist => {
+      signal?.throwIfAborted();
+      if (revision !== undefined && revision !== this.revision) throw new AppError('分析已取消或微信账号已变化', 409);
+      if (!this.data.account || (account && this.data.account !== account)) throw new AppError('微信账号已变化，请重新检测', 409);
+      const report = {
+        schemaVersion: 1,
+        id: randomUUID(),
+        account: this.data.account,
+        contact: result.contact,
+        label: result.label,
+        ...(result.nickname ? { nickname: result.nickname } : {}),
+        createdAt: this.now(),
+        requestedRange: requestedRange || { from: null, to: null },
+        actualRange: result.actualRange || null,
+        request: textField(request ?? '', 4000, false),
+        count: result.count,
+        ...(Number.isSafeInteger(result.readableCount) ? { readableCount: result.readableCount } : {}),
+        ...(Number.isSafeInteger(result.analyzedCount) ? { analyzedCount: result.analyzedCount } : {}),
+        ...(Number.isSafeInteger(result.contentParsedCount) ? { contentParsedCount: result.contentParsedCount } : {}),
+        ...(Number.isSafeInteger(result.analyzedChars) ? { analyzedChars: result.analyzedChars } : {}),
+        ...(Number.isSafeInteger(result.totalChars) ? { totalChars: result.totalChars } : {}),
+        ...(Number.isSafeInteger(result.omittedMessages) ? { omittedMessages: result.omittedMessages } : {}),
+        ...(Number.isSafeInteger(result.partialMessages) ? { partialMessages: result.partialMessages } : {}),
+        ...(result.sourceRange ? { sourceRange: structuredClone(result.sourceRange) } : {}),
+        ...(Number.isSafeInteger(result.rangeCount) && result.rangeCount > result.count ? { rangeCount: result.rangeCount } : {}),
+        ...(Number.isSafeInteger(result.sampledCount) ? { sampledCount: result.sampledCount } : {}),
+        ...(result.sampledRange ? { sampledRange: structuredClone(result.sampledRange) } : {}),
+        skipped: result.skipped || 0,
+        truncated: result.truncated === true,
+        truncatedReasons: Array.isArray(result.truncatedReasons) ? [...new Set(result.truncatedReasons.filter(value => typeof value === 'string').slice(0, 4))] : [],
+        metrics: structuredClone(result.metrics || {}),
+        ...(result.mediaCoverage ? { mediaCoverage: structuredClone(result.mediaCoverage) } : {}),
+        // Keep the old string report shape as the canonical body. Readers can
+        // display newer metadata without requiring a new model protocol.
+        report: textField(result.report, 24000, true),
+      };
+      this.data.analysisReports.push(report);
+      try { await persist(); }
+      catch (error) {
+        const index = this.data.analysisReports.findIndex(item => item?.id === report.id);
+        if (index >= 0) this.data.analysisReports.splice(index, 1);
+        throw error;
+      }
+      let scopeError;
+      try {
+        if (account && this.data.account !== account) throw new AppError('分析已取消或微信账号已变化', 409, 'AI_SCOPE_CHANGED');
+        await verifyAccountScope(this, account);
+      } catch (error) { scopeError = error; }
+      if (scopeError) {
+        const index = this.data.analysisReports.findIndex(item => item?.id === report.id);
+        if (index >= 0) this.data.analysisReports.splice(index, 1);
+        try { await persist(); }
+        catch { throw new AppError('微信账号核验失败；新报告的清理保存失败，磁盘状态尚未确认，请重新核对历史报告', 503, 'AI_ANALYSIS_CLEANUP_UNKNOWN'); }
+        throw scopeError;
+      }
+      return report;
+    }));
   }
   configuration(value) { return accountConfiguration(this, value); }
   globalReplyStrategy() { return this.data.globalReplyStrategies?.[this.data.account] || this.data.replyStrategy; }

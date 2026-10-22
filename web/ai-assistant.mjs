@@ -2429,12 +2429,13 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       }
       if (action === 'cancel') {
         contactsLoading = false;
-        if (analysisQueueAccount !== null) {
+        const cancellingAnalysis = analysisQueueAccount !== null;
+        if (cancellingAnalysis) {
           analysisQueueToken++; analysisQueueAccount = null;
           for (const report of analysisResult?.reports || []) if (['waiting', 'analyzing'].includes(report.status)) { report.status = 'cancelled'; report.error = ''; }
           render();
         }
-        await execute('cancel', {}, '已取消未完成的操作');
+        await execute('cancel', {}, cancellingAnalysis ? '已停止后续分析，已保存报告保留在历史中' : '已取消未完成的操作');
       }
       if (action === 'open-contact-picker') {
         const kinds = pickerKinds(), account = state.account, current = generation;

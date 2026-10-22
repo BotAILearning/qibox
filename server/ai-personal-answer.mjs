@@ -43,7 +43,7 @@ function claimScope(sentence, match) {
   return {prefix, clause, attributed: hypothetical(localPrefix) || reported(prefix) || /[？?]$/.test(clause)};
 }
 const normalizedClaim = value => clean(value).replace(/[\p{P}\p{S}\s]/gu, '').replace(/(?:了|过|呢|呀|啊|啦|哦|吧|哈)+$/u, '');
-const historicalFault = '(?:认错|记错|说错|听错|看错|想错|理解错|理解反|搞错|弄错|搞混|记混|(?:记|搞|弄|听|说|看|理解)岔|混淆|误解|误会|没(?:有|能)?(?:分清|区分清楚|理解清楚)|(?:表达|说)(?:得)?(?:不清楚|不严谨|不准确))';
+const historicalFault = '(?:认错|记错|说错|听错|看错|想错|理解错|理解反|搞错|弄错|搞混|记混|弄混|(?:记|搞|弄|听|说|看|理解)岔|混淆|误解|误会|没(?:有|能)?(?:分清|区分清楚|理解清楚)|(?:表达|说)(?:得)?(?:不清楚|不严谨|不准确))';
 function historicalClaims(value) {
   const result = [];
   for (const sentence of sentences(value)) {

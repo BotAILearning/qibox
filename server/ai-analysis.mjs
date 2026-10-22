@@ -140,11 +140,12 @@ export async function analyzeContacts(assistant, value) {
           truncatedReasons: [...new Set([...(material.truncatedReasons || []), ...(coverage.truncated ? ['character_limit'] : []), ...(sourceTruncated ? ['source_read_truncated'] : [])])],
           actualRange: actualRange(messages), sourceRange: actualRange(sourceMessages), metrics: reportMetrics(messages), ...(mediaCoverage ? { mediaCoverage } : {}), report: reportText };
         try {
-          const saved = await a.saveAnalysisReport(report, { account, request: options.request, requestedRange: { from: options.fromDate || null, to: options.toDate || null } });
+          const saved = await a.saveAnalysisReport(report, { account, revision, signal, request: options.request, requestedRange: { from: options.fromDate || null, to: options.toDate || null } });
           reports.push({ ...report, historyId: saved.id });
-        } catch (error) { check(); reports.push({ ...head, status: 'error', error: error instanceof Error ? error.message : '报告保存失败' }); }
+        } catch (error) { if (['AI_SCOPE_CHANGED', 'AI_ACCOUNT_UNVERIFIED', 'AI_ANALYSIS_CLEANUP_UNKNOWN'].includes(error?.code)) throw error; check(); reports.push({ ...head, status: 'error', error: error instanceof Error ? error.message : '报告保存失败' }); }
       }
     } catch (error) {
+      if (['AI_SCOPE_CHANGED', 'AI_ACCOUNT_UNVERIFIED', 'AI_ANALYSIS_CLEANUP_UNKNOWN'].includes(error?.code)) throw error;
       check(); reports.push({ ...head, status: 'error', error: error instanceof AppError ? error.message : '分析失败，请稍后重试' });
     }
     a.operation.completed = 1; check();

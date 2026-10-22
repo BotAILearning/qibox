@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { rm } from 'node:fs/promises';
 import { AppError, atomicJson, jsonFile } from './files.mjs';
 import { idleResourceProbe, idlePriority } from './idle-resources.mjs';
 
@@ -28,10 +29,12 @@ export function scheduleWindow(settings, now) {
 export class WechatScheduler {
   constructor({ dataRoot, ready, runtime, start, stop, now = () => new Date(), resources, setPriority = idlePriority }) {
     this.file = path.join(dataRoot, 'schedule.json'); this.stateFile = path.join(dataRoot, 'schedule-state.json');
+    this.transactionFile = path.join(dataRoot, 'schedule-transaction.json');
     this.ready = ready; this.runtime = runtime; this.start = start; this.stop = stop; this.now = now; this.working = null;
     this.resources = resources || idleResourceProbe(() => +this.now()); this.setPriority = setPriority;
   }
   async init() {
+    await this.recoverPendingSave();
     const saved = await jsonFile(this.file, { mode: 'manual', startTime: '02:00', endTime: '02:30' });
     this.settings = validateSchedule(saved);
     if ('autoLoginReady' in saved) await atomicJson(this.file, this.settings);
@@ -41,7 +44,9 @@ export class WechatScheduler {
   async close() { clearInterval(this.timer); await this.working; }
   exclusive(action) {
     const previous = this.working;
-    const pending = Promise.resolve(previous).catch(() => {}).then(action);
+    const pending = Promise.resolve(previous).catch(() => {}).then(async () => {
+      await this.recoverPendingSave(); return action();
+    });
     const tracked = pending.finally(() => { if (this.working === tracked) this.working = null; });
     this.working = tracked;
     return tracked;
@@ -52,36 +57,64 @@ export class WechatScheduler {
     const window = scheduleWindow(this.settings, this.now());
     return this.state.paused === 'continuous' || (window.active && this.state.paused === window.key);
   }
+  async recoverPendingSave() {
+    const missing = Symbol('no schedule transaction');
+    try {
+      const pending = await jsonFile(this.transactionFile, missing);
+      if (pending === missing) return;
+      if (pending?.version !== 1 || !pending.state || typeof pending.state !== 'object' || Array.isArray(pending.state)) throw new Error('Invalid schedule transaction');
+      const settings = validateSchedule(pending.settings), state = pending.state;
+      // An incomplete save never becomes an active plan, including after a
+      // process interruption. Keep the recovery record until both old files
+      // have been restored; repeated failures therefore cannot enable a plan.
+      await atomicJson(this.file, settings); await atomicJson(this.stateFile, state);
+      await rm(this.transactionFile);
+      this.settings = settings; this.state = state;
+    } catch (cause) {
+      const error = new AppError('微信运行计划尚未保存，存储恢复未完成；自动执行已暂停，请恢复存储后重试', 503, 'schedule_recovery_required');
+      error.cause = cause; throw error;
+    }
+  }
   async save(value) {
     const settings = validateSchedule(value);
     return this.exclusive(async () => {
-    await atomicJson(this.file, settings); this.settings = settings;
-    this.state = { paused: null, ownsProcess: settings.mode === 'idle' && this.runtime.status === 'running', failures: 0, lastAttempt: null, lastEvent: null };
-    await atomicJson(this.stateFile, this.state);
+    const state = { paused: null, ownsProcess: settings.mode === 'idle' && this.runtime.status === 'running', failures: 0, lastAttempt: null, lastEvent: null };
+    try {
+      await atomicJson(this.transactionFile, { version: 1, settings: this.settings, state: this.state });
+      await atomicJson(this.file, settings); await atomicJson(this.stateFile, state);
+      // Removing the old pair is the commit point. Publish memory only after
+      // this succeeds; before it, startup or the next queued action rolls back.
+      await rm(this.transactionFile);
+    } catch (error) {
+      await this.recoverPendingSave(); throw error;
+    }
+    this.settings = settings; this.state = state;
     return this.publicState();
     });
+  }
+  async commitState(state) {
+    // Single-file state changes already have an atomic commit point. Keep the
+    // effective state until that write succeeds; callers hold the state queue.
+    await atomicJson(this.stateFile, state); this.state = state;
   }
   async interact() {
     return this.exclusive(async () => {
     // A user opening the desktop takes over that session, so scheduled closing
     // cannot interrupt a phone migration they initiate in the visible window.
-    this.state.resumeLoginAt = null; this.state.pendingLoginAt = null; this.state.ownsProcess = false; this.state.paused = null; this.state.failures = 0;
-    await atomicJson(this.stateFile, this.state);
+    await this.commitState({ ...this.state, resumeLoginAt: null, pendingLoginAt: null, ownsProcess: false, paused: null, failures: 0 });
     });
   }
   async pause() {
     return this.exclusive(async () => {
     if (this.settings.mode === 'idle' && this.state.ownsProcess && this.runtime.status === 'running') await this.stop();
     const window = scheduleWindow(this.settings, this.now());
-    this.state.paused = this.settings.mode === 'continuous' ? 'continuous' : window.key;
-    this.state.resumeLoginAt = null; this.state.pendingLoginAt = null; this.state.ownsProcess = false;
-    await atomicJson(this.stateFile, this.state);
+    await this.commitState({ ...this.state, paused: this.settings.mode === 'continuous' ? 'continuous' : window.key,
+      resumeLoginAt: null, pendingLoginAt: null, ownsProcess: false });
     });
   }
   async resume() {
     await this.exclusive(async () => {
-      this.state.paused = null; this.state.lastAttempt = null; this.state.failures = 0;
-      await atomicJson(this.stateFile, this.state);
+      await this.commitState({ ...this.state, paused: null, lastAttempt: null, failures: 0 });
     });
     await this.tick(); return this.publicState();
   }
@@ -93,7 +126,7 @@ export class WechatScheduler {
   }
   async perform() {
     const now = this.now(), window = scheduleWindow(this.settings, now);
-    await this.resumeLogin();
+    await this.resumeLogin({ queued: true });
     if (this.settings.mode === 'manual' || this.isPaused()) return;
     if (this.settings.mode === 'idle' && window.active) {
       const resource = await this.resources(this.settings.resourceLimits);
@@ -141,24 +174,33 @@ export class WechatScheduler {
     }
   }
   async restoreLogin() {
-    this.state.resumeLoginAt = this.now().toISOString();
-    await atomicJson(this.stateFile, this.state); await this.resumeLogin();
+    await this.exclusive(async () => {
+    await this.commitState({ ...this.state, resumeLoginAt: this.now().toISOString() });
+    });
+    await this.resumeLogin();
   }
-  async resumeLogin() {
-    if (this.loginResuming) return this.loginResuming;
-    this.loginResuming = this.performResumeLogin();
+  async resumeLogin({ queued = false } = {}) {
+    // A background confirmation persists through this same queue. A tick
+    // already holding it must not wait on that pending write behind itself.
+    if (this.loginResuming) return queued ? undefined : this.loginResuming;
+    this.loginResuming = this.performResumeLogin({ queued });
     try { return await this.loginResuming; } finally { this.loginResuming = null; }
   }
-  async performResumeLogin() {
+  async performResumeLogin({ queued = false } = {}) {
     if (!this.state.resumeLoginAt) return;
-    const age = this.now() - Date.parse(this.state.resumeLoginAt);
-    if (age < 0 || age >= 120000 || this.runtime.status !== 'running' || this.isPaused()) this.state.resumeLoginAt = null;
-    else {
+    const state = this.state, at = state.resumeLoginAt, age = this.now() - Date.parse(at);
+    let clear = age < 0 || age >= 120000 || this.runtime.status !== 'running' || this.isPaused();
+    if (!clear) {
       try {
         const result = await this.runtime.confirmScheduledLogin?.();
-        if (result?.clicked || ['logged-in', 'relogin-required'].includes(result?.status)) this.state.resumeLoginAt = null;
+        clear = !!result?.clicked || ['logged-in', 'relogin-required'].includes(result?.status);
       } catch { /* Keep the existing profile and let the user confirm if required. */ }
     }
-    await atomicJson(this.stateFile, this.state);
+    const persist = async () => {
+      // Manual takeover, a newer plan or its rollback supersedes this result.
+      if (this.state !== state || this.state.resumeLoginAt !== at) return;
+      await this.commitState({ ...this.state, ...(clear ? { resumeLoginAt: null } : {}) });
+    };
+    if (queued) await persist(); else await this.exclusive(persist);
   }
 }

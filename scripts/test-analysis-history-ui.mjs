@@ -284,6 +284,7 @@ try {
     return { report: '不应在取消后出现', excerptIds: [] };
   };
   const beforeCancel = queuedAnalyzeCalls.length, modelCallsBeforeCancel = provider.calls.length;
+  const savedBeforeCancel = ai.data.analysisReports.map(report => report.id);
   await page.getByRole('button', { name: '开始分析', exact: true }).click();
   await page.locator('[data-analysis-status=analyzing]').first().waitFor();
   await page.locator('#ai-operation [data-ai-action=cancel]').waitFor();
@@ -292,6 +293,8 @@ try {
   assert.equal(queuedAnalyzeCalls.length - beforeCancel, 1, 'cancel stops before posting the next contact');
   assert.equal(provider.calls.length - modelCallsBeforeCancel, 1, 'in-flight contact was the only model request');
   assert.equal(await page.locator('[data-analysis-status=cancelled]').count(), 2);
+  assert.deepEqual(ai.data.analysisReports.map(report => report.id), savedBeforeCancel, 'cancelling unfinished analysis preserves previously saved snapshots');
+  await screenshot('02-analysis-cancel-preserves-history');
   report.checks.push('Cancel aborts the in-flight contact and prevents later contacts from being posted');
 
   // This is disposable fixture data: exercise long histories without calling
