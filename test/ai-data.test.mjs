@@ -343,7 +343,11 @@ test('selected data histories are learned per contact without persisting text', 
   assert.equal(calls.filter(c => c.action === 'read-range').length, 2);
   assert.equal(provider.calls.length, 2);
   assert.deepEqual(provider.calls.map(call => call.input.contact), [contact, second]);
-  assert.deepEqual(provider.calls[0].input.material, snapshot.messages.map(({ direction, text, timestamp }) => ({ direction, text, timestamp })));
+  assert.deepEqual(provider.calls[0].input.material, snapshot.messages.map(({ id, direction, text, timestamp }) => ({ id, direction, text, timestamp,
+    authorship: direction === 'self' ? 'human' : 'other',
+    speaker: direction === 'self' ? { role: 'self', id: `account:${account}`, label: '微信账号本人（回复中的我）' }
+      : { role: 'other', id: `contact:${contact}`, label: '当前私聊对方（回复中的你）' },
+  })));
   assert.equal((await readFile(path.join(root, 'ai-assistant.json'), 'utf8')).includes('DATA_PRIVATE_TEXT'), false);
   assert.equal(bridge.snapshots.size, 0);
 });

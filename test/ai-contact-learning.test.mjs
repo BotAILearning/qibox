@@ -54,7 +54,10 @@ test('ten selected contacts are read and learned independently with keyed result
   assert.deepEqual(provider.calls.map(call => call.input.contact), contacts.slice(0, 10));
   for (const [i, call] of provider.calls.entries()) {
     assert.equal(call.input.styleOwner, 'self'); assert.match(call.system, /语言|节奏/);
-    assert.deepEqual(call.input.material, [{ direction: 'other', text: `对方-${i}`, timestamp: 0 }, { direction: 'self', text: `本人-${i}`, timestamp: 1 }]);
+    assert.deepEqual(call.input.material, [
+      { id: `other-${i}`, direction: 'other', text: `对方-${i}`, timestamp: 0, authorship: 'other', speaker: { role: 'other', id: `contact:${contacts[i]}`, label: '当前私聊对方（回复中的你）' } },
+      { id: `self-${i}`, direction: 'self', text: `本人-${i}`, timestamp: 1, authorship: 'human', speaker: { role: 'self', id: `account:${bridge.account}`, label: '微信账号本人（回复中的我）' } },
+    ]);
     assert.ok(a.profiles().find(p => p.contact === call.input.contact));
   }
   assert.equal(a.profiles().length, 10); assert.equal(a.operation, null); assert.equal(bridge.sent.length, 0);
