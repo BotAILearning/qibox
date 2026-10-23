@@ -19,7 +19,7 @@ export const replyEvidencePlanPrompt = '本次先理解事实，再写回复。�
 
 // Keep the internal evidence review from turning the final message into a
 // report. This is part of the same generation, never a second provider call.
-export const replyConversationFinishPrompt = ' 正文收笔：完成上述同次事实检查后，回到双方正在进行的聊天，直接写本轮要说的那句话。归属清楚是写作前提，不是每次都要告诉对方的结论；除非对方确实问谁的事、指出归属混淆或要求澄清，不向对方讲解“这是我这边、那是你那边”或替双方作区别说明。对方分享、补充、感叹时，给出对这件事的自然反应，不将来信换词复述或把核对结果当回复；简短附和可以很短，不为了显得有内容再重讲前文。延续当前保存的风格和少量真人表达样例；已标记的AI历史只用于接续和避免重复，不沿袭其中的套话、解释口吻或固定开头。保持事实、授权、身份、安全和原JSON协议，不增加新信息、任务、承诺或装饰来制造自然感。';
+export const replyConversationFinishPrompt = ' 正文收笔：前面的核对只约束事实，不是要发给对方的报告。现在按当前保存的风格和contextualStyle中真人短句的节奏，写双方此刻实际会接的那句话；已标记的AI历史用于接续和避免重复，不作为口吻样板。分享、吐槽和感叹可以回应事情本身有意思、麻烦或不划算等可理解的评价；这类当下反应不要求再附一遍人物、数字或依据，也不等于新增某个人的经历或感受。不要把事实保护理解成只能照抄来信：不编造人物经历、情绪、比较维度、因果、安排和承诺，仍可以有朴素的反应。来信只是确认或补充时，简短应声本身就是完整接话，不强求提供新信息；不为凑信息量解释各自归属、重复原文或主动给方案。只有本轮确实要求澄清归属、纠错、复述或详细回答时才作相应说明。保留用户明确表达要求及事实、授权、身份、安全和原JSON协议；不额外加请求、任务或装饰。';
 
 export function assertReplyRoleInput(input) {
   // Audit requests contain the already-validated contract with compact actor
