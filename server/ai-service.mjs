@@ -169,7 +169,11 @@ function learningMaterial(messages, perspective = 'self') {
 }
 function tailMemoryMaterial(messages, budget = memoryMaterialChars) {
   const clean = messages.filter(message => typeof message?.text === 'string' && message.text.trim()).map(message => ({
-    direction: message.direction === 'self' ? 'self' : 'other', text: message.text,
+    direction: message.direction, text: message.text,
+    ...(typeof message.id === 'string' ? { id: message.id } : {}),
+    ...(typeof message.sender === 'string' ? { sender: message.sender } : {}),
+    ...(message.authorship ? { authorship: message.authorship } : {}),
+    ...(message.quote ? { quote: message.quote } : {}),
     timestamp: Number.isSafeInteger(message.timestamp) ? message.timestamp : null,
   }));
   const totalChars = clean.reduce((sum, message) => sum + Array.from(message.text).length, 0);
@@ -181,6 +185,17 @@ function tailMemoryMaterial(messages, budget = memoryMaterialChars) {
     partialMessages++; remaining = 0;
   }
   const includedChars = budget - remaining;
+  // Quotes index only whole messages in this bounded material. They cannot
+  // bring omitted facts back through an unbudgeted quoted body.
+  const sourceIds = new Map();
+  for (const row of clean) if (row.id) sourceIds.set(row.id, sourceIds.has(row.id) ? null : row);
+  const wholeIds = new Map(kept.filter(row => row.id && row.text === sourceIds.get(row.id)?.text).map(row => [row.id, row]));
+  for (const row of kept) if (row.quote) {
+    const original = wholeIds.get(row.quote.messageId);
+    row.quote = row.quote.verified === true && original && ['self', 'other'].includes(original.direction)
+      ? { verified: true, messageId: original.id, direction: original.direction }
+      : { verified: false };
+  }
   return { messages: kept, coverage: {
     totalMessages: clean.length, includedMessages: kept.length, totalChars, includedChars,
     omittedMessages: Math.max(0, clean.length - kept.length), partialMessages,
@@ -1790,7 +1805,8 @@ export class AIAssistant {
             const memoryInputData = {
               styleOwner: perspective, styleOwnerText: styleOwnerText(perspective), kind: profile.kind,
               contact: profile.contact, label: profile.label, timezone: 'Asia/Shanghai',
-               coverage: memoryCoverage, material: annotateSourceDates(memoryInput),
+               coverage: memoryCoverage, material: annotateSourceDates(source === 'paste' ? memoryInput : memoryInput.map(message => withSpeaker(message, profile))),
+               sourcePerspective: { self: '用户本人', other: profile.kind === 'group' ? '其他群成员，按speaker识别，未知成员不补猜' : '当前对方', meaning: 'speaker只标记发言来源，不判定事情主体；省略主语的经历按原话上下文确认，不能按风格学习目标或来信作者直接补成本人或对方。' },
             };
             const validateMemoryResult = result => {
               const memory = validatedLearnedMemory(result?.memory, memoryInput);
@@ -1842,7 +1858,9 @@ export class AIAssistant {
         const { profile, material, source, memoryCoverage } = prepared;
         try {
         this.operation.phase = target === 'style' ? 'model' : 'memory';
-        const input = { styleOwner: perspective, styleOwnerText: styleOwnerText(perspective), contact: profile.contact, kind: profile.kind, material: target === 'style' ? material : annotateSourceDates(material), ...(prepared.styleEvidence ? { styleEvidence: prepared.styleEvidence } : {}),
+        const attributedMaterial = source === 'paste' || !Array.isArray(material) ? material : material.map(message => withSpeaker(message, profile));
+        const input = { styleOwner: perspective, styleOwnerText: styleOwnerText(perspective), contact: profile.contact, kind: profile.kind, material: target === 'style' ? attributedMaterial : annotateSourceDates(attributedMaterial),
+          sourcePerspective: { self: '用户本人', other: profile.kind === 'group' ? '其他群成员，按speaker识别，未知成员不补猜' : '当前对方', meaning: 'speaker只标记发言来源，不判定事情主体；省略主语的经历按原话上下文确认，不能按风格学习目标或来信作者直接补成本人或对方。' }, ...(prepared.styleEvidence ? { styleEvidence: prepared.styleEvidence } : {}),
           ...(target !== 'style' ? { memoryCoverage, previousMemory: readMemory(this.vault, profile) } : {}) };
         const prompt = target === 'style' ? learningPrompt : learningWithMemoryPrompt + memoryPrompt + (profile.kind === 'group' ? groupMemoryInstruction : '');
         const entry = await this.provider.complete(this.modelFor('learning'), prompt, input, signal,
