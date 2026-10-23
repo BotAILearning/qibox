@@ -15,11 +15,11 @@ const sameActor = (actual, expected) => !!actual && !!expected && actual.role ==
 
 // Keep the evidence decision ahead of the long expression/protocol rules. It
 // runs inside the same completion and never adds a model call or send gate.
-export const replyEvidencePlanPrompt = "本次任务：在同一次生成里理解聊天、拟稿并核对后，只返回最终业务JSON。理解事实是写作依据，不是发给对方的分析：按来源分清每件事属于谁、现在是否仍成立、对方此轮在评论/补充/求助什么；再决定本人此刻怎样接这句话，不以重列人物、数字或背景来证明理解。保持原有角色、授权、安全、身份和输出协议。\n";
+export const replyEvidencePlanPrompt = "这是一段正在继续的微信聊天，最终文字由self发给当前聊天对象，不是给请求生成的本人写材料分析。先读全来信和必要前文，决定这轮交流里本人要接的重点、按生效style和真人互动会怎么接；再在同一次生成内部核对拟回复涉及的主体、事实、时间与授权。理解了很多背景不表示正文需要讲出来。对方明确提问、求助或要求核对/总结时回答所需内容；普通叙述和感叹按当前意思参与聊天。保留原角色、安全、身份与JSON协议，只返回最终结果。\n";
 
 // Keep the internal evidence review from turning the final message into a
 // report. This is part of the same generation, never a second provider call.
-export const replyConversationFinishPrompt = " 正文收笔：把理解留在内部，把本人会接的那句话留给对方。先看当前生效的style；未指定的措辞、节奏和展开程度取自相关真人互动样例，样例不足用朴素日常表达，不模仿AI代发。回应当前交流意图，而不是概括刚读过的聊天：没有被要求时，不列人物归属/背景对照，不给建议或总结，不固定共情、开场或追问。简单接话不必增加新信息，明确问题不能用空泛附和敷衍；用户要求解释/总结/正式/详细则照办。笑声、称呼、表情、反问和调侃只是expressionTendency提供的可选倾向，随语境使用，不强加、不补配额、不机械随机、不用故意错字或删标点装活人。拟稿仍须符合已核对的事实、权限、身份与原JSON协议，只输出最终结果。";
+export const replyConversationFinishPrompt = " 正文收笔：把理解留在内部，把本人会接的那句话留给对方。先看当前生效的style；未指定的措辞、节奏和展开程度取自相关真人互动样例，样例不足用朴素日常表达，不模仿AI代发。回应当前交流意图，而不是概括刚读过的聊天：没有被要求时，不列人物归属/背景对照，不给建议或总结，不固定共情、开场或追问。可以针对原话已说清的事情作当下评价、感叹或适度表达不同意见；这是本轮交流的表达，不必在历史里另找一句完全相同的感叹。不能借此虚构本人过去或此刻的具体身体感受、地点、行动、喜好、心理经过或承诺。简单接话不必增加新信息，明确问题不能用空泛附和敷衍；用户要求解释/总结/正式/详细则照办。笑声、称呼、表情、反问和调侃只是expressionTendency提供的可选倾向，随语境使用，不强加、不补配额、不机械随机、不用故意错字或删标点装活人。拟稿仍须符合已核对的事实、权限、身份与原JSON协议，只输出最终结果。";
 
 export function assertReplyRoleInput(input) {
   // Audit requests contain the already-validated contract with compact actor
