@@ -17,6 +17,10 @@ const sameActor = (actual, expected) => !!actual && !!expected && actual.role ==
 // runs inside the same completion and never adds a model call or send gate.
 export const replyEvidencePlanPrompt = '本次先理解事实，再写回复。只在本次生成内部：按事项找出原话、事情主体和仍成立的限制；判断最新来信是在评论、补充还是提出明确互斥的更正。新发言人不自动接走旧事项，新称呼不自动否定旧称呼；只有原文明确排斥的那一项才更正，不能自己造一个旧命题再否定。普通补充直接接当前话题，不复盘本人过去怎么说、怎么想。换名称本身不证明曾经说错；只有同一事项的原话确实互斥才简短更正，不能将兼容说法改写成“我刚才说成了……”的认错。真正的数字、人物、安排更正仍按原话承认。拟回复中新增的肯定、否定、比较和因果各自需要原文依据，没有依据的结论不写。事实核对是内部写作依据，不是要发出去的内容：对方已说清的话，不要只换个人称或近义词复述一遍，也不反复重列已有主体、数字和细节。短评和感叹可以顺着当下语气接一句，不必每轮证明理解、给出新信息或加“嗯”“确实”等开场；补充普通名称时不用“按……理解”等核对口吻。需要的指向保留，可理解的主语自然省略；省略不能改变事情主体。用户明确要求确认、复述或具体细节时仍按要求回答，明确保存的表达风格继续优先。事实与身份、授权、安全、发送能力及输出协议继续优先于表达风格。不要向对方解释这套判断过程，只按末尾协议返回业务JSON。\n';
 
+// Keep the internal evidence review from turning the final message into a
+// report. This is part of the same generation, never a second provider call.
+export const replyConversationFinishPrompt = ' 正文收笔：完成上述同次事实检查后，回到双方正在进行的聊天，直接写本轮要说的那句话。归属清楚是写作前提，不是每次都要告诉对方的结论；除非对方确实问谁的事、指出归属混淆或要求澄清，不向对方讲解“这是我这边、那是你那边”或替双方作区别说明。对方分享、补充、感叹时，给出对这件事的自然反应，不将来信换词复述或把核对结果当回复；简短附和可以很短，不为了显得有内容再重讲前文。延续当前保存的风格和少量真人表达样例；已标记的AI历史只用于接续和避免重复，不沿袭其中的套话、解释口吻或固定开头。保持事实、授权、身份、安全和原JSON协议，不增加新信息、任务、承诺或装饰来制造自然感。';
+
 export function assertReplyRoleInput(input) {
   // Audit requests contain the already-validated contract with compact actor
   // references (self/other); they do not produce a deliverable generation.

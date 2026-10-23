@@ -1,5 +1,5 @@
 import { hasSpeakerTurns, speakerTurns, speakerHistory, replyRelations, confirmedSpeakerHistory, naturalTurnBrief } from './ai-speakers.mjs';
-import { assertReplyRoleInput, assertReplyRoleDraft, replyRolePrompt, replyRoleEvidencePrompt, replySelfCheckPrompt, replyEvidencePlanPrompt } from './ai-reply-role.mjs';
+import { assertReplyRoleInput, assertReplyRoleDraft, replyRolePrompt, replyRoleEvidencePrompt, replySelfCheckPrompt, replyEvidencePlanPrompt, replyConversationFinishPrompt } from './ai-reply-role.mjs';
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -324,7 +324,7 @@ export class AIProvider {
   }
   async complete(config, system, input, signal, { format = 'json', purpose, budget: requestedBudget, retry = true, validate, requireImages = false } = {}) {
     assertReplyRoleInput(input);
-    const roleSystem = ['reply', 'proactive'].includes(input?.mode) ? replyEvidencePlanPrompt + system + (input.roleAnchor ? replyRolePrompt + replyRoleEvidencePrompt : '') + replySelfCheckPrompt : system;
+    const roleSystem = ['reply', 'proactive'].includes(input?.mode) ? replyEvidencePlanPrompt + system + (input.roleAnchor ? replyRolePrompt + replyRoleEvidencePrompt : '') + replySelfCheckPrompt + replyConversationFinishPrompt : system;
     const anthropic = config.protocol === 'anthropic', endpoint = providerEndpoints(config).complete;
     // M3's Anthropic endpoint defaults to thinking off. Natural references need
     // reasoning, especially when checking several actors and implicit subjects.
