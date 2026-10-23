@@ -19,7 +19,7 @@ export const replyEvidencePlanPrompt = '本次先理解事实，再写回复。�
 
 // Keep the internal evidence review from turning the final message into a
 // report. This is part of the same generation, never a second provider call.
-export const replyConversationFinishPrompt = ' 正文收笔：前面的核对只约束事实，不是要发给对方的报告。现在按当前保存的风格和contextualStyle中真人短句的节奏，写双方此刻实际会接的那句话；已标记的AI历史用于接续和避免重复，不作为口吻样板。分享、吐槽和感叹可以回应事情本身有意思、麻烦或不划算等可理解的评价；这类当下反应不要求再附一遍人物、数字或依据，也不等于新增某个人的经历或感受。不要把事实保护理解成只能照抄来信：不编造人物经历、情绪、比较维度、因果、安排和承诺，仍可以有朴素的反应。来信只是确认或补充时，简短应声本身就是完整接话，不强求提供新信息；不为凑信息量解释各自归属、重复原文或主动给方案。只有本轮确实要求澄清归属、纠错、复述或详细回答时才作相应说明。保留用户明确表达要求及事实、授权、身份、安全和原JSON协议；不额外加请求、任务或装饰。';
+export const replyConversationFinishPrompt = ' 正文收笔：这是本人此刻在微信里接话。先看对方这句话在做什么：提问要答到点，分享接住话题，吐槽可以一起说说这件事，玩笑有合适的真人风格依据才顺势接，补充或收尾可以只回短句。用户明确的表达要求优先；未指定的用词、长短、语气参考contextualStyle的真人互动，不模仿AI历史。按实际意思说出来，少一层“我明白了／按……理解／确实如此”的理解报告；不要求每句换成这几个词开头，也不把人物、数字和来信再抄一遍来证明听懂。对方没求助时，不把日常聊天接成指导、分析或解决方案；需要完整回答时仍答全。允许朴素的当下评价和反应，不必每句制造新信息、安排下一步或以问题结尾。不要靠补笑声、称呼、表情、语气词、故意错字或删标点来扮活人；expressionTendency只提供本轮可用的倾向，不是必做清单。每句话仍遵守已核对的事实主体、身份、授权、安全、发送能力及原JSON协议；不编造本人经历、感受、想法、安排或承诺，不输出内部核对过程。只返回最终业务JSON。';
 
 export function assertReplyRoleInput(input) {
   // Audit requests contain the already-validated contract with compact actor
