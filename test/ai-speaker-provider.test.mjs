@@ -4,6 +4,33 @@ import { AIProvider } from '../server/ai-provider.mjs';
 import { withSpeaker, replyPerspective } from '../server/ai-speakers.mjs';
 import { modelConfig, key } from './ai-fixtures.mjs';
 import { validateReplyResult } from '../server/ai-prompts.mjs';
+import { naturalAttributionPrompt } from '../server/ai-speakers.mjs';
+
+for (const protocol of ['openai', 'anthropic']) test(`${protocol}: implicit third-person chat preserves event evidence in one generation`, async () => {
+  const profile = { account: key('implicit-owner'), contact: key('implicit-peer'), kind: 'person' };
+  const input = { mode: 'reply', replyPerspective: replyPerspective(profile), messages: [
+    withSpeaker({ id: 'quota', direction: 'self', text: '七天额度两天就见底，一直跑相册识别。' }, profile),
+    withSpeaker({ id: 'peer-activity', direction: 'other', text: '我没怎么跑模型，最近只整理照片。' }, profile),
+    withSpeaker({ id: 'third-person', direction: 'other', text: '小周也快用完了，不过他跑的东西不一样。' }, profile),
+  ] };
+  const original = structuredClone(input), requests = [];
+  const provider = new AIProvider({ fetcher: async (_url, options) => {
+    const body = JSON.parse(options.body); requests.push(body);
+    const wire = JSON.parse(body.messages.at(-1).content);
+    assert.deepEqual(wire.messages.map(m => [m.direction, m.text]), input.messages.map(m => [m.direction, m.text]));
+    assert.equal(wire.messages[0].speaker.role, 'self');
+    assert.equal(wire.messages[1].speaker.role, 'other');
+    assert.equal(wire.messages[2].speaker.id, wire.messages[1].speaker.id);
+    const system = protocol === 'anthropic' ? body.system : body.messages[0].content;
+    assert.match(system, /发言人、所谈事情的当事人、被比较的人可能各不相同/);
+    assert.match(system, /话题切换和第三人加入不改变此前事项的归属/);
+    const text = JSON.stringify({ action: 'send', text: '他也跑得挺多，我这两天光相册就耗了不少。', followUp: false });
+    return Response.json(protocol === 'anthropic' ? { content: [{ type: 'text', text }] } : { choices: [{ message: { content: text } }] });
+  } });
+  await provider.complete({ ...modelConfig, protocol }, naturalAttributionPrompt, input);
+  assert.equal(requests.length, 1); assert.deepEqual(input, original);
+  // This verifies the production request boundary, not model semantic quality.
+});
 
 for(const protocol of ['openai','anthropic']) test(`${protocol}: a single generation retains the identity switch and includes its own role self-check`,async()=>{
   const profile={account:key('account'),contact:key('contact'),kind:'person'};
