@@ -334,7 +334,7 @@ export class AIProvider {
     const {images = [], ...textInput} = input;
     const validImages = images.filter(x => x && ['image/png','image/jpeg','image/gif','image/webp'].includes(x.mime) && typeof x.data === 'string' && x.data.length <= 5600000).slice(0,3);
     if (requireImages && (!images.length || validImages.length !== images.length)) throw new AppError('图片或视频帧不符合模型输入要求', 400);
-    const expanded = hasSpeakerTurns(input) ? { ...textInput, messages: input.messages, replySpeakerHistory: speakerHistory(input.messages).map(({ messages, ...group }) => ({ ...group, messageIds: messages.map(message => message.id) })), confirmedSpeakerHistory: confirmedSpeakerHistory(input.messages).filter(group => group.speaker.role === 'self'), replyRelations: replyRelations(input.messages), naturalTurnBrief: naturalTurnBrief(input.messages) } : textInput;
+    const expanded = hasSpeakerTurns(input) ? { ...textInput, messages: input.messages, replySpeakerHistory: speakerHistory(input.messages).map(({ messages, ...group }) => ({ ...group, messageIds: messages.map(message => message.id) })), confirmedSpeakerHistory: confirmedSpeakerHistory(input.messages), replyRelations: replyRelations(input.messages), naturalTurnBrief: naturalTurnBrief(input.messages) } : textInput;
     const encoded = encodeModelRequest(roleSystem, compactModelInput(expanded));
     const text = JSON.stringify(encoded.input);
     const requestContent = validImages.length ? [{type:'text',text}, ...validImages.flatMap(x => [{type:'text',text:'图片对应消息 '+encoded.id(x.messageId)+(x.thumbnail ? '（微信缩略图；只描述可辨认的内容，不猜测模糊细节）' : '')}, anthropic ? {type:'image',source:{type:'base64',media_type:x.mime,data:x.data}} : {type:'image_url',image_url:{url:'data:'+x.mime+';base64,'+x.data}}])] : text;

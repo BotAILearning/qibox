@@ -4,7 +4,7 @@ import { AIProvider } from '../server/ai-provider.mjs';
 import { withSpeaker, replyPerspective } from '../server/ai-speakers.mjs';
 import { modelConfig, key } from './ai-fixtures.mjs';
 import { validateReplyResult } from '../server/ai-prompts.mjs';
-import { naturalAttributionPrompt } from '../server/ai-speakers.mjs';
+import { naturalAttributionPrompt, confirmedSpeakerHistory } from '../server/ai-speakers.mjs';
 
 for (const protocol of ['openai', 'anthropic']) test(`${protocol}: implicit third-person chat preserves event evidence in one generation`, async () => {
   const profile = { account: key('implicit-owner'), contact: key('implicit-peer'), kind: 'person' };
@@ -21,6 +21,9 @@ for (const protocol of ['openai', 'anthropic']) test(`${protocol}: implicit thir
     assert.equal(wire.messages[0].speaker.role, 'self');
     assert.equal(wire.messages[1].speaker.role, 'other');
     assert.equal(wire.messages[2].speaker.id, wire.messages[1].speaker.id);
+    assert.equal(wire.confirmedSpeakerHistory.length, 2);
+    assert.deepEqual(wire.confirmedSpeakerHistory.find(group => group.speaker.role === 'self').messages.map(m => m.text), [input.messages[0].text]);
+    assert.deepEqual(wire.confirmedSpeakerHistory.find(group => group.speaker.role === 'other').messages.map(m => m.text), input.messages.slice(1).map(m => m.text));
     const system = protocol === 'anthropic' ? body.system : body.messages[0].content;
     assert.match(system, /发言人、所谈事情的当事人、被比较的人可能各不相同/);
     assert.match(system, /不能把用途不同改写成数量不同/);
@@ -31,6 +34,22 @@ for (const protocol of ['openai', 'anthropic']) test(`${protocol}: implicit thir
   await provider.complete({ ...modelConfig, protocol }, naturalAttributionPrompt, input);
   assert.equal(requests.length, 1); assert.deepEqual(input, original);
   // This verifies the production request boundary, not model semantic quality.
+});
+
+test('both-side source groups retain original statements and exclude known AI, unknown and unresolved rows', () => {
+  const profile = { account: key('source-owner'), contact: key('source-peer'), kind: 'person' };
+  const messages = [
+    { id: 'own', direction: 'self', text: '七天才过两天，快见底了。', authorship: 'human' },
+    { id: 'peer', direction: 'other', text: '我没怎么跑模型。', authorship: 'other' },
+    { id: 'ai-own', direction: 'self', text: '未知经历', authorship: 'ai' },
+    { id: 'ai-peer', direction: 'other', text: '已知代发', aiGenerated: true },
+    { id: 'unknown', direction: 'other', text: '来源未知', authorship: 'unknown' },
+    { id: 'voice', direction: 'other', text: '[语音]', unresolved: true },
+  ].map(m => withSpeaker(m, profile));
+  const original = structuredClone(messages), groups = confirmedSpeakerHistory(messages);
+  assert.deepEqual(groups.map(group => group.messages.map(m => m.id)), [['own'], ['peer']]);
+  assert.equal(groups[1].messages[0].text, '我没怎么跑模型。');
+  assert.deepEqual(messages, original);
 });
 
 for(const protocol of ['openai','anthropic']) test(`${protocol}: a single generation retains the identity switch and includes its own role self-check`,async()=>{
