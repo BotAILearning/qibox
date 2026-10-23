@@ -2,7 +2,7 @@
 import importlib.util
 import pathlib
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import ANY, Mock, patch
 
 spec = importlib.util.spec_from_file_location('native_ai', pathlib.Path(__file__).resolve().parents[1] / 'server/ai-native.py')
 native = importlib.util.module_from_spec(spec)
@@ -79,7 +79,7 @@ class DataGuard(unittest.TestCase):
         adapter = self.adapter()
         result = adapter.execute({'action': 'send-guard', 'revision': 'guard', 'text': '允许的文字'})
         self.assertEqual(result, {'status': 'submitted'})
-        adapter.controls.press.assert_called_once_with(5)
+        adapter.controls.press.assert_called_once_with(5, before_dispatch=ANY)
         adapter.snapshot.assert_not_called()
 
     def test_changed_native_guard_cannot_insert_a_draft(self):
@@ -112,9 +112,35 @@ class DataGuard(unittest.TestCase):
         with patch.object(native.time, 'sleep'):
             result = adapter.execute({'action': 'send-guard', 'revision': 'guard', 'text': '允许的文字'})
         self.assertEqual(result, {'status': 'submitted'})
-        adapter.controls.press.assert_called_once_with(5)
+        adapter.controls.press.assert_called_once_with(5, before_dispatch=ANY)
         adapter.write_text.assert_called_once_with(4, '允许的文字')
         self.assertEqual(adapter.guard_snapshot.call_count, 4)
+
+    def test_send_control_failure_before_button_dispatch_does_not_claim_a_send_press(self):
+        adapter = self.adapter()
+        adapter.send_pressed = False
+        adapter.controls.press.side_effect = RuntimeError('control unavailable before dispatch')
+        with patch.object(native.time, 'sleep'):
+            with self.assertRaisesRegex(RuntimeError, 'before dispatch'):
+                adapter.execute({'action': 'send-guard', 'revision': 'guard', 'text': '允许的文字'})
+        self.assertFalse(adapter.send_pressed)
+        adapter.write_text.assert_called_once_with(4, '允许的文字')
+        adapter.controls.press.assert_called_once_with(5, before_dispatch=ANY)
+
+    def test_exception_after_button_dispatch_retains_possible_send_and_never_permits_a_replay(self):
+        adapter = self.adapter()
+        adapter.send_pressed = False
+
+        def dispatch_then_fail(obj, *, before_dispatch):
+            before_dispatch()
+            raise RuntimeError('failure after dispatch boundary')
+
+        adapter.controls.press.side_effect = dispatch_then_fail
+        with patch.object(native.time, 'sleep'):
+            with self.assertRaisesRegex(RuntimeError, 'after dispatch'):
+                adapter.execute({'action': 'send-guard', 'revision': 'guard', 'text': '允许的文字'})
+        self.assertTrue(adapter.send_pressed)
+        adapter.controls.press.assert_called_once_with(5, before_dispatch=ANY)
 
     def test_post_send_row_instability_is_bounded_and_identity_errors_are_not_retried(self):
         for failure in ('rows', 'identity'):
@@ -131,7 +157,7 @@ class DataGuard(unittest.TestCase):
                         with self.assertRaises(ValueError):
                             adapter.execute({'action': 'send-guard', 'revision': 'guard', 'text': '允许的文字'})
                         self.assertEqual(adapter.guard_snapshot.call_count, 3)
-                adapter.controls.press.assert_called_once_with(5)
+                adapter.controls.press.assert_called_once_with(5, before_dispatch=ANY)
                 adapter.write_text.assert_called_once_with(4, '允许的文字')
 
     def test_row_instability_before_send_does_not_retry_or_press_send(self):
@@ -151,7 +177,7 @@ class DataGuard(unittest.TestCase):
             return {'action': 'commit', 'revision': before['revision'], 'text': '允许的文字'}
         self.assertEqual(adapter.execute({'action': 'prepare-send'}, commit=commit), {'status': 'submitted'})
         adapter.resolve.assert_called_once()
-        adapter.controls.press.assert_called_once_with(5)
+        adapter.controls.press.assert_called_once_with(5, before_dispatch=ANY)
 
     def test_whitespace_residue_is_empty_but_real_text_and_attachment_drafts_are_protected(self):
         for draft in [' ' * 44, '\t\n\u00a0\u3000', '\u200b\u200d\u2060\ufeff']:
@@ -162,7 +188,7 @@ class DataGuard(unittest.TestCase):
                     {'action': 'commit', 'revision': before['revision'], 'text': '允许的文字'})
                 self.assertEqual(result, {'status': 'submitted'})
                 adapter.write_text.assert_called_once_with(4, '允许的文字')
-                adapter.controls.press.assert_called_once_with(5)
+                adapter.controls.press.assert_called_once_with(5, before_dispatch=ANY)
         for draft in ['用户未发草稿', ' \u200b真实内容 ', '\ufffc', '👨\u200d👩\u200d👧']:
             with self.subTest(draft=draft):
                 adapter = self.adapter()

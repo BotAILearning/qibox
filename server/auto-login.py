@@ -183,7 +183,7 @@ class Inspector:
     def refresh(self, obj):
         self.bind('atspi_accessible_clear_cache', None, [c.c_void_p])(obj)
 
-    def press(self, obj):
+    def press(self, obj, *, before_dispatch=None):
         if not obj or not self.visible(obj):
             raise RuntimeError('control unavailable')
         # WeChat's custom buttons expose bounds but no AT-SPI actions. Use only
@@ -204,6 +204,10 @@ class Inspector:
         if width <= 0 or height <= 0:
             raise RuntimeError('invalid bounds')
         self.move_pointer(x + width // 2, y + height // 2)
+        # Bounds, visibility and pointer checks may still fail before this
+        # point. Callers must only mark a possible send at the event boundary.
+        if before_dispatch is not None:
+            before_dispatch()
         self.xtest.XTestFakeButtonEvent(self.display, 1, 1, 0)
         self.xtest.XTestFakeButtonEvent(self.display, 1, 0, 0)
         self.xlib.XFlush(self.display)

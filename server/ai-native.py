@@ -437,8 +437,11 @@ class ChatAdapter:
         self.verify_session()
         # Once the native click may have happened, never delete a draft as a
         # cancellation cleanup: the database bridge must check the send receipt.
+        def mark_send_dispatch():
+            self.send_pressed = True
+
+        ins.press(layout['send'], before_dispatch=mark_send_dispatch)
         self.send_pressed = True
-        ins.press(layout['send'])
         for _ in range(6):
             time.sleep(.15)
             ins.check()

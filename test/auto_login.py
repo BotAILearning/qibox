@@ -1,6 +1,7 @@
 import importlib.util
 import pathlib
 import unittest
+from unittest.mock import Mock, patch
 
 spec = importlib.util.spec_from_file_location('auto_login', pathlib.Path(__file__).parents[1] / 'server' / 'auto-login.py')
 module = importlib.util.module_from_spec(spec)
@@ -221,6 +222,52 @@ class NativeControlTest(unittest.TestCase):
             self.assertNotEqual(module.classify_control(states - {removed}, ['自动登录']), 'ready')
         for bad in (0, 6, 27, 32):
             self.assertEqual(module.classify_control(states | {bad}, ['自动登录']), 'unknown')
+
+
+class NativeDispatchBoundary(unittest.TestCase):
+    def inspector(self):
+        ins = object.__new__(module.Inspector)
+        events = []
+        ins.visible = Mock(return_value=True)
+        ins.glib = Mock()
+        ins.display = 1
+        ins.xtest, ins.xlib = Mock(), Mock()
+        ins.xtest.XTestFakeButtonEvent.side_effect = lambda _, button, down, delay: events.append(('button', down))
+        ins.xlib.XFlush.side_effect = lambda _: events.append('flush')
+        ins.move_pointer = Mock(side_effect=lambda x, y: events.append(('move', x, y)))
+        records = []
+
+        def bind(name, result, args):
+            if name == 'atspi_accessible_get_component_iface':
+                return lambda obj: 1
+            if name == 'atspi_component_get_extents':
+                record = result._type_(10, 20, 30, 40)
+                records.append(record)
+                return lambda *args: module.c.pointer(record)
+            raise AssertionError(name)
+
+        ins.bind = bind
+        return ins, events
+
+    def test_dispatch_marker_follows_bounds_and_pointer_checks_and_precedes_first_button_event(self):
+        ins, events = self.inspector()
+        with patch.object(module.time, 'sleep'):
+            ins.press(1, before_dispatch=lambda: events.append('dispatch'))
+        self.assertEqual(events, [('move', 25, 40), 'dispatch', ('button', 1), ('button', 0), 'flush'])
+
+    def test_invisible_control_never_marks_dispatch_or_sends_a_button_event(self):
+        ins, events = self.inspector()
+        ins.visible.return_value = False
+        with self.assertRaisesRegex(RuntimeError, 'control unavailable'):
+            ins.press(1, before_dispatch=lambda: events.append('dispatch'))
+        self.assertEqual(events, [])
+
+    def test_pointer_failure_never_marks_dispatch_or_sends_a_button_event(self):
+        ins, events = self.inspector()
+        ins.move_pointer.side_effect = RuntimeError('pointer in use')
+        with self.assertRaisesRegex(RuntimeError, 'pointer in use'):
+            ins.press(1, before_dispatch=lambda: events.append('dispatch'))
+        self.assertEqual(events, [])
 
 
 if __name__ == '__main__':
