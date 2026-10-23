@@ -15,7 +15,7 @@ const sameActor = (actual, expected) => !!actual && !!expected && actual.role ==
 
 // Keep the evidence decision ahead of the long expression/protocol rules. It
 // runs inside the same completion and never adds a model call or send gate.
-export const replyEvidencePlanPrompt = '本次先理解事实，再写回复。只在本次生成内部：按事项找出原话、事情主体和仍成立的限制；判断最新来信是在评论、补充还是提出明确互斥的更正。新发言人不自动接走旧事项，新称呼不自动否定旧称呼；只有原文明确排斥的那一项才更正，不能自己造一个旧命题再否定。然后沿当前话题自然接话，拟回复里的每个新增肯定、否定、比较、因果各自需要原文依据；没有依据的结论不写，已有信息照常回应。事实与身份、授权、安全、发送能力及输出协议继续优先于表达风格。不要向对方解释这套判断过程，只按末尾协议返回业务JSON。\n';
+export const replyEvidencePlanPrompt = '本次先理解事实，再写回复。只在本次生成内部：按事项找出原话、事情主体和仍成立的限制；判断最新来信是在评论、补充还是提出明确互斥的更正。新发言人不自动接走旧事项，新称呼不自动否定旧称呼；只有原文明确排斥的那一项才更正，不能自己造一个旧命题再否定。普通补充信息时，直接接住当前已经确认的内容，不复盘本人过去怎么说、怎么想。界面名称或另一种说法本身不证明曾经说错；需要解释过往时，必须在同一事项的原话中找到确切的错误内容，不能将兼容说法改写成“我刚才说成了……”的认错。确有数字、人物或安排的互斥更正时，仍承认有原话依据的更正。然后沿当前话题自然接话，拟回复里的每个新增肯定、否定、比较、因果各自需要原文依据；没有依据的结论不写，已有信息照常回应。事实与身份、授权、安全、发送能力及输出协议继续优先于表达风格。不要向对方解释这套判断过程，只按末尾协议返回业务JSON。\n';
 
 export function assertReplyRoleInput(input) {
   // Audit requests contain the already-validated contract with compact actor

@@ -23,8 +23,15 @@ test('AI HTTP requires owner and CSRF, hides secrets and suspends with instance 
   try {
     const token = (await call('/session', '1001')).value.csrf, other = (await call('/session', '1002')).value.csrf;
     await call('/consent', '1001', { accepted: true }, token); await call('/consent', '1002', { accepted: true }, other);
-    await call('/install/download', '1001', {}, token); await app.library.working;
-    const instance = (await call('/instances', '1001', { name: 'AI 测试' }, token)).value, route = `/instances/${instance.id}/ai`;
+    assert.equal((await call('/install/download', '1001', {}, token)).status, 202);
+    await app.library.working;
+    const installed = app.library.publicState();
+    assert.ok(installed.installed, `HTTP test setup did not install WeChat: ${JSON.stringify(installed.job)}`);
+    const created = await call('/instances', '1001', { name: 'AI 测试' }, token);
+    assert.equal(created.status, 201);
+    const instance = created.value;
+    assert.match(instance.id, /^[a-f0-9-]{36}$/);
+    const route = `/instances/${instance.id}/ai`;
     assert.equal((await call(route, '1002')).status, 404);
     const emptyKey = await call(route, '1001', { action: 'reveal-key' }, token);
     assert.equal(emptyKey.status, 400); assert.equal(JSON.stringify(emptyKey).includes(modelConfig.apiKey), false);
