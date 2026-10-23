@@ -132,7 +132,8 @@ for (const mode of ['reply', 'proactive']) for (const scenario of scenarios) {
         assert.equal(wire.messages.at(-1).quote.speaker.id, members[0].speaker.id);
       }
       if (scenario.id === 'old-ai-identity') {
-        assert.ok(!wire.confirmedSpeakerHistory.some(group => group.messages.some(message => message.text.includes('我是医生'))));
+        const humanSources=wire.confirmedSpeakerHistory.flatMap(group=>group.messageIds.map(id=>{const source=wire.messages.find(message=>message.id===id);assert.ok(source);return source;}));
+        assert.ok(humanSources.length>0);assert.ok(!humanSources.some(message=>message.text.includes('我是医生')));
         assert.equal(wire.messages.find(message => message.text.includes('我是医生')).aiGenerated, true);
       }
       return { action: 'send', text: scenario.correct, followUp: false };

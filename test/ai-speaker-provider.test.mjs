@@ -22,8 +22,10 @@ for (const protocol of ['openai', 'anthropic']) test(`${protocol}: implicit thir
     assert.equal(wire.messages[1].speaker.role, 'other');
     assert.equal(wire.messages[2].speaker.id, wire.messages[1].speaker.id);
     assert.equal(wire.confirmedSpeakerHistory.length, 2);
-    assert.deepEqual(wire.confirmedSpeakerHistory.find(group => group.speaker.role === 'self').messages.map(m => m.text), [input.messages[0].text]);
-    assert.deepEqual(wire.confirmedSpeakerHistory.find(group => group.speaker.role === 'other').messages.map(m => m.text), input.messages.slice(1).map(m => m.text));
+    const originals = group => group.messageIds.map(id => { const row=wire.messages.find(m=>m.id===id); assert.ok(row); return row; });
+    assert.deepEqual(originals(wire.confirmedSpeakerHistory.find(group => group.speaker.role === 'self')).map(m=>m.text), [input.messages[0].text]);
+    assert.deepEqual(originals(wire.confirmedSpeakerHistory.find(group => group.speaker.role === 'other')).map(m=>m.text), input.messages.slice(1).map(m => m.text));
+    assert.equal(wire.sourceIndexVersion,2);assert.equal(Object.hasOwn(wire,'naturalTurnBrief'),false);
     const system = protocol === 'anthropic' ? body.system : body.messages[0].content;
     assert.match(system, /发言人、所谈事情的当事人、被比较的人可能各不相同/);
     assert.match(system, /不能把用途不同改写成数量不同/);
@@ -133,7 +135,8 @@ for (const protocol of ['openai', 'anthropic']) test(`${protocol}: provider task
   assert.equal(groups[0].referenceInReply, '我（当前回信者本人）');
   assert.deepEqual(groups[0].messageIds, ['mine', 'last-own']);
   const confirmed = JSON.parse(last[0].text).confirmedSpeakerHistory;
-  assert.deepEqual(confirmed.find(group => group.speaker.role === 'self').messages.map(m => m.id), ['mine']);
+  assert.deepEqual(confirmed.find(group => group.speaker.role === 'self').messageIds, ['mine']);
+  assert.ok(confirmed.find(group=>group.speaker.role==='self').messageIds.every(id=>wireMessages.some(m=>m.id===id&&!m.aiGenerated)));
   assert.deepEqual(groups[1].messageIds, ['theirs']);
   assert.notEqual(groups[1].speaker.id, groups[2].speaker.id);
   assert.deepEqual(input, original);
