@@ -36,6 +36,17 @@ export function contextualReplyStyle(messages, options = {}) {
   return { source: 'current-chat-human', ...naturalStyleEvidence(messages, options) };
 }
 
+// Exact provenance only: never classify a user's edited text by its wording.
+// A selected learned style remains useful expression evidence, without making
+// every observation in its summary a mandatory conversational task.
+export function replyStyleOrigin(profile, style, { reference = false } = {}) {
+  const locked = Array.isArray(profile?.locked) ? profile.locked : [];
+  const learned = typeof profile?.learnedStyle?.summary === 'string' && !!profile.learnedStyle.summary
+    && style?.summary === profile.learnedStyle.summary && !locked.includes('summary');
+  return { summary: reference ? 'reference-style' : learned ? 'learned-observation' : 'user-setting',
+    explicitFields: [...new Set(['customTone', 'customAvoid', ...locked])] };
+}
+
 // A bounded context supplement to the existing learning request. Whole native
 // interactions are sampled across the available range; AI rows stay in each
 // local window as adjacency boundaries but never become expression evidence.

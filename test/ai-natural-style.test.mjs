@@ -1,9 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { authoredMessages, contextualReplyStyle, contextualStylePrompt } from '../server/ai-context-learning.mjs';
+import { authoredMessages, contextualReplyStyle, contextualStylePrompt, replyStyleOrigin } from '../server/ai-context-learning.mjs';
 
 const other = (id, text, timestamp, extra = {}) => ({ id, direction: 'other', authorship: 'other', type: 'text', text, timestamp, ...extra });
 const self = (id, text, timestamp, extra = {}) => ({ id, direction: 'self', authorship: 'human', type: 'text', text, timestamp, ...extra });
+
+test('learned observation provenance never overrides edited, locked or legacy manual style', () => {
+  const profile={learnedStyle:{summary:'已观察到的表达'},locked:[]};
+  const style={summary:'已观察到的表达',customTone:'用户明确补充',customAvoid:'用户明确禁用'};
+  const before=structuredClone({profile,style});
+  assert.equal(replyStyleOrigin(profile,style).summary,'learned-observation');
+  assert.deepEqual(replyStyleOrigin(profile,style).explicitFields,['customTone','customAvoid']);
+  assert.equal(replyStyleOrigin(profile,{...style,summary:style.summary+'\n用户追加：保持详细'}).summary,'user-setting');
+  assert.equal(replyStyleOrigin({...profile,locked:['summary']},style).summary,'user-setting');
+  assert.equal(replyStyleOrigin({},style).summary,'user-setting','old styles without exact learned provenance remain user settings');
+  assert.equal(replyStyleOrigin(profile,style,{reference:true}).summary,'reference-style');
+  assert.deepEqual({profile,style},before,'classification does not rewrite any saved requirement');
+});
 
 test('a zero pair budget collects no quoted or adjacent example while retaining genuine human samples',()=>{
   const rows=[other('q','合成来信',100),self('r','合成真人接话',110,{quote:{verified:true,messageId:'q',direction:'other'}})];

@@ -26,6 +26,27 @@ async function fixture(t, kind = 'person', expectedCalls = 0, expectedSends = 0)
 }
 const profileValue = ai => ({ style: ai.publicState().schema.defaultStyle, strategy: { ...strategy, maxRounds: 50 }, preserveSwitches: true });
 
+for (const kind of ['person','group']) test(`saving an enabled ${kind} style cancels old signals but permits a fresh incoming generation`,async t=>{
+  const {ai,contact,bridge,provider}=await fixture(t,kind,2,2);
+  let now=Date.parse('2026-10-24T04:00:00+08:00');ai.now=()=>now;ai.delay=async()=>{};
+  await ai.settings({autoLearning:false});
+  if(kind==='group')await ai.setGroupOptions({contact,atMe:true});
+  else await ai.setReplyOptions({contact,enabled:true});
+  await ai.tick();const profile=ai.profiles().find(p=>p.contact===contact);
+  const incoming=text=>Object.assign(bridge.push(contact,'other',text),{timestamp:Math.floor(now/1000),...(kind==='group'?{sender:'synthetic-member',mentions:{verified:true,self:true,all:false,others:false}}:{})});
+  provider.next=async()=>({action:'send',text:'First synthetic answer',followUp:false});incoming('First readable incoming');
+  await ai.tick();now+=60000;await ai.tick();assert.equal(bridge.sent.length,1);
+  const key=kind==='group'?`${profile.id}:atMe`:profile.id,old=ai.replyControllers.get(key);assert(old&&!old.signal.aborted);
+  await ai.saveReplyProfile({contact,...profileValue(ai),style:{summary:'Updated explicit wording'},replyEnabled:true});
+  assert.equal(old.signal.aborted,true);
+  provider.next=async()=>({action:'send',text:'Second synthetic answer',followUp:false});now+=1000;const fresh=incoming('Second distinct readable incoming');
+  await ai.tick();now+=60000;await ai.tick();
+  assert.deepEqual(bridge.sent.map(s=>s.text),['First synthetic answer','Second synthetic answer']);
+  assert.notEqual(ai.replyControllers.get(key),old);assert.equal(ai.replyControllers.get(key).signal.aborted,false);
+  assert.equal(ai.canDeliver(profile,'reply',ai.revision,old.signal),false,'replacing the map entry must not revive a cancelled run');
+  assert.deepEqual(provider.calls.findLast(c=>c.input.mode==='reply').input.conversation.pendingIncomingIds,[fresh.id],'the fresh generation must target only the new incoming');
+});
+
 for (const kind of ['person', 'group']) test(`invalid ${kind} options cannot abort an existing reply before validation`, async t => {
   const { ai, contact } = await fixture(t, kind);
   if (kind === 'group') await ai.setGroupOptions({ contact, atMe: true }); else await ai.setReplyOptions({ contact, enabled: true });

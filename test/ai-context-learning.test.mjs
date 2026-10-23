@@ -44,6 +44,26 @@ test('current reply uses recent human samples immediately with automatic style u
   assert.equal(call.input.messages.find(m => m.id === ambiguous.id).authorship, 'unknown');
 });
 
+test('explicit style learning reaches generation as observations while custom requirements and later manual edits stay authoritative', async t => {
+  const f=await fixture(t);await f.a.settings({autoLearning:false});
+  await f.a.saveReplyProfile({contact:f.c.id,style:{summary:'原口吻',customTone:'保留具体解释',customAvoid:'不要使用亲密称呼'},strategy,replyEnabled:true});
+  f.advance(1000);f.push('self','行呀');f.advance(1000);f.push('self','这个我再说具体点');
+  await f.a.learn({contacts:[f.c.id],target:'style',scope:'all',perspective:'self'});
+  const learned=f.a.profiles().find(p=>p.contact===f.c.id),saved=structuredClone(learned.style);
+  assert.equal(saved.customTone,'保留具体解释');assert.equal(saved.customAvoid,'不要使用亲密称呼');
+  f.push('other','现在说说这件事');await f.a.tick();f.advance(301000);await f.a.tick();
+  const first=f.provider.calls.findLast(c=>c.input.mode==='reply');
+  assert.equal(first.input.styleOrigin.summary,'learned-observation');assert.deepEqual(first.input.style,saved);
+  assert.match(first.system,/未编辑的学习摘要是观察/);assert.equal(first.input.updateStyle,false);
+  assert.equal(f.provider.calls.filter(c=>c.input.mode==='reply').length,1,'the source hint adds no reviewer request');
+  await f.a.saveReplyProfile({contact:f.c.id,style:{...saved,summary:saved.summary+'\n用户明确追加：每次详细解释'},strategy,replyEnabled:true});
+  f.advance(1000);f.push('other','还有另一件事');await f.a.tick();f.advance(301000);await f.a.tick();f.advance(1000);await f.a.tick();
+  assert.equal(f.provider.calls.filter(c=>c.input.mode==='reply').length,2,'saving an already enabled style must not leave the next incoming bound to an aborted controller');
+  const edited=f.provider.calls.findLast(c=>c.input.mode==='reply');
+  assert.equal(edited.input.styleOrigin.summary,'user-setting');assert.match(edited.input.style.summary,/用户明确追加：每次详细解释/);
+  assert.match(edited.system,/本轮用户为当前联系人设置的风格/);
+});
+
 test('monitor learns facts during manual takeover wait without sending and deduplicates unchanged polls', async t => {
   const f = await fixture(t); f.advance(1000); const human = f.push('self','好的 记下啦'); await f.a.tick();
   const fact = f.push('other','我住在杭州，搬家已经办完了'); await f.a.tick();
