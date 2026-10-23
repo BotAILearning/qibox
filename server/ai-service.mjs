@@ -12,7 +12,7 @@ import { learnStyleTendency, planStyleTendency, commitStyleTendencyRound, styleT
 import { learningEnabled, learningEpoch, learningCurrent, learningRules, sensitiveMemory, deduplicateLearnedFacts, explicitFactTime } from './ai-learning-policy.mjs';
 import { replyFixedRules, currentReplyScopePrompt } from './ai-reply-prompt.mjs';
 import { timingDefaults, timingValue, effectiveTiming, mergeDueAt } from './ai-timing.mjs';
-import { authoredMessages, factEvidence, contextualReplyStyle, contextualStylePrompt, automaticLearningPrompt, validatedMonitorMemory } from './ai-context-learning.mjs';
+import { authoredMessages, factEvidence, contextualReplyStyle, learningStyleEvidence, contextualStylePrompt, automaticLearningPrompt, validatedMonitorMemory } from './ai-context-learning.mjs';
 import { withSpeaker, replyPerspective, speakerIdentityPrompt, naturalAttributionPrompt } from './ai-speakers.mjs';
 import { currentChatTime, currentTimeAnchor, validateCurrentTimeReply, personalContextPrompt, presentTimePrompt, guardTimeGreeting } from './ai-chat-context.mjs';
 import { learningPrompt, learningPromptFor, learningWithMemoryPrompt, defaultLearningSummaryPrompt, conversationPrompt, addressingPrompt, generationPrompt, naturalChatPrompt, longTermMemoryPrompt, timelinePrompt, reflectiveReplyPrompt, generationProtocol, proactivePrompt, proactiveBackgroundPrompt, proactiveBackgroundTtl, messageSegments, validateReplyResult } from './ai-prompts.mjs';
@@ -43,6 +43,7 @@ import { AIProvider, SecretStore, providerValue, providerFingerprint } from './a
 import { unsupportedPersonalAnswer, unsupportedChatTime, personalQuestionClarification, knownDateCorrection, explicitTurnRepair, ownerConfirmationRepair, neutralGeneratedReplyRepair, otherPersonCorrectionRepair } from './ai-personal-answer.mjs';
 import { categories, styleOptions, avoidOptions, defaultStyle, styleSchema, styleValue, strategyValue, replyStrategyValue, replyLimitValue, validReplyLimit, strategyReady, textField } from './ai-schema.mjs';
 import { providerPresets, goalPresets, replyPresets } from './ai-presets.mjs';
+import { personalityPresets } from './ai-personality.mjs';
 import { unsupportedTextAction, promisesMedia } from './ai-capabilities.mjs';
 import { parseSchedule, advanceSchedule } from './ai-schedule.mjs';
 import { groupPendingMessages, groupPendingBySender, groupDefaults, groupOptions, groupReplyEnabled, groupBurst, groupSkipReason, groupPrompt, groupTimingState, groupRealtimeIntervalMs, groupRealtimeDelayMs } from './ai-group.mjs';
@@ -1130,7 +1131,7 @@ export class AIAssistant {
       learnedDefaultStyle: this.data.learnedDefaultStyle || null,
       effectiveDefaultStyle: this.activeDefaultStyle()?.style || null,
       defaultStyleUndoable: !!this.data.defaultStyleSnapshot,
-      requirements: { proactive: this.data.proactiveVersion === 2 ? this.proactiveV2.requirements().join('；') : this.prerequisites('proactive'), reply: this.prerequisites('reply') }, schema: { categories, styleOptions, avoidOptions, defaultStyle, providerPresets, goalPresets, replyPresets } };
+      requirements: { proactive: this.data.proactiveVersion === 2 ? this.proactiveV2.requirements().join('；') : this.prerequisites('proactive'), reply: this.prerequisites('reply') }, schema: { categories, styleOptions, avoidOptions, defaultStyle, providerPresets, goalPresets, replyPresets, personalityPresets } };
   }
   // Several contacts can share one remark, so every contact-derived name is
   // shipped with the WeChat nickname whenever it says something the label does
@@ -1649,7 +1650,7 @@ export class AIAssistant {
       let learnTruncated = false;
       const prepareOne = async item => {
         signal.throwIfAborted();
-        let profile, material, memoryMaterial = null, memoryCoverage = null, materialTruncated = false;
+        let profile, material, memoryMaterial = null, memoryCoverage = null, materialTruncated = false, styleEvidence = null, styleMaterial = null, styleMaterialTruncated = false;
         try {
         if ('text' in item) {
           if (item.contact) {
@@ -1682,7 +1683,9 @@ export class AIAssistant {
               material = snapshot.messages; materialTruncated = snapshot.truncated === true; learnTruncated ||= materialTruncated;
             }
           } catch (error) { if (error instanceof AppError) throw new AppError(`${item.label}：${error.message}`, error.status || 409, error.code); throw error; }
-          material = authoredMessages(this.vault, profile, material).filter(message => message.direction !== 'self' || message.authorship === 'human');
+          const authored = authoredMessages(this.vault, profile, material);
+          styleMaterial = authored;
+          material = authored.filter(message => message.direction !== 'self' || message.authorship === 'human');
           signal.throwIfAborted();
           if (revision !== this.revision) throw new AppError('学习已取消');
           if (!material.length) throw new AppError('当前对象没有可学习的文字，请粘贴聊天');
@@ -1698,10 +1701,12 @@ export class AIAssistant {
           else {
             const trimmed = learningMaterial(material, perspective);
             material = trimmed.kept;
+            styleMaterialTruncated = trimmed.clipped;
             learnTruncated ||= trimmed.clipped || materialTruncated;
           }
         }
-        return { profile, material, memoryMaterial, memoryCoverage, source: 'text' in item ? 'paste' : 'learned' };
+        if (styleMaterial && perspective === 'self' && target !== 'memory') styleEvidence = learningStyleEvidence(styleMaterial, { kind: profile.kind, sourceTruncated: materialTruncated || styleMaterialTruncated || memoryCoverage?.truncated === true, ...(target === 'both' ? { material } : {}) });
+        return { profile, material, memoryMaterial, memoryCoverage, styleEvidence, source: 'text' in item ? 'paste' : 'learned' };
         } catch (error) {
           if (signal.aborted || revision !== this.revision || error?.message === '学习已取消') throw error;
           return { failure: { contact: profile?.contact || item.id || null, profileId: profile?.id || null, label: profile?.label || item.label || '联系人', error: error instanceof AppError ? safeErrorText(error.message, this.errorSecrets()) : '学习失败', status: error?.status, code: error?.code, stage: this.errorContexts.get(error)?.stage || 'read' } };
@@ -1722,7 +1727,7 @@ export class AIAssistant {
           try {
             this.operation.phase = 'model';
             const input = { styleOwner: perspective, styleOwnerText: styleOwnerText(perspective), contact: profile.contact,
-              kind: profile.kind, material, defaultStyle: true };
+              kind: profile.kind, material, ...(prepared.styleEvidence ? { styleEvidence: prepared.styleEvidence } : {}), defaultStyle: true };
             const learnedResult = await this.provider.complete(this.modelFor('learning'), learningPromptFor(perspective), input, signal,
               { purpose: 'learning', validate: result => validatedLearnedStyleFields(result?.style) });
             const style = validatedLearnedStyleFields(learnedResult?.style ?? learnedResult);
@@ -1837,7 +1842,7 @@ export class AIAssistant {
         const { profile, material, source, memoryCoverage } = prepared;
         try {
         this.operation.phase = target === 'style' ? 'model' : 'memory';
-        const input = { styleOwner: perspective, styleOwnerText: styleOwnerText(perspective), contact: profile.contact, kind: profile.kind, material: target === 'style' ? material : annotateSourceDates(material),
+        const input = { styleOwner: perspective, styleOwnerText: styleOwnerText(perspective), contact: profile.contact, kind: profile.kind, material: target === 'style' ? material : annotateSourceDates(material), ...(prepared.styleEvidence ? { styleEvidence: prepared.styleEvidence } : {}),
           ...(target !== 'style' ? { memoryCoverage, previousMemory: readMemory(this.vault, profile) } : {}) };
         const prompt = target === 'style' ? learningPrompt : learningWithMemoryPrompt + memoryPrompt + (profile.kind === 'group' ? groupMemoryInstruction : '');
         const entry = await this.provider.complete(this.modelFor('learning'), prompt, input, signal,
@@ -2139,7 +2144,7 @@ export class AIAssistant {
       } finally { if (this.pendingBulkReplyLimit === pending) this.pendingBulkReplyLimit = null; }
     }));
   }
-  async saveReplyProfile({ contact, style: value, strategy: reply, preserveSwitches = false, replyEnabled, styleSet, styleId, applyCombinedLearning = false, combinedLearningId, inheritStrategy, group, options, memory, timing, takeover, rhythm } = {}) {
+  async saveReplyProfile({ contact, style: value, strategy: reply, preserveSwitches = false, replyEnabled, styleSet, styleId, styleName, applyCombinedLearning = false, combinedLearningId, inheritStrategy, group, options, memory, timing, takeover, rhythm } = {}) {
     return this.exclusive(() => commitObjectConfiguration(this, digest(`${this.data.account}\0${contact}`), () => {
       const target = this.contacts.get(contact);
       if (!this.available || !this.data.account || !['person', 'group'].includes(target?.kind)) throw new AppError('请先获取并选择联系人或群聊');
@@ -2167,6 +2172,11 @@ export class AIAssistant {
       if (previous) migrateLearnedStyle(previous);
       const styleDraft = structuredClone(previous || {}); migrateObjectStyles(styleDraft);
       const resolvedStyle = styleSet === false ? { style, styleId: '' } : saveObjectStyle(styleDraft, style, styleId ?? '', this.activeDefaultStyle()?.style);
+      if (styleName !== undefined) {
+        const name = typeof styleName === 'string' ? styleName.trim() : '';
+        if (!name || name.length > 40 || !resolvedStyle.styleId.startsWith('custom:')) throw new AppError('自定义风格名称应为1到40个字');
+        styleDraft.customStyles.find(row => row.id === resolvedStyle.styleId).label = name;
+      }
       const resolvedGroup = group ? groupOptions(group, previous?.groupOptions || groupDefaults()) : null;
       const resolvedMemory = memory ? changeMemory(this.vault, previous || { id, kind: target.kind }, memory, this.now()) : null;
       const wasEnabled = previous ? this.replySelected(previous) : false;

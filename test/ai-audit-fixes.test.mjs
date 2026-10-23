@@ -119,9 +119,9 @@ test('AI-01 default profile retains custom style after memory/reply-goal saves a
   assert.equal(p.source, 'manual'); assert.match(p.styleId, /^custom:/);
   const customId = p.styleId; assert.deepEqual(styleChoice(p), { summary: text, styleId: customId });
   const html = objectPage(a.publicState(), { selected: contact, kind: 'person', search: '' });
-  assert.match(html, /始终称呼对方王老师/); assert.ok(html.includes(`data-ai-style="${customId}" aria-pressed="true"`));
+  assert.match(html, /始终称呼对方王老师/); assert.ok(html.includes(`role="menuitemradio" aria-checked="true" data-ai-style="${customId}"`));
   const draftHtml = objectPage(a.publicState(), { selected: contact, kind: 'person', search: '', draft: { styleId: customId, summary: '临时自定义' } });
-  assert.ok(draftHtml.includes(`data-ai-style="${customId}" aria-pressed="true"`));
+  assert.ok(draftHtml.includes(`role="menuitemradio" aria-checked="true" data-ai-style="${customId}"`));
   await a.editMemory(p.id, { summary: '对方周六有空。' });
   await a.saveReplyProfile({ contact, style: p.style, styleId: p.styleId, strategy: { replyGoal: '确认周六时间' }, preserveSwitches: true });
   const b = new AIAssistant(options); await b.init(); await b.scan();

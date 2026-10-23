@@ -1,0 +1,12 @@
+{
+  "package": "@qiapp/ui",
+  "version": "0.4.3",
+  "specification": "2026-10-23-r4",
+  "archive": "releases/qiapp-ui-0.4.3.tgz",
+  "archiveSha256": "598c93c0145302112a6b795ec8c88075fc25c0ab56933f1b8a5dac0f6e290398",
+  "file": "package/src/components.js",
+  "sha256": "cd891388c71b9785e1a69991d96de889d714c12eee88956537fcd66fff535609",
+  "copy": "components.mjs",
+  "contentChanged": false,
+  "scope": "Only QiPopover is used by the new chat-style selector. Existing product native styles/CSS remain the pinned0.3.0 baseline; new composition uses its public semantic tokens. This is not whole-product0.4.3 migration or acceptance of other registered components."
+}

@@ -25,3 +25,9 @@ test('retrieval does not relax group quote, duplicate, uncertain receipt or sens
   assert.deepEqual(naturalStyleEvidence(rows,{kind:'group',query:'字幕额度'}).pairedExamples,[]);
   assert(!naturalStyleEvidence(rows,{query:'字幕额度'}).samples.some(x=>x.id==='unknowns'));
 });
+test('rhythm describes selected human text rather than imposing a reply limit or counting AI and unknown messages',()=>{
+  const rows=[...pair('a','怎么了','行'),...pair('b','还要吗','不用啦',200),...pair('c','下次呢','再说吧',300)];
+  rows.push({id:'ai',direction:'self',authorship:'ai',text:'这是一段很长的人工智能代发回复'});
+  const result=naturalStyleEvidence(rows,{maxPairs:0});assert.deepEqual(result.rhythm,{sampleCount:3,medianChars:3,shortestChars:1,longestChars:3});
+  assert.deepEqual(naturalStyleEvidence([]).rhythm,{sampleCount:0});
+});

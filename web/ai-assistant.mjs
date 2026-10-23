@@ -12,6 +12,7 @@ import { objectPage, objectList, objectExecutionStatus, refreshObjectTiming, obj
 import { replyLimitControl, syncReplyLimitControl, parseReplyLimit, replyLimitWarningThreshold } from './ai-reply-limit.mjs';
 import { styleChoice, styleSummary as styleSummaryText } from './ai-style-view.mjs';
 import { learnedObjectDraft } from './ai-learning-draft.mjs';
+import { activePersonality, bindStyleSelector, newStyleDraftId } from './ai-style-selector.mjs';
 import { analysisPage, analysisContactList, copyReport, presetRequest, analysisRequestState, presetChips, historyList, analysisHistoryWindow, analysisHistorySelectionLabel } from './ai-analysis-view.mjs';
 import { activityPage, activityEntries, activityRows, activityPagination, proactiveRecordRows, liveActivityBox, recentErrorsBox, skipRecordsView, updateActivityCounts } from './ai-activity-view.mjs';
 import { beijingTime, createProactiveUI } from './ai-proactive-view.mjs';
@@ -37,6 +38,7 @@ const serviceIdentity = value => `${String(value?.protocol || 'openai')}|${Strin
 
 export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, onVisibilityChange, guard, ensure }) {
   const rail = document.querySelector('#ai-rail'), panel = document.querySelector('#ai-panel');
+  bindStyleSelector(panel, () => { const dirty = panel.querySelector('[data-ai-dirty]'); if (dirty) dirty.hidden = false; rememberDraft(); render(); });
   const setPanelVisible = visible => { panel.hidden = !visible; rail.querySelector('#ai-open')?.setAttribute('aria-expanded', String(visible)); onVisibilityChange?.(visible); };
   panel.addEventListener('error', event => { noteContactAvatarFailure(event.target); }, true);
   // guard：入口常驻后，操作开关 / 打开面板前由外层判断可用性，不满足时弹窗提醒并返回 false。
@@ -1798,11 +1800,14 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         if (!summary) throw new Error('请填写风格说明，或选择默认风格后保存');
         if (rawSummary.length > 6000) throw new Error('风格说明最多6000字，请缩短后保存');
         const styleId = data.get('styleId') || '';
+        const styleName = data.has('styleName') ? String(data.get('styleName')).trim() : undefined;
+        if (styleName !== undefined && (!styleName || styleName.length > 40)) throw new Error('自定义风格名称应为1到40个字');
         const strategy = { ...profile?.replyStrategy, replyGoal: data.get('replyGoal') || '', facts: profile?.replyStrategy?.facts || '', boundaries: data.get('boundaries') || '', maxRounds: parseReplyLimit(data.get('maxRounds') ?? 50) };
         // 以页面当前 styleId 对应的完整风格为基础，仅覆盖页面编辑的说明，避免丢失预设/学习风格的其余字段。
-        const base = styleId === '' ? (defaultReplyStyle()) : styleId === 'learned' ? (profile?.learnedStyle || profile?.style || state.schema?.defaultStyle)
+        const base = styleId.startsWith('personality:') ? activePersonality(profile, Object.fromEntries(data)) : styleId === '' ? (defaultReplyStyle()) : styleId === 'learned' ? (profile?.learnedStyle || profile?.style || state.schema?.defaultStyle)
           : (objectStyleTabs(state, profile).find(row => row.id === styleId)?.style || profile?.style || state.schema?.defaultStyle);
         const style = summary ? { ...base, summary } : { ...state.schema?.defaultStyle };
+        if (!styleId.startsWith('personality:')) { delete style.personalityId; delete style.traits; }
         // 群聊开启实时回复需要先确认 Token 消耗与账号风险；取消则回滚草稿，不视为已保存。
         let realtimeConfirmed = true;
         if ((profile?.kind || state.contacts.find(item => item.id === contact)?.kind) === 'group' && data.has('realtime') && !profile?.groupOptions?.realtime) {
@@ -1826,7 +1831,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         const changedStyle = String(data.get('styleId') || '') !== baselineStyleId || String(data.get('summary') || '') !== baselineSummary;
         const hasReplySettings = !!profile?.replyStrategy || ['replyGoal','boundaries'].some(key => String(data.get(key) || '').trim()) || changedSwitch || changedRealtimeMode || changedStyle || String(strategy.maxRounds) !== String(profile?.replyStrategy?.maxRounds ?? state.replyRoundLimits?.[kind] ?? state.replyStrategy?.maxRounds ?? 50);
         const memoryEntries = JSON.parse(String(data.get('memorySummary') || '[]'));
-        await execute('reply-profile', { value: { contact, preserveSwitches: true, styleSet: !!summary, styleId, style, strategy,
+        await execute('reply-profile', { value: { contact, preserveSwitches: true, styleSet: !!summary, styleId, ...(styleName !== undefined ? { styleName } : {}), style, strategy,
           ...(objectRhythmDraft(form).__rhythmChanged ? { rhythm: { inherit: data.has('inheritRhythm'), personal: objectRhythmDraft(form).__rhythmPersonal } } : {}), inheritStrategy: data.has('inheritStrategy'), options: { judgeReply: optionChecked('judgeReply'), sendImages: optionChecked('sendImages'), sendAudio: optionChecked('sendAudio') },
           ...(kind === 'group' ? { group: { atMe: data.has('atMe'), atAll: data.has('atAll'), realtime: data.has('realtime'), realtimeMode: data.get('realtimeMode') || 'normal', ...(realtimeConfirmed ? { confirmRealtime: true } : {}) } }
             : { replyEnabled: data.has('enabled'), options: { judgeReply: optionChecked('judgeReply'), sendImages: optionChecked('sendImages'), sendAudio: optionChecked('sendAudio') } }),
@@ -2245,6 +2250,11 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         const form = $('#ai-object-form'), profile = state.profiles.find(p => p.contact === selectedObject), styleId = form.elements.styleId.value, command = button.dataset.aiStyleCommand;
         if (!profile && command !== 'add') { message('请先保存当前对象的设置', true); return; }
         rememberDraft();
+        if (command === 'add') {
+          const draft = objectDrafts.get(selectedObject) || {};
+          objectDrafts.set(selectedObject, { ...draft, styleId: newStyleDraftId(), styleName: '', summary: '自然回应当前话题，简短清楚，不编造事实。', __personality: '' });
+          objectDirtyContacts.add(selectedObject); render(); $('#ai-object-form [name=styleName]')?.focus(); return;
+        }
         let name;
         if (command === 'rename') { name = await productDialog({ title: '重命名风格', input: objectStyleTabs(state, profile).find(row => row.id === styleId)?.label || '', confirm: '保存名称' }); if (!name) return; }
         if (command === 'delete' && !await productDialog({ title: '删除这个风格？', message: '只删除当前风格，聊天记忆与回复设置保留。', confirm: '删除风格', danger: true })) return;
@@ -2308,8 +2318,8 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         if (styleId === '') form.elements.summary.value = summaryText(defaultReplyStyle());
         else if (style) form.elements.summary.value = summaryText(style);
         rememberDraft();
-        objectDrafts.set(selectedObject, { ...objectDrafts.get(selectedObject), styleId: form.elements.styleId.value, summary: form.elements.summary.value });
-        render(); $('[data-ai-dirty]').hidden = false; return;
+        objectDrafts.set(selectedObject, { ...objectDrafts.get(selectedObject), styleId: form.elements.styleId.value, summary: form.elements.summary.value, styleName: objectStyleTabs(state, profile).find(row => row.id === styleId)?.label });
+        render(); $('[data-ai-dirty]').hidden = false; $('.ai-style-selector [data-trigger]')?.focus({ preventScroll: true }); return;
       }
       if (button.dataset.aiNav) {
         const fromMenu = !!button.closest('.qibox-workspace-menu');

@@ -43,10 +43,10 @@ test('humorous style is selectable for a contact and persists with its preset id
   await a.saveReplyProfile({ contact: bridge.contacts[0].id, style: preset.style, strategy: preset.strategy,
     styleId: 'preset:humorous', preserveSwitches: true });
   const html = objectPage(a.publicState(), { selected: bridge.contacts[0].id, kind: 'person', section: 'style' });
-  assert.match(html, /data-ai-style="preset:humorous" aria-pressed="true">轻松幽默/);
+  assert.match(html, /role="menuitemradio" aria-checked="true" data-ai-style="preset:humorous">轻松幽默/);
   bridge.contacts[0].kind = 'group'; await a.scan();
   const groupHtml = objectPage(a.publicState(), { selected: bridge.contacts[0].id, kind: 'group', section: 'style' });
-  assert.match(groupHtml, /data-ai-style="preset:humorous" aria-pressed="true">轻松幽默/);
+  assert.match(groupHtml, /role="menuitemradio" aria-checked="true" data-ai-style="preset:humorous">轻松幽默/);
   await a.close();
   const restarted = new AIAssistant(options); await restarted.init();
   try { assert.equal(restarted.profiles()[0].styleId, 'preset:humorous'); }

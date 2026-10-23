@@ -1,0 +1,22 @@
+/* Product composition only. Shared popover rules are sourced separately. */
+.ai-style-source-row{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:16px}
+.ai-style-selector .qi-popover__surface{width:max-content;max-width:min(360px,var(--qi-float-available-width,calc(100vw - 24px)));padding:8px;scrollbar-gutter:stable}
+.ai-style-source-menu{display:grid;grid-template-columns:100px auto;gap:8px;align-items:start}
+.ai-style-source-menu> [role=menu]{display:grid;gap:4px}
+.ai-style-source-menu [role^=menuitem]{font:inherit;min-height:40px;min-width:44px;width:auto;padding:8px 12px;border:0;border-radius:var(--qi-shape-field,10px);background:transparent;color:inherit;text-align:left;white-space:normal;overflow-wrap:anywhere}
+.ai-style-source-menu [role^=menuitem]:hover{background:var(--qi-hover)}
+.ai-style-source-menu [aria-checked=true],.ai-style-source-menu [aria-expanded=true]{background:var(--qi-selected);color:var(--qi-text)}
+.ai-style-source-menu [role^=menuitem]:focus-visible{outline:2px solid var(--qi-focus);outline-offset:1px}
+.ai-style-source-menu [role^=menuitem]:disabled{color:var(--qi-disabled-text);cursor:not-allowed}
+.ai-style-submenus:not(:has(>[data-style-submenu]:not([hidden]))){display:none}
+.ai-style-submenus{border-left:1px solid var(--qi-border);padding-left:8px;min-width:0}
+[data-style-submenu=personality]{display:grid;grid-template-rows:repeat(5,auto);grid-auto-flow:column;grid-auto-columns:minmax(56px,1fr);gap:4px}
+[data-style-submenu=custom]{display:grid;gap:4px;max-width:220px}
+.ai-style-selector [data-style-submenu][hidden]{display:none!important}
+.ai-personality-traits{border:0;padding:0;margin:0;min-width:0}
+.ai-personality-traits legend{font-size:14px;margin-bottom:8px}
+.ai-trait-actions{display:flex;gap:8px;margin-bottom:12px}
+.ai-trait-options{display:flex;flex-wrap:wrap;gap:8px 16px}
+.ai-trait-options .qi-check{display:inline-flex;align-items:center;gap:8px;min-height:40px;width:auto;cursor:pointer}
+.ai-trait-options input{accent-color:var(--qi-primary);width:18px;height:18px}
+@media(max-width:639px),(any-pointer:coarse){.ai-style-source-menu [role^=menuitem],.ai-trait-options .qi-check{min-height:44px}.ai-style-source-row{gap:8px}.ai-style-source-menu{grid-template-columns:88px auto;gap:4px}.ai-style-source-menu [role^=menuitem]{padding-inline:8px}}

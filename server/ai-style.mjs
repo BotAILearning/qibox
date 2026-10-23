@@ -1,5 +1,6 @@
 import { replyPresets } from './ai-presets.mjs';
 import { AppError } from './files.mjs';
+import { personalityPresetStyle } from './ai-personality-catalog.mjs';
 const summary = style => style?.summary || ['formality', 'warmth', 'length', 'directness', 'emoji', 'humor', 'customTone'].map(key => style?.[key]).filter(Boolean).join('，');
 // 风格选择只有一套「默认风格」（账号级 learnedDefaultStyle）。保存时若内容与默认风格完全一致，
 // 仍按「默认风格」处理（继续跟随默认风格的更新）；只有改过内容才固化为该对象自己的风格（custom）。
@@ -30,9 +31,10 @@ export function composeLearnedStyle(value) {
 export function selectedStyleId(profile, style, requested, set = true, defaultStyle = null) {
   if (!set) return '';
   const key = requested ?? '';
-  const reference = key === 'learned' ? profile?.learnedStyle
+  const reference = key.startsWith('personality:') && key === `personality:${style?.personalityId}` ? personalityPresetStyle(style.personalityId, style.traits)
+    : key === 'learned' ? profile?.learnedStyle
     : key === '' ? defaultStyle
-    : replyPresets.find(p => key === `preset:${p.id}`)?.style;
+    : profile?.customStyles?.find(row => row.id === key)?.style || replyPresets.find(p => key === `preset:${p.id}`)?.style;
   return reference && summary(reference) === summary(style) ? key : 'custom';
 }
 export function migrateLearnedStyle(profile) {

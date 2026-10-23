@@ -59,15 +59,17 @@ export function styleTabs(profile = {}) {
 }
 export function saveObjectStyle(profile, value, requested, defaultStyle) {
   const style = styleValue(value, { manual: true });
+  if (requested === `personality:${style.personalityId}` && style.personalityId) return { style, styleId: requested };
   const reference = requested === '' ? (defaultStyle || fallbackStyle) : requested === 'learned' ? profile.learnedStyle : styleTabs(profile).find(row => row.id === requested)?.style;
   // 页面展示枚举风格时会生成可读说明；原样保存说明仍然沿用原风格。
   const summary = value => value?.summary || ['formality', 'warmth', 'length', 'directness', 'emoji', 'humor', 'customTone'].map(key => value?.[key]).filter(Boolean).join('，');
   const same = reference && summary(reference) === summary(style) && ['customTone', 'customAvoid'].every(key => (reference[key] || '') === (style[key] || ''))
     && (!reference.category || !style.category || ['category', 'roles', 'avoid', 'formality', 'warmth', 'length', 'directness', 'emoji', 'humor'].every(key => JSON.stringify(reference[key]) === JSON.stringify(style[key])));
   if ((requested === '' || requested === 'learned' || requested?.startsWith('preset:')) && same) return { style: structuredClone(reference), styleId: requested };
-  const custom = profile.customStyles?.find(row => row.id === requested);
+  const draftId = typeof requested === 'string' && /^draft:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(requested) ? `custom:${requested.slice(6)}` : null;
+  const custom = profile.customStyles?.find(row => row.id === (draftId || requested));
   if (custom) { custom.style = style; return { style, styleId: custom.id }; }
-  const id = `custom:${randomUUID()}`, label = `自定义风格 ${(profile.customStyles?.length || 0) + 1}`;
+  const id = draftId || `custom:${randomUUID()}`, label = `自定义风格 ${(profile.customStyles?.length || 0) + 1}`;
   profile.customStyles = [...(profile.customStyles || []), { id, label, style }];
   return { style, styleId: id };
 }

@@ -54,6 +54,9 @@ test('single-contact style learning cleans the same result without extra provide
   await a.learn({ contacts: [contact], target: 'style', perspective: 'self' });
   assert.equal(a.profiles()[0].learnedStyle.summary, expectedSummary);
   assert.equal(provider.calls.length - calls, 1);
+  const evidence = provider.calls.at(-1).input.styleEvidence;
+  assert.equal(evidence.coverage.availableHumanMessages, 1);
+  assert.deepEqual(evidence.pairedExamples.map(pair => [pair.incoming.id, pair.reply.id]), [['other', 'self']]);
 });
 
 const placeholderStyle = { language: '语言层', rhythm: '节奏层', interaction: '互动层', emotion: '偶尔用🙂，整体语气平和', role: '样本不足，无法判断主导或倾听倾向' };

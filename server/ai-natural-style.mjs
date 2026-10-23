@@ -31,6 +31,13 @@ function relatedExamples(pairs, query, maxPairs, maxChars) {
   return selected.sort((a, b) => a.index - b.index).map(row => row.pair);
 }
 
+function rhythmEvidence(samples) {
+  const lengths=samples.map(row=>Array.from(row.text).length).sort((a,b)=>a-b);
+  if(!lengths.length)return {sampleCount:0};
+  const middle=Math.floor(lengths.length/2);
+  return {sampleCount:lengths.length,medianChars:lengths.length%2?lengths[middle]:(lengths[middle-1]+lengths[middle])/2,shortestChars:lengths[0],longestChars:lengths.at(-1)};
+}
+
 function usableSelfText(message, { pairedReply = false } = {}) {
   if (!message || message.direction !== 'self' || message.authorship !== 'human' || message.aiGenerated === true
     || message.unresolved || message.assumedPresent || message.deliveryConfidence === 'unknown'
@@ -66,7 +73,7 @@ export function naturalStyleEvidence(messages, {
   }
 
   const pairedExamples = [];
-  if (maxPairs <= 0) return { samples, pairedExamples };
+  if (maxPairs <= 0) return { samples, pairedExamples, rhythm: rhythmEvidence(samples) };
   const related = typeof query === 'string' && query.trim().length > 0;
   const candidateLimit = related ? Math.max(maxPairs, 24) : maxPairs;
   const candidateChars = related ? Math.max(maxPairChars, 12000) : maxPairChars;
@@ -126,5 +133,5 @@ export function naturalStyleEvidence(messages, {
     pairedExamples.reverse();
   }
   const chronological = related ? pairedExamples.toSorted((a, b) => rows.indexOf(byId.get(a.reply.id)) - rows.indexOf(byId.get(b.reply.id))) : pairedExamples;
-  return { samples, pairedExamples: related ? relatedExamples(chronological, query, maxPairs, maxPairChars) : pairedExamples };
+  return { samples, pairedExamples: related ? relatedExamples(chronological, query, maxPairs, maxPairChars) : pairedExamples, rhythm: rhythmEvidence(samples) };
 }

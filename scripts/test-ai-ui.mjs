@@ -7,6 +7,7 @@ import { run } from './tooling.mjs';
 const output = process.argv[2] || 'reports/ai-ui-current';
 for (const [script, folder] of [
   ['test-reply-rhythm-ui.mjs', 'reply-rhythm'],
+  ['test-ai-style-selector-ui.mjs', 'style-selector'],
   ['test-ai-provider-ui.mjs', 'provider'],
   ['test-analysis-history-ui.mjs', 'analysis-history'],
   ['test-analysis-search-ui.mjs', 'analysis-search'],

@@ -1,4 +1,5 @@
 import { AppError } from './files.mjs';
+import { validatedPersonalityStyle } from './ai-personality.mjs';
 
 export const categories = {
   intimate: { label: '亲密关系', roles: ['伴侣', '配偶', '约会对象'] },
@@ -40,6 +41,9 @@ function enumStyle(value) {
   return result;
 }
 export function styleValue(value, { manual = false } = {}) {
+  if (value && Object.hasOwn(value, 'personalityId')) {
+    return { ...validatedPersonalityStyle(value), customTone: textField(value.customTone || '', 500), customAvoid: textField(value.customAvoid || '', 1200) };
+  }
   if (value && Object.hasOwn(value, 'summary')) {
     const summary = textField(value.summary, 6000, true);
     const result = { summary, customTone: textField(value.customTone || '', 500), customAvoid: textField(value.customAvoid || '', 1200) };
