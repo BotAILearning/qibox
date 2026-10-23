@@ -89,7 +89,11 @@ test('reply generation receives selected memory and stores verified source time 
   assert.ok(!call.input.memory.entries.some(entry => entry.text.includes('感冒')));
   assert.match(call.system, /historical 只表示过去/);
   assert.match(call.system, /日期不明就不当作当前安排/);
-  assert.match(call.system, /优先回应本轮全部待处理来信/);
+  // Verify the revised read-all / answer-all-requests contract at the model boundary.
+  // This mock proves prompt composition, not a real model's comprehension or tone.
+  assert.match(call.system, /先读本轮全部待处理来信及其必要前文/);
+  assert.match(call.system, /需要答复的问题和请求不能漏掉/);
+  assert.match(call.system, /普通叙述和话题背景合并理解即可/);
   const saved = readMemory(assistant.vault, profile).entries.find(entry => entry.text === '对方现在在准备毕业论文');
   assert.deepEqual(saved?.evidence, [incoming.id]);
   assert.equal(saved?.observedAt, incoming.timestamp * 1000);
