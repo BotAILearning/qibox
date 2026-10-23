@@ -72,7 +72,7 @@ export function learningStyleEvidence(messages, { kind = 'person', sourceTruncat
   const times=all.map(row=>row.timestamp).filter(Number.isSafeInteger);
   return {source:'current-object-verified-human',samples:selectedSamples,pairedExamples:selectedPairs,
     coverage:{availableHumanMessages:all.length,selectedSamples:selectedSamples.length,selectedPairs:selectedPairs.length,sourceTruncated:sourceTruncated===true,firstHumanTimestamp:times.length?times.reduce((a,b)=>Math.min(a,b)):null,lastHumanTimestamp:times.length?times.reduce((a,b)=>Math.max(a,b)):null},
-    instruction:'只根据可见真人样本描述已观察到的表达习惯和场景差异；没有覆盖的场景、时期或关系保持未知。相邻上下文不是已验证回复关系；样例只学表达，不复述隐私事实，不以单次表现推定固定人格。'};
+    instruction:'只根据可见真人样本描述已观察到的表达习惯和场景差异；没有覆盖的场景、时期或关系保持未知。相邻上下文不是已验证回复关系；样例只学表达，不复述隐私事实，不以单次表现推定固定人格。归纳的是多次出现的句式、长短和承接方式，单次拒绝或答应本身不能作为互动习惯，不能把具体选择换个概括说法写进风格。'};
 }
 
 export const contextualStylePrompt = `contextualStyle是当前账号、当前聊天中可核实的真人表达，不是通用文案模板。samples提供本人近期用词和长短；rhythm只记录这些真人样例的长度分布，帮助贴近表达密度，不是字数上限、目标或对所有场景的推断，样本少时尤其只作弱参考。pairedExamples提供少量“对方发言→本人接话”，生成当前这条回复时立即参考与这轮有关的表达方式。只取措辞、节奏、表达密度与分寸，不照搬句子、称呼、事实或承诺。relation=adjacent-context只是短时间内相邻，不证明引用关系或事实主体；verified-quote才有核实过的引用，但仍不证明样例内容现在成立。只把authorship=human作为本人风格；AI代发和未知来源只作对话衔接，不用于模仿。用户明确保存的style和注意事项优先；样例只补足未指定的习惯，样本少就少推断，不强加人格。不要机械改变人称、增删表情，不固定共情、说教、总结或追问。当前情境决定该回应多少：对方分享就接其话题，求助才按需要展开，结束语可以自然收住。历史说过的“发你、告诉你”等不构成本轮承诺，对方愿意等也不代表本人答应核实或通知。contextualStyle只用于本轮，不改写已保存风格。`;
