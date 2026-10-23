@@ -46,6 +46,7 @@ test('HTTP rejects old native account mutations before contacts are rescanned', 
     {action:'configuration',value:{type:'personal-information',account:f.oldAccount,entries:[{field:'city',text:'WRONG'}]}},
     {action:'configuration',value:{type:'global-reply-strategy',account:f.oldAccount,changes:{facts:'WRONG'},expected:{facts:f.ai.globalReplyStrategy().facts||''}}},
     {action:'clear-activity-errors'},
+    {action:'style-trial',value:{account:f.oldAccount,contact:f.bridge.contacts[0].id,operationId:key('old-account-trial'),style:{summary:'不可发出'}}},
   ];
   for(const action of actions){const response=await f.call(f.route,action);assert.equal(response.status,409,action.action);assert.equal(response.value.code,'AI_SCOPE_CHANGED');assert.equal(await readFile(f.ai.file,'utf8'),before);}
 });

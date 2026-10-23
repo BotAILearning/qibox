@@ -92,7 +92,7 @@ export function accountIndependentAction(action) {
   return ['configure', 'test', 'models', 'model-test', 'models-save', 'verify-provider', 'analysis-use-chat', 'reveal-key'].includes(action);
 }
 export function accountStopAction({ action, value, command } = {}) {
-  if (['cancel', 'activity'].includes(action)) return true;
+  if (['cancel', 'activity', 'style-trial-cancel'].includes(action)) return true;
   if (action === 'settings') {
     const entries = Object.entries(value || {});
     return entries.length > 0 && entries.every(([key, val]) => ['enabled', 'reply', 'proactive', 'autoLearning'].includes(key) && val === false);

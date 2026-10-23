@@ -229,11 +229,15 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
         if (aiMatch) {
           if (space.get(aiMatch[1]).meta.appId !== 'wechat') throw new AppError('此应用不支持 AI', 409);
           const item = space.get(aiMatch[1]), ai = item.ai;
+          const trialController = data.action === 'style-trial' ? new AbortController() : null;
+          if (trialController) res.once('close', () => { if (!res.writableEnded) trialController.abort(); });
           if (data.action === 'mobile-master') return send(res, 200, await ai.mobileMasterChange(item.meta.id, data.value || {}));
           const handlers = { configure: () => ai.configure(data.value, data.scope), test: () => ai.testProvider(data.scope), models: () => ai.discoverModels(data.value, data.scope), 'model-test': () => ai.testModel(data.value), 'models-save': () => ai.saveModels(data.value), scan: () => ai.scan(),
             'verify-provider': () => ai.verifyProvider(data.value, data.scope), 'reply-options': () => ai.setReplyOptions(data.value || {}),
             'analysis-use-chat': () => ai.useSharedAnalysis(), 'analysis-report-delete': () => ai.deleteAnalysisReport(data.id || data.value?.id), 'contact-remark': () => ai.setContactRemark(data.id, data.value || {}),
             'group-options': () => ai.setGroupOptions(data.value || {}),
+            'style-trial': () => ai.generateStyleTrial(data.value || {}, { signal: trialController.signal }),
+            'style-trial-cancel': () => ai.cancelStyleTrial(data.value || {}),
             calendar: () => ai.calendar(data.value || {}), learn: () => ai.learn(data.value || {}), analyze: () => ai.analyze(data.value || {}), cancel: () => ai.cancel(), settings: () => ai.settings(data.value || {}),
             strategy: () => ai.saveStrategy(data.value, data.id, data.mode), 'apply-reply-limit': () => ai.applyReplyLimitToKind(data.value?.kind, data.value?.maxRounds, { account: data.value?.account, contacts: data.value?.contacts }), profile: () => ai.editProfile(data.id, data.value || {}),
             'reply-profile': () => ai.saveReplyProfile(data.value || {}), configuration: () => ai.configuration(data.value || {}),

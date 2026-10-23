@@ -165,11 +165,11 @@ async function authenticatedResponse(pending, epoch) {
     throw error;
   }
 }
-async function api(route, data, timeout = data === undefined ? 15000 : 120000) {
+async function api(route, data, timeout = data === undefined ? 15000 : 120000, { signal } = {}) {
   const epoch = hostSessionEpoch;
   const headers = { ...await hostHeaders(), ...(data === undefined ? {} : { 'Content-Type': 'application/json', 'X-CSRF-Token': session?.csrf || '' }) };
   let response;
-  try { response = await fetch(`${prefix}/api${route}`, { method: data === undefined ? 'GET' : 'POST', credentials: 'same-origin', headers, body: data === undefined ? undefined : JSON.stringify(data), signal: AbortSignal.timeout(timeout) }); }
+  try { response = await fetch(`${prefix}/api${route}`, { method: data === undefined ? 'GET' : 'POST', credentials: 'same-origin', headers, body: data === undefined ? undefined : JSON.stringify(data), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(timeout)]) : AbortSignal.timeout(timeout) }); }
   catch (error) {
     if (error.name === 'TimeoutError') throw new Error(data === undefined ? '连接超时，将自动重连' : '连接超时，请先核对操作结果再重试');
     if (error instanceof TypeError) throw new Error(data === undefined ? '网络连接已中断，将自动重连' : '网络连接已中断，请先核对操作结果再重试');

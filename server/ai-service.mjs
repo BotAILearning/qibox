@@ -11,6 +11,7 @@ import { buildAttributionContext, attributionContextPrompt } from './ai-attribut
 import { learnStyleTendency, planStyleTendency, commitStyleTendencyRound, styleTendencyContextFromMessages } from './ai-style-tendency.mjs';
 import { learningEnabled, learningEpoch, learningCurrent, learningRules, sensitiveMemory, deduplicateLearnedFacts, explicitFactTime } from './ai-learning-policy.mjs';
 import { replyFixedRules, currentReplyScopePrompt } from './ai-reply-prompt.mjs';
+import { generateStyleTrial, cancelStyleTrial } from './ai-style-trial.mjs';
 import { timingDefaults, timingValue, effectiveTiming, mergeDueAt } from './ai-timing.mjs';
 import { authoredMessages, factEvidence, contextualReplyStyle, replyStyleOrigin, learningStyleEvidence, contextualStylePrompt, automaticLearningPrompt, validatedMonitorMemory } from './ai-context-learning.mjs';
 import { withSpeaker, replyPerspective, speakerIdentityPrompt, naturalAttributionPrompt } from './ai-speakers.mjs';
@@ -854,6 +855,8 @@ export class AIAssistant {
     return source.learnedStyle;
   }
   configured() { return !!this.config && this.data.tested === providerFingerprint(this.config); }
+  generateStyleTrial(value, options) { return generateStyleTrial(this, value, options); }
+  cancelStyleTrial(value) { return cancelStyleTrial(this, value); }
   modelReady() { return !!this.config?.model && !!this.config?.baseUrl && this.config.consent === true; }
   ensureDefaultProfiles() {
     if (!learningEnabled(this) && (this.data.settings.replyScope !== 'all' || !this.data.settings.enabled || !this.data.settings.reply)) return;
