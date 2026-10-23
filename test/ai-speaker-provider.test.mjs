@@ -78,6 +78,7 @@ for (const protocol of ['anthropic','openai']) test(`${protocol}: generation sta
   for(const scenario of [
     {baseUrl:'https://api.minimaxi.com/anthropic',model:'MiniMax-M3',input},
     {baseUrl:'https://api.minimax.io/v1',model:'MiniMax-M3',input},
+    {baseUrl:'https://api.minimax.io/v1',model:'MiniMax-M3',input:{...input,mode:'proactive'}},
     {baseUrl:'https://models.example.test/v1',model:'MiniMax-M3',input},
     {baseUrl:'https://api.minimax.io/v1',model:'another-model',input},
     {baseUrl:'https://api.minimax.io/v1',model:'MiniMax-M3',input:{mode:'analysis',messages:input.messages}},
@@ -85,8 +86,11 @@ for (const protocol of ['anthropic','openai']) test(`${protocol}: generation sta
     const requests=[];
     const provider=new AIProvider({fetcher:async(_url,options)=>{
       const body=JSON.parse(options.body);requests.push(body);
-      assert.equal(body.thinking,undefined);
-      assert.equal(body.reasoning_split,undefined);
+      const reasoning = ['reply', 'proactive'].includes(scenario.input.mode) &&
+        scenario.model === 'MiniMax-M3' && ['api.minimax.io','api.minimaxi.com'].includes(new URL(scenario.baseUrl).hostname);
+      assert.deepEqual(body.thinking, reasoning ? {type:'adaptive'} : undefined);
+      assert.equal(body.reasoning_split,reasoning && protocol === 'openai' ? true : undefined);
+      assert.equal(body.max_tokens,8192);
       const result={action:'send',text:'谢谢夸奖。'};
       return Response.json(protocol==='anthropic'?{content:[{type:'thinking',thinking:'PRIVATE_REASONING'},{type:'text',text:JSON.stringify(result)}]}:{choices:[{message:{reasoning_content:'PRIVATE_REASONING',content:JSON.stringify(result)}}]});
     }});
