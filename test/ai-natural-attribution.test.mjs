@@ -13,6 +13,32 @@ const own={id:key('laundry-own'),direction:'self',text:'今天我洗了好多衣
 const quote={verified:true,messageId:own.id,direction:'self',text:own.text,timestamp:100,sender:selfSender};
 const incoming={id:key('laundry-comment'),direction:'other',text:'很勤快了，很多被子了',timestamp:101,sender:member,mentions:{verified:true,self:false,all:false,others:false},quote};
 
+test('ordinary conversation keeps both original speakers visible without assigning event ownership', () => {
+ const rows=[
+  {direction:'self',authorship:'human',text:'我爸的电脑坏了，我的没坏。'},
+  {direction:'other',authorship:'other',text:'我这边只清了灰。'},
+  {direction:'self',authorship:'ai',aiGenerated:true,text:'我也修坏过电脑。'},
+  {direction:'self',authorship:'unknown',text:'未知来源的经历'},
+  {direction:'other',authorship:'other',text:'这修一次挺贵的。',pending:true},
+ ],original=structuredClone(rows),brief=naturalTurnBrief(rows);
+ const index=JSON.parse(brief.match(/：(\[.*\])。结合/)[1]);
+ assert.deepEqual(index.map(x=>x.position),[1,2,5]);
+ assert.equal(index[0].speaker,'本人（回信中的我）');
+ assert.equal(index[1].speaker,'私聊对方（回信中的你）');
+ assert.deepEqual(index.map(x=>x.text),[rows[0].text,rows[1].text,rows[4].text]);
+ assert(index.every(x=>Object.keys(x).every(k=>['position','speaker','text','excerpt'].includes(k))));
+ assert(!brief.includes(rows[2].text)&&!brief.includes(rows[3].text));
+ assert.deepEqual(rows,original);
+});
+
+test('ordinary source brief bounds context and marks excerpts instead of presenting truncated statements as complete', () => {
+ const rows=Array.from({length:20},(_,i)=>({direction:i%2?'other':'self',authorship:i%2?'other':'human',text:i===19?'原话'.repeat(600):'消息'+i}));
+ const index=JSON.parse(naturalTurnBrief(rows).match(/：(\[.*\])。结合/)[1]);
+ assert.equal(index.length,16);assert.equal(index[0].position,5);assert.equal(index.at(-1).position,20);
+ assert.equal(index.at(-1).excerpt,true);assert.equal(index.at(-1).text,rows[19].text.slice(0,1000));
+ assert.equal(rows[19].text.length,1200);
+});
+
 function bridgeWithRows(rows) {
  const runtime={status:'running',desktopEnv:{},processes:[{name:'wechat',process:{pid:123}}]};
  return new DataChatBridge(runtime,{invoke(){assert.fail('Read must not navigate or send');},async invokeData(action){

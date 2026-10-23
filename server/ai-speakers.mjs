@@ -45,7 +45,20 @@ export function replyRelations(messages) {
 }
 
 export function naturalTurnBrief(messages) {
-  return replyRelations(messages).map(({ text, quotedMessage }) => {
+  // Index original utterances for ordinary chat too. This labels who spoke,
+  // never guesses the subject of an experience or rewrites a pronoun.
+  const sources = messages.map((message, index) => ({ message, position: index + 1 }))
+    .filter(({ message }) => ['self', 'other'].includes(message.direction) &&
+      !message.aiGenerated && !message.unresolved && !['ai', 'unknown'].includes(message.authorship) &&
+      typeof message.text === 'string' && message.text.trim())
+    .slice(-16).map(({ message, position }) => ({
+      position, speaker: message.speaker?.role === 'group_member' ? '其他群成员（按messages中speaker识别）'
+        : message.direction === 'self' ? '本人（回信中的我）' : '私聊对方（回信中的你）',
+      text: message.text.slice(0, 1000), ...(message.text.length > 1000 ? { excerpt: true } : {}),
+    }));
+  const ordinary = sources.length ? '原话来源索引（position是messages中的1起序号，标记发言者，不判定事情主体）：' + JSON.stringify(sources) +
+    '。结合这些原话理解正在延续的各件事；最新评论者不自动成为被评论事情的当事人。原话中的我归原作者，引用、转述和其他人仍须按原文指代理解。AI代发只在messages中用于衔接，不作为本人新经历来源。' : '';
+  const quoted = replyRelations(messages).map(({ text, quotedMessage }) => {
     const author = quotedMessage.direction === 'self' ? '本人（本次生成文字中的我）' : '另一位群成员或私聊对方';
     return `本轮新发言“${text.slice(0,500)}”引用了${author}发过的原话“${quotedMessage.text.slice(0,1000)}”。` +
       (quotedMessage.aiGenerated ? '这条原话是之前AI代发的，不能证明本人亲自确认过其中的经历或现场事实。' : '') +
@@ -53,6 +66,7 @@ export function naturalTurnBrief(messages) {
         ? '原话里描述本人的事情才属于本人；本人原话提到他人的事情仍归对应的人，引用方向不能替代原话中的人称和指代。若新话在评论本人的经历，由本人接受评论，不能把本人的事转给评论者。新发言人另外讲自己的事时仍归新发言人。没有资料依据，不补写身体感觉、所在地、天气或之后的安排。'
         : '被引用者与本次回信者不同；原话中的“我”归原作者，“你”和其他指代按原上下文确认，不能把整段经历自动归本人或新发言人。新发言人另外讲自己的事时仍归新发言人。若是在询问现场情况，不以本人在场的口吻替当事人回答。');
   }).join('\n');
+  return [ordinary, quoted].filter(Boolean).join('\n');
 }
 
 export function confirmedSpeakerHistory(messages) {
