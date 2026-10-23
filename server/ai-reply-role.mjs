@@ -13,6 +13,10 @@ export function replyRoleAnchor(profile) {
 const blocked = () => { throw new AppError('回复角色与当前微信账号不一致，本次未发送', 409, 'ai_role_blocked'); };
 const sameActor = (actual, expected) => !!actual && !!expected && actual.role === expected.role && actual.id === expected.id;
 
+// Keep the evidence decision ahead of the long expression/protocol rules. It
+// runs inside the same completion and never adds a model call or send gate.
+export const replyEvidencePlanPrompt = '本次先理解事实，再写回复。只在本次生成内部：按事项找出原话、事情主体和仍成立的限制；判断最新来信是在评论、补充还是提出明确互斥的更正。新发言人不自动接走旧事项，新称呼不自动否定旧称呼；只有原文明确排斥的那一项才更正，不能自己造一个旧命题再否定。然后沿当前话题自然接话，拟回复里的每个新增肯定、否定、比较、因果各自需要原文依据；没有依据的结论不写，已有信息照常回应。事实与身份、授权、安全、发送能力及输出协议继续优先于表达风格。不要向对方解释这套判断过程，只按末尾协议返回业务JSON。\n';
+
 export function assertReplyRoleInput(input) {
   // Audit requests contain the already-validated contract with compact actor
   // references (self/other); they do not produce a deliverable generation.
