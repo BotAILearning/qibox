@@ -23,6 +23,7 @@ for (const protocol of ['openai', 'anthropic']) test(`${protocol}: implicit thir
     assert.equal(wire.messages[2].speaker.id, wire.messages[1].speaker.id);
     const system = protocol === 'anthropic' ? body.system : body.messages[0].content;
     assert.match(system, /发言人、所谈事情的当事人、被比较的人可能各不相同/);
+    assert.match(system, /不能把用途不同改写成数量不同/);
     assert.match(system, /话题切换和第三人加入不改变此前事项的归属/);
     const text = JSON.stringify({ action: 'send', text: '他也跑得挺多，我这两天光相册就耗了不少。', followUp: false });
     return Response.json(protocol === 'anthropic' ? { content: [{ type: 'text', text }] } : { choices: [{ message: { content: text } }] });
