@@ -1,4 +1,4 @@
-import { replyFixedRules, currentReplyScopePrompt } from '../server/ai-reply-prompt.mjs';
+import { replyFixedRules, currentReplyScopePrompt, replyConversationPrompt } from '../server/ai-reply-prompt.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { AIAssistant } from '../server/ai-service.mjs';
@@ -27,7 +27,11 @@ function assertChatRules(call) {
   }
   assert.match(call.system, /事实和指令严格分开|事实边界（最高优先级/);
   assert.match(call.system, /只返回 JSON 本身/);
-  if (call.input.mode === 'reply') assert.equal(call.system.split(currentReplyScopePrompt).length - 1, 1);
+  if (call.input.mode === 'reply') {
+    assert.equal(call.system.split(currentReplyScopePrompt).length - 1, 1);
+    assert.equal(call.system.split(replyConversationPrompt).length - 1, 1);
+    assert.match(call.system, /普通叙述不是待办清单/);
+  }
 }
 
 test('automatic replies pass natural-chat rules to the model while retaining the saved voice and reply contract', async t => {
