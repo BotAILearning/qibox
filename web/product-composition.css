@@ -121,6 +121,10 @@
 .qiapp-product #ai-panel .ai-style-trial > .ai-help { margin-block: 12px; }
 .qiapp-product #ai-panel .ai-style-trial-results { display: grid; gap: 8px; overflow-wrap: anywhere; }
 .qiapp-product #ai-panel .ai-style-trial-results p { white-space: pre-wrap; }
+.qiapp-product #ai-panel .ai-style-trial-results > details > summary { min-height: var(--qi-control-md); padding-block: 8px; box-sizing: border-box; cursor: pointer; }
+@media (any-pointer:coarse), (max-width:639px) {
+  .qiapp-product #ai-panel .ai-style-trial-results > details > summary { min-height: 44px; }
+}
 .qiapp-product #ai-panel .ai-style-trial-error { color: var(--qi-error); overflow-wrap: anywhere; }
 .qiapp-product #ai-panel .ai-object-save { position: static; padding: 16px 0; margin-top: 24px; border: 0; background: transparent; box-shadow: none; }
 .qiapp-product #ai-panel .ai-contact-picker-search { padding: 0; border: 0; border-radius: 0; background: transparent; }
