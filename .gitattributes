@@ -1,2 +1,4 @@
 web/vendor/qiapp-ui/*.css text eol=lf
 web/vendor/qiapp-ui/source-lock.json text eol=lf
+web/vendor/qiapp-ui-0.4.3/components.mjs text eol=lf
+web/vendor/qiapp-ui-0.4.3/SOURCE.json text eol=lf

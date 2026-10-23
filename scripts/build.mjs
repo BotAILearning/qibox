@@ -19,6 +19,8 @@ const uiSourceLock = JSON.parse(await readFile(uiSourceLockFile, 'utf8'));
 for (const [name, sha256] of Object.entries(uiSourceLock.files)) {
   if (path.basename(name) !== name || await hashFile(path.join(root, 'web/vendor/qiapp-ui', name)) !== sha256) throw new Error(`Locked UI asset differs: ${name}`);
 }
+const styleComponentSource = JSON.parse(await readFile(path.join(root, 'web/vendor/qiapp-ui-0.4.3/SOURCE.json'), 'utf8'));
+if (styleComponentSource.version !== '0.4.3' || await hashFile(path.join(root, 'web/vendor/qiapp-ui-0.4.3/components.mjs')) !== styleComponentSource.sha256) throw new Error('Locked chat-style popover component differs');
 const product = { ...JSON.parse(await readFile(path.join(root, 'config/product.json'), 'utf8')), platform: targets.length === 2 ? 'all' : targets[0].fnos };
 const iconRevision = createHash('sha256').update(await readFile(path.join(root, 'web/icon.png'))).digest('hex').slice(0, 16);
 const out = path.join(root, 'public'); await mkdir(out, { recursive: true });
