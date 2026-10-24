@@ -33,6 +33,7 @@ function assertChatRules(call) {
     assert.equal(call.system.split(replyConversationPrompt).length - 1, 1);
     assert.match(call.system, /普通叙述不是待办清单/);
     assert.match(call.system, /区分来源范围与当事人状态/);
+    assert.match(call.system, /观察范围，不证明记录确实不存在/);
     assert.equal(call.system.split(replyAttributionPrompt).length - 1, 1);
     assert.equal(call.input.attributionContext.rules, replyAttributionPrompt);
     if (!call.input.capabilities.sendImages && !call.input.capabilities.sendAudio) {

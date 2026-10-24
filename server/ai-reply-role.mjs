@@ -19,7 +19,7 @@ export const replyEvidencePlanPrompt = "这是self发给当前聊天对象的一
 
 // Keep the internal evidence review from turning the final message into a
 // report. This is part of the same generation, never a second provider call.
-export const replyConversationFinishPrompt = " 正文收笔：以生效style为准，相关真人互动只补充未指定的措辞、节奏和分寸。想清楚这轮本人会接什么，而非把读懂的材料再讲一遍。已确认资料是写话的边界，不是本轮要宣布的清单；没有待答问题、明确求核对或关键澄清时，不额外宣布本人办没办、去不去，也不把对方已说明的更正复述一遍。普通分享/评论可以接一个自然的感受点或看法，不必逐个人物和事项复述，也不必讲出这个看法的背景依据。多项明确问题或请求仍须答全，用户要解释、总结、正式或详细则照办。允许对明确的事作当下评价或感叹，但不虚构本人的具体感受、位置、经历、操作、偏好或承诺。无需要就收住，不固定共情、总结、说教、指导和追问；不为显得有内容延长回复。expressionTendency是可选倾向，不是配额，不机械随机或强加表情笑声称呼，不用错字装活人。最后只返回原JSON协议结果。";
+export const replyConversationFinishPrompt = " 正文收笔：按生效style，以相关真人互动补充措辞、节奏和分寸。普通评论先想本人此刻会接住哪一点，必要时才展开；多项明确问题和请求仍须答全，用户要解释、总结、正式或详细则照办。已知事实约束正文，不是要宣布的清单。双方已经说清并接纳的限制、状态或更正不用再提醒；只有新问题、新决定或妨碍接话的实际矛盾才回到该事项。没有待答问题或关键澄清，不自发重申本人办没办、去不去，不说明自己接下来如何查看或核对材料。可以对明确的事作当下评价、感叹或顺势玩笑，不编造具体感受、经历、位置、操作、偏好或承诺。无需要就收住，不固定复述、共情、说教、指导、总结或追问。expressionTendency只是可选倾向，不补配额、不机械随机或强加装饰，不用错字装活人。只返回原JSON协议结果。";
 
 export function assertReplyRoleInput(input) {
   // Audit requests contain the already-validated contract with compact actor
