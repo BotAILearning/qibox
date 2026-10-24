@@ -1,5 +1,5 @@
 import { hasSpeakerTurns, speakerTurns, speakerHistory, replyRelations, confirmedSpeakerHistory } from './ai-speakers.mjs';
-import { assertReplyRoleInput, assertReplyRoleDraft, replyRolePrompt, replyRoleEvidencePrompt, replySelfCheckPrompt, replyEvidencePlanPrompt, replyConversationFinishPrompt } from './ai-reply-role.mjs';
+import { assertReplyRoleInput, assertReplyRoleDraft, replyRolePrompt, replyRoleEvidencePrompt, replySelfCheckPrompt, replyEvidencePlanPrompt, replyConversationFinishPrompt, replyDraftCheckPrompt, replyCompositionPrompt } from './ai-reply-role.mjs';
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -8,6 +8,7 @@ import { AppError } from './files.mjs';
 import { compactModelInput, encodeModelRequest, modelInputReferencePrompt } from './ai-model-input.mjs';
 import { textField } from './ai-schema.mjs';
 import { readableMediaInput } from './ai-media-input.mjs';
+import { replyFixedRules } from './ai-reply-prompt.mjs';
 
 export function providerValue(value, previous = {}, { discovery = false } = {}) {
   let url;
@@ -324,7 +325,12 @@ export class AIProvider {
   }
   async complete(config, system, input, signal, { format = 'json', purpose, budget: requestedBudget, retry = true, validate, requireImages = false } = {}) {
     assertReplyRoleInput(input);
-    const roleSystem = ['reply', 'proactive'].includes(input?.mode) ? replyEvidencePlanPrompt + system + (input.roleAnchor ? replyRolePrompt + replyRoleEvidencePrompt : '') + replySelfCheckPrompt + replyConversationFinishPrompt : system;
+    // Condense duplicate checks only when the assistant already supplied the
+    // complete reply policy. Standalone callers keep every original safeguard.
+    const completeReplyPolicy = input?.mode === 'reply' && system.includes(replyFixedRules);
+    const roleSystem = completeReplyPolicy
+      ? system + (input.roleAnchor ? replyRolePrompt + replyRoleEvidencePrompt : '') + replyDraftCheckPrompt + replyCompositionPrompt
+      : ['reply', 'proactive'].includes(input?.mode) ? replyEvidencePlanPrompt + system + (input.roleAnchor ? replyRolePrompt + replyRoleEvidencePrompt : '') + replySelfCheckPrompt + replyConversationFinishPrompt : system;
     const anthropic = config.protocol === 'anthropic', endpoint = providerEndpoints(config).complete;
     // M3's Anthropic endpoint defaults to thinking off. Natural references need
     // reasoning, especially when checking several actors and implicit subjects.
@@ -338,7 +344,8 @@ export class AIProvider {
     const validImages = images.filter(x => x && ['image/png','image/jpeg','image/gif','image/webp'].includes(x.mime) && typeof x.data === 'string' && x.data.length <= 5600000).slice(0,3);
     if (requireImages && (!images.length || validImages.length !== images.length)) throw new AppError('图片或视频帧不符合模型输入要求', 400);
     const expanded = hasSpeakerTurns(input) ? { ...textInput, sourceIndexVersion: 2, messages: input.messages, replySpeakerHistory: speakerHistory(input.messages).map(({ messages, ...group }) => ({ ...group, messageIds: messages.map(message => message.id) })), confirmedSpeakerHistory: confirmedSpeakerHistory(input.messages), replyRelations: replyRelations(input.messages) } : textInput;
-    const wireSystem = ['reply', 'proactive'].includes(input?.mode) ? roleSystem + modelInputReferencePrompt : roleSystem;
+    const wireSystem = completeReplyPolicy ? modelInputReferencePrompt + roleSystem
+      : ['reply', 'proactive'].includes(input?.mode) ? roleSystem + modelInputReferencePrompt : roleSystem;
     const encoded = encodeModelRequest(wireSystem, compactModelInput(expanded, { system: wireSystem }));
     const text = JSON.stringify(encoded.input);
     const requestContent = validImages.length ? [{type:'text',text}, ...validImages.flatMap(x => [{type:'text',text:'图片对应消息 '+encoded.id(x.messageId)+(x.thumbnail ? '（微信缩略图；只描述可辨认的内容，不猜测模糊细节）' : '')}, anthropic ? {type:'image',source:{type:'base64',media_type:x.mime,data:x.data}} : {type:'image_url',image_url:{url:'data:'+x.mime+';base64,'+x.data}}])] : text;

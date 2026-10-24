@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { AIProvider } from '../server/ai-provider.mjs';
 import { AIAssistant } from '../server/ai-service.mjs';
 import { replyPerspective, withSpeaker, speakerAuditInput } from '../server/ai-speakers.mjs';
-import { replyRoleAnchor, assertReplyRoleInput } from '../server/ai-reply-role.mjs';
+import { replyRoleAnchor, assertReplyRoleInput, replyDraftCheckPrompt, replyCompositionPrompt, replySelfCheckPrompt } from '../server/ai-reply-role.mjs';
 import { validateReplyResult } from '../server/ai-prompts.mjs';
 import { AIModelFixture, ChatFixture, key, modelConfig } from './ai-fixtures.mjs';
 import { temp, cleanup } from './fixtures.mjs';
@@ -123,6 +123,9 @@ for (const mode of ['reply', 'proactive']) for (const scenario of scenarios) {
       assert.match(body.messages[0].content, /固定回复者规则/);
       assert.match(body.messages[0].content, /同次生成自检/);
       assert.match(body.messages[0].content, /也不证明本人不是医生/);
+      // These are standalone provider calls, with no assistant policy.
+      assert.equal(body.messages[0].content.includes(replySelfCheckPrompt), true);
+      assert.equal(body.messages[0].content.includes(replyDraftCheckPrompt), false);
       assert.equal(wire.roleAnchor.firstPerson, 'self');
       assert.equal(wire.roleAnchor.author.id, wire.replyPerspective.author.id);
       assert.equal(body.messages.length, 2);
@@ -189,9 +192,12 @@ async function serviceFixture(t) {
 
 test('automatic reply production sends a valid final answer after exactly one model request', async t => {
   const { a, bridge, receive } = await serviceFixture(t), requests = [];
-  a.provider = fakeProvider(input => {
+  a.provider = fakeProvider((input, body) => {
     assert.equal(input.mode, 'reply');
     assert.equal(input.roleAnchor.author.id, input.replyPerspective.author.id);
+    assert.equal(body.messages[0].content.split(replyDraftCheckPrompt).length - 1, 1);
+    assert.equal(body.messages[0].content.endsWith(replyCompositionPrompt), true);
+    assert.equal(body.messages[0].content.includes(replySelfCheckPrompt), false);
     return { action: 'send', text: '你在苏州啊，最近怎么样？' };
   }, requests);
   await receive();
