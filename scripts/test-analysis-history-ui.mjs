@@ -35,7 +35,7 @@ bridge.readRange = async args => ({
 provider.complete = async (_config, system, input) => {
   provider.calls.push({ system, input });
   return {
-    report: `数据开场\n\n这段时间记录了 ${input.metrics.total} 条消息。\n\n值得记住\n\n周六下午三点见，记得带票。`,
+    report: `数据开场\n\n这段时间记录了 ${input.metrics.total} 条消息。\n\n值得记住\n\n周六下午三点见，记得带票🙂。`,
     excerptIds: input.messages.filter(item => item[1] === 's' || item[1] === 'o').slice(0, 2).map(item => item[0]),
   };
 };
@@ -177,7 +177,16 @@ try {
   assert.match(await page.locator('.ai-analysis-history-detail .ai-page-heading p').textContent(), /联系人：分析报告测试联系人/);
   const copied = await page.locator('.ai-analysis-history-detail [data-ai-history-copy]').click().then(() => page.evaluate(() => navigator.clipboard.readText()));
   assert.match(copied, /数据开场/);
+  assert.match(copied, /🙂/);
   report.checks.push('Refresh reads persisted history/detail without another provider call and copy returns complete report');
+  // NAS HTTP pages may lack the modern Clipboard API. Exercise the real
+  // browser copy command, then read through the restored native API.
+  await page.evaluate(() => navigator.clipboard.writeText('QIBOX-LEGACY-COPY-PRIOR-CONTROL'));
+  await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined }));
+  await page.locator('.ai-analysis-history-detail [data-ai-history-copy]').click();
+  await page.evaluate(() => { delete navigator.clipboard; });
+  assert.equal(await page.evaluate(() => navigator.clipboard.readText()), copied, 'Legacy copy command preserves the complete report when the Clipboard API is unavailable');
+  report.checks.push('Real browser legacy copy command returns the exact report without model calls; Clipboard API absence is simulated, not a physical HTTP/device claim');
   await screenshot('02-history-detail');
   await page.locator('[data-ai-export-detail]').click();
   const exportDialog = page.locator('#ai-report-export-dialog[open]'); await exportDialog.waitFor();

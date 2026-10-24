@@ -16,6 +16,7 @@
     "test:desktop": "node scripts/test-desktop.mjs",
     "test:ai-ui": "node scripts/test-ai-ui.mjs",
     "test:ai-master-crosspage": "node scripts/test-ai-master-crosspage-ui.mjs",
+    "test:analysis-history": "node scripts/test-analysis-history-ui.mjs",
     "test:ui-proportions": "node scripts/test-ui-proportions.mjs",
     "test:instance-lifecycle": "node scripts/test-instance-lifecycle-ui.mjs"
   },
