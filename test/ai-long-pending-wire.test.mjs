@@ -23,7 +23,7 @@ test('production wire ends with full long incoming turns once, including middle 
   await a.saveReplyProfile({ contact, style: { summary: '保留我的手动风格，自然接话。' }, strategy: {}, replyEnabled: true });
   await a.settings({ enabled: true, autoLearning: false, segmentReplies: false, followUpEnabled: false }); await a.tick();
   const first = '开头的旧单子和老照片混到同一个目录里，大家各翻各的。'.repeat(15)
-    + '中间更正：绿勾只是对方收到附件，不是本人审核通过，也没有否定本人已经提交。'
+    + '中间更正：绿勾只是对方收到附件，不是本人审核通过，也没有否定本人已经提交。他又聊起以前怎么把纸箱塞进去的，那是在说旧事。'
     + '后面又夹着一些旧文件名，整理完才发现不是同一件事。'.repeat(15);
   const second = '另一个群里同名的人又转了一份旧通知。'.repeat(18)
     + '另一条中间事实：店员把教室从B2改成B3，旧图日期不证明今天有活动。'
@@ -33,6 +33,9 @@ test('production wire ends with full long incoming turns once, including middle 
   incoming[0].quote = { verified: true, messageId: original.id, direction: 'self', text: original.text, timestamp: original.timestamp };
   await a.tick(); clock += 61000; await a.tick();
   assert.equal(wires.length, 1, 'One production generation, no added audit or retry');
+  const system = wires[0].messages.find(m => m.role === 'system').content;
+  assert.doesNotMatch(system, /本轮来信包含明确问题/, 'A keyword match must not be asserted to the model as a confirmed question');
+  assert.match(system, /关键词或转述不等于对方在提问/);
   const input = JSON.parse(wires[0].messages.find(m => m.role === 'user').content);
   const pending = input.conversation.pendingIncomingMessages;
   assert.equal(pending.length, 2);

@@ -136,7 +136,9 @@ const memoryMergeEntry = entry => ({
   ...(['historical', 'uncertain'].includes(entry.status) ? { status: entry.status } : {}),
   ...(Array.isArray(entry.evidence) ? { evidence: entry.evidence } : {}),
 });
-const asksDirectQuestion = text => /[?？]|(?:吗|呢|么)[。！!…]*$|(?:怎么|如何|是否|要不要|该不该|能不能|可不可以|是不是|有没有|为什么|什么|哪一个|哪个|几时|什么时候)/u.test(String(text || '').trim());
+// A conservative cue for the existing must-reply path, not a verified speech
+// act. Reports such as “他说以前怎么搬的” contain these words too.
+const hasQuestionCue = text => /[?？]|(?:吗|呢|么)[。！!…]*$|(?:怎么|如何|是否|要不要|该不该|能不能|可不可以|是不是|有没有|为什么|什么|哪一个|哪个|几时|什么时候)/u.test(String(text || '').trim());
 function skipIncomingMessages(profile, messages = [], anchorId = null) {
   const incoming = messages.filter(message => message && message.direction === 'other' && typeof message.id === 'string' && message.id && typeof message.text === 'string');
   const seen = new Set(); const unique = incoming.filter(message => !seen.has(message.id) && seen.add(message.id));
@@ -3782,10 +3784,10 @@ export class AIAssistant {
         ? ` 本轮采用已学习的本人表达见style。未编辑的学习摘要是观察，不是每轮的沟通任务；只借鉴有依据的措辞、节奏和分寸，不因interaction或role写了某种行为就固定解释、澄清、指导或复述。customTone、customAvoid及手动锁定内容仍是用户明确要求，优先遵守。${addressingPrompt}`
         : ` 本轮用户为当前联系人设置的风格见输入 style 字段。这是本轮必须遵循的口吻要求。若总结后面有明确补充的称呼、表达或注意事项，优先执行这些补充；前面的历史样本描述或“样本不足”不撤销用户后来明确填写的要求。${addressingPrompt}`;
     const currentTask = mode === 'proactive' ? proactivePrompt(strategy) : this.replyBackgroundPrompt(profile);
-    const explicitAsk = mode === 'reply' && !followUp && asksDirectQuestion(pendingText);
+    const privateQuestionCue = mode === 'reply' && !followUp && hasQuestionCue(pendingText);
     const requiredGroupReply = mode === 'reply' && profile.kind === 'group' && trigger === 'atMe';
-    const mustReply = mode === 'reply' && (requiredGroupReply || profile.kind !== 'group' && ((!followUp && !this.replyOptions(profile).judgeReply) || explicitAsk));
-    const groupTriggerInstruction = requiredGroupReply ? `本轮已验证的${trigger === 'atMe' ? '@我' : '@所有人'}应回复可读取的来信；无法识别的图片或语音直接略过，不要求对方重发或转文字。` : explicitAsk && profile.kind !== 'group' ? '本轮来信包含明确问题，应针对可读取的文字回复；无法识别的图片或语音直接略过，不要求对方重发或转文字。' : '';
+    const mustReply = mode === 'reply' && (requiredGroupReply || profile.kind !== 'group' && ((!followUp && !this.replyOptions(profile).judgeReply) || privateQuestionCue));
+    const groupTriggerInstruction = requiredGroupReply ? `本轮已验证的${trigger === 'atMe' ? '@我' : '@所有人'}应回复可读取的来信；无法识别的图片或语音直接略过，不要求对方重发或转文字。` : privateQuestionCue && profile.kind !== 'group' ? '本轮应回应可读取的来信，按实际交流意图接话；关键词或转述不等于对方在提问，真实问题仍须答全。无法识别的图片或语音直接略过，不要求对方重发或转文字。' : '';
     const tendencyPlan = mode === 'reply' ? this.prepareExpressionTendency(profile, modelMessages, snapshot, strategy, { followUp, pendingMessages }) : null;
     const expressionTendency = tendencyPlan ? { instruction: tendencyPlan.instruction,
       traits: Object.fromEntries(Object.entries(tendencyPlan.traits).map(([name, trait]) => [name, { preference: trait.preference, confidence: trait.confidence, rate: trait.rate }])) } : undefined;
@@ -3894,10 +3896,10 @@ export class AIAssistant {
       const cursor = this.cursors.get(profile.id);
       if (cursor && cursor.revision === snapshot.revision) cursor.pending = false;
       this.notice = requiredGroupReply ? `${profile.label}：已验证的${trigger === 'atMe' ? '@我' : '@所有人'}触发未生成相关回复，模型重试后仍未给出可执行决定；本轮未发送，请检查模型或上下文`
-        : explicitAsk ? `${profile.label}：检测到明确问题，但模型重试后仍未生成文字回复；本轮未发送，新消息仍可正常处理，请检查模型或上下文`
+        : privateQuestionCue ? `${profile.label}：来信包含提问线索，但模型重试后仍未生成文字回复；本轮未发送，新消息仍可正常处理，请检查模型或上下文`
           : `${profile.label}：智能判断已关闭，但模型连续返回跳过，本轮未发送；请调整回复要求或更换模型`;
       const failedMessage = (profile.kind === 'group' && trigger ? snapshot.messages.find(m => m.id === burst?.messages.findLast(item => item.trigger === trigger)?.id) : null) || pendingMessages.findLast(m => m.direction === 'other') || snapshot.messages.findLast(m => m.direction === 'other');
-      const relatedSkip = explicitAsk ? this.event('skip', profile.id, 'system-skip', '保护拦截：明确提问重试后仍未生成文字回复；新来信将继续正常处理', { reasonCode: 'explicit-question-no-response', messageId: failedMessage?.id, trigger: trigger || 'reply', incomingMessages: snapshot.messages.filter(message => pendingMessages.some(pending => pending.id === message.id)) }) : null;
+      const relatedSkip = privateQuestionCue ? this.event('skip', profile.id, 'system-skip', '保护拦截：本轮需回应的来信重试后仍未生成文字回复；新来信将继续正常处理', { reasonCode: 'explicit-question-no-response', messageId: failedMessage?.id, trigger: trigger || 'reply', incomingMessages: snapshot.messages.filter(message => pendingMessages.some(pending => pending.id === message.id)) }) : null;
       this.event('error', profile.id, trigger || mode, this.notice, { stage: 'model', errorCode: 'ai_model_no_text', incomingMessages: pendingMessages, relatedSkipEventId: relatedSkip?.id });
       await this.save(); return;
     }
