@@ -70,3 +70,42 @@ test('subjectId values use the same request-local opaque reference and decode lo
   assert.equal(wire.input.memory.entries[0].subjectId,wire.id(subjectId));
   assert.deepEqual(wire.decode(wire.input),input);
 });
+
+test('current-chat human interaction examples stay readable in a bounded wire view before the current turn',()=>{
+  const messages=[{id:'in',direction:'other',text:'折腾一圈总算拆开了'},
+    {id:'self',direction:'self',authorship:'human',text:'可算理顺了'},
+    {id:'ai',direction:'self',authorship:'ai',aiGenerated:true,text:'不可当真人'},
+    {id:'unknown',direction:'self',authorship:'unknown',text:'来源未知'},
+    {id:'large',direction:'other',text:'完整长背景'.repeat(400)},
+    {id:'now',direction:'other',text:'当前来信'}];
+  const pair=(a,b)=>({relation:'adjacent-context',incoming:{id:a.id,text:a.text},reply:{id:b.id,text:b.text}});
+  const input={mode:'reply',messages,contextualStyle:{source:'current-chat-human',pairedExamples:[pair(messages[0],messages[1]),pair(messages[0],messages[2]),pair(messages[0],messages[3]),pair(messages[4],messages[1])]},conversation:{latestIncoming:messages[5],pendingIncomingMessages:[messages[5]]}};
+  const before=structuredClone(input),wire=compactModelInput(input),pairs=wire.contextualStyle.pairedExamples;
+  assert.equal(pairs[0].incoming.text,messages[0].text);assert.equal(pairs[0].reply.text,messages[1].text);
+  for(const p of pairs.slice(1)){assert.equal(p.incoming.text,undefined);assert.equal(p.reply.text,undefined);}
+  assert.deepEqual(wire.messages,messages);assert.equal(Object.keys(wire).at(-1),'conversation');
+  assert.equal(wire.conversation.latestIncoming.textRef,'now');assert.deepEqual(input,before);
+  const encoded=encodeModelRequest('当前回复',wire);assert.deepEqual(encoded.decode(encoded.input),wire);
+});
+
+test('inline style view preserves conflicting evidence, unknown receipt, and unique actor requirements',()=>{
+  for(const change of [{authorship:'unknown'},{authorship:'human',deliveryConfidence:'unknown'},{authorship:'human',assumedPresent:true},{authorship:'human',unresolved:true}]){
+    const source={id:'self',direction:'self',text:'原话',...change},incoming={id:'other',direction:'other',text:'对方原话'};
+    const input={mode:'reply',messages:[incoming,source],contextualStyle:{source:'current-chat-human',pairedExamples:[{relation:'adjacent-context',incoming:{id:'other',text:'对方原话'},reply:{id:'self',text:'原话'}}]}};
+    assert.equal(compactModelInput(input).contextualStyle.pairedExamples[0].reply.text,undefined);
+  }
+  const source={id:'self',direction:'self',authorship:'human',text:'原话'},incoming={id:'other',direction:'other',text:'对方原话'};
+  const pair={relation:'adjacent-context',incoming,reply:{...source,speaker:{id:'wrong-actor'}}};
+  const input={mode:'reply',messages:[incoming,source],contextualStyle:{source:'current-chat-human',pairedExamples:[pair]}};
+  assert.deepEqual(compactModelInput(input).contextualStyle.pairedExamples[0].reply,pair.reply);
+});
+
+test('inline interaction view caps complete examples and retains duplicate-id ambiguity without source rewriting',()=>{
+  const messages=Array.from({length:8},(_,i)=>({id:'m'+i,direction:i%2?'self':'other',...(i%2?{authorship:'human'}:{}),text:('原话'+i).repeat(30)}));
+  const pairs=[0,2,4,6].map(i=>({relation:'adjacent-context',incoming:{id:messages[i].id,text:messages[i].text},reply:{id:messages[i+1].id,text:messages[i+1].text}}));
+  const input={mode:'reply',messages,contextualStyle:{source:'current-chat-human',pairedExamples:pairs}},before=structuredClone(input),wire=compactModelInput(input),inline=wire.contextualStyle.pairedExamples.filter(p=>typeof p.reply.text==='string');
+  assert.equal(inline.length,2);assert(inline.reduce((n,p)=>n+p.incoming.text.length+p.reply.text.length,0)<=900);assert.deepEqual(wire.messages,messages);assert.deepEqual(input,before);
+  const ambiguous={...input,messages:[...messages,messages[7]]},duplicate=compactModelInput(ambiguous).contextualStyle.pairedExamples.at(-1);
+  assert.deepEqual(duplicate.reply,pairs.at(-1).reply);assert.equal(duplicate.reply.textRef,undefined);
+  assert.doesNotThrow(()=>compactModelInput({mode:'reply',contextualStyle:{source:'current-chat-human',pairedExamples:'invalid'}}));
+});

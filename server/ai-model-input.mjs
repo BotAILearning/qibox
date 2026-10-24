@@ -43,9 +43,26 @@ export function compactModelInput(input, { system = '' } = {}) {
     pendingIncomingMessages: input.conversation.pendingIncomingMessages?.map(reference),
     latestIncoming: reference(input.conversation.latestIncoming),
     ...(Array.isArray(input.conversation.recentSelfMessages) ? { recentSelfMessages: input.conversation.recentSelfMessages.map(reference) } : {}) };
+  // Keep at most two small, already-selected human interaction examples
+  // readable together. Resolving both halves through a distant ID index hid
+  // the conversational move; all other duplicated bodies remain references.
+  // This never converts WeChat history into provider assistant completions.
+  const inlinePairs = new Set(); let inlineChars = 0;
+  if (input.mode === 'reply' && input.contextualStyle?.source === 'current-chat-human' && Array.isArray(input.contextualStyle.pairedExamples)) {
+    for (const pair of input.contextualStyle.pairedExamples.toReversed()) {
+      const incoming = available(pair?.incoming), reply = available(pair?.reply);
+      if (!incoming || incoming.direction !== 'other' || !reply || reply.direction !== 'self' ||
+          reply.authorship !== 'human' || reply.aiGenerated === true || reply.unresolved || reply.assumedPresent ||
+          reply.deliveryConfidence === 'unknown' || !['adjacent-context', 'verified-quote'].includes(pair.relation)) continue;
+      const chars = incoming.text.length + reply.text.length;
+      if (inlineChars + chars > 900) continue;
+      inlineChars += chars; inlinePairs.add(pair);
+      if (inlinePairs.size === 2) break;
+    }
+  }
   if (input.contextualStyle) result.contextualStyle = { ...input.contextualStyle,
     ...(Array.isArray(input.contextualStyle.samples) ? { samples: input.contextualStyle.samples.map(reference) } : {}),
-    ...(Array.isArray(input.contextualStyle.pairedExamples) ? { pairedExamples: input.contextualStyle.pairedExamples.map(pair => ({ ...pair, incoming: reference(pair.incoming), reply: reference(pair.reply) })) } : {}) };
+    ...(Array.isArray(input.contextualStyle.pairedExamples) ? { pairedExamples: input.contextualStyle.pairedExamples.map(pair => inlinePairs.has(pair) ? pair : ({ ...pair, incoming: reference(pair.incoming), reply: reference(pair.reply) })) } : {}) };
   if (Array.isArray(input.confirmedSpeakerHistory)) result.confirmedSpeakerHistory = input.confirmedSpeakerHistory.map(group => {
     if (!Array.isArray(group.messages) || Object.hasOwn(group, 'messageIds') ||
         !group.messages.every(row => { const source = available(row); return source && equal(group.speaker, source.speaker); })) return group;
@@ -62,6 +79,14 @@ export function compactModelInput(input, { system = '' } = {}) {
   if (typeof input.attributionContext?.rules === 'string' && input.attributionContext.rules && system.includes(input.attributionContext.rules)) {
     const { rules, ...evidence } = input.attributionContext;
     result.attributionContext = evidence;
+  }
+  if (input.mode === 'reply' && input.contextualStyle?.source === 'current-chat-human') {
+    // Read the labelled sources, then expression examples, then the current
+    // turn. Actor indexes are still complete; their incidental property order
+    // must not become the last task the model sees.
+    const { messages: transcript, contextualStyle, conversation, ...metadata } = result;
+    return { ...metadata, ...(transcript ? { messages: transcript } : {}), contextualStyle,
+      ...(conversation ? { conversation } : {}) };
   }
   return result;
 }
