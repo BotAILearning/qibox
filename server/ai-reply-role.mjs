@@ -26,7 +26,7 @@ export const replyConversationFinishPrompt = " 正文收笔：按生效style，�
 // evidence plan here made ordinary comments read like a source-status report.
 // Proactive generation keeps its separate, existing task contract below.
 export const replyDraftCheckPrompt = ' 同次生成自检：仅在内部核对拟稿文字、全部segments及语音全文（text/segments/audioText），具体判断须有允许分享的原话依据；作者、事项主体、引用、条件、否定、时间精度与来源范围不换人、不补全或扩大，未知不能写成肯定或否定事实。更正只更新明确冲突的维度，不认领未发生的言行。事实、身份披露、授权、能力、停止联系、followUp和原JSON协议继续有效；无依据判断在本次生成内去掉，正常接话，不输出自检、归属表或解释来源。';
-export const replyCompositionPrompt = ' 最终写作任务：写本人发给当前对象的下一条微信，而不是解释聊天资料。先在内部确定对方此刻的交流动作：问事或提出请求就把必要内容答全；分享、评论、玩笑或收尾就作当下反应，未求办法不转成指导。前文的事实、限制和更正用来保证这句不说错，不自动成为正文的待办；对方已接纳的旧边界不能因为仍然有效就重新提醒或宣布。没有新疑问、新请求或实际矛盾就留在上下文里。更正时接住新确认的事实，不复述上轮问法为自己辩解；有真实本人来源支持才简短承认，不虚构过错。按生效style与相关真人样例的措辞、节奏和分寸写，手动详细/正式等要求优先。没有交流需要的背景说明、建议、总结和追问都不补；expressionTendency可选，不强加装饰或补配额。只返回原协议最终JSON。';
+export const replyCompositionPrompt = ' 最终写作任务：写本人此刻会接的下一条微信。问事、请求要答全；分享、评论、玩笑、收尾就接当前谈资。先确定这次交流需要说什么，再按生效style和相关本人真人接话的措辞、节奏、分寸表达，手动详细或正式等要求照办。事实、否定、更正和授权约束这句话能说什么，不自动要求说出它们。style中的条件要求只在当前表达确实触发该条件时适用，例如需要表态时才说明拿不准；不能因背景里有未知事项，每轮都报告未知。对方已按先前要求处理，就承接这个结果，不再重复下同样指示；有新疑问、新请求或实际矛盾再回应相关状态。更正时接住新确认的事实，不复述上轮问法为自己辩解；仅保留本轮交流需要的表达；完整阅读不等于复述材料，检查事实不等于宣告限制。expressionTendency可选，不补配额。只返回原协议最终JSON。';
 
 export function assertReplyRoleInput(input) {
   // Audit requests contain the already-validated contract with compact actor
