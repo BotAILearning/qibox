@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { AIProvider } from '../server/ai-provider.mjs';
 import { AIAssistant } from '../server/ai-service.mjs';
 import { replyPerspective, withSpeaker, speakerAuditInput } from '../server/ai-speakers.mjs';
-import { replyRoleAnchor, assertReplyRoleInput, replyDraftCheckPrompt, replyCompositionPrompt, replySelfCheckPrompt } from '../server/ai-reply-role.mjs';
+import { replyRoleAnchor, assertReplyRoleInput, replyDraftCheckPrompt, replyCompositionPrompt, replySelfCheckPrompt, replyRolePrompt, replyRoleBindingPrompt } from '../server/ai-reply-role.mjs';
 import { validateReplyResult } from '../server/ai-prompts.mjs';
 import { AIModelFixture, ChatFixture, key, modelConfig } from './ai-fixtures.mjs';
 import { temp, cleanup } from './fixtures.mjs';
@@ -198,6 +198,8 @@ test('automatic reply production sends a valid final answer after exactly one mo
     assert.equal(body.messages[0].content.split(replyDraftCheckPrompt).length - 1, 1);
     assert.equal(body.messages[0].content.endsWith(replyCompositionPrompt), true);
     assert.equal(body.messages[0].content.includes(replySelfCheckPrompt), false);
+    assert.equal(body.messages[0].content.split(replyRoleBindingPrompt).length - 1, 1);
+    assert.equal(body.messages[0].content.includes(replyRolePrompt), false);
     return { action: 'send', text: '你在苏州啊，最近怎么样？' };
   }, requests);
   await receive();

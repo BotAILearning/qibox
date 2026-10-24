@@ -1,5 +1,5 @@
 import { hasSpeakerTurns, speakerTurns, speakerHistory, replyRelations, confirmedSpeakerHistory } from './ai-speakers.mjs';
-import { assertReplyRoleInput, assertReplyRoleDraft, replyRolePrompt, replyRoleEvidencePrompt, replySelfCheckPrompt, replyEvidencePlanPrompt, replyConversationFinishPrompt, replyDraftCheckPrompt, replyCompositionPrompt } from './ai-reply-role.mjs';
+import { assertReplyRoleInput, assertReplyRoleDraft, replyRolePrompt, replyRoleBindingPrompt, replyRoleEvidencePrompt, replySelfCheckPrompt, replyEvidencePlanPrompt, replyConversationFinishPrompt, replyDraftCheckPrompt, replyCompositionPrompt } from './ai-reply-role.mjs';
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -329,7 +329,7 @@ export class AIProvider {
     // complete reply policy. Standalone callers keep every original safeguard.
     const completeReplyPolicy = input?.mode === 'reply' && system.includes(replyFixedRules);
     const roleSystem = completeReplyPolicy
-      ? system + (input.roleAnchor ? replyRolePrompt + replyRoleEvidencePrompt : '') + replyDraftCheckPrompt + replyCompositionPrompt
+      ? system + (input.roleAnchor ? replyRoleBindingPrompt + replyRoleEvidencePrompt : '') + replyDraftCheckPrompt + replyCompositionPrompt
       : ['reply', 'proactive'].includes(input?.mode) ? replyEvidencePlanPrompt + system + (input.roleAnchor ? replyRolePrompt + replyRoleEvidencePrompt : '') + replySelfCheckPrompt + replyConversationFinishPrompt : system;
     const anthropic = config.protocol === 'anthropic', endpoint = providerEndpoints(config).complete;
     // M3's Anthropic endpoint defaults to thinking off. Natural references need
