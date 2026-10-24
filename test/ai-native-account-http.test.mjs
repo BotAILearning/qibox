@@ -12,6 +12,12 @@ async function fixture(t) {
   const dataRoot = await temp(), bridge = new ChatFixture(), provider = new AIModelFixture();
   const app = await createApplication({ appRoot: root, dataRoot, fetcher, extract: extractor, aiProvider: provider, trustedHashes: [packageSha256],
     runtimeFactory: (...args) => ({ ...runtimeFactory(...args), aiBridge: bridge }) });
+  // Register before initialization: a failed installation must still close the
+  // listener and timers, and must never turn a fixture failure into a hung suite.
+  t.after(async()=>{
+    try { assert.equal(provider.calls.length,0);assert.equal(bridge.sent.length,0); }
+    finally { await app.close();await cleanup(dataRoot); }
+  });
   const socketPath = process.platform === 'win32' ? `\\\\.\\pipe\\qibox-test-native-scope-${process.pid}-${Date.now()}` : path.join(dataRoot,'scope.sock');
   await new Promise(resolve=>app.server.listen(socketPath,resolve));
   const call = (route, data, uid = '1001', csrf) => new Promise((resolve,reject) => {
@@ -21,13 +27,13 @@ async function fixture(t) {
   });
   let token = (await call('/session')).value.csrf;
   await call('/consent',{accepted:true});await call('/install/download',{});await app.library.working;
+  assert.equal(app.library.job?.status,'complete',app.library.lastError || app.library.job?.message);
   const instance = (await call('/instances',{name:'隔离账号门禁测试'})).value;
   await call(`/instances/${instance.id}/start`,{});
   const ai = (await app.users.get('1001')).get(instance.id).ai;
   await ai.configure(modelConfig);await ai.scan();
   await ai.setReplyOptions({contact:bridge.contacts[0].id,enabled:false});
   await ai.configuration({type:'personal-information',account:ai.data.account,entries:[{field:'city',text:'PRIVATE_OLD_NATIVE_ACCOUNT'}]});
-  t.after(async()=>{assert.equal(provider.calls.length,0);assert.equal(bridge.sent.length,0);await app.close();await cleanup(dataRoot);});
   return {app,ai,bridge,provider,call,route:`/instances/${instance.id}/ai`,oldAccount:bridge.account,newAccount:key('new-native-http-account')};
 }
 

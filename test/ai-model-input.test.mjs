@@ -109,3 +109,16 @@ test('inline interaction view caps complete examples and retains duplicate-id am
   assert.deepEqual(duplicate.reply,pairs.at(-1).reply);assert.equal(duplicate.reply.textRef,undefined);
   assert.doesNotThrow(()=>compactModelInput({mode:'reply',contextualStyle:{source:'current-chat-human',pairedExamples:'invalid'}}));
 });
+
+test('excerpted interaction sources never appear as complete inline style examples',()=>{
+  for(const field of ['excerpt','truncated','textTruncated']) for(const side of ['incoming','reply']) {
+    const incoming={id:'other',direction:'other',text:'截取的对方原话'},reply={id:'self',direction:'self',authorship:'human',text:'截取的本人原话'};
+    const pair={relation:'adjacent-context',incoming:{id:incoming.id,text:incoming.text},reply:{id:reply.id,text:reply.text}};
+    const source=side==='incoming'?incoming:reply;source[field]=true;
+    const input={mode:'reply',messages:[incoming,reply],contextualStyle:{source:'current-chat-human',pairedExamples:[pair]}},before=structuredClone(input);
+    const wire=compactModelInput(input);
+    assert.equal(wire.contextualStyle.pairedExamples[0][side].text,undefined);
+    assert.equal(wire.contextualStyle.pairedExamples[0][side].textRef,source.id);
+    assert.deepEqual(wire.messages,input.messages);assert.deepEqual(input,before);
+  }
+});

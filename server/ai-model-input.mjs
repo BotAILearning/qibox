@@ -52,6 +52,7 @@ export function compactModelInput(input, { system = '' } = {}) {
     for (const pair of input.contextualStyle.pairedExamples.toReversed()) {
       const incoming = available(pair?.incoming), reply = available(pair?.reply);
       if (!incoming || incoming.direction !== 'other' || !reply || reply.direction !== 'self' ||
+          [incoming, reply, pair.incoming, pair.reply].some(row => row.excerpt || row.truncated || row.textTruncated) ||
           reply.authorship !== 'human' || reply.aiGenerated === true || reply.unresolved || reply.assumedPresent ||
           reply.deliveryConfidence === 'unknown' || !['adjacent-context', 'verified-quote'].includes(pair.relation)) continue;
       const chars = incoming.text.length + reply.text.length;

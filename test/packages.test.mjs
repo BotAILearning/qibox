@@ -12,6 +12,14 @@ import { temp, cleanup, fetcher, extractor, packageBytes, packageSha256, delay }
 const testDownloadSource = { version: '4.1.13.9', url: OFFICIAL_URL, size: packageBytes.length, sha256: packageSha256 };
 const library = options => new PackageLibrary({ downloadSource: testDownloadSource, ...options });
 
+// An initialization/download failure can settle working before the requested
+// HTTP checkpoint exists. Fail with that cause instead of waiting forever.
+const reachedDuring = (checkpoint, instance) => Promise.race([
+  checkpoint,
+  Promise.resolve(instance.working).then(() => assert.fail(
+    `Download ended before the expected checkpoint: ${instance.lastError || instance.job?.message || instance.job?.status}`)),
+]);
+
 test('pause at a fully committed chunk cannot let the installer restart the downloader', async () => {
   const dataRoot = await temp(), payload = Buffer.alloc(3 * 1024 * 1024 + 11); Buffer.from('!<arch>\n').copy(payload);
   const sha256 = createHash('sha256').update(payload).digest('hex'); let requests = 0, pausePromise, pauseStarted = false, announced;
@@ -36,7 +44,7 @@ test('pause at a fully committed chunk cannot let the installer restart the down
     return downloader;
   };
   try {
-    await instance.init(); instance.download(); await pauseRequested; await pausePromise;
+    await instance.init(); instance.download(); await reachedDuring(pauseRequested, instance); await pausePromise;
     // Await any accidentally restarted work: a correct pause has no such work.
     await instance.transfer?.working; await new Promise(resolve => setImmediate(resolve));
     assert.equal(requests, 1, 'no new HTTP request is allowed until explicit Continue');
@@ -94,7 +102,7 @@ test('a paused fixed-hash download resumes through PackageLibrary after a user c
     fetcher: (url, init) => fetch(url, init), trustedHashes: [sha256], extract: extractor };
   const instance = new PackageLibrary(options); let restarted;
   try {
-    await instance.init(); instance.download(); await seen;
+    await instance.init(); instance.download(); await reachedDuring(seen, instance);
     assert.equal((await instance.pauseDownload()).job.status, 'paused');
     assert.equal(instance.publicState().job.bytes, 1024 * 1024);
     await instance.close(); restarted = new PackageLibrary(options); await restarted.init();
@@ -120,7 +128,7 @@ test('closing during a fixed-hash transfer restores download.json and resumes au
   const first = new PackageLibrary(options);
   let reboot;
   try {
-    await first.init(); first.download(); await seen; await first.close();
+    await first.init(); first.download(); await reachedDuring(seen, first); await first.close();
     reboot = new PackageLibrary(options); await reboot.init(); await reboot.working;
     assert.equal(reboot.job.status, 'complete'); assert.ok(reboot.installed());
   } finally {
