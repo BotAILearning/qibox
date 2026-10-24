@@ -28,6 +28,12 @@ export const replyConversationFinishPrompt = " 正文收笔：按生效style，�
 export const replyDraftCheckPrompt = ' 同次生成自检：仅在内部核对拟稿文字、全部segments及语音全文（text/segments/audioText），具体判断须有允许分享的原话依据；作者、事项主体、引用、条件、否定、时间精度与来源范围不换人、不补全或扩大，未知不能写成肯定或否定事实。赞同谁的观点、嘱咐谁做什么也须与原话对应；省略主语不能把第三人的打算接成对聊天对象的安排。更正只更新明确冲突的维度，不认领未发生的言行。事实、身份披露、授权、能力、停止联系、followUp和原JSON协议继续有效；无依据判断在本次生成内去掉，正常接话，不输出自检、归属表或解释来源。';
 export const replyCompositionPrompt = ' 最终写作任务：写本人此刻会接的下一条微信。问事、请求要答全；分享、评论、玩笑、收尾就接当前谈资。先确定这次交流需要说什么，再按生效style和相关本人真人接话的措辞、节奏、分寸表达，手动详细或正式等要求照办。事实、否定、更正和授权约束这句话能说什么，不自动要求说出它们。style中的条件要求只在当前表达确实触发该条件时适用，例如需要表态时才说明拿不准；不能因背景里有未知事项，每轮都报告未知。对方已按先前要求处理，就承接这个结果，不再重复下同样指示；有新疑问、新请求或实际矛盾再回应相关状态。更正时接住新确认的事实，不复述上轮问法为自己辩解；仅保留本轮交流需要的表达；完整阅读不等于复述材料，检查事实不等于宣告限制。expressionTendency可选，不补配额。只返回原协议最终JSON。';
 
+// Restate the writing task after the complete conversation, not just before a
+// long source document. This is static server prose, not a generated analysis
+// or a new request. Keep the full system policy: moving it away regressed the
+// retained long-chat comparison. Never substitute examples for user settings.
+export const replyCurrentWritingTask = '现在请按当前账号本人的口吻，写发给这个聊天对象的下一条微信。先接住本轮完整来信此刻想表达的意思：真正的问题和请求答全，普通分享、评论或收尾就自然接谈资。表达按保存的style及适用的本人真人接话样例。前文用于不说错，不是要重新宣布的事项；双方已说清的状态不再重复交代，没有请求就不重新下指示。仍遵守系统全部身份、事实、能力、分享和JSON协议，只返回本轮最终结果。';
+
 export function assertReplyRoleInput(input) {
   // Audit requests contain the already-validated contract with compact actor
   // references (self/other); they do not produce a deliverable generation.

@@ -1,5 +1,5 @@
 import { hasSpeakerTurns, speakerTurns, speakerHistory, replyRelations, confirmedSpeakerHistory } from './ai-speakers.mjs';
-import { assertReplyRoleInput, assertReplyRoleDraft, replyRolePrompt, replyRoleBindingPrompt, replyRoleEvidencePrompt, replySelfCheckPrompt, replyEvidencePlanPrompt, replyConversationFinishPrompt, replyDraftCheckPrompt, replyCompositionPrompt } from './ai-reply-role.mjs';
+import { assertReplyRoleInput, assertReplyRoleDraft, replyRolePrompt, replyRoleBindingPrompt, replyRoleEvidencePrompt, replySelfCheckPrompt, replyEvidencePlanPrompt, replyConversationFinishPrompt, replyDraftCheckPrompt, replyCompositionPrompt, replyCurrentWritingTask } from './ai-reply-role.mjs';
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -346,7 +346,13 @@ export class AIProvider {
     const expanded = hasSpeakerTurns(input) ? { ...textInput, sourceIndexVersion: 2, messages: input.messages, replySpeakerHistory: speakerHistory(input.messages).map(({ messages, ...group }) => ({ ...group, messageIds: messages.map(message => message.id) })), confirmedSpeakerHistory: confirmedSpeakerHistory(input.messages), replyRelations: replyRelations(input.messages) } : textInput;
     const wireSystem = completeReplyPolicy ? modelInputReferencePrompt + roleSystem
       : ['reply', 'proactive'].includes(input?.mode) ? roleSystem + modelInputReferencePrompt : roleSystem;
-    const encoded = encodeModelRequest(wireSystem, compactModelInput(expanded, { system: wireSystem }));
+    const compacted = compactModelInput(expanded, { system: wireSystem });
+    // Only the complete ordinary-reply policy owns this trailing instruction.
+    // Preserve every labelled source and the original system safeguards. A
+    // caller-supplied field cannot replace it or move it before the transcript.
+    const { writeNextMessage: suppliedTask, ...replyInput } = completeReplyPolicy ? compacted : {};
+    const modelInput = completeReplyPolicy ? { ...replyInput, writeNextMessage: replyCurrentWritingTask } : compacted;
+    const encoded = encodeModelRequest(wireSystem, modelInput);
     const text = JSON.stringify(encoded.input);
     const requestContent = validImages.length ? [{type:'text',text}, ...validImages.flatMap(x => [{type:'text',text:'图片对应消息 '+encoded.id(x.messageId)+(x.thumbnail ? '（微信缩略图；只描述可辨认的内容，不猜测模糊细节）' : '')}, anthropic ? {type:'image',source:{type:'base64',media_type:x.mime,data:x.data}} : {type:'image_url',image_url:{url:'data:'+x.mime+';base64,'+x.data}}])] : text;
     // Only Anthropic used to receive an output budget; elsewhere the server's
