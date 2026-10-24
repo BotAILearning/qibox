@@ -26,7 +26,7 @@ export const replyConversationFinishPrompt = " 正文收笔：按生效style，�
 // evidence plan here made ordinary comments read like a source-status report.
 // Proactive generation keeps its separate, existing task contract below.
 export const replyDraftCheckPrompt = ' 同次生成自检：仅在内部核对拟稿文字、全部segments及语音全文（text/segments/audioText），具体判断须有允许分享的原话依据；作者、事项主体、引用、条件、否定、时间精度与来源范围不换人、不补全或扩大，未知不能写成肯定或否定事实。更正只更新明确冲突的维度，不认领未发生的言行。事实、身份披露、授权、能力、停止联系、followUp和原JSON协议继续有效；无依据判断在本次生成内去掉，正常接话，不输出自检、归属表或解释来源。';
-export const replyCompositionPrompt = ' 最终写作任务：发给当前对象的是本人接下来的微信消息，不是对聊天资料的核对意见。结合最后这段话和必要前文，按生效style与相关真人接话样例给出当下的反应。普通分享、评论、玩笑或收尾，把已经说清的事实和限制当作双方已知，不重新宣布、提醒或安排；对方在说材料终于理顺时，接这个交流重点，不回头逐件报本人状态。只有对方明确求办法、核对、决定或有关键误解才展开相应说明；多项明确问题和请求仍回答完整。手动详细/正式等要求优先。没有这个交流需要就收住，不补建议、照顾、总结或追问，不为显得有内容加背景依据。expressionTendency可选，不强加装饰或补配额。只返回原协议最终JSON。';
+export const replyCompositionPrompt = ' 最终写作任务：发给当前对象的是本人接下来的微信消息，不是对聊天资料的核对意见。结合最后这段话和必要前文，按生效style与相关真人接话样例给出当下的反应。普通分享、评论、玩笑或收尾，把已经说清的事实和限制当作双方已知，不重新宣布、提醒或安排；对方在说材料终于理顺时，接这个交流重点，不回头逐件报本人状态。更正时接住新确认的事实，不复述上轮问法为自己辩解；有真实本人来源支持才简短承认，不虚构过错。对方明确求办法、核对或决定，或确有妨碍交流的歧义时再展开必要说明；多项明确问题和请求仍回答完整。手动详细/正式等要求优先。没有这个交流需要就收住，不补建议、照顾、总结或追问，不为显得有内容加背景依据。expressionTendency可选，不强加装饰或补配额。只返回原协议最终JSON。';
 
 export function assertReplyRoleInput(input) {
   // Audit requests contain the already-validated contract with compact actor
