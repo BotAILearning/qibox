@@ -57,6 +57,61 @@ class FakeFunction:
 
 
 class GroupSearchBoundaries(unittest.TestCase):
+    def test_search_reacquires_field_after_editable_text_invalidates_old_control(self):
+        inspector = object.__new__(native.NativeControls)
+        inspector.main = lambda: {'app': 1, 'frame': 2}
+        inspector._visible_roots = lambda *args: []
+        value, current = [''], [10]
+        inspector._group_search_field = lambda: current[0]
+        inspector._group_search_text = lambda field: value[0]
+        def set_text(field, text):
+            self.assertEqual(field, current[0])
+            value[0] = text
+            current[0] += 1  # Qt replaces/invalidates the accessible snapshot.
+        inspector._set_group_search_text = set_text
+        pressed = []
+        def press(field):
+            if field != current[0]:
+                raise RuntimeError('control unavailable')
+            pressed.append(field)
+        inspector.press = press
+        inspector._trigger_group_search = Mock()
+        inspector.states = lambda field: {12}
+        inspector._group_search_results = lambda *args, **kwargs: [({'obj': 31}, 30)]
+        inspector._observe = lambda operation: operation()
+        inspector.require_foreground = Mock()
+        inspector.press_row = Mock()
+        inspector.locate = lambda: {'label': '测试对象'}
+        inspector._dismiss_group_search = Mock()
+        verify = Mock()
+        self.assertTrue(inspector.search_background_conversation('测试对象', lambda: True, verify))
+        self.assertEqual(pressed, [10, 11])
+        verify.assert_called_once_with()
+        self.assertEqual(value[0], '')
+
+    def test_reacquired_search_with_changed_text_never_focuses_or_opens_candidate(self):
+        inspector = object.__new__(native.NativeControls)
+        inspector.main = lambda: {'app': 1, 'frame': 2}
+        inspector._visible_roots = lambda *args: []
+        current, value = [10], ['']
+        inspector._group_search_field = lambda: current[0]
+        inspector._group_search_text = lambda field: value[0]
+        def set_text(field, text):
+            current[0] = 11
+            value[0] = '用户另一个搜索'
+        inspector._set_group_search_text = set_text
+        inspector.press = Mock()
+        inspector._trigger_group_search = Mock()
+        inspector.require_foreground = Mock()
+        inspector.press_row = Mock()
+        inspector._dismiss_group_search = Mock()
+        with self.assertRaisesRegex(native.ControlsUnavailable, 'group search changed'):
+            inspector.search_background_conversation('测试对象', lambda: True, Mock())
+        inspector.press.assert_called_once_with(10)
+        inspector._trigger_group_search.assert_not_called()
+        inspector.press_row.assert_not_called()
+        self.assertEqual(value[0], '用户另一个搜索')
+
     def test_search_suggestion_is_never_a_conversation_candidate(self):
         inspector = object.__new__(native.NativeControls)
         inspector.application = lambda: 1

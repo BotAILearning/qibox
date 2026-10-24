@@ -1167,6 +1167,13 @@ class NativeControls(base.Inspector):
                 self._set_group_search_text(field, label)
                 owned = True
                 # EditableText can move focus back to the chat composer.
+                # It can also invalidate the field's accessibility snapshot
+                # while Qt opens the results. Resolve the verified search
+                # control again before focusing it; never reuse its old state
+                # or fall back to the chat editor.
+                field = self._group_search_field()
+                if self._group_search_text(field) != label:
+                    raise ControlsUnavailable('group search text changed')
                 self.press(field)
                 def focused_search():
                     current_field = self._group_search_field()
