@@ -24,7 +24,9 @@ test('chronological analysis uses one smaller dedicated prompt while preserving 
   const chronological = wires[0].messages.find(m => m.role === 'system').content;
   const input = JSON.parse(wires[0].messages.find(m => m.role === 'user').content);
   assert.equal(input.userRequest, request);
-  assert.deepEqual(input.messages.map(m => [m.sequence, m.speaker, m.text, m.secondsSincePrevious]), texts.map((text, i) => [i + 1, i % 2 ? '本人' : '对方', text, i ? 30 : null]));
+  assert.deepEqual(input.messageColumns, ['sequence', 'author', 'beijingTime', 'text', 'secondsSincePrevious']);
+  const names = Object.fromEntries(input.participants.map(p => [p.id, p.reportName]));
+  assert.deepEqual(input.messages.map(m => [m[0], names[m[1]], m[3], m[4]]), texts.map((text, i) => [i + 1, i % 2 ? '本人' : '对方', text, i ? 30 : null]));
   assert.equal(input.coverage.truncated, false); assert.equal(input.analyzedCount, 4);
   assert.doesNotMatch(chronological, /默认按音乐回顾方式|每章固定两行/);
   assert.match(chronological, /用户指定表格、列表等格式时仍保持此顺序/);

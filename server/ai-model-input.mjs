@@ -2,6 +2,26 @@
 // continue to receive the complete original context, without changed facts.
 export const modelInputReferencePrompt = ' 输入使用原文引用结构：messages保留原顺序、作者和已有截断、未知标记；本轮完整来信放在末尾conversation.pendingIncomingMessages，前面同一消息不再重复正文。textRef和作者索引messageIds按ID查找messages或pendingIncomingMessages中带text的原文，不是另作摘要，不补全被截断或未读内容。addressing.currentStyleRef=style仅表示其当前对象风格与style完全相同，按style原文读取，称呼和分享范围不扩大。索引只定位来源，不推断事情主体；先读本轮来信与相关前文，不能只看最后一位发言者或关键词补人名。核实引用的作者仍以quote为准，发图者不等于图片中事项的当事人。AI历史只作衔接与避免重复，真人风格样例只借用表达，不搬用事实。没有引用索引的资料仍按原字段读取；原有事实、权限、身份、风格优先级和返回协议继续生效。';
 
+// Report tables repeat field names and author labels, not factual content.
+// Pack only this exact known DTO; future quote/identity metadata stays inline.
+export function compactReportInput(input) {
+  const columns = ['sequence', 'speaker', 'beijingTime', 'text', 'secondsSincePrevious'];
+  const authors = new Map([['本人', 'self'], ['对方', 'other'], ['未知', 'unknown']]);
+  if (!input || Object.hasOwn(input, 'participants') || Object.hasOwn(input, 'messageColumns') ||
+      !Array.isArray(input.messages) || !input.messages.length || !input.messages.every((row, index) =>
+        row && Object.keys(row).length === columns.length && columns.every(key => Object.hasOwn(row, key)) &&
+        Number.isSafeInteger(row.sequence) && row.sequence === index + 1 && authors.has(row.speaker) &&
+        typeof row.beijingTime === 'string' && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(row.beijingTime) &&
+        typeof row.text === 'string' && (index === 0 ? row.secondsSincePrevious === null :
+          Number.isFinite(row.secondsSincePrevious) && row.secondsSincePrevious >= 0))) return input;
+  const result = { ...input,
+    participants: [...authors].map(([reportName, id]) => ({ id, reportName })),
+    messageColumns: ['sequence', 'author', 'beijingTime', 'text', 'secondsSincePrevious'],
+    messages: input.messages.map(row => [row.sequence, authors.get(row.speaker), row.beijingTime, row.text, row.secondsSincePrevious]) };
+  if (typeof input.userRequest === 'string' && input.request === input.userRequest) delete result.request;
+  return result;
+}
+
 export function compactModelInput(input, { system = '' } = {}) {
   if (!['reply', 'proactive'].includes(input?.mode)) return input;
   const result = { ...input };

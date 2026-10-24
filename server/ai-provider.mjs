@@ -5,7 +5,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { isIP } from 'node:net';
 import { AppError } from './files.mjs';
-import { compactModelInput, encodeModelRequest, modelInputReferencePrompt } from './ai-model-input.mjs';
+import { compactModelInput, compactReportInput, encodeModelRequest, modelInputReferencePrompt } from './ai-model-input.mjs';
 import { textField } from './ai-schema.mjs';
 import { readableMediaInput } from './ai-media-input.mjs';
 import { replyFixedRules } from './ai-reply-prompt.mjs';
@@ -353,7 +353,8 @@ export class AIProvider {
     // Preserve every labelled source and the original system safeguards. A
     // caller-supplied field cannot replace it or move it before the transcript.
     const { writeNextMessage: suppliedTask, ...replyInput } = completeReplyPolicy ? compacted : {};
-    const modelInput = completeReplyPolicy ? { ...replyInput, writeNextMessage: replyCurrentWritingTask } : compacted;
+    const modelInput = completeReplyPolicy ? { ...replyInput, writeNextMessage: replyCurrentWritingTask }
+      : format === 'report' ? compactReportInput(compacted) : compacted;
     const encoded = encodeModelRequest(wireSystem, modelInput);
     const text = JSON.stringify(encoded.input);
     const requestContent = validImages.length ? [{type:'text',text}, ...validImages.flatMap(x => [{type:'text',text:'图片对应消息 '+encoded.id(x.messageId)+(x.thumbnail ? '（微信缩略图；只描述可辨认的内容，不猜测模糊细节）' : '')}, anthropic ? {type:'image',source:{type:'base64',media_type:x.mime,data:x.data}} : {type:'image_url',image_url:{url:'data:'+x.mime+';base64,'+x.data}}])] : text;
