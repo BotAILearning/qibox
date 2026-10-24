@@ -2560,7 +2560,9 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       const current = generation;
       timer = setInterval(async () => {
         if (current === generation && !panel.hidden) refreshReplyCountdowns(panel);
-        if ((typeof document.visibilityState === 'string' && (panel.hidden || document.hidden)) || Date.now() - lastPollAt < 2500) return;
+        // The rail stays visible when the assistant panel is closed. Keep its
+        // master state current across pages using the existing verified reads.
+        if ((typeof document.visibilityState === 'string' && document.hidden) || Date.now() - lastPollAt < 2500) return;
         lastPollAt = Date.now();
         if (polling || scopeChecking || current !== generation) return; polling = true;
         try {

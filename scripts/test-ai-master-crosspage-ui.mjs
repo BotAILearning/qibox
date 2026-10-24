@@ -1,0 +1,71 @@
+// Real local browser and production application/API; no real model or WeChat.
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { createRequire } from 'node:module';
+import assert from 'node:assert/strict';
+import { root, playwrightPath } from './tooling.mjs';
+import { proactiveFixture } from './proactive-ui-fixture.mjs';
+import { key } from '../test/ai-fixtures.mjs';
+const { chromium } = createRequire(import.meta.url)(playwrightPath);
+const out = path.resolve(root, process.env.QIBOX_TEST_OUTPUT || 'reports/ai-master-crosspage');
+await fs.mkdir(out, { recursive: false });
+const fixture = await proactiveFixture(), browser = await chromium.launch({ channel: 'msedge', headless: true });
+const proof = { at: new Date().toISOString(), passed: false, realModelRequests: 0, realWechatMessages: 0, cases: [] };
+const initialCalls = fixture.provider.calls.length;
+try {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  const first = await context.newPage(), second = await context.newPage();
+  for (const page of [first, second]) {
+    page.setDefaultTimeout(8000); await page.goto(fixture.url);
+    await page.locator('[data-action=open]').click();
+    await page.locator('#ai-rail [data-ai-setting=enabled]').waitFor({ state: 'visible' });
+  }
+  const rail = page => page.locator('#ai-rail [data-ai-setting=enabled]');
+  assert.equal(await first.locator('#ai-panel').isVisible(), false);
+  assert.equal(await second.locator('#ai-panel').isVisible(), false);
+  await rail(second).check(); assert.equal(fixture.ai.publicState().settings.enabled, true);
+  await first.bringToFront();
+  await first.waitForFunction(() => document.querySelector('#ai-rail [data-ai-setting=enabled]')?.checked === true, { timeout: 8000 });
+  assert.equal(await first.locator('#ai-panel').isVisible(), false);
+  proof.cases.push({ name: 'closed assistant panel rail reflects another page enabling AI', passed: true });
+  await first.screenshot({ path: path.join(out, 'first-synchronized-on.png') });
+  await rail(first).uncheck(); assert.equal(fixture.ai.publicState().settings.enabled, false);
+  await second.bringToFront();
+  await second.waitForFunction(() => document.querySelector('#ai-rail [data-ai-setting=enabled]')?.checked === false, { timeout: 8000 });
+  proof.cases.push({ name: 'other closed panel reflects emergency close', passed: true });
+  await second.screenshot({ path: path.join(out, 'second-synchronized-off.png') });
+  await first.bringToFront(); await first.locator('#ai-open').click();
+  const contact = fixture.bridge.contacts[0].id;
+  await first.locator(`[data-ai-object="${contact}"]`).click();
+  await first.getByRole('button', { name: '聊天风格', exact: true }).click();
+  const draft = '未保存的风格草稿，轮询不能清空';
+  await first.locator('#ai-object-form [name=summary]').fill(draft);
+  await first.locator('#ai-close').click();
+  await rail(second).check(); await first.bringToFront();
+  await first.waitForFunction(() => document.querySelector('#ai-rail [data-ai-setting=enabled]')?.checked === true, null, { timeout: 8000 });
+  await first.locator('#ai-open').click();
+  assert.equal(await first.locator('#ai-object-form [name=summary]').inputValue(), draft);
+  assert.equal(Object.values(fixture.ai.data.profiles).some(p => p.style?.summary === draft), false);
+  proof.cases.push({ name: 'hidden-panel polling preserves an unsaved same-account draft without saving it', passed: true });
+  await first.screenshot({ path: path.join(out, 'unsaved-draft-preserved.png') });
+  await first.locator('#ai-close').click();
+  fixture.bridge.account = key('master-crosspage-new-account');
+  fixture.bridge.contacts = [{ id: contact, label: '新账号对象', kind: 'person' }];
+  await first.waitForFunction(() => document.querySelector('#ai-rail [data-ai-setting=enabled]')?.checked === false, null, { timeout: 8000 });
+  assert.equal(fixture.ai.data.account, fixture.bridge.account);
+  await first.locator('#ai-open').click();
+  await first.locator(`[data-ai-object="${contact}"]`).click();
+  assert.equal((await first.locator('#ai-content').innerText()).includes(draft), false);
+  assert.equal(fixture.ai.data.settings.enabled, false);
+  proof.cases.push({ name: 'closed-panel actual account change stops old master and discards old-account draft', passed: true });
+  await first.screenshot({ path: path.join(out, 'new-account-draft-excluded.png') });
+  assert.equal(fixture.provider.calls.length, initialCalls);
+  assert.equal(fixture.bridge.sent.length, 0);
+  proof.passed = true; await context.close();
+} finally {
+  proof.mockModelRequestsAfterSetup = fixture.provider.calls.length - initialCalls;
+  proof.mockSends = fixture.bridge.sent.length;
+  await fs.writeFile(path.join(out, 'report.json'), JSON.stringify(proof, null, 2));
+  await browser.close(); await fixture.close();
+}
+console.log(JSON.stringify(proof));
