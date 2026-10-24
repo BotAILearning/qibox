@@ -34,6 +34,25 @@ async function fixture(t) {
   return { root, bridge, provider, a, contact: bridge.contacts[0].id };
 }
 
+test('a same-completion report fact index is not exposed or persisted as the report', async t => {
+  const { bridge, provider, a, contact } = await fixture(t);
+  const messages = [
+    { id: key('basis-a'), direction: 'other', text: '小林自己的相机已经取回。', timestamp: stamp('2026-10-25T09:00:00+08:00') },
+    { id: key('basis-b'), direction: 'self', text: '我的退款只交了申请，还没查账。', timestamp: stamp('2026-10-25T09:00:20+08:00') },
+  ];
+  bridge.readRange = async args => ({ account: args.account, contact: args.contact, messages });
+  let calls = 0;
+  provider.complete = async (_config, _system, input, _signal, options) => {
+    calls++; assert.deepEqual(input.messages.map(m => m.text), messages.map(m => m.text));
+    assert.equal(options.budget, 4096);
+    return { basis: [[[1], 'PRIVATE_BASIS_ONLY', '内部事实要点']], report: '小林已取回自己的相机；本人的退款结果尚未核实。' };
+  };
+  const result = (await a.analyze({ contacts: [contact], request: '按时间顺序概括' })).reports[0];
+  assert.equal(calls, 1); assert.equal(result.status, 'complete');
+  assert.equal(result.report, '小林已取回自己的相机；本人的退款结果尚未核实。');
+  assert.doesNotMatch(JSON.stringify(a.analysisReport(result.historyId)), /PRIVATE_BASIS_ONLY|内部事实要点|"basis"/);
+});
+
 test('a contradictory report is visibly rejected after one call, preserving saved reports and allowing explicit recovery',async t=>{
  const {bridge,provider,a,contact}=await fixture(t);
  bridge.readRange=async args=>({account:args.account,contact:args.contact,messages:[
