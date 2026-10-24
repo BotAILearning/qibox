@@ -1,6 +1,6 @@
 // Compact only the wire representation. Local attribution and delivery checks
 // continue to receive the complete original context, without changed facts.
-export const modelInputReferencePrompt = ' 输入使用原文引用结构：messages按原顺序保存本次可读原文及已有截断、未知标记。textRef是同一次请求中该messageId对应的原文，不是另作摘要，不补全被截断或未读内容；作者索引的messageIds、风格样例及配对也按ID查阅messages。索引只定位来源，不推断事情主体；先读本轮来信与相关前文，不能只看最后一位发言者或关键词补人名。核实引用的作者仍以quote为准，发图者不等于图片中事项的当事人。AI历史只作衔接与避免重复，真人风格样例只借用表达，不搬用事实。没有引用索引的资料仍按原字段读取；原有事实、权限、身份、风格优先级和返回协议继续生效。';
+export const modelInputReferencePrompt = ' 输入使用原文引用结构：messages保留原顺序、作者和已有截断、未知标记；本轮完整来信放在末尾conversation.pendingIncomingMessages，前面同一消息不再重复正文。textRef和作者索引messageIds按ID查找messages或pendingIncomingMessages中带text的原文，不是另作摘要，不补全被截断或未读内容。索引只定位来源，不推断事情主体；先读本轮来信与相关前文，不能只看最后一位发言者或关键词补人名。核实引用的作者仍以quote为准，发图者不等于图片中事项的当事人。AI历史只作衔接与避免重复，真人风格样例只借用表达，不搬用事实。没有引用索引的资料仍按原字段读取；原有事实、权限、身份、风格优先级和返回协议继续生效。';
 
 export function compactModelInput(input, { system = '' } = {}) {
   if (!['reply', 'proactive'].includes(input?.mode)) return input;
@@ -82,6 +82,23 @@ export function compactModelInput(input, { system = '' } = {}) {
     result.attributionContext = evidence;
   }
   if (input.mode === 'reply' && input.contextualStyle?.source === 'current-chat-human') {
+    // Make the actual turn readable at the end, rather than ending with IDs
+    // pointing back into long background. Move only exact unique originals;
+    // retain the chronological source metadata and never duplicate the body.
+    const pending = input.conversation?.pendingIncomingMessages;
+    if (Array.isArray(pending) && Array.isArray(result.messages)) {
+      const counts = new Map();for (const row of pending) counts.set(row?.id,(counts.get(row?.id)||0)+1);
+      const canonical = new Map(pending.flatMap(row => {
+        const source=available(row);
+        return source?.direction==='other' && counts.get(row.id)===1
+          ? [[row.id,result.messages.find(message=>message.id===row.id)]] : [];
+      }));
+      result.conversation.pendingIncomingMessages = pending.map((row,index)=>canonical.get(row.id)||result.conversation.pendingIncomingMessages[index]);
+      result.messages = result.messages.map(row=>{
+        if (!canonical.has(row.id)) return row;
+        const {text,...metadata}=row;return {...metadata,textRef:row.id};
+      });
+    }
     // Read the labelled sources, then expression examples, then the current
     // turn. Actor indexes are still complete; their incidental property order
     // must not become the last task the model sees.

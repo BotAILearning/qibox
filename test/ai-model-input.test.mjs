@@ -83,7 +83,11 @@ test('current-chat human interaction examples stay readable in a bounded wire vi
   const before=structuredClone(input),wire=compactModelInput(input),pairs=wire.contextualStyle.pairedExamples;
   assert.equal(pairs[0].incoming.text,messages[0].text);assert.equal(pairs[0].reply.text,messages[1].text);
   for(const p of pairs.slice(1)){assert.equal(p.incoming.text,undefined);assert.equal(p.reply.text,undefined);}
-  assert.deepEqual(wire.messages,messages);assert.equal(Object.keys(wire).at(-1),'conversation');
+  assert.deepEqual(wire.messages.slice(0,-1),messages.slice(0,-1));
+  assert.deepEqual(wire.conversation.pendingIncomingMessages,[messages.at(-1)]);
+  assert.deepEqual(wire.messages.at(-1),{id:'now',direction:'other',textRef:'now'});
+  assert.equal(JSON.stringify(wire).split(messages.at(-1).text).length-1,1);
+  assert.equal(Object.keys(wire).at(-1),'conversation');
   assert.equal(wire.conversation.latestIncoming.textRef,'now');assert.deepEqual(input,before);
   const encoded=encodeModelRequest('当前回复',wire);assert.deepEqual(encoded.decode(encoded.input),wire);
 });
@@ -120,5 +124,21 @@ test('excerpted interaction sources never appear as complete inline style exampl
     assert.equal(wire.contextualStyle.pairedExamples[0][side].text,undefined);
     assert.equal(wire.contextualStyle.pairedExamples[0][side].textRef,source.id);
     assert.deepEqual(wire.messages,input.messages);assert.deepEqual(input,before);
+  }
+});
+
+test('current-turn relocation preserves full actors, quotes, partial markers and every source exactly once',()=>{
+  const history={id:'h',direction:'self',speaker:{id:'self'},text:'本人已付款，退款未确认'},
+    a={id:'a',direction:'other',speaker:{id:'other'},timestamp:4,text:'他只说没查到，不是说你没办理',excerpt:true,quote:{verified:true,messageId:'h',direction:'self',text:history.text}},
+    b={id:'b',direction:'other',speaker:{id:'other'},timestamp:5,text:'这样总算顺一点',truncated:true};
+  const input={mode:'reply',messages:[history,a,b],contextualStyle:{source:'current-chat-human'},conversation:{pendingIncomingMessages:[a,b],latestIncoming:b}},before=structuredClone(input),wire=compactModelInput(input);
+  const canonicalA={...a,quote:{verified:true,messageId:'h',direction:'self',textRef:'h'}};
+  assert.deepEqual(wire.messages[0],history);assert.deepEqual(wire.conversation.pendingIncomingMessages,[canonicalA,b]);
+  assert.equal(wire.messages.find(x=>x.id===canonicalA.quote.textRef).text,history.text);
+  for(const original of [canonicalA,b]){const {text,...metadata}=original;assert.deepEqual(wire.messages.find(x=>x.id===original.id),{...metadata,textRef:original.id});assert.equal(JSON.stringify(wire).split(original.text).length-1,1);}
+  assert.equal(wire.conversation.latestIncoming.textRef,'b');assert.deepEqual(input,before);
+  const encoded=encodeModelRequest('读末尾完整来信',wire);assert.deepEqual(encoded.decode(encoded.input),wire);
+  for(const variant of [{...input,messages:[history,a,a,b]},{...input,conversation:{...input.conversation,pendingIncomingMessages:[{...a,speaker:{id:'different'}},b]}}]){
+    const result=compactModelInput(variant);assert.equal(result.messages.find(x=>x.id==='a').text,a.text);
   }
 });
