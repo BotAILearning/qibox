@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { AIAssistant } from '../server/ai-service.mjs';
 import { naturalChatPrompt, reflectiveReplyPrompt } from '../server/ai-prompts.mjs';
+import { mediaOutputPrompt } from '../server/ai-media-output.mjs';
 import { identityPrompt } from '../server/ai-reply-rules.mjs';
 import { AIModelFixture, ChatFixture, modelConfig } from './ai-fixtures.mjs';
 import { temp, cleanup } from './fixtures.mjs';
@@ -31,6 +32,12 @@ function assertChatRules(call) {
     assert.equal(call.system.split(currentReplyScopePrompt).length - 1, 1);
     assert.equal(call.system.split(replyConversationPrompt).length - 1, 1);
     assert.match(call.system, /普通叙述不是待办清单/);
+    assert.match(call.system, /区分来源范围与当事人状态/);
+    if (!call.input.capabilities.sendImages && !call.input.capabilities.sendAudio) {
+      assert.equal(call.system.includes(mediaOutputPrompt), false);
+      assert.match(call.system, /本轮只输出文字/);
+      assert.match(call.system, /不能读取或下载任意文件/);
+    }
   }
 }
 

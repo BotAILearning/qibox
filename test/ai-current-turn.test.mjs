@@ -111,6 +111,7 @@ test('a new topic is surfaced explicitly while the answered question stays backg
     assert.equal(input.messages.find(m => m.id === second.id).pending, true);
     assert.equal(input.capabilities.sendImages, true); assert.equal(input.capabilities.sendAudio, true);
     assert.equal(input.capabilities.sendMedia, true); assert.equal(input.capabilities.files, false);
+    assert.match(provider.calls.at(-1).system, /capabilities.sendImages\/sendAudio/);
     assert.match(provider.calls.at(-1).system, /本轮只回应conversation.pendingIncomingMessages/);
     return send('蓝色杯子的构图可以用白色背景。');
   };
