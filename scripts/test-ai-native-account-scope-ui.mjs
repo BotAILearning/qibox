@@ -61,7 +61,9 @@ try {
       bridge.currentAccount = originalIdentity;
       if (width >= 640) await page.locator('#ai-open').click();
       await boundaries().waitFor({state:'attached'});
-      assert.equal(await boundaries().inputValue(),marker); row.checks.sameAccountDraftRecovered = true; await screen('same-account-draft-recovered');
+      assert.equal(await boundaries().inputValue(),marker); row.checks.sameAccountDraftRecovered = true;
+      assert.equal(await page.locator('#ai-feedback').isVisible(),false,'A verified same-account recovery must clear its expired identity-read error');
+      row.checks.recoveredIdentityNoticeCleared = true; await screen('same-account-draft-recovered');
 
       // A slow scan is a real controller workflow (busy=true), but its response
       // is held after the backend finished. Identity fails during that wait.
@@ -87,6 +89,8 @@ try {
       await page.locator(`[data-ai-object="${contact}"]`).waitFor({state:'visible'});
       await page.locator(`[data-ai-object="${contact}"]`).click();
       assert.equal(await boundaries().inputValue(),marker); row.checks.busySameAccountDraftRecovered = true;
+      assert.equal(await page.locator('#ai-feedback[role=alert]').filter({hasText:'确认当前微信账号'}).isVisible(),false,'A delayed workflow read must not retain its recovered identity error');
+      row.checks.busyRecoveredIdentityNoticeCleared = true;
 
       if (width >= 640) { await page.locator('#ai-close').click(); await page.locator('#ai-panel').waitFor({state:'hidden'}); }
       bridge.account = key(`native-account-017-${name}`);

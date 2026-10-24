@@ -59,6 +59,9 @@ test('failed settings save keeps edited values marked as unsaved', async t => {
   form.elements.namedItem('replyDelay').value = '13';
   await dom.submit(form);
   assert.equal(dom.node('#ai-feedback').hidden, false);
+  await controller.show();
+  assert.equal(dom.node('#ai-feedback').hidden, false, 'A verified identity read must not clear an unrelated failed save');
+  assert.equal(dom.node('#ai-feedback').getAttribute('role'), 'alert');
   await dom.navigate('proactive'); await dom.navigate('settings');
   const restored = dom.node('#ai-takeover-form');
   assert.equal(restored.elements.namedItem('replyDelay').value, '13');

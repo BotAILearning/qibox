@@ -53,6 +53,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   }
   let id, state, tab = 'overview', timer, lastPollAt = 0, generation = 0, requestEpoch = 0, workToken = 0, analysisQueueToken = 0, analysisQueueAccount = null, polling = false, busy = false, attaching = false;
   let scopeVerified = false, scopeChecking = false, scopeVerificationEpoch = 0;
+  const identityReadErrors = new WeakSet();
   const accountScopeError = error => ['AI_ACCOUNT_UNVERIFIED', 'AI_SCOPE_CHANGED', 'ai_account_changed', 'ai_wechat_logged_out', 'ai_data_unavailable'].includes(error?.code);
   let dateRangeOperation = null;
   function invalidateDateRange() { dateRangeOperation?.controller.abort(); dateRangeOperation = null; if ($('#ai-feedback')?.textContent.includes('正在读取聊天日期…')) message(''); }
@@ -209,7 +210,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       const result = await api(`/instances/${target}/ai`, { action: 'skip-records', value: { limit: 50, before: page.nextBefore } });
       if (!currentPage()) return;
       skipHistory = [...new Map([...skipState().skipRecords, ...result.records].map(row => [row.id, row])).values()]; skipHistoryPage = result.page;
-    } catch (error) { if (currentPage()) message(error.message, true); }
+    } catch (error) { if (currentPage()) failure(error); }
     finally { if (currentPage()) { skipPageLoading = false; drawSkips(); void loadSkipContent(); } }
   }
   const summaryResults = new Map();
@@ -279,7 +280,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       } else proactiveHistory = result.records || [];
       proactiveHistoryPage = result.page || { hasMore: false };
       rememberRecords();
-    } catch (e) { if (current === generation && epoch === proactiveRecordEpoch) message(e.message, true); }
+    } catch (e) { if (current === generation && epoch === proactiveRecordEpoch) failure(e); }
     finally {
       if (current === generation && epoch === proactiveRecordEpoch) {
         proactiveRecordLoading = false;
@@ -305,7 +306,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       } else errorHistory = result.records || [];
       errorPage = result.page || { hasMore: false };
       rememberRecords();
-    } catch (e) { if (current === generation && target === id && epoch === errorEpoch) message(e.message, true); }
+    } catch (e) { if (current === generation && target === id && epoch === errorEpoch) failure(e); }
     finally { if (current === generation && target === id && epoch === errorEpoch) { errorLoading = false; drawErrors(); } }
   }
   async function loadActivity() {
@@ -340,7 +341,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     } catch (error) {
       if (valid()) {
         logRecords = mergeRecordResults(logRecords, entries.filter(p => ids.includes(p.id)).map(p => ({ ...p, messages: [], unavailable: true, error: error.message })));
-        message(error.message, true);
+        failure(error);
       }
     } finally {
       if (valid()) { logLoading = false; drawRecords(); rememberRecords(); }
@@ -464,26 +465,36 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     },
   });
   const reviewAlert = document.createElement('a'); reviewAlert.href = '#ai-review'; reviewAlert.className = 'ai-review-alert'; reviewAlert.hidden = true; rail.append(reviewAlert);
-  reviewAlert.addEventListener('click', event => { event.preventDefault(); show(); void navigate('activity').catch(e => message(e.message, true)); });
+  reviewAlert.addEventListener('click', event => { event.preventDefault(); show(); void navigate('activity').catch(e => failure(e)); });
   panel.addEventListener('click', event => {
     const skipWait = event.target.closest('[data-ai-skip-reply-wait]');
     if (skipWait) {
       event.preventDefault();
-      void execute('skip-reply-wait', { id: skipWait.dataset.aiSkipReplyWait }, '已跳过等待，正在交给 AI 处理').catch(error => message(error.message, true));
+      void execute('skip-reply-wait', { id: skipWait.dataset.aiSkipReplyWait }, '已跳过等待，正在交给 AI 处理').catch(error => failure(error));
       return;
     }
     const resume = event.target.closest('[data-ai-resume-profile]');
     if (resume) {
       event.preventDefault(); const p = state.profiles.find(p => p.id === resume.dataset.aiResumeProfile);
-      if (p) void execute('profile', { id: p.id, value: { style: p.style, paused: false } }, '已开启，将处理后续新消息').catch(error => message(error.message, true));
+      if (p) void execute('profile', { id: p.id, value: { style: p.style, paused: false } }, '已开启，将处理后续新消息').catch(error => failure(error));
       return;
     }
     const open = event.target.closest('[data-ai-open-conversation]');
-    if (open) { event.preventDefault(); if (!open.disabled) void openConversation(open.dataset.aiOpenConversation, open).catch(error => message(error.message, true)); return; }
+    if (open) { event.preventDefault(); if (!open.disabled) void openConversation(open.dataset.aiOpenConversation, open).catch(error => failure(error)); return; }
   });
-  const { show: message } = dismissibleNotice($('#ai-feedback'), {
+  const feedbackNotice = dismissibleNotice($('#ai-feedback'), {
     fallbackFocus: () => panel.querySelector('.ai-main-tabs [aria-current="page"]'),
   });
+  let identityReadNotice = null;
+  function message(value, error = false, { identityRead = false, ...options } = {}) {
+    identityReadNotice = identityRead && error ? String(value ?? '') : null;
+    feedbackNotice.show(value, error, options);
+  }
+  function failure(error) {
+    const identityRead = identityReadErrors.has(error);
+    identityReadErrors.delete(error);
+    message(error.message, true, { identityRead });
+  }
   function confirmRecordDelete(recordId, source) {
     return new Promise(resolve => {
       const dialogGeneration = generation;
@@ -619,7 +630,10 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     try { result = await api(`/instances/${target}/ai${compact && state ? '?view=live' + (selectedObject ? '&contact=' + encodeURIComponent(selectedObject) : '') : ''}`, action ? { action, ...extras } : undefined, ['learn', 'scan'].includes(action) ? 30 * 60 * 1000 : 130000); }
     catch (error) {
       if (current !== generation || target !== id || epoch !== requestEpoch) return null;
-      if (accountScopeError(error)) concealUnverifiedAccount();
+      if (accountScopeError(error)) {
+        if (!action) identityReadErrors.add(error);
+        concealUnverifiedAccount();
+      }
       throw error;
     }
     if (current !== generation || target !== id || epoch !== requestEpoch) return null;
@@ -677,6 +691,9 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     if (result.compact && (result.account !== state?.account || result.configurationRevision !== state?.configurationRevision)) return call();
     if (result.compact) { const updates = new Map(result.profiles.map(profile => [profile.id, profile])); result = { ...state, ...result, profiles: state.profiles.map(profile => updates.has(profile.id) ? { ...profile, ...updates.get(profile.id) } : profile) }; }
     scopeVerified = true; state = result;
+    // A verified read resolves only its own identity-read notice. An action
+    // failure or a newer validation/save notice must remain for the user.
+    if (wasUnverified && identityReadNotice !== null) message('');
     // Repaint every page immediately so old private text cannot remain in the
     // form after its draft has been discarded.
     if (accountChanged || initialState || wasUnverified) render();
@@ -805,7 +822,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       if (!active()) return;
       if (serviceIdentity(result) !== service || typeof result.apiKey !== 'string' || !result.apiKey) throw new Error('模型配置已变化，请重新打开模型设置');
       input.value = result.apiKey; input.type = 'text'; button.innerHTML = keyIcon(true); button.setAttribute('aria-label', '隐藏 API Key'); button.setAttribute('aria-pressed', 'true');
-    } catch (error) { if (active()) { concealKey(); message(error.message, true); } }
+    } catch (error) { if (active()) { concealKey(); failure(error); } }
     finally { if (active()) button.dataset.revealing = ''; }
   }
   function validateProvider(action) {
@@ -862,7 +879,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         $('#ai-model-status').textContent = `已拉取 ${result.models.length} 个模型，请选择或手动填写。`;
         message(`已拉取 ${result.models.length} 个候选模型，请选择对话模型并测试连接`);
       }
-    } catch (error) { if (current === generation) { message(error.message, true); if (action === 'models' && $('#ai-model-status')) $('#ai-model-status').textContent = error.message; } }
+    } catch (error) { if (current === generation) { failure(error); if (action === 'models' && $('#ai-model-status')) $('#ai-model-status').textContent = error.message; } }
     finally { if (current === generation) { busy = false; panel.setAttribute('aria-busy', 'false'); } }
   }
   function openModelEditor(id) {
@@ -908,7 +925,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       if (!result || current !== generation || target !== id || token !== revealRevision) return;
       if (modelDraft) { modelDraft = { ...modelDraft, models: modelDraft.models.map(x => x.id === modelId ? { ...x, tested: true } : x), status: '模型连接成功' }; render(); }
       else message('模型连接成功');
-    } catch (error) { if (current === generation) message(error.message, true); }
+    } catch (error) { if (current === generation) failure(error); }
     finally { if (current === generation) { busy = false; panel.setAttribute('aria-busy', 'false'); } }
   }
   const summaryText = styleSummaryText;
@@ -1433,7 +1450,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     return call().then(async result => {
       if (!result || current !== generation || panel.hidden) return;
       if (tab === 'overview' && needsContacts() && !busy) await refreshContacts();
-    }).catch(error => { if (current === generation) message(error.message, true); })
+    }).catch(error => { if (current === generation) failure(error); })
       .finally(() => { if (current === generation) scopeChecking = false; });
   }
   function hide() { styleTrial.cancel({ clear: true }); globalReplyConfirmController?.abort(); globalReplyConfirmController = null; invalidateDateRange(); rememberDraft(); rememberRecords(); concealKey(true); proactiveUI.closeOverlay(); if (learningDraft) learningDraft.text = ''; setPanelVisible(false); rail.querySelector('#ai-open').setAttribute('aria-expanded', 'false'); panel.querySelectorAll('[name=text], [name=styleText]').forEach(input => { input.value = ''; }); rail.querySelector('#ai-open').focus(); onClose?.(); }
@@ -1491,7 +1508,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     if (!pass()) { event.target.checked = !event.target.checked; return; }
     if (!id && !(await ensureInstance())) { event.target.checked = !event.target.checked; message('AI 辅助尚未就绪，请重新打开微信后再试', true); return; }
     try { await execute('settings', { value: { enabled: event.target.checked } }); }
-    catch (e) { show(); controls(); message(e.message, true); }
+    catch (e) { show(); controls(); failure(e); }
   };
   rail.addEventListener('change', changeMaster);
   panel.addEventListener('change', async event => {
@@ -1641,7 +1658,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       if (input.name === 'sendMode') { rememberDraft(); render(); }
       if (input.name === 'replyProfiles') { if (input.checked) replyProfiles.add(input.value); else replyProfiles.delete(input.value); }
       rememberDraft();
-    } catch (e) { controls(); message(e.message, true); }
+    } catch (e) { controls(); failure(e); }
   });
   panel.addEventListener('input', event => {
     if (event.target.closest('[data-ai-object-panel=style]')) styleTrial.cancel({ stale: true });
@@ -1902,7 +1919,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
           profileDrafts.delete(key); editingProfile = null; tab = profileReturn;
         }, '风格已保存');
       }
-    } catch (e) { message(e.message, true); }
+    } catch (e) { failure(e); }
     finally {
       finishSave(save);
     }
@@ -2530,7 +2547,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       }
     } catch (e) {
       if (analysisRangeBeforeCustom !== null) { analysisRangeMode = analysisRangeBeforeCustom; analysisRangeBeforeCustom = null; render(); }
-      message(e.message, true);
+      failure(e);
     }
   });
   return {
@@ -2554,7 +2571,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       replyContactSearch = ''; logRecords = []; logLoading = false; logEpoch++; logSignature = ''; logFilters = { source: 'reply' }; lastAutoScanAt = 0;
       panel.querySelector(':scope > .qibox-workspace-menu')?.remove();
       $('#ai-content').innerHTML = loadingContent; message('');
-      try { const result = await call(); if (result) { restoreRecords(); modeTargets('reply').forEach(id => replyProfiles.add(id)); render(); } } catch (e) { if (attachedGeneration !== generation) return; $('#ai-content').innerHTML = '<div class="ai-entry-error" role="alert">设置读取失败，请返回后重试。</div>'; message(e.message, true); }
+      try { const result = await call(); if (result) { restoreRecords(); modeTargets('reply').forEach(id => replyProfiles.add(id)); render(); } } catch (e) { if (attachedGeneration !== generation) return; $('#ai-content').innerHTML = '<div class="ai-entry-error" role="alert">设置读取失败，请返回后重试。</div>'; failure(e); }
       finally { if (attachedGeneration === generation) attaching = false; }
       if (attachedGeneration !== generation) return;
       const current = generation;
@@ -2571,7 +2588,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
             let result;
             try { result = await api(`/instances/${id}/ai?view=live`); }
             catch (error) {
-              if (current === generation && epoch === requestEpoch && accountScopeError(error)) { concealUnverifiedAccount(); message(error.message, true); }
+              if (current === generation && epoch === requestEpoch && accountScopeError(error)) { identityReadErrors.add(error); concealUnverifiedAccount(); failure(error); }
               return;
             }
             if (current !== generation || epoch !== requestEpoch || scopeEpoch !== scopeVerificationEpoch || !busy || !result) return;
@@ -2582,7 +2599,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
             $('#ai-operation-text').textContent = operationText(result.operation) || (contactsLoading ? '正在获取联系人…' : hasPendingAnalysis() ? '正在分析聊天记录…' : '');
           }
           else { const result = await call(undefined, {}, true); if (result) { controls(); if (tab === 'activity' && !panel.hidden && !logLoading && logSignature !== JSON.stringify([state.activity || [], state.activityHistory || []])) await loadActivity(); } }
-        } catch (e) { if (current === generation && !panel.hidden) message(e.message, true); }
+        } catch (e) { if (current === generation && !panel.hidden) failure(e); }
         finally { if (current === generation) polling = false; }
       }, 1000);
     },
