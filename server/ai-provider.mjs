@@ -338,9 +338,9 @@ export class AIProvider {
     // follow reply/proactive generation too. This is still one request, with
     // the existing output budget, deadline and retry limits.
     // Scope the documented option to this model on MiniMax's own endpoints.
-    // Reports also need source/actor reasoning for long, interleaved chat.
-    // Reuse this generation's existing budget; do not add a review request.
-    const reasonAboutSpeakers = (['reply', 'proactive', 'speaker-audit', 'style-trial'].includes(input?.mode) || format === 'report') &&
+    // Do not force report thinking: it can consume the entire report budget
+    // without producing text and trigger the existing incomplete retries.
+    const reasonAboutSpeakers = ['reply', 'proactive', 'speaker-audit', 'style-trial'].includes(input?.mode) &&
       config.model === 'MiniMax-M3' && ['api.minimax.io', 'api.minimaxi.com'].includes(new URL(config.baseUrl).hostname);
     const {images = [], ...textInput} = input;
     const validImages = images.filter(x => x && ['image/png','image/jpeg','image/gif','image/webp'].includes(x.mime) && typeof x.data === 'string' && x.data.length <= 5600000).slice(0,3);
