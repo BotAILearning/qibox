@@ -3740,9 +3740,11 @@ export class AIAssistant {
       this.event('skip', profile.id, 'system-skip', '图片或语音未能读取，已略过，不发送回复', { reasonCode: 'unsupported-media', trigger: trigger || mode, messageId: originalPending.at(-1).id, incomingMessages: originalPending });
       await this.save(); return;
     }
-    // Surface the current turn after voice/image conversion. Excerpts index the
-    // full readable messages; unavailable media is omitted from this request.
-    conversation.pendingIncomingMessages = pendingMessages.map(({ id, direction, speaker, quote, text = '', timestamp, sender, type, unresolved, transcriptionSource }) => ({ id, direction, speaker, text: text.length > 500 ? text.slice(0,250) + '…' + text.slice(-250) : text, timestamp, ...(quote ? { quote } : {}), ...(sender ? { sender } : {}), ...(type ? { type } : {}), ...(unresolved ? { unresolved: true } : {}), ...(transcriptionSource ? { transcriptionSource } : {}), ...(text.length > 500 ? { excerpt: true } : {}) }));
+    // Keep the readable current turn whole. The wire compactor relocates exact
+    // originals once, rather than ending a long input with another head/tail
+    // excerpt that hides its middle. Preserve upstream partial-source markers;
+    // unavailable media has already been omitted above.
+    conversation.pendingIncomingMessages = pendingMessages.map(({ id, direction, speaker, quote, text = '', timestamp, sender, type, unresolved, transcriptionSource, excerpt, truncated, textTruncated }) => ({ id, direction, speaker, text, timestamp, ...(quote ? { quote } : {}), ...(sender ? { sender } : {}), ...(type ? { type } : {}), ...(unresolved ? { unresolved: true } : {}), ...(transcriptionSource ? { transcriptionSource } : {}), ...(excerpt ? { excerpt: true } : {}), ...(truncated ? { truncated: true } : {}), ...(textTruncated ? { textTruncated: true } : {}) }));
     conversation.latestIncoming = conversation.pendingIncomingMessages.at(-1) || null;
     const incomingMedia = pendingMessages;
     const onlyImages = mode === 'reply' && incomingMedia.length > 0 && incomingMedia.every(m => m.type === 'image');
