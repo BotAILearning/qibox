@@ -6,6 +6,34 @@ import { modelConfig, key } from './ai-fixtures.mjs';
 import { validateReplyResult } from '../server/ai-prompts.mjs';
 import { naturalAttributionPrompt, confirmedSpeakerHistory } from '../server/ai-speakers.mjs';
 
+for (const protocol of ['anthropic', 'openai']) test(`${protocol}: dense reports keep one generation and existing budget while official M3 reasons about sources`, async () => {
+  const input = { userRequest: '按顺序回顾，不把陈述当作本人做过的事', messages: [
+    { sequence: 1, speaker: '对方', beijingTime: '2026-10-25 01:00:00', text: '阿青妈妈付过灯的钱，我只帮忙拍收条。', secondsSincePrevious: null },
+    { sequence: 2, speaker: '本人', beijingTime: '2026-10-25 01:00:20', text: '退款申请交了，没收到到账通知，还没查账。', secondsSincePrevious: 20 },
+  ] }, original = structuredClone(input);
+  for (const scenario of [
+    { baseUrl: 'https://api.minimaxi.com/anthropic', model: 'MiniMax-M3', reasoning: true },
+    { baseUrl: 'https://api.minimax.io/v1', model: 'MiniMax-M3', reasoning: true },
+    { baseUrl: 'https://models.example.test/v1', model: 'MiniMax-M3', reasoning: false },
+    { baseUrl: 'https://api.minimax.io/v1', model: 'another-model', reasoning: false },
+  ]) {
+    const requests = [], report = '仅返回业务报告正文';
+    const provider = new AIProvider({ fetcher: async (_url, options) => {
+      const body = JSON.parse(options.body); requests.push(body);
+      assert.deepEqual(body.thinking, scenario.reasoning ? { type: 'adaptive' } : undefined);
+      assert.equal(body.reasoning_split, scenario.reasoning && protocol === 'openai' ? true : undefined);
+      assert.equal(body.max_tokens, 4096, 'report output budget is not increased');
+      const text = JSON.stringify({ report });
+      return Response.json(protocol === 'anthropic'
+        ? { content: [{ type: 'thinking', thinking: 'PRIVATE_REPORT_REASONING' }, { type: 'text', text }] }
+        : { choices: [{ message: { reasoning_content: 'PRIVATE_REPORT_REASONING', content: text } }] });
+    } });
+    const result = await provider.complete({ ...modelConfig, ...scenario, protocol }, '只按消息证据形成报告', input, undefined, { format: 'report', budget: 4096 });
+    assert.equal(result.report, report); assert.doesNotMatch(JSON.stringify(result), /PRIVATE_REPORT_REASONING/);
+    assert.equal(requests.length, 1, 'no independent reviewer or extra generation'); assert.deepEqual(input, original);
+  }
+});
+
 for (const protocol of ['openai', 'anthropic']) test(`${protocol}: implicit third-person chat preserves event evidence in one generation`, async () => {
   const profile = { account: key('implicit-owner'), contact: key('implicit-peer'), kind: 'person' };
   const input = { mode: 'reply', replyPerspective: replyPerspective(profile), messages: [
