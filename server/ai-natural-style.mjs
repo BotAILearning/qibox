@@ -133,5 +133,14 @@ export function naturalStyleEvidence(messages, {
     pairedExamples.reverse();
   }
   const chronological = related ? pairedExamples.toSorted((a, b) => rows.indexOf(byId.get(a.reply.id)) - rows.indexOf(byId.get(b.reply.id))) : pairedExamples;
-  return { samples, pairedExamples: related ? relatedExamples(chronological, query, maxPairs, maxPairChars) : pairedExamples, rhythm: rhythmEvidence(samples) };
+  const selectedPairs = related ? relatedExamples(chronological, query, maxPairs, maxPairChars) : pairedExamples;
+  // A long self announcement supplies wording and facts, but is not a sample
+  // of how this person answers somebody. Prefer the selected interaction's
+  // reply side only when at least two distinct human replies support it. This
+  // is request-local evidence, never a saved style or an output length limit.
+  const replySamples = [...new Map(selectedPairs.map(pair => [pair.reply.id, pair.reply])).values()];
+  const rhythm = replySamples.length >= 2
+    ? { ...rhythmEvidence(replySamples), source: 'paired-human-replies' }
+    : rhythmEvidence(samples);
+  return { samples, pairedExamples: selectedPairs, rhythm };
 }

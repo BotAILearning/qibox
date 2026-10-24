@@ -5,6 +5,25 @@ import { authoredMessages, contextualReplyStyle, contextualStylePrompt, replySty
 const other = (id, text, timestamp, extra = {}) => ({ id, direction: 'other', authorship: 'other', type: 'text', text, timestamp, ...extra });
 const self = (id, text, timestamp, extra = {}) => ({ id, direction: 'self', authorship: 'human', type: 'text', text, timestamp, ...extra });
 
+test('reply rhythm uses multiple human interaction replies without making long self announcements an answer-length target', () => {
+  const rows = [self('announcement-1', '我把几件事情的前后情况完整说一遍。'.repeat(30), 100),
+    other('o1', '折腾一圈又回来了', 110), self('s1', '服了', 111),
+    self('announcement-2', '另外还有几个历史安排需要先说明。'.repeat(35), 120),
+    other('o2', '这回总算弄清楚了', 130), self('s2', '是啊', 131),
+    other('o3', '后来呢', 140), self('ai', '来源不属于真人'.repeat(20), 141, { aiGenerated: true })];
+  const before = structuredClone(rows), result = contextualReplyStyle(rows);
+  assert.equal(result.rhythm.source, 'paired-human-replies');
+  assert.equal(result.rhythm.sampleCount, 2); assert.equal(result.rhythm.medianChars, 2);
+  assert.deepEqual(result.pairedExamples.map(p => p.reply.id), ['s1', 's2']);
+  assert(result.samples.some(s => s.id === 'announcement-1'), 'Long self wording remains available, not deleted from sources');
+  assert.deepEqual(rows, before);
+  const onePair = contextualReplyStyle(rows.slice(0, 4));
+  assert.equal(onePair.rhythm.source, undefined, 'One reply cannot replace the broader weak distribution');
+  assert(onePair.rhythm.medianChars > 2);
+  const group = contextualReplyStyle(rows, { kind: 'group' });
+  assert.equal(group.rhythm.source, undefined); assert.deepEqual(group.pairedExamples, []);
+});
+
 test('learned observation provenance never overrides edited, locked or legacy manual style', () => {
   const profile={learnedStyle:{summary:'已观察到的表达'},locked:[]};
   const style={summary:'已观察到的表达',customTone:'用户明确补充',customAvoid:'用户明确禁用'};

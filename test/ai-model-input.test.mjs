@@ -2,6 +2,19 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { compactModelInput, encodeModelRequest } from '../server/ai-model-input.mjs';
 
+test('wire references only identical current-chat style without weakening a distinct or borrowed addressing scope', () => {
+  const style={summary:'保留我的完整手动风格，正式请求详细回答。',customTone:'稳妥',customAvoid:'别反复追问',roles:['同事'],addressing:'王老师'};
+  const input={mode:'reply',style,addressing:{styleScope:'current-chat',currentStyle:structuredClone(style)},messages:[]};
+  const before=structuredClone(input),wire=compactModelInput(input);
+  assert.deepEqual(wire.style,style);assert.deepEqual(wire.addressing,{styleScope:'current-chat',currentStyleRef:'style'});
+  assert.equal(JSON.stringify(wire).split(style.summary).length-1,1);assert.deepEqual(input,before);
+  for(const addressing of [
+    {styleScope:'reference',currentStyle:structuredClone(style)},
+    {styleScope:'current-chat',currentStyle:{...style,addressing:'李老师'}},
+    {styleScope:'current-chat',currentStyle:style,currentStyleRef:'other-configuration'},
+  ]) assert.deepEqual(compactModelInput({...input,addressing}).addressing,addressing,'Distinct authority or preexisting references remain inline');
+});
+
 test('reply wire sends each complete fact once and leaves the original guards untouched', () => {
   const message = { id: 'a', text: '完整来信'.repeat(50), direction: 'other', speaker: { role: 'other', id: 'c' }, quote: { text: '引用的我', speaker: { role: 'self' } } };
   const input = { mode: 'reply', messages: [message], conversation: { pendingIncomingMessages: [message], latestIncoming: message }, memory: { summary: '长期事实', entries: [{ text: '长期事实', field: 'city', contextRole: 'lastKnown' }] } };
