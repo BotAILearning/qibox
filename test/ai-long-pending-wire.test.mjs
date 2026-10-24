@@ -11,7 +11,14 @@ test('production wire ends with full long incoming turns once, including middle 
   bridge.stableMessageIds = true;
   const contact = bridge.contacts[0].id;
   const original = { id: key('long-turn-self-original'), direction: 'self', authorship: 'human', text: '我那一笔已经提交了，其他人的进度我没有问过。', timestamp: clock / 1000 - 60 };
-  bridge.messages.set(contact, [original]);
+  const history = [original,
+    { id: key('style-incoming-1'), direction: 'other', authorship: 'other', text: '绕一圈又回来了', timestamp: clock / 1000 - 50 },
+    { id: key('style-reply-1'), direction: 'self', authorship: 'human', text: '服了', timestamp: clock / 1000 - 49 },
+    { id: key('style-announcement'), direction: 'self', authorship: 'human', text: '那场活动我还没确认，前面那份材料已经提交了。', timestamp: clock / 1000 - 40 },
+    { id: key('style-incoming-2'), direction: 'other', authorship: 'other', text: '这回总算拆开了', timestamp: clock / 1000 - 30 },
+    { id: key('style-reply-2'), direction: 'self', authorship: 'human', text: '是啊', timestamp: clock / 1000 - 29 },
+  ];
+  bridge.messages.set(contact, history);
   const provider = new AIProvider({ fetcher: async (_url, options) => {
     wires.push(JSON.parse(options.body));
     return Response.json({ choices: [{ message: { content: JSON.stringify({ action: 'send', text: '原来是混在一页了。', followUp: false }) }, finish_reason: 'stop' }] });
@@ -37,6 +44,10 @@ test('production wire ends with full long incoming turns once, including middle 
   assert.doesNotMatch(system, /本轮来信包含明确问题/, 'A keyword match must not be asserted to the model as a confirmed question');
   assert.match(system, /关键词或转述不等于对方在提问/);
   const input = JSON.parse(wires[0].messages.find(m => m.role === 'user').content);
+  assert.equal(input.contextualStyle.samplesSource, 'paired-human-replies');
+  const styleTexts = input.contextualStyle.samples.map(sample => input.messages.find(m => m.id === sample.id)?.text ?? sample.text);
+  assert.deepEqual(styleTexts, ['服了', '是啊']);
+  for (const message of [original, history[3]]) assert(input.messages.some(m => m.text === message.text), 'Full factual declarations remain in history even when not used as expression examples');
   const pending = input.conversation.pendingIncomingMessages;
   assert.equal(pending.length, 2);
   assert.deepEqual(pending.map(m => m.text), [first, second], 'Middle and complete bodies remain readable at the current turn');

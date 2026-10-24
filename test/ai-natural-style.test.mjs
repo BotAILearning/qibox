@@ -11,15 +11,20 @@ test('reply rhythm uses multiple human interaction replies without making long s
     self('announcement-2', '另外还有几个历史安排需要先说明。'.repeat(35), 120),
     other('o2', '这回总算弄清楚了', 130), self('s2', '是啊', 131),
     other('o3', '后来呢', 140), self('ai', '来源不属于真人'.repeat(20), 141, { aiGenerated: true })];
-  const before = structuredClone(rows), result = contextualReplyStyle(rows);
+  const before = structuredClone(rows), result = contextualReplyStyle(rows, { preferReplySamples: true });
   assert.equal(result.rhythm.source, 'paired-human-replies');
   assert.equal(result.rhythm.sampleCount, 2); assert.equal(result.rhythm.medianChars, 2);
   assert.deepEqual(result.pairedExamples.map(p => p.reply.id), ['s1', 's2']);
-  assert(result.samples.some(s => s.id === 'announcement-1'), 'Long self wording remains available, not deleted from sources');
+  assert.deepEqual(result.samples.map(s => s.id), ['s1', 's2'], 'Reply wording uses the selected human interactions, not factual announcements');
+  assert.equal(result.samplesSource, 'paired-human-replies');
+  assert(contextualReplyStyle(rows).samples.some(s => s.id === 'announcement-1'), 'Learning keeps the broader human source collection');
   assert.deepEqual(rows, before);
-  const onePair = contextualReplyStyle(rows.slice(0, 4));
+  const onePair = contextualReplyStyle(rows.slice(0, 4), { preferReplySamples: true });
   assert.equal(onePair.rhythm.source, undefined, 'One reply cannot replace the broader weak distribution');
   assert(onePair.rhythm.medianChars > 2);
+  assert.equal(onePair.samplesSource, undefined, 'One interaction does not replace broader weak wording evidence');
+  const smallBudget = contextualReplyStyle(rows, { preferReplySamples: true, maxSamples: 1 });
+  assert.equal(smallBudget.samples.length, 1); assert.equal(smallBudget.samplesSource, undefined);
   const group = contextualReplyStyle(rows, { kind: 'group' });
   assert.equal(group.rhythm.source, undefined); assert.deepEqual(group.pairedExamples, []);
 });

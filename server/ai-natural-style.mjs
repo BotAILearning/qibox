@@ -54,7 +54,7 @@ function usableSelfText(message, { pairedReply = false } = {}) {
  * chat adjacency. Adjacency is only expression context, not a fact relation.
  */
 export function naturalStyleEvidence(messages, {
-  maxSamples = 12, maxChars = 6000, maxPairs = 3, maxPairChars = 1200, kind = 'person', query = '',
+  maxSamples = 12, maxChars = 6000, maxPairs = 3, maxPairChars = 1200, kind = 'person', query = '', preferReplySamples = false,
 } = {}) {
   const rows = Array.isArray(messages) ? messages : [];
   const idCounts = new Map();
@@ -142,5 +142,16 @@ export function naturalStyleEvidence(messages, {
   const rhythm = replySamples.length >= 2
     ? { ...rhythmEvidence(replySamples), source: 'paired-human-replies' }
     : rhythmEvidence(samples);
-  return { samples, pairedExamples: selectedPairs, rhythm };
+  // For a current reply, two or more selected human interactions provide
+  // wording in the relevant conversational form. Do not also promote long
+  // self declarations into expression examples: their facts remain in the
+  // original transcript. Learning and proactive callers keep the broad default.
+  const expressionSamples = []; let expressionChars = 0;
+  if (preferReplySamples && maxSamples >= 2) for (const row of replySamples.toReversed()) {
+    if (expressionSamples.length >= maxSamples || expressionChars + row.text.length > maxChars) continue;
+    expressionSamples.unshift(row); expressionChars += row.text.length;
+  }
+  return { samples: expressionSamples.length >= 2 ? expressionSamples : samples,
+    ...(expressionSamples.length >= 2 ? { samplesSource: 'paired-human-replies' } : {}),
+    pairedExamples: selectedPairs, rhythm };
 }
