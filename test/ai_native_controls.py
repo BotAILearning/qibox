@@ -57,6 +57,58 @@ class FakeFunction:
 
 
 class GroupSearchBoundaries(unittest.TestCase):
+    def search_keyboard(self, change=None):
+        inspector = object.__new__(native.NativeControls)
+        current, value, events = [10], ['Bot'], []
+        inspector.display = object()
+        inspector.xlib = Mock()
+        inspector.xlib.XKeysymToKeycode.side_effect = lambda display, key: key
+        inspector.xtest = Mock()
+        inspector.require_foreground = Mock()
+        inspector._group_search_field = lambda: current[0]
+        def text(field):
+            if field != current[0]:
+                raise native.ControlsUnavailable('stale search control')
+            return value[0]
+        inspector._group_search_text = text
+        inspector.states = lambda field: {12} if field == current[0] else set()
+        def key(display, code, down, delay):
+            events.append((code, down))
+            if not down:
+                return
+            value[0] = value[0] + ' ' if code == 0x20 else value[0][:-1]
+            current[0] += 1  # Real text edits may replace the Qt accessible.
+            if change:
+                change(inspector, value, code)
+        inspector.xtest.XTestFakeKeyEvent.side_effect = key
+        return inspector, current, value, events
+
+    def test_search_keyboard_reacquires_after_each_real_key_replaces_the_control(self):
+        inspector, current, value, events = self.search_keyboard()
+        with patch.object(native.time, 'sleep'):
+            inspector._trigger_group_search(10, 'Bot')
+        self.assertEqual(events, [(0x20, 1), (0x20, 0), (0xff08, 1), (0xff08, 0)])
+        self.assertEqual(current[0], 12)
+        self.assertEqual(value[0], 'Bot')
+
+    def test_search_keyboard_never_backspaces_a_changed_query(self):
+        def change(inspector, value, code):
+            value[0] = 'User changed the search'
+        inspector, _, value, events = self.search_keyboard(change)
+        with patch.object(native.time, 'sleep'), self.assertRaises(native.ControlsUnavailable):
+            inspector._trigger_group_search(10, 'Bot')
+        self.assertEqual(events, [(0x20, 1), (0x20, 0)])
+        self.assertEqual(value[0], 'User changed the search')
+
+    def test_search_keyboard_never_backspaces_after_focus_moves_to_an_editor(self):
+        def change(inspector, value, code):
+            inspector.states = lambda field: set()
+        inspector, _, value, events = self.search_keyboard(change)
+        with patch.object(native.time, 'sleep'), self.assertRaises(native.ControlsUnavailable):
+            inspector._trigger_group_search(10, 'Bot')
+        self.assertEqual(events, [(0x20, 1), (0x20, 0)])
+        self.assertEqual(value[0], 'Bot ')
+
     def test_search_reacquires_field_after_editable_text_invalidates_old_control(self):
         inspector = object.__new__(native.NativeControls)
         inspector.main = lambda: {'app': 1, 'frame': 2}

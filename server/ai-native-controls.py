@@ -1069,10 +1069,6 @@ class NativeControls(base.Inspector):
         # EditableText changes QLineEdit's contents, but this WeChat build
         # starts searching only on a real text edit. Keep keyboard input scoped
         # to the verified, focused search field; never type into a chat draft.
-        if self._group_search_text(field) != label:
-            raise ControlsUnavailable('group search text changed')
-        if 12 not in self.states(field):
-            raise ControlsUnavailable('group search focus unavailable')
         self.require_foreground('微信')
         if not getattr(self, 'display', None):
             raise ControlsUnavailable('group search keyboard unavailable')
@@ -1081,6 +1077,12 @@ class NativeControls(base.Inspector):
         self.xtest.XTestFakeKeyEvent.argtypes = [c.c_void_p, c.c_uint, c.c_int, c.c_ulong]
         for keysym in (0x20, 0xff08):  # Space, then Backspace.
             self.require_foreground('微信')
+            # Each real key can replace Qt's accessible, just like EditableText.
+            # Reacquire only the verified search field, never the chat editor.
+            field = self._group_search_field()
+            expected = label if keysym == 0x20 else label + ' '
+            if self._group_search_text(field) != expected:
+                raise ControlsUnavailable('group search text changed')
             if 12 not in self.states(field):
                 raise ControlsUnavailable('group search focus unavailable')
             code = self.xlib.XKeysymToKeycode(self.display, keysym)
@@ -1090,7 +1092,7 @@ class NativeControls(base.Inspector):
             self.xtest.XTestFakeKeyEvent(self.display, code, 0, 0)
             self.xlib.XFlush(self.display)
             time.sleep(.1)
-        if self._group_search_text(field) != label:
+        if self._group_search_text(self._group_search_field()) != label:
             raise ControlsUnavailable('group search text changed')
 
     def _group_search_results(self, label, group=False):
