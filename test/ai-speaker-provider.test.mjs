@@ -22,6 +22,7 @@ test('official DeepSeek Flash keeps thinking within the existing business output
       const body = JSON.parse(options.body); calls.push(body);
       assert.equal(body.reasoning_effort, scenario.low ? 'low' : undefined);
       assert.deepEqual(body.thinking, scenario.low ? { type: 'enabled' } : undefined);
+      assert.deepEqual(body.response_format, scenario.host === 'api.deepseek.com' && scenario.model === 'deepseek-flash' && scenario.protocol === 'openai' && scenario.format !== 'report' ? { type: 'json_object' } : undefined);
       assert.equal(body.max_tokens, 4096);
       const content = JSON.stringify(scenario.format === 'report' ? { report: '仅业务正文' } : { action: 'skip' });
       return Response.json(scenario.protocol === 'anthropic' ? { content: [{ type: 'text', text: content }] } : { choices: [{ message: { content, reasoning_content: 'PRIVATE_REASONING' }, finish_reason: 'stop' }] });
