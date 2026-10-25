@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { compactReportInput } from '../server/ai-model-input.mjs';
 import { AIProvider } from '../server/ai-provider.mjs';
 import { analysisPrompt } from '../server/ai-analysis.mjs';
+import { analysisSourcePrompt } from '../server/ai-analysis-source.mjs';
 import { modelConfig } from './ai-fixtures.mjs';
 
 const source = () => ({
@@ -14,6 +15,34 @@ const source = () => ({
     { sequence: 2, speaker: '对方', beijingTime: '2026-10-25 00:00:00', text: '那是小陈妈妈的，不是我的；“我付了”是引用。', secondsSincePrevious: 0 },
     { sequence: 3, speaker: '未知', beijingTime: '2026-10-25 00:01:36', text: '字面保留 self、other、s：及 qref1，不冒充已知作者。', secondsSincePrevious: 96 },
   ],
+});
+
+test('row provenance never invents a human source or reinterprets malformed/future metadata', () => {
+  const input=source();
+  for(const sourceIndex of [{},{generated:[0]},{unknown:[4]},{generated:'1'},{quotes:[{sequence:2,verified:true,sourceSequence:9}]},
+    {quotes:[{sequence:2,verified:false},{sequence:2,verified:true}]},{quotes:[{sequence:2,verified:true,sourceReadable:true}]},
+    {quotes:[{sequence:2,verified:true,futureScope:'do-not-ignore'}]},{futureOrigin:['keep']}]) {
+    const before=structuredClone({...input,sourceIndex}),wire=compactReportInput(before);
+    assert(!wire.messageColumns.includes('origin'));assert.deepEqual(restore(wire),input.messages);
+    assert.deepEqual(wire.sourceIndex,sourceIndex);assert.deepEqual(before,{...input,sourceIndex});
+  }
+  const wire=compactReportInput({...input,sourceIndex:{generated:[1],unknown:[1],quotes:[{sequence:2,verified:false}]}});
+  assert.deepEqual(wire.messages.map(row=>row[2]),[{authorship:'来源未核实'},{quote:{verified:false}},null]);
+});
+
+for(const protocol of ['anthropic','openai']) test(`${protocol}: known provenance travels beside its own original text in one report call`,async()=>{
+  const input={...source(),sourceIndex:{generated:[1],unknown:[3],quotes:[{sequence:2,verified:true,speaker:'本人',sourceSequence:1}]}},before=structuredClone(input),requests=[];
+  const provider=new AIProvider({fetcher:async(_url,options)=>{
+    const body=JSON.parse(options.body);requests.push(body);assert.equal(body.max_tokens,4096);
+    const wire=JSON.parse(body.messages.find(m=>m.role==='user').content),rows=restore(wire);
+    assert.deepEqual(rows.map(({origin,...row})=>row),input.messages);
+    assert.deepEqual(rows.map(row=>row.origin),[{authorship:'已知AI代发'},{quote:{verified:true,speaker:'本人',sourceSequence:1}},{authorship:'来源未核实'}]);
+    assert.deepEqual(wire.sourceIndex,input.sourceIndex);assert.match(protocol==='anthropic'?body.system:body.messages.find(m=>m.role==='system').content,/origin与同一行speaker和text直接绑定/);
+    const text=JSON.stringify({report:'账号侧记录不提升为本人确认经历。'});
+    return Response.json(protocol==='anthropic'?{content:[{type:'text',text}]}:{choices:[{message:{content:text}}]});
+  }});
+  await provider.complete({...modelConfig,protocol},analysisPrompt(input.userRequest)+analysisSourcePrompt,input,undefined,{format:'report',budget:4096});
+  assert.equal(requests.length,1);assert.deepEqual(input,before);
 });
 const restore = input => {
   return input.messages.map(row => Object.fromEntries(input.messageColumns.map((name, i) => [name, row[i]])));

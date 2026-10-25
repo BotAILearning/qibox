@@ -33,4 +33,4 @@ export function analysisSourceIndex(messages, vault, profile = {}) {
     ...(generated.length?{generated}:{}),...(unknown.length?{unknown}:{}),...(quotes.length?{quotes}:{})}:undefined;
 }
 
-export const analysisSourcePrompt=' 输入sourceIndex以sequence标明来源，不改变原文、消息条数或分析范围。generated是已知代发，unknown是来源无法核实的本人侧文本；这些可以按原记录的发言方转述，不证明本人亲历、他人亲历、身份或决定，也不作为真人表达依据；来源未知不证明事情的反面。不把账号侧的文字写成真人确认。quotes中verified只确认引用作者，不证明内容真实；sourceSequence按原消息读取，sourceReadable=false时引用原文未完整纳入本次材料，不补全或代为确认。未标明来源的旧原话仍按其陈述范围分析，不额外推断事实。';
+export const analysisSourcePrompt=' 输入sourceIndex以sequence标明来源，不改变原文、消息条数或分析范围。generated是已知代发，unknown是来源无法核实的本人侧文本；这些可以按原记录的发言方转述，不证明本人亲历、他人亲历、身份或决定，也不作为真人表达依据；来源未知不证明事情的反面。不把账号侧的文字写成真人确认。quotes中verified只确认引用作者，不证明内容真实；sourceSequence按原消息读取，sourceReadable=false时引用原文未完整纳入本次材料，不补全或代为确认。未标明来源的旧原话仍按其陈述范围分析，不额外推断事实。 messageColumns中的origin与同一行speaker和text直接绑定：已知AI代发或来源未核实的行只证明账号侧记录，不是本人确认经历、结果或决定；origin为null只是未标明来源，不把其他明确原话一起作废。origin.quote只表示该行引用了谁的原话，不改变本行发言者或事情主体。';

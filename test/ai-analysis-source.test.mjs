@@ -15,7 +15,10 @@ test('known generated and ambiguous self sources supplement the original five-co
   assert.deepEqual(sourceIndex,{generated:[1],unknown:[2],quotes:[{sequence:3,verified:true,speaker:'本人',sourceSequence:1}]});
   const input={userRequest:'概括',sourceIndex,messages:rows.map((m,index)=>({sequence:index+1,speaker:m.direction==='self'?'本人':'对方',beijingTime:'2026-10-25 09:00:00',text:m.text,secondsSincePrevious:index?0:null}))};
   const packed=compactReportInput(input);assert.deepEqual(packed.sourceIndex,sourceIndex);
-  assert.deepEqual(packed.messages.map(values=>Object.fromEntries(packed.messageColumns.map((name,index)=>[name,values[index]]))),input.messages);
+  assert.deepEqual(packed.messages.map(values=>Object.fromEntries(packed.messageColumns.flatMap((name,index)=>name==='origin'?[]:[[name,values[index]]]))),input.messages);
+  assert.deepEqual(packed.messages.map(values=>values[packed.messageColumns.indexOf('origin')]),[
+    {authorship:'已知AI代发'},{authorship:'来源未核实'},{quote:{verified:true,speaker:'本人',sourceSequence:1}}
+  ]);
   assert.deepEqual(rows,before);assert(!JSON.stringify(sourceIndex).includes('自动回复中的经历'));
 });
 

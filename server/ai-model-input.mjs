@@ -4,6 +4,32 @@ export const modelInputReferencePrompt = ' 输入使用原文引用结构：mess
 
 // Report tables repeat field names and author labels, not factual content.
 // Pack only this exact known DTO; future quote/identity metadata stays inline.
+function reportRowOrigins(index, count) {
+  if (!index || typeof index !== 'object' || Array.isArray(index) ||
+      Object.keys(index).some(key => !['generated', 'unknown', 'quotes'].includes(key))) return null;
+  const sequence = value => Number.isSafeInteger(value) && value >= 1 && value <= count;
+  for (const key of ['generated', 'unknown']) if (index[key] !== undefined &&
+      (!Array.isArray(index[key]) || !index[key].every(sequence))) return null;
+  const quotes = index.quotes || [], quoteKeys = ['sequence', 'verified', 'speaker', 'sourceSequence', 'sourceReadable', 'generated', 'authorship'];
+  if (!Array.isArray(quotes) || new Set(quotes.map(row => row?.sequence)).size !== quotes.length ||
+      !quotes.every(row => row && sequence(row.sequence) && typeof row.verified === 'boolean' &&
+        Object.keys(row).every(key => quoteKeys.includes(key)) &&
+        (row.speaker === undefined || ['本人', '对方'].includes(row.speaker)) &&
+        (row.sourceSequence === undefined || sequence(row.sourceSequence)) &&
+        (row.sourceReadable === undefined || row.sourceReadable === false) &&
+        (row.generated === undefined || typeof row.generated === 'boolean') &&
+        (row.authorship === undefined || row.authorship === 'unknown'))) return null;
+  const generated = new Set(index.generated), unknown = new Set(index.unknown);
+  const bySequence = new Map(quotes.map(({ sequence, ...quote }) => [sequence, quote]));
+  if (!generated.size && !unknown.size && !bySequence.size) return null;
+  return Array.from({ length: count }, (_, position) => {
+    const n = position + 1, origin = {};
+    if (generated.has(n)) origin.authorship = '已知AI代发';
+    if (unknown.has(n)) origin.authorship = '来源未核实';
+    if (bySequence.has(n)) origin.quote = bySequence.get(n);
+    return Object.keys(origin).length ? origin : null;
+  });
+}
 export function compactReportInput(input) {
   const columns = ['sequence', 'speaker', 'beijingTime', 'text', 'secondsSincePrevious'];
   const authors = new Set(['本人', '对方', '未知']);
@@ -16,9 +42,13 @@ export function compactReportInput(input) {
         typeof row.text === 'string' && (index === 0 ? row.secondsSincePrevious === null :
           Number.isFinite(row.secondsSincePrevious) && row.secondsSincePrevious >= 0))) return input;
   const { messages, ...metadata } = input;
+  // Keep known provenance beside its own text as well as the sparse index.
+  // This is source metadata, never a model-inferred owner/experience table.
+  const origins = reportRowOrigins(input.sourceIndex, messages.length);
+  const wireColumns = origins ? [...columns.slice(0, 2), 'origin', ...columns.slice(2)] : columns;
   const result = { ...metadata,
-    messageColumns: columns,
-    messages: messages.map(row => columns.map(key => row[key])),
+    messageColumns: wireColumns,
+    messages: messages.map((row, index) => wireColumns.map(key => key === 'origin' ? origins[index] : row[key])),
     writeReport: '现在按userRequest及系统给定的篇幅、格式完成报告。表格按用户指定列，不展示未要求的内部字段名。要求逐条、保留原文或其他篇幅时完整遵守；概括只选主要进展和最后的新变化，不逐人罗列或重复状态。每个写入的判断沿其原句核对：谁在说、向谁说、谁实际做了什么；建议、转述与本人决定分开，不能把向对方的建议写成本人的计划。物主、亲属、动作对象、否定范围及通知/申请等证据范围保留原短句，不能拼成新事实或用含混的“自己”换人；难以简写的枝节可略去。按时间组织时，每个小节只纳入该段原消息中的事实，不把后文同主题细节提前；章节时间沿所涵盖的来源时间，不按主题猜时刻。只返回report JSON。' };
   if (typeof input.userRequest === 'string' && input.request === input.userRequest) delete result.request;
   return result;
