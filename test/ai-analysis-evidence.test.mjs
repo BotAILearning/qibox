@@ -1,6 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {analysisEvidenceViolation} from '../server/ai-analysis-evidence.mjs';
+import {analysisEvidenceViolation, analysisOrderMode} from '../server/ai-analysis-evidence.mjs';
+test('ordinary compound order requests retain chronological intent while quoted or negated requests do not', () => {
+ for (const request of ['按原始时间顺序概括', '按照原文的时间顺序', '按照消息发送顺序整理', '按时间先后顺序', '依照发送时间顺序', '保持原始时间顺序', '以原始时间线整理', '按顺序保留关键更正']) assert.equal(analysisOrderMode(request), 'chronological', request);
+ for (const request of ['不要按原始时间顺序', '这次不用按消息发送顺序', '报告不要按时间先后顺序', '他说“按原始时间顺序”，这里只回顾话题', '不要求保持原始时间顺序']) assert.equal(analysisOrderMode(request), '', request);
+ assert.equal(analysisOrderMode('不要按原始时间顺序，按主题分类'), 'thematic');
+ assert.equal(analysisOrderMode('按时间倒序整理'), 'reverse');
+});
 const messages=[
  {sequence:1,speaker:'对方',beijingTime:'2026-10-20 08:42:45',text:'QIBOX-STABLE-01 请回复收到'},
  {sequence:2,speaker:'本人',beijingTime:'2026-10-20 08:43:36',text:'收到🙂'},

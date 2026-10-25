@@ -1,10 +1,10 @@
 // Explicit, machine-verifiable claims only; no provider call or retry.
 const outsideQuotes = text => String(text || '').normalize('NFKC').replace(/“[^”]*”|‘[^’]*’|「[^」]*」|『[^』]*』|"[^"]*"/gu, '〈引用〉');
 export function analysisOrderMode(request = '') {
-  const clauses = outsideQuotes(request).split(/[，,。！？!?；;\n]/u).map(s => s.trim().replace(/^(?:(?:请|麻烦|烦请|劳驾)\s*)+/u, '')).filter(s => !/^(?:不要|不必|不用|无需|不需要|不要求|别|勿|不按)/u.test(s));
+  const clauses = outsideQuotes(request).split(/[，,。！？!?；;\n]/u).map(s => s.trim().replace(/^(?:(?:请|麻烦|烦请|劳驾|本次|这次|报告)\s*)+/u, '')).filter(s => !/^(?:不要|不必|不用|无需|不需要|不要求|别|勿|不按)/u.test(s));
   if (clauses.some(s => /(?:按|以|用)?(?:时间)?(?:倒序|逆序|倒叙)/u.test(s))) return 'reverse';
   if (clauses.some(s => /(?:按|按照|依照)(?:主题|话题|事项)(?:分类|分组|整理|组织|展开|排序)?/u.test(s))) return 'thematic';
-  return clauses.some(s => /(?:按|按照)(?:时间|原始|原文|消息|发送)?顺序|(?:按|按照|以)时间线|(?:保留|保持)(?:原始|原文|消息|时间)顺序/u.test(s)) ? 'chronological' : '';
+  return clauses.some(s => /(?:按|按照|依照|以|保留|保持)(?:(?:原始|原文)(?:的)?(?:时间)?|消息(?:的)?(?:发送)?(?:时间)?|发送(?:的)?(?:时间)?|时间(?:的)?(?:先后)?)?(?:的)?顺序|(?:按|按照|以)(?:原始)?时间线/u.test(s)) ? 'chronological' : '';
 }
 function timelineViolation(text, messages, request) {
   if (analysisOrderMode(request) !== 'chronological') return false;

@@ -26,7 +26,7 @@ test('report wire is lossless across author, equal timestamps, relative dates, q
   assert.deepEqual(wire.messages.map(row => row[1]), ['本人', '对方', '未知']);
   assert.equal(Object.hasOwn(wire, 'participants'), false);
   assert.deepEqual(Object.keys(wire).slice(-2), ['messages', 'writeReport']);
-  assert.match(wire.writeReport, /要求逐条或保留原文时完整遵守/);
+  assert.match(wire.writeReport, /要求逐条、保留原文或其他篇幅时完整遵守/);
   assert.deepEqual(wire.coverage, input.coverage); assert.deepEqual(wire.metrics, input.metrics);
   assert.equal(wire.userRequest, input.userRequest); assert.equal(Object.hasOwn(wire, 'request'), false);
   const distinct = { ...input, request: '保留一份不同的兼容请求' };

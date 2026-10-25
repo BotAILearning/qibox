@@ -18,7 +18,7 @@ test('chronological analysis uses one smaller dedicated prompt while preserving 
   const a = new AIAssistant({ dataRoot: root, bridge, provider }); await a.init();
   t.after(async () => { await a.close(); await cleanup(root); });
   await a.configure(modelConfig); await a.scan();
-  const request = '按时间顺序用表格保留关键更正和引用';
+  const request = '按原始时间顺序用表格保留关键更正和引用';
   const result = await a.analyze({ contacts: [contact], from: '2026-10-21', to: '2026-10-21', request });
   assert.equal(result.reports[0].status, 'complete'); assert.equal(wires.length, 1);
   const chronological = wires[0].messages.find(m => m.role === 'system').content;
@@ -34,4 +34,23 @@ test('chronological analysis uses one smaller dedicated prompt while preserving 
   const ordinary = wires[1].messages.find(m => m.role === 'system').content;
   assert.match(ordinary, /默认按音乐回顾方式/); assert(chronological.length < ordinary.length);
   assert.equal(bridge.sent.length, 0); assert.equal(a.analysisHistory().length, 2);
+});
+
+test('default report joins a stray prose paragraph without changing facts and leaves explicit layout alone', async t => {
+  const root = await temp(), bridge = new ChatFixture(), contact = bridge.contacts[0].id;
+  const report = '已经完成\n本人取回了自己的书，包裹中没有其他物品。\n\n对方收到了耳机，小岚的茶杯属于另一单，不能合并物主。\n\n材料登记\n对方的陶杯只完成材料登记，开窑日期仍未确定。\n\n设备情况\n本人使用借来的旧屏，自己的扫描仪仍在店里等排线。\n\n最后安排\n黄山写生未报名，整理画具不等于确定参加。';
+  const expected = report.replace('物品。\n\n对方收到了', '物品。 对方收到了'); let calls = 0;
+  const provider = new AIProvider({ fetcher: async () => { calls++; return Response.json({ choices: [{ message: { content: JSON.stringify({ report }) } }] }); } });
+  const a = new AIAssistant({ dataRoot: root, bridge, provider }); await a.init();
+  t.after(async () => { await a.close(); await cleanup(root); });
+  await a.configure(modelConfig); await a.scan();
+  const first = (await a.analyze({ contacts: [contact], request: '总结近况' })).reports[0];
+  assert.equal(first.status, 'complete'); assert.equal(first.report, expected);
+  assert.equal(first.report.replace(/\s/g, ''), report.replace(/\s/g, ''), 'Formatting cannot change any word or punctuation');
+  assert.equal(first.report.split('\n\n').length, 4);
+  assert(first.report.split('\n\n').every(chapter => chapter.split('\n').length === 2));
+  assert.equal(a.analysisReport(first.historyId).report, expected);
+  const custom = (await a.analyze({ contacts: [contact], request: '使用我自己的排版，保留段落' })).reports[0];
+  assert.equal(custom.status, 'complete'); assert.equal(custom.report, report);
+  assert.equal(calls, 2); assert.equal(bridge.sent.length, 0);
 });
