@@ -13,7 +13,7 @@ import { learningEnabled, learningEpoch, learningCurrent, learningRules, sensiti
 import { replyFixedRules, currentReplyScopePrompt, replyConversationPrompt, replyAttributionPrompt } from './ai-reply-prompt.mjs';
 import { generateStyleTrial, cancelStyleTrial } from './ai-style-trial.mjs';
 import { timingDefaults, timingValue, effectiveTiming, mergeDueAt } from './ai-timing.mjs';
-import { authoredMessages, factEvidence, contextualReplyStyle, replyStyleOrigin, learningStyleEvidence, contextualStylePrompt, automaticLearningPrompt, validatedMonitorMemory } from './ai-context-learning.mjs';
+import { authoredMessages, factEvidence, contextualReplyStyle, replyStyleOrigin, accountDefaultSummaryOrigin, editedDefaultSummaryOrigin, bindDefaultSummaryOrigin, learningStyleEvidence, contextualStylePrompt, automaticLearningPrompt, validatedMonitorMemory } from './ai-context-learning.mjs';
 import { withSpeaker, replyPerspective, speakerIdentityPrompt, naturalAttributionPrompt } from './ai-speakers.mjs';
 import { currentChatTime, currentTimeAnchor, validateCurrentTimeReply, personalContextPrompt, presentTimePrompt, guardTimeGreeting } from './ai-chat-context.mjs';
 import { learningPrompt, learningPromptFor, learningWithMemoryPrompt, defaultLearningSummaryPrompt, conversationPrompt, addressingPrompt, generationPrompt, naturalChatPrompt, longTermMemoryPrompt, timelinePrompt, reflectiveReplyPrompt, generationProtocol, proactivePrompt, proactiveBackgroundPrompt, proactiveBackgroundTtl, messageSegments, validateReplyResult } from './ai-prompts.mjs';
@@ -1788,6 +1788,7 @@ export class AIAssistant {
             labels: learned.map(entry => entry.label).filter(Boolean),
             learnedAt: this.now(), source: learned.length === 1 && learned[0].source === 'paste' ? 'paste' : 'learned',
           };
+          bindDefaultSummaryOrigin(this.data.learnedDefaultStyle, this.data.learnedDefaultStyle.source==='paste'?'reference-style':'learned-observation');
         });
         this.notice = `默认风格已生成，确认并保存后才会用于自动回复${learnTruncated ? '；部分联系人的聊天内容过长，已按上限截取' : ''}${learningFailures.length ? `；${learningFailures.map(failure => `${failure.label}：${failure.error}`).join('；')}` : ''}`; return this.publicState();
       }
@@ -1925,8 +1926,10 @@ export class AIAssistant {
     return this.exclusive(() => saveDefaultStyleChange(this, account, () => {
       const text = textField(summary, 6000);
       if (!text) throw new AppError('请填写默认风格说明');
+      const summaryOrigin = editedDefaultSummaryOrigin(this.data.learnedDefaultStyle, text);
       this.data.learnedDefaultStyle ||= { source: 'manual', style: structuredClone(defaultStyle) };
       this.data.learnedDefaultStyle.style = { ...this.data.learnedDefaultStyle.style, summary: text };
+      if (summaryOrigin) bindDefaultSummaryOrigin(this.data.learnedDefaultStyle, summaryOrigin);
       this.data.defaultStyleSnapshot = null;
     }));
   }
@@ -1978,8 +1981,10 @@ export class AIAssistant {
     return this.exclusive(() => saveDefaultStyleChange(this, account, () => {
       const text = textField(summary, 6000);
       if (!text) throw new AppError('请填写默认风格说明');
+      const summaryOrigin = editedDefaultSummaryOrigin(this.data.learnedDefaultStyle, text);
       this.data.learnedDefaultStyle ||= { source: 'manual', style: structuredClone(defaultStyle) };
       this.data.learnedDefaultStyle.style = { ...this.data.learnedDefaultStyle.style, summary: text };
+      if (summaryOrigin) bindDefaultSummaryOrigin(this.data.learnedDefaultStyle, summaryOrigin);
       const count = this.syncDefaultStyle();
       this.data.defaultStyleSnapshot = null;
       return { appliedDefaultStyle: count };
@@ -3774,12 +3779,18 @@ export class AIAssistant {
     if (mode === 'reply') this.replyStage(profile, 'requesting');
     this.generatingProfiles.set(profile.id, { id: profile.id, ...this.nameFields(profile), kind: profile.kind, replyFlow: mode === 'reply' });
     const style = this.generationStyle(profile, strategy, mode);
-    const defaultFallback = this.defaultStyleApplied(profile);
+    const accountDefault = this.activeDefaultStyle();
+    const defaultFallback = this.defaultStyleApplied(profile) && style === accountDefault?.style;
     const referenceStyle = defaultFallback || (mode === 'proactive' || continuation) && strategy.styleSource !== 'manual' && this.styleProfile(strategy)?.id !== profile.id;
     const addressing = { styleScope: referenceStyle ? 'reference' : 'current-chat', currentStyle: defaultFallback ? style : profile.style };
-    const styleOrigin = replyStyleOrigin(profile, style, { reference: referenceStyle });
+    const styleOrigin = replyStyleOrigin(profile, style, { reference: referenceStyle,
+      ...(defaultFallback ? { summaryOrigin: accountDefaultSummaryOrigin(accountDefault) } : {}) });
     const currentStyle = referenceStyle
-      ? ` 本轮借鉴的风格见输入 style 字段。${defaultFallback ? '这是账号默认风格，来自其他联系人或粘贴资料，不是当前对象的专属风格。' : '这不是当前对象的专属风格，仅借鉴一般表达习惯；'}其中的称呼和个人信息不适用于当前对象。${addressingPrompt}`
+      ? ` 本轮表达见输入 style 字段。${defaultFallback
+        ? styleOrigin.summary === 'user-setting' ? '这是当前账号明确保存的默认表达要求，按手动设置优先遵守；'
+          : styleOrigin.summary === 'learned-observation' ? '这是账号默认的表达观察，不是每轮必须完成的沟通任务，只借鉴措辞、节奏和分寸；'
+            : '这是账号默认风格，不是当前对象的专属风格，仅借鉴一般表达习惯；'
+        : '这不是当前对象的专属风格，仅借鉴一般表达习惯；'}默认或借鉴风格中的称呼和个人信息不作为当前对象的依据。${addressingPrompt}`
       : styleOrigin.summary === 'learned-observation'
         ? ` 本轮采用已学习的本人表达见style。未编辑的学习摘要是观察，不是每轮的沟通任务；只借鉴有依据的措辞、节奏和分寸，不因interaction或role写了某种行为就固定解释、澄清、指导或复述。customTone、customAvoid及手动锁定内容仍是用户明确要求，优先遵守。${addressingPrompt}`
         : ` 本轮用户为当前联系人设置的风格见输入 style 字段。这是本轮必须遵循的口吻要求。若总结后面有明确补充的称呼、表达或注意事项，优先执行这些补充；前面的历史样本描述或“样本不足”不撤销用户后来明确填写的要求。${addressingPrompt}`;

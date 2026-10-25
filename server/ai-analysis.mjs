@@ -4,6 +4,7 @@ import { dateRange, readStableRange } from './ai-range.mjs';
 import { actualRange, reportMetrics, reportMessageTime } from './ai-report-history.mjs';
 import { resolveAnalysisMedia } from './ai-analysis-media.mjs';
 import { analysisEvidenceViolation, analysisOrderMode } from './ai-analysis-evidence.mjs';
+import { analysisSourceIndex, analysisSourcePrompt } from './ai-analysis-source.mjs';
 
 // Unicode code points in message bodies; JSON and prompt overhead are separate.
 export const ANALYSIS_INPUT_CHARS = 150000;
@@ -173,12 +174,14 @@ export async function analyzeContacts(assistant, value) {
           beijingTime: reportMessageTime(message.timestamp), text: message.text,
           secondsSincePrevious: index === 0 ? null : message.timestamp - messages[index - 1].timestamp,
         }));
+        const profile=a.profiles().find(row=>row.account===account&&row.contact===contact.id);
+        const sourceIndex=analysisSourceIndex(messages,a.vault,profile);
         // Official Flash can use the whole old 4096 limit for reasoning alone.
         // Give one report room to finish without increasing the previous
         // three-attempt output ceiling. Other models and saved choices stay as-is.
         const boundedDeepSeekReport = config.protocol === 'openai' && config.model === 'deepseek-flash'
           && new URL(config.baseUrl).hostname === 'api.deepseek.com';
-        const validated = await a.provider.complete(config, analysisPrompt(options.request), {
+        const validated = await a.provider.complete(config, analysisPrompt(options.request)+(sourceIndex?analysisSourcePrompt:''), {
           userRequest: options.request, request: options.request, contact: contact.label,
           from: options.fromDate, to: options.toDate, timezone: 'Asia/Shanghai', analyzedAt: new Date(a.now()).toISOString(),
           rangeCount: material.count, readableCount: sourceMessages.length, analyzedCount: messages.length,
@@ -186,6 +189,7 @@ export async function analyzeContacts(assistant, value) {
           actualRange: actualRange(messages), sourceRange: actualRange(sourceMessages),
           coverage: { ...coverage, sourceTruncated, truncated, reasons: [...(material.truncatedReasons || [])] },
           metrics: reportMetrics(messages), ...(mediaCoverage ? { mediaCoverage } : {}), messages: inputMessages,
+          ...(sourceIndex?{sourceIndex}:{}),
         }, signal, { format: 'report', budget: boundedDeepSeekReport ? 8192 : 4096,
           ...(boundedDeepSeekReport ? { maxOutputAcrossAttempts: 12288 } : {}), validate: result => {
           const reportText = typeof result?.report === 'string' ? normalizeDefaultReport(result.report.trim(), options.request) : '';

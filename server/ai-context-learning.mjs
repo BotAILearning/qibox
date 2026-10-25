@@ -2,6 +2,7 @@ import { memoryExtractionInstruction, chatMemoryPrompt } from './ai-wiki.mjs';
 import { AppError } from './files.mjs';
 import { safeFactMessage, learningRules } from './ai-learning-policy.mjs';
 import { naturalStyleEvidence } from './ai-natural-style.mjs';
+import { createHash } from 'node:crypto';
 
 // A self direction identifies the account, not who composed its message.
 export function authoredMessages(vault, profile, messages) {
@@ -10,20 +11,25 @@ export function authoredMessages(vault, profile, messages) {
   const ambiguousReceipts = new Set((profile.sentMessages || [])
     .filter(row => row.confirmed === false || row.deliveryConfidence === 'unknown')
     .map(row => row.id).filter(id => id != null));
-  const uncertain = (profile.sentMessages || []).filter(row => row.deliveryConfidence === 'unknown');
+  const positions=new Map();
+  messages.forEach((row,index)=>{if(!positions.has(row.id))positions.set(row.id,index);});
+  const uncertain = (profile.sentMessages || []).filter(row => row.deliveryConfidence === 'unknown')
+    .map(row=>({row,boundary:positions.get(row.baseline)??-1,opened:false}));
   return messages.map((message, index) => {
     let origin = message.direction === 'other' ? 'other' : 'unknown';
     if (message.direction === 'self') {
       origin = message.authorship === 'ai' || message.aiGenerated || generated.has(message.id) ? 'ai' : 'human';
       if (ambiguousReceipts.has(message.id)) origin = 'unknown';
       if (message.authorship === 'unknown' || message.deliveryConfidence === 'unknown' || message.assumedPresent) origin = 'unknown';
-      for (const row of uncertain) {
-        const boundary = messages.findIndex(item => item.id === row.baseline);
-        if (boundary >= index || Number.isSafeInteger(message.timestamp) && Math.abs(message.timestamp * 1000 - row.at) > 180000) continue;
+      for (const entry of uncertain) {
+        const row=entry.row;
+        if (entry.boundary >= index || Number.isSafeInteger(message.timestamp) && Math.abs(message.timestamp * 1000 - row.at) > 180000) continue;
         // An unresolved voice or unreadable intent cannot establish human authorship.
-        let intent;
-        try { intent = vault.open(row.body)?.text; } catch { origin = 'unknown'; continue; }
-        if (row.media ? message.type === 'voice' : intent === message.text) origin = 'unknown';
+        // Decode each eligible intent once, also when a report contains a long
+        // range. Keep the original boundary/time/unknown semantics unchanged.
+        if(!entry.opened){try{entry.intent=vault.open(row.body)?.text;}catch{entry.failed=true;}entry.opened=true;}
+        if(entry.failed){origin='unknown';continue;}
+        if (row.media ? message.type === 'voice' : entry.intent === message.text) origin = 'unknown';
       }
     }
     return { ...message, authorship: origin, aiGenerated: origin === 'ai' || message.aiGenerated === true };
@@ -39,11 +45,34 @@ export function contextualReplyStyle(messages, options = {}) {
 // Exact provenance only: never classify a user's edited text by its wording.
 // A selected learned style remains useful expression evidence, without making
 // every observation in its summary a mandatory conversational task.
-export function replyStyleOrigin(profile, style, { reference = false } = {}) {
+const summaryOrigins = new Set(['user-setting', 'learned-observation', 'reference-style']);
+const summaryHash=value=>createHash('sha256').update(typeof value?.style?.summary==='string'?value.style.summary:'').digest('hex');
+export function bindDefaultSummaryOrigin(value, origin) {
+  if(!summaryOrigins.has(origin))return;
+  value.summaryOrigin=origin;value.summaryOriginHash=summaryHash(value);
+}
+export function accountDefaultSummaryOrigin(value) {
+  if (summaryOrigins.has(value?.summaryOrigin)&&/^[a-f0-9]{64}$/.test(value?.summaryOriginHash||'')) {
+    // Older application versions can edit only summary while retaining outer
+    // metadata. A changed known summary is no longer the learned observation.
+    return value.summaryOriginHash===summaryHash(value)?value.summaryOrigin:'user-setting';
+  }
+  // Old explicit manual defaults are already known. Do not infer whether an
+  // unmarked legacy learning result was subsequently edited.
+  return value?.source === 'manual' ? 'user-setting' : 'reference-style';
+}
+
+export function editedDefaultSummaryOrigin(value, summary) {
+  if (!value || value.source === 'manual' || value.style?.summary !== summary) return 'user-setting';
+  return summaryOrigins.has(value.summaryOrigin)&&/^[a-f0-9]{64}$/.test(value.summaryOriginHash||'')
+    ? accountDefaultSummaryOrigin(value) : undefined;
+}
+
+export function replyStyleOrigin(profile, style, { reference = false, summaryOrigin } = {}) {
   const locked = Array.isArray(profile?.locked) ? profile.locked : [];
   const learned = typeof profile?.learnedStyle?.summary === 'string' && !!profile.learnedStyle.summary
     && style?.summary === profile.learnedStyle.summary && !locked.includes('summary');
-  return { summary: reference ? 'reference-style' : learned ? 'learned-observation' : 'user-setting',
+  return { summary: summaryOrigins.has(summaryOrigin) ? summaryOrigin : reference ? 'reference-style' : learned ? 'learned-observation' : 'user-setting',
     explicitFields: [...new Set(['customTone', 'customAvoid', ...locked])] };
 }
 
