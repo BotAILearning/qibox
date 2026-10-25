@@ -2,14 +2,21 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { compactModelInput, encodeModelRequest } from '../server/ai-model-input.mjs';
 
-test('wire references only identical current-chat style without weakening a distinct or borrowed addressing scope', () => {
+test('wire references identical style without weakening current or borrowed addressing scope', () => {
   const style={summary:'保留我的完整手动风格，正式请求详细回答。',customTone:'稳妥',customAvoid:'别反复追问',roles:['同事'],addressing:'王老师'};
   const input={mode:'reply',style,addressing:{styleScope:'current-chat',currentStyle:structuredClone(style)},messages:[]};
   const before=structuredClone(input),wire=compactModelInput(input);
   assert.deepEqual(wire.style,style);assert.deepEqual(wire.addressing,{styleScope:'current-chat',currentStyleRef:'style'});
   assert.equal(JSON.stringify(wire).split(style.summary).length-1,1);assert.deepEqual(input,before);
+  const borrowed={...input,addressing:{styleScope:'reference',currentStyle:structuredClone(style)}};
+  const borrowedWire=compactModelInput(borrowed);
+  assert.deepEqual(borrowedWire.addressing,{styleScope:'reference',currentStyleRef:'style'});
+  assert.deepEqual({...borrowedWire,addressing:{...borrowedWire.addressing,currentStyle:borrowedWire.style,currentStyleRef:undefined}},
+    {...borrowed,addressing:{...borrowed.addressing,currentStyleRef:undefined}},'Resolving the exact reference preserves every value including the restrictive reference scope');
+  assert.equal(JSON.stringify(borrowedWire).split(style.summary).length-1,1);
   for(const addressing of [
-    {styleScope:'reference',currentStyle:structuredClone(style)},
+    {styleScope:'reference',currentStyle:{...style,addressing:'不得借用的称呼'}},
+    {styleScope:'unrecognized-future-scope',currentStyle:structuredClone(style)},
     {styleScope:'current-chat',currentStyle:{...style,addressing:'李老师'}},
     {styleScope:'current-chat',currentStyle:style,currentStyleRef:'other-configuration'},
   ]) assert.deepEqual(compactModelInput({...input,addressing}).addressing,addressing,'Distinct authority or preexisting references remain inline');
