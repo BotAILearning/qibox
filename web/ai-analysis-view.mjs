@@ -2,6 +2,7 @@ import { dateRangeField } from './ai-date-range.mjs';
 import { icon } from './ai-icons.mjs';
 import { contactName, contactSearch } from './ai-contact-name.mjs';
 import { contactPickerAvatar, contactPickerRow } from './ai-contact-picker.mjs';
+import { writeClipboardText } from './clipboard-write.mjs';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 export function analysisContactList(state, selected, query) {
   const persons = state.contacts.filter(c => c.kind === 'person');
@@ -162,10 +163,8 @@ export function analysisPage(state, draft, result, search = '', report = null, r
 }
 
 export async function copyReport(text) {
-  if (navigator.clipboard?.writeText && globalThis.isSecureContext) return navigator.clipboard.writeText(text);
-  const input = document.createElement('textarea'); input.value = text; input.readOnly = true;
-  input.style.cssText = 'position:fixed;left:-9999px;top:0'; document.body.append(input);
-  const focus = document.activeElement;
-  try { input.select(); if (!document.execCommand('copy')) throw new Error('浏览器未允许复制，请选中报告正文复制'); }
-  finally { input.remove(); focus?.focus(); }
+  return writeClipboardText(text, {
+    focusMessage: '请回到报告页面，点击“复制全文”',
+    copyMessage: '浏览器未允许复制，请选中报告正文复制',
+  });
 }

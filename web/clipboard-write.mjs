@@ -1,15 +1,18 @@
 // Keep browser clipboard restrictions in one place. Text also works on a NAS
 // HTTP page through the browser's user-initiated copy command.
-export async function writeClipboardText(text, { signal } = {}) {
+export async function writeClipboardText(text, { signal,
+  focusMessage = '请回到微信页面，点击“复制到本机”',
+  copyMessage = '请点击“复制到本机”，或允许浏览器访问剪贴板',
+} = {}) {
   signal?.throwIfAborted();
-  if (!document.hasFocus()) throw new Error('请回到微信页面，点击“复制到本机”');
+  if (!document.hasFocus()) throw new Error(focusMessage);
   try {
     if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
     await navigator.clipboard.writeText(text);
     return;
   } catch (error) {
     signal?.throwIfAborted();
-    if (!document.hasFocus()) throw new Error('请回到微信页面，点击“复制到本机”');
+    if (!document.hasFocus()) throw new Error(focusMessage);
     const active = document.activeElement;
     const selection = active && typeof active.selectionStart === 'number'
       ? [active.selectionStart, active.selectionEnd, active.selectionDirection] : null;
@@ -19,7 +22,7 @@ export async function writeClipboardText(text, { signal } = {}) {
     document.body.append(field);
     try {
       field.focus({ preventScroll: true }); field.select();
-      if (!document.execCommand('copy')) throw new Error('请点击“复制到本机”，或允许浏览器访问剪贴板');
+      if (!document.execCommand('copy')) throw new Error(copyMessage);
     } finally {
       field.remove(); active?.focus?.({ preventScroll: true });
       if (selection) active.setSelectionRange(...selection);
