@@ -324,7 +324,9 @@ export class AIProvider {
       throw new AppError('无法拉取模型，请检查配置或手动填写对话模型');
     }
   }
-  async complete(config, system, input, signal, { format = 'json', purpose, budget: requestedBudget, retry = true, validate, requireImages = false } = {}) {
+  async complete(config, system, input, signal, { format = 'json', purpose, budget: requestedBudget, maxOutputAcrossAttempts, retry = true, validate, requireImages = false } = {}) {
+    if (maxOutputAcrossAttempts !== undefined && (format !== 'report' || !Number.isSafeInteger(maxOutputAcrossAttempts) || maxOutputAcrossAttempts < 1 || !Number.isSafeInteger(requestedBudget) || requestedBudget < 1))
+      throw new AppError('分析请求的输出预算无效');
     assertReplyRoleInput(input);
     // Condense duplicate checks only when the assistant already supplied the
     // complete reply policy. Standalone callers keep every original safeguard.
@@ -367,8 +369,18 @@ export class AIProvider {
     // to cut a real answer off mid-JSON. Ask for room explicitly instead.
     let budget = requestedBudget ?? outputBudget(textInput);
     let response, droppedBudget = false, currentSystem = transportSystem;
+    // Reserve the requested maximum before dispatch. Only a valid, reported
+    // output count can return unused allowance; unknown usage stays reserved.
+    // This is a generation limit, not a claim about provider billing or points.
+    let remainingOutput = maxOutputAcrossAttempts ?? null;
     for (let attempt = 0; ; attempt++) {
+      let reservedOutput = 0;
       try {
+        if (remainingOutput !== null) {
+          budget = Math.min(budget, remainingOutput);
+          if (budget < 1) throw new AppError('本次分析的输出预算已用完，请缩小范围或更换模型', 502, 'ai_model_output_budget');
+          reservedOutput = budget; remainingOutput -= reservedOutput;
+        }
         const requestBody = { model: config.model, stream: false, ...(budget ? { max_tokens: budget } : {}),
           ...(!anthropic && format === 'json' && (
             ['open.bigmodel.cn', 'api.z.ai'].includes(new URL(config.baseUrl).hostname) && /^glm-5\.3(?:-flashx?)?$/i.test(config.model)
@@ -413,11 +425,11 @@ export class AIProvider {
             if (requireImages) throw new AppError('当前模型不支持图片输入', 400, 'ai_model_vision_unsupported');
             const readable = readableMediaInput(textInput, { dropImages: true });
             return textInput.onlyImages || textInput.mode === 'reply' && !readable.conversation?.pendingIncomingIds.length ? {action:'skip',mediaSkipped:true}
-              : this.complete(config, system + ' 本次接口无法接受图片，图片已略过；只回复仍可读取的文字，不猜测图片，不要求重发或转文字。', readable, signal, { format, purpose, budget, retry, validate });
+              : this.complete(config, system + ' 本次接口无法接受图片，图片已略过；只回复仍可读取的文字，不猜测图片，不要求重发或转文字。', readable, signal, { format, purpose, budget, ...(remainingOutput !== null ? { maxOutputAcrossAttempts: remainingOutput } : {}), retry, validate });
           }
-          // A host that rejects the budget parameter (or the value we asked for)
-          // must not fail the call: retry once the way it used to be sent.
-          if (budget && response.status === 400 && !droppedBudget && retry) { budget = 0; droppedBudget = true; continue; }
+          // Legacy callers may fall back when a host rejects max_tokens.
+          // A bounded report must retain its explicit output ceiling.
+          if (budget && response.status === 400 && !droppedBudget && retry && remainingOutput === null) { budget = 0; droppedBudget = true; continue; }
           throw new AppError(contextTooLarge ? '模型上下文容量不足，无法一次处理当前聊天范围；请缩小范围或更换长上下文模型'
             : response.status === 401 ? '模型认证失败，请检查 API Key'
             : response.status === 403 ? '模型服务拒绝访问，权限不足；请检查账号、模型及接口访问权限'
@@ -436,6 +448,9 @@ export class AIProvider {
         try { data = JSON.parse(Buffer.concat(parts).toString()); }
         catch { throw new AppError('模型接口未返回有效数据，请检查服务地址和接口类型', 502, 'ai_model_response'); }
         const tokenCount = value => Number.isSafeInteger(value) && value >= 0 ? value : null;
+        const reportedOutput = tokenCount(data.usage?.completion_tokens ?? data.usage?.output_tokens);
+        if (remainingOutput !== null && reportedOutput !== null && reportedOutput <= reservedOutput)
+          remainingOutput += reservedOutput - reportedOutput;
         console.info('[ai-request-cost]', JSON.stringify({ mode: input.mode || format,
           inputChars: currentSystem.length + text.length,
           compactedChars: Math.max(0, system.length + JSON.stringify(expanded).length - currentSystem.length - text.length),
@@ -444,6 +459,12 @@ export class AIProvider {
           cachedInputTokens: tokenCount(data.usage?.prompt_tokens_details?.cached_tokens ?? data.usage?.cache_read_input_tokens),
           cacheWriteTokens: tokenCount(data.usage?.cache_creation_input_tokens) }));
         if (data.choices?.[0]?.finish_reason === 'length' || data.stop_reason === 'max_tokens') {
+          if (remainingOutput !== null) {
+            const visible = anthropic ? (Array.isArray(data.content) ? data.content.filter(x => x.type === 'text').map(x => x.text).join('') : undefined) : data.choices?.[0]?.message?.content;
+            const reasoning = tokenCount(data.usage?.completion_tokens_details?.reasoning_tokens ?? data.usage?.output_tokens_details?.thinking_tokens);
+            if (typeof visible === 'string' && !visible.trim() && reasoning !== null && reasoning >= reservedOutput)
+              throw new AppError('模型在输出上限内未生成报告正文，请缩小范围或更换模型', 502, 'ai_model_output_budget');
+          }
           if (input?.defaultStyle || Array.isArray(input?.profiles)) console.warn('[ai-style-shape]', JSON.stringify({
             stage: input.defaultStyle ? 'person' : 'summary', responseKeys: Object.keys(data),
             finishReason: data.choices?.[0]?.finish_reason ?? data.stop_reason ?? null, truncated: true, responseBytes: size,
@@ -487,7 +508,7 @@ export class AIProvider {
         if (signal?.aborted) throw new AppError('操作已取消', 409);
         const retryableCode = ['ai_model_retry', 'ai_model_response', 'ai_model_format', 'ai_model_schema', 'ai_model_incomplete', 'ai_model_time'];
         const retryable = error instanceof AppError ? retryableCode.includes(error.code) : true;
-        if (retryable && retry && attempt < MODEL_RETRY_LIMIT) {
+        if (retryable && retry && attempt < MODEL_RETRY_LIMIT && (remainingOutput === null || remainingOutput > 0)) {
           await this.backoff(attempt, signal);
           if (error instanceof AppError && error.code !== 'ai_model_retry') currentSystem = `${transportSystem}\n上一次返回未通过格式或业务结构校验。${error.code === 'ai_model_time' ? error.message + '。' : ''}请基于同一份输入修正后重新回答，只返回符合原要求的完整 JSON 对象，不要解释。`;
           continue;

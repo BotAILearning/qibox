@@ -173,6 +173,11 @@ export async function analyzeContacts(assistant, value) {
           beijingTime: reportMessageTime(message.timestamp), text: message.text,
           secondsSincePrevious: index === 0 ? null : message.timestamp - messages[index - 1].timestamp,
         }));
+        // Official Flash can use the whole old 4096 limit for reasoning alone.
+        // Give one report room to finish without increasing the previous
+        // three-attempt output ceiling. Other models and saved choices stay as-is.
+        const boundedDeepSeekReport = config.protocol === 'openai' && config.model === 'deepseek-flash'
+          && new URL(config.baseUrl).hostname === 'api.deepseek.com';
         const validated = await a.provider.complete(config, analysisPrompt(options.request), {
           userRequest: options.request, request: options.request, contact: contact.label,
           from: options.fromDate, to: options.toDate, timezone: 'Asia/Shanghai', analyzedAt: new Date(a.now()).toISOString(),
@@ -181,7 +186,8 @@ export async function analyzeContacts(assistant, value) {
           actualRange: actualRange(messages), sourceRange: actualRange(sourceMessages),
           coverage: { ...coverage, sourceTruncated, truncated, reasons: [...(material.truncatedReasons || [])] },
           metrics: reportMetrics(messages), ...(mediaCoverage ? { mediaCoverage } : {}), messages: inputMessages,
-        }, signal, { format: 'report', budget: 4096, validate: result => {
+        }, signal, { format: 'report', budget: boundedDeepSeekReport ? 8192 : 4096,
+          ...(boundedDeepSeekReport ? { maxOutputAcrossAttempts: 12288 } : {}), validate: result => {
           const reportText = typeof result?.report === 'string' ? normalizeDefaultReport(result.report.trim(), options.request) : '';
           if (!reportText) throw new AppError('模型没有返回有效报告正文，请重试', 502, 'ai_model_schema');
           return { reportText };
