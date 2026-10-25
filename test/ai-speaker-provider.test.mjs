@@ -20,7 +20,7 @@ test('official DeepSeek Flash keeps thinking within the existing business output
     const calls = [], input = structuredClone(scenario.input);
     const provider = new AIProvider({ fetcher: async (_url, options) => {
       const body = JSON.parse(options.body); calls.push(body);
-      assert.equal(body.reasoning_effort, scenario.low ? 'low' : undefined);
+      assert.equal(body.reasoning_effort, scenario.low ? scenario.input.mode === 'reply' ? 'high' : 'low' : undefined);
       assert.deepEqual(body.thinking, scenario.low ? { type: 'enabled' } : undefined);
       assert.deepEqual(body.response_format, scenario.host === 'api.deepseek.com' && scenario.model === 'deepseek-flash' && scenario.protocol === 'openai' && scenario.format !== 'report' ? { type: 'json_object' } : undefined);
       assert.equal(body.max_tokens, 4096);

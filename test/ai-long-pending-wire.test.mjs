@@ -5,6 +5,7 @@ import { AIProvider } from '../server/ai-provider.mjs';
 import { ChatFixture, modelConfig, key } from './ai-fixtures.mjs';
 import { temp, cleanup } from './fixtures.mjs';
 import { replyCurrentWritingTask, replyCompositionPrompt } from '../server/ai-reply-role.mjs';
+import { readableReplyWire } from './ai-wire-fixtures.mjs';
 
 test('production wire ends with full long incoming turns once, including middle corrections and verified quote authors', async t => {
   const root = await temp(), bridge = new ChatFixture(), wires = [];
@@ -44,7 +45,8 @@ test('production wire ends with full long incoming turns once, including middle 
   const system = wires[0].messages.find(m => m.role === 'system').content;
   assert.doesNotMatch(system, /本轮来信包含明确问题/, 'A keyword match must not be asserted to the model as a confirmed question');
   assert.match(system, /关键词或转述不等于对方在提问/);
-  const input = JSON.parse(wires[0].messages.find(m => m.role === 'user').content);
+  const rawInput = JSON.parse(wires[0].messages.find(m => m.role === 'user').content);
+  const input = readableReplyWire(rawInput);
   assert.equal(Object.keys(input).at(-1), 'writeNextMessage');
   assert.equal(input.writeNextMessage, replyCurrentWritingTask);
   assert.equal(system.endsWith(replyCompositionPrompt), true, 'Keep the complete original system policy, not the rejected relocation experiment');

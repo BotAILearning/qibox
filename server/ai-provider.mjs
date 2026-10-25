@@ -6,6 +6,7 @@ import path from 'node:path';
 import { isIP } from 'node:net';
 import { AppError } from './files.mjs';
 import { compactModelInput, compactReportInput, encodeModelRequest, modelInputReferencePrompt } from './ai-model-input.mjs';
+import { compactReplyWire, replyWireReferencePrompt } from './ai-reply-wire.mjs';
 import { textField } from './ai-schema.mjs';
 import { readableMediaInput } from './ai-media-input.mjs';
 import { replyFixedRules } from './ai-reply-prompt.mjs';
@@ -356,13 +357,16 @@ export class AIProvider {
     const modelInput = completeReplyPolicy ? { ...replyInput, writeNextMessage: replyCurrentWritingTask }
       : format === 'report' ? compactReportInput(compacted) : compacted;
     const encoded = encodeModelRequest(wireSystem, modelInput);
-    const text = JSON.stringify(encoded.input);
+    const transportInput = completeReplyPolicy && encoded.system.endsWith(replyCompositionPrompt) ? compactReplyWire(encoded.input) : encoded.input;
+    const transportSystem = transportInput === encoded.input ? encoded.system
+      : encoded.system.slice(0, -replyCompositionPrompt.length) + replyWireReferencePrompt + replyCompositionPrompt;
+    const text = JSON.stringify(transportInput);
     const requestContent = validImages.length ? [{type:'text',text}, ...validImages.flatMap(x => [{type:'text',text:'图片对应消息 '+encoded.id(x.messageId)+(x.thumbnail ? '（微信缩略图；只描述可辨认的内容，不猜测模糊细节）' : '')}, anthropic ? {type:'image',source:{type:'base64',media_type:x.mime,data:x.data}} : {type:'image_url',image_url:{url:'data:'+x.mime+';base64,'+x.data}}])] : text;
     // Only Anthropic used to receive an output budget; elsewhere the server's
     // own default applied, and several hosts default to something small enough
     // to cut a real answer off mid-JSON. Ask for room explicitly instead.
     let budget = requestedBudget ?? outputBudget(textInput);
-    let response, droppedBudget = false, currentSystem = encoded.system;
+    let response, droppedBudget = false, currentSystem = transportSystem;
     for (let attempt = 0; ; attempt++) {
       try {
         const requestBody = { model: config.model, stream: false, ...(budget ? { max_tokens: budget } : {}),
@@ -379,12 +383,13 @@ export class AIProvider {
             ? { thinking: { type: 'enabled' }, reasoning_effort: 'low' } : {}),
           // Official Flash defaults to high effort. Long business inputs can
           // spend the unchanged output budget on reasoning and truncate JSON.
-          // Keep its in-request check, using the documented lower effort;
-          // custom gateways and other models retain their own defaults.
+          // Keep the reply's in-request check at the official default effort;
+          // reports/learning use lower effort within their smaller output budget.
+          // Custom gateways and other models retain their own defaults.
           ...(!anthropic && new URL(config.baseUrl).hostname === 'api.deepseek.com'
             && config.model === 'deepseek-flash'
             && (['reply', 'proactive', 'speaker-audit', 'style-trial'].includes(input.mode) || format === 'report' || purpose === 'learning')
-            ? { thinking: { type: 'enabled' }, reasoning_effort: 'low' } : {}),
+            ? { thinking: { type: 'enabled' }, reasoning_effort: input.mode === 'reply' ? 'high' : 'low' } : {}),
           ...(reasonAboutSpeakers ? { thinking: { type: 'adaptive' }, ...(!anthropic ? { reasoning_split: true } : {}) } : {}),
           ...(anthropic ? { system: currentSystem, messages: speakerTurns(input, requestContent) }
             : { messages: [{ role: 'system', content: currentSystem }, ...speakerTurns(input, requestContent)] }) };
@@ -484,7 +489,7 @@ export class AIProvider {
         const retryable = error instanceof AppError ? retryableCode.includes(error.code) : true;
         if (retryable && retry && attempt < MODEL_RETRY_LIMIT) {
           await this.backoff(attempt, signal);
-          if (error instanceof AppError && error.code !== 'ai_model_retry') currentSystem = `${encoded.system}\n上一次返回未通过格式或业务结构校验。${error.code === 'ai_model_time' ? error.message + '。' : ''}请基于同一份输入修正后重新回答，只返回符合原要求的完整 JSON 对象，不要解释。`;
+          if (error instanceof AppError && error.code !== 'ai_model_retry') currentSystem = `${transportSystem}\n上一次返回未通过格式或业务结构校验。${error.code === 'ai_model_time' ? error.message + '。' : ''}请基于同一份输入修正后重新回答，只返回符合原要求的完整 JSON 对象，不要解释。`;
           continue;
         }
         if (error instanceof AppError) throw error;
