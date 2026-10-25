@@ -68,6 +68,34 @@ test('reasoning-only report exhausting its limit stops without another identical
   assert.equal(calls, 1);
 });
 
+test('provider length with no report stops even when usage rounds below the requested limit or is absent', async () => {
+  for (const sample of [
+    { content: '', usage: { completion_tokens: 8190, completion_tokens_details: { reasoning_tokens: 8190 } } },
+    { content: '  ', usage: { completion_tokens: 8191 } },
+    { content: '' },
+    { content: null },
+  ]) {
+    let calls = 0;
+    const p = provider(async () => ++calls === 1
+      ? Response.json({ choices: [{ message: { content: sample.content }, finish_reason: 'length' }], ...(sample.usage ? { usage: sample.usage } : {}) })
+      : result('{"report":"不得靠无意义重试得到的正文"}', 100));
+    await assert.rejects(p.complete(config, 'JSON报告', {}, undefined, options), { code: 'ai_model_output_budget' });
+    assert.equal(calls, 1, 'An explicit provider limit and absent visible report must not spend another request');
+  }
+});
+
+test('a nonempty truncated report retains the existing bounded retry policy', async () => {
+  const budgets = [];
+  const p = provider(async (_url, init) => {
+    budgets.push(JSON.parse(init.body).max_tokens);
+    return budgets.length === 1
+      ? Response.json({ choices: [{ message: { content: '{"report":"未完成', }, finish_reason: 'length' }], usage: { completion_tokens: 1000 } })
+      : result('{"report":"完整报告"}', 1000);
+  });
+  assert.equal((await p.complete(config, 'JSON报告', {}, undefined, options)).report, '完整报告');
+  assert.deepEqual(budgets, [8192, 8192]);
+});
+
 test('malformed or over-limit usage cannot return output allowance', async () => {
   for (const usage of [99999, -1, '0']) {
     const budgets = [];

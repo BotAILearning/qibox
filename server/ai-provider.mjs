@@ -461,8 +461,10 @@ export class AIProvider {
         if (data.choices?.[0]?.finish_reason === 'length' || data.stop_reason === 'max_tokens') {
           if (remainingOutput !== null) {
             const visible = anthropic ? (Array.isArray(data.content) ? data.content.filter(x => x.type === 'text').map(x => x.text).join('') : undefined) : data.choices?.[0]?.message?.content;
-            const reasoning = tokenCount(data.usage?.completion_tokens_details?.reasoning_tokens ?? data.usage?.output_tokens_details?.thinking_tokens);
-            if (typeof visible === 'string' && !visible.trim() && reasoning !== null && reasoning >= reservedOutput)
+            // The provider's explicit length stop is authoritative. Its usage
+            // may omit reasoning or be a few tokens below max_tokens; neither
+            // makes an empty report worth regenerating with a smaller budget.
+            if (visible == null || typeof visible === 'string' && !visible.trim())
               throw new AppError('模型在输出上限内未生成报告正文，请缩小范围或更换模型', 502, 'ai_model_output_budget');
           }
           if (input?.defaultStyle || Array.isArray(input?.profiles)) console.warn('[ai-style-shape]', JSON.stringify({
