@@ -16,18 +16,17 @@ const source = () => ({
   ],
 });
 const restore = input => {
-  const index = Object.fromEntries(input.participants.map(p => [p.id, p.reportName]));
-  return input.messages.map(row => {
-    const values = Object.fromEntries(input.messageColumns.map((name, i) => [name, row[i]]));
-    return { sequence: values.sequence, speaker: index[values.author], beijingTime: values.beijingTime, text: values.text, secondsSincePrevious: values.secondsSincePrevious };
-  });
+  return input.messages.map(row => Object.fromEntries(input.messageColumns.map((name, i) => [name, row[i]])));
 };
 
 test('report wire is lossless across author, equal timestamps, relative dates, quotes and original text', () => {
   const input = source(), before = structuredClone(input), wire = compactReportInput(input);
-  assert.deepEqual(wire.messageColumns, ['sequence', 'author', 'beijingTime', 'text', 'secondsSincePrevious']);
+  assert.deepEqual(wire.messageColumns, ['sequence', 'speaker', 'beijingTime', 'text', 'secondsSincePrevious']);
   assert.deepEqual(restore(wire), input.messages); assert.deepEqual(input, before);
-  assert.deepEqual(wire.messages.map(row => row[1]), ['self', 'other', 'unknown']);
+  assert.deepEqual(wire.messages.map(row => row[1]), ['本人', '对方', '未知']);
+  assert.equal(Object.hasOwn(wire, 'participants'), false);
+  assert.deepEqual(Object.keys(wire).slice(-2), ['messages', 'writeReport']);
+  assert.match(wire.writeReport, /要求逐条或保留原文时完整遵守/);
   assert.deepEqual(wire.coverage, input.coverage); assert.deepEqual(wire.metrics, input.metrics);
   assert.equal(wire.userRequest, input.userRequest); assert.equal(Object.hasOwn(wire, 'request'), false);
   const distinct = { ...input, request: '保留一份不同的兼容请求' };
@@ -39,6 +38,7 @@ test('unrecognized report metadata or author shape stays inline without losing f
   for (const changed of [
     { ...original, participants: [{ id: 'custom', reportName: '已有角色定义' }] },
     { ...original, messageColumns: ['已有协议'] },
+    { ...original, writeReport: '已有调用方的任务元数据' },
     { ...original, messages: original.messages.map((m, i) => i ? m : { ...m, quote: { text: '有独立引用身份' } }) },
     { ...original, messages: original.messages.map((m, i) => i ? m : { ...m, speaker: { role: 'self', id: 'private-author' } }) },
     { ...original, messages: original.messages.map((m, i) => i ? m : { ...m, speaker: '未登记来源' }) },

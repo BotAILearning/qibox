@@ -6,18 +6,20 @@ export const modelInputReferencePrompt = ' 输入使用原文引用结构：mess
 // Pack only this exact known DTO; future quote/identity metadata stays inline.
 export function compactReportInput(input) {
   const columns = ['sequence', 'speaker', 'beijingTime', 'text', 'secondsSincePrevious'];
-  const authors = new Map([['本人', 'self'], ['对方', 'other'], ['未知', 'unknown']]);
+  const authors = new Set(['本人', '对方', '未知']);
   if (!input || Object.hasOwn(input, 'participants') || Object.hasOwn(input, 'messageColumns') ||
+      Object.hasOwn(input, 'writeReport') ||
       !Array.isArray(input.messages) || !input.messages.length || !input.messages.every((row, index) =>
         row && Object.keys(row).length === columns.length && columns.every(key => Object.hasOwn(row, key)) &&
         Number.isSafeInteger(row.sequence) && row.sequence === index + 1 && authors.has(row.speaker) &&
         typeof row.beijingTime === 'string' && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(row.beijingTime) &&
         typeof row.text === 'string' && (index === 0 ? row.secondsSincePrevious === null :
           Number.isFinite(row.secondsSincePrevious) && row.secondsSincePrevious >= 0))) return input;
-  const result = { ...input,
-    participants: [...authors].map(([reportName, id]) => ({ id, reportName })),
-    messageColumns: ['sequence', 'author', 'beijingTime', 'text', 'secondsSincePrevious'],
-    messages: input.messages.map(row => [row.sequence, authors.get(row.speaker), row.beijingTime, row.text, row.secondsSincePrevious]) };
+  const { messages, ...metadata } = input;
+  const result = { ...metadata,
+    messageColumns: columns,
+    messages: messages.map(row => columns.map(key => row[key])),
+    writeReport: '现在按userRequest和指定格式完成报告。要求逐条或保留原文时完整遵守；概括只选主要进展和最后的新变化，略去枝节，不为覆盖所有人物逐个罗列，不重复总结。每句保留原文的完整物主、亲属关系、否定范围和未知状态，不把两条原话拼成新的事实，不以指代不清的“自己”替代第三人。只返回report JSON。' };
   if (typeof input.userRequest === 'string' && input.request === input.userRequest) delete result.request;
   return result;
 }
