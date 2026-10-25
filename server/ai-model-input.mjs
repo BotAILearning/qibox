@@ -19,7 +19,7 @@ export function compactReportInput(input) {
   const result = { ...metadata,
     messageColumns: columns,
     messages: messages.map(row => columns.map(key => row[key])),
-    writeReport: '现在按userRequest和指定格式完成报告。表格按用户指定列，不额外展示未要求的内部字段名。要求逐条、保留原文或其他篇幅时完整遵守；否则概括最多600字，只选主要进展和最后的新变化，略去枝节，不为覆盖所有人物逐个罗列，不重复同一状态或另作总结。每句保留原文的物主、亲属关系、否定范围和未知状态，不把两条原话拼成新事实，不以指代不清的“自己”替代第三人。只返回report JSON。' };
+    writeReport: '现在按userRequest和指定格式完成报告。表格按用户指定列，不额外展示未要求的内部字段名。要求逐条、保留原文或其他篇幅时完整遵守；否则概括最多600字，只选主要进展和最后的新变化，不重复状态、逐人罗列或另作总结。概括仍保留动作的实际对象，配件的动作不能写成整件物品的动作。原话只谈通知、申请、查账、受理等证据或流程时，用原话中的短语表述，不压成实际结果；明确已发生或未发生的结果仍照原文。难以简写的否定范围、物主和亲属关系沿原短句，或略去非主要细节，不把两条原话拼成新事实，不以指代不清的“自己”替代第三人。只返回report JSON。' };
   if (typeof input.userRequest === 'string' && input.request === input.userRequest) delete result.request;
   return result;
 }
