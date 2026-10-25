@@ -925,7 +925,7 @@ export class AIAssistant {
       this.syncTargets();
     }));
   }
-  watchedTargets() { return [...new Set([...this.data.targets, ...this.profiles().filter(p => this.continuing(p) || learningEnabled(this) && this.eligible(p)).map(p => p.id), ...(this.data.settings.reply && this.data.settings.replyScope === 'all' ? this.profiles().filter(p => this.eligible(p) && p.kind === 'person').map(p => p.id) : [])])]
+  watchedTargets() { return [...new Set([...this.data.targets, ...this.profiles().filter(p => this.continuing(p) || this.eligible(p) && (learningEnabled(this) || this.data.settings.reply && this.replySelected(p))).map(p => p.id)])]
     .filter(id => { const profile = this.data.profiles[id]; return profile && !(profile.paused && profile.pauseReason === 'explicit'); }); }
   sessionToken(row) { return `${row.at}:${row.last}:${row.unread}`; }
   // 这一拍该读谁。微信自己的会话表（session.db）里每个会话一行，带未读数和最后一条
@@ -940,7 +940,7 @@ export class AIAssistant {
     this.watchTokens = new Map();
     // 只有本人明确选中的对象（以及正在续聊的）才需要「无会话行时轮转兜底」；
     // 其余对象若在聊天列表里没有行，说明根本没有聊天记录，读它不可能发现消息。
-    const important = new Set([...this.data.targets, ...this.profiles().filter(p => this.continuing(p)).map(p => p.id)]);
+    const important = new Set([...this.data.targets, ...this.profiles().filter(p => this.continuing(p) || this.eligible(p) && this.data.settings.reply && this.replySelected(p) && (p.kind === 'group' || p.replyOptions?.enabled === true)).map(p => p.id)]);
     if (!targets.length) return [];
     const keep = new Set();
     for (const id of targets) {
