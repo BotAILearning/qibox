@@ -375,6 +375,14 @@ export class AIProvider {
             && /^glm-5\.3(?:-flashx?)?$/i.test(config.model)
             && (['reply', 'proactive', 'speaker-audit'].includes(input.mode) || format === 'report' || purpose === 'learning')
             ? { thinking: { type: 'enabled' }, reasoning_effort: 'low' } : {}),
+          // Official Flash defaults to high effort. Long business inputs can
+          // spend the unchanged output budget on reasoning and truncate JSON.
+          // Keep its in-request check, using the documented lower effort;
+          // custom gateways and other models retain their own defaults.
+          ...(!anthropic && new URL(config.baseUrl).hostname === 'api.deepseek.com'
+            && config.model === 'deepseek-flash'
+            && (['reply', 'proactive', 'speaker-audit', 'style-trial'].includes(input.mode) || format === 'report' || purpose === 'learning')
+            ? { thinking: { type: 'enabled' }, reasoning_effort: 'low' } : {}),
           ...(reasonAboutSpeakers ? { thinking: { type: 'adaptive' }, ...(!anthropic ? { reasoning_split: true } : {}) } : {}),
           ...(anthropic ? { system: currentSystem, messages: speakerTurns(input, requestContent) }
             : { messages: [{ role: 'system', content: currentSystem }, ...speakerTurns(input, requestContent)] }) };

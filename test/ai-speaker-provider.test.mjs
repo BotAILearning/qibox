@@ -6,6 +6,31 @@ import { modelConfig, key } from './ai-fixtures.mjs';
 import { validateReplyResult } from '../server/ai-prompts.mjs';
 import { naturalAttributionPrompt, confirmedSpeakerHistory } from '../server/ai-speakers.mjs';
 
+test('official DeepSeek Flash keeps thinking within the existing business output budget', async () => {
+  for (const scenario of [
+    { host: 'api.deepseek.com', model: 'deepseek-flash', protocol: 'openai', format: 'report', input: { mode: 'analysis', userRequest: '回顾这段聊天' }, low: true },
+    { host: 'api.deepseek.com', model: 'deepseek-flash', protocol: 'openai', input: { mode: 'reply' }, low: true },
+    { host: 'api.deepseek.com', model: 'deepseek-flash', protocol: 'openai', input: { mode: 'style-trial' }, low: true },
+    { host: 'api.deepseek.com', model: 'deepseek-flash', protocol: 'openai', purpose: 'learning', input: {}, low: true },
+    { host: 'models.example.test', model: 'deepseek-flash', protocol: 'openai', input: { mode: 'reply' }, low: false },
+    { host: 'api.deepseek.com', model: 'another-model', protocol: 'openai', input: { mode: 'reply' }, low: false },
+    { host: 'api.deepseek.com', model: 'deepseek-flash', protocol: 'anthropic', input: { mode: 'reply' }, low: false },
+    { host: 'api.deepseek.com', model: 'deepseek-flash', protocol: 'openai', input: { mode: 'connection-test' }, low: false },
+  ]) {
+    const calls = [], input = structuredClone(scenario.input);
+    const provider = new AIProvider({ fetcher: async (_url, options) => {
+      const body = JSON.parse(options.body); calls.push(body);
+      assert.equal(body.reasoning_effort, scenario.low ? 'low' : undefined);
+      assert.deepEqual(body.thinking, scenario.low ? { type: 'enabled' } : undefined);
+      assert.equal(body.max_tokens, 4096);
+      const content = JSON.stringify(scenario.format === 'report' ? { report: '仅业务正文' } : { action: 'skip' });
+      return Response.json(scenario.protocol === 'anthropic' ? { content: [{ type: 'text', text: content }] } : { choices: [{ message: { content, reasoning_content: 'PRIVATE_REASONING' }, finish_reason: 'stop' }] });
+    } });
+    await provider.complete({ ...modelConfig, baseUrl: `https://${scenario.host}/v1`, model: scenario.model, protocol: scenario.protocol }, '按当前来源自然回应', input, undefined, { format: scenario.format, purpose: scenario.purpose, budget: 4096 });
+    assert.equal(calls.length, 1); assert.deepEqual(input, scenario.input);
+  }
+});
+
 for (const protocol of ['anthropic', 'openai']) test(`${protocol}: reports do not force thinking that can exhaust their existing text budget`, async () => {
   const input = { userRequest: '按顺序回顾，不把陈述当作本人做过的事', messages: [
     { sequence: 1, speaker: '对方', beijingTime: '2026-10-25 01:00:00', text: '阿青妈妈付过灯的钱，我只帮忙拍收条。', secondsSincePrevious: null },
