@@ -13,6 +13,19 @@ const own={id:key('laundry-own'),direction:'self',text:'今天我洗了好多衣
 const quote={verified:true,messageId:own.id,direction:'self',text:own.text,timestamp:100,sender:selfSender};
 const incoming={id:key('laundry-comment'),direction:'other',text:'很勤快了，很多被子了',timestamp:101,sender:member,mentions:{verified:true,self:false,all:false,others:false},quote};
 
+test('alias/metaphor instructions stay in one generation, preserve source/manual style and never rewrite the returned wording',async t=>{
+ const root=await temp(),bridge=new ChatFixture(),provider=new AIModelFixture();let now=1792940000000;
+ const a=new AIAssistant({dataRoot:root,bridge,provider,now:()=>now,random:min=>min,delay:async ms=>{now+=ms;}});await a.init();clearInterval(a.timer);clearInterval(a.warmupTimer);t.after(async()=>{await a.close();await cleanup(root);});
+ await a.configure(modelConfig);await a.scan();const peer=bridge.contacts[0].id,summary='保留用户的正式完整表达，详细要求时展开，不强行开玩笑或加表情。';
+ await a.saveReplyProfile({contact:peer,style:{summary},styleId:'new-custom',strategy:{replyGoal:'接当前话题',facts:'',boundaries:'不代替本人作新决定',maxRounds:20},replyEnabled:true});await a.settings({enabled:true,autoLearning:false,segmentReplies:false,followUpEnabled:false});await a.tick();
+ const text='地图角上的水渍被小路叫作湖泊，窗边真有一张湖泊照片，是阿青带来的。'.repeat(12)+'两个说法不是新增了两张照片；旁边真实的相片和地图仍各自放着。',original=bridge.push(peer,'other',text),returned='原样保留这条模型正文，不在发送前改写词语或标点。';
+ provider.next=async()=>({action:'send',text:returned});await a.tick();now+=301000;await a.tick();
+ assert.equal(provider.calls.length,1);assert.equal(bridge.sent.length,1);assert.equal(bridge.sent[0].text,returned);
+ const call=provider.calls[0];assert.equal(call.input.messages.find(x=>x.id===original.id).text,text);assert.equal(call.input.style.summary,summary);assert.match(call.system,/同一物件或事件的别称、比喻仍沿原事项/);assert.match(call.system,/原话分别谈两件时/);
+ // This verifies the transport/priority constraint, not a model-quality pass.
+ assert(!call.system.includes('占到底便宜'));assert(!call.system.includes('保修卡一下'));
+});
+
 test('ordinary conversation keeps both original speakers visible without assigning event ownership', () => {
  const rows=[
   {direction:'self',authorship:'human',text:'我爸的电脑坏了，我的没坏。'},

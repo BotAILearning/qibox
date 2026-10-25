@@ -10,6 +10,7 @@ import { compactReplyWire, replyWireReferencePrompt } from './ai-reply-wire.mjs'
 import { textField } from './ai-schema.mjs';
 import { readableMediaInput } from './ai-media-input.mjs';
 import { replyFixedRules } from './ai-reply-prompt.mjs';
+import { requestTrace } from './ai-request-trace.mjs';
 
 export function providerValue(value, previous = {}, { discovery = false } = {}) {
   let url;
@@ -373,8 +374,10 @@ export class AIProvider {
     // output count can return unused allowance; unknown usage stays reserved.
     // This is a generation limit, not a claim about provider billing or points.
     let remainingOutput = maxOutputAcrossAttempts ?? null;
+    const traceAttempt = requestTrace({ mode: input.mode, format, purpose });
     for (let attempt = 0; ; attempt++) {
       let reservedOutput = 0;
+      const trace = traceAttempt(attempt + 1);
       try {
         if (remainingOutput !== null) {
           budget = Math.min(budget, remainingOutput);
@@ -405,7 +408,10 @@ export class AIProvider {
           ...(reasonAboutSpeakers ? { thinking: { type: 'adaptive' }, ...(!anthropic ? { reasoning_split: true } : {}) } : {}),
           ...(anthropic ? { system: currentSystem, messages: speakerTurns(input, requestContent) }
             : { messages: [{ role: 'system', content: currentSystem }, ...speakerTurns(input, requestContent)] }) };
-        response = await this.fetcher(endpoint, { method: 'POST', redirect: 'error', headers: this.headers(config), signal: AbortSignal.any([AbortSignal.timeout(config.timeout * 1000), ...(signal ? [signal] : [])]), body: JSON.stringify(requestBody) });
+        const requestOptions = { method: 'POST', redirect: 'error', headers: this.headers(config), signal: AbortSignal.any([AbortSignal.timeout(config.timeout * 1000), ...(signal ? [signal] : [])]), body: JSON.stringify(requestBody) };
+        trace.dispatch();
+        response = await this.fetcher(endpoint, requestOptions);
+        trace.response(response.status);
         if (!response.ok) {
           let modelError = '', modelErrorCode = '', modelErrorType = '';
           if (response.status === 400 || response.status === 413 || response.status === 422) {
@@ -447,6 +453,7 @@ export class AIProvider {
         let data;
         try { data = JSON.parse(Buffer.concat(parts).toString()); }
         catch { throw new AppError('模型接口未返回有效数据，请检查服务地址和接口类型', 502, 'ai_model_response'); }
+        trace.usage(data.usage);
         const tokenCount = value => Number.isSafeInteger(value) && value >= 0 ? value : null;
         const reportedOutput = tokenCount(data.usage?.completion_tokens ?? data.usage?.output_tokens);
         if (remainingOutput !== null && reportedOutput !== null && reportedOutput <= reservedOutput)
@@ -507,6 +514,10 @@ export class AIProvider {
           throw error;
         }
       } catch (error) {
+        trace.failed(error, signal?.aborted === true);
+        // Settle before the existing backoff, so its delay is not presented as
+        // time spent receiving/parsing this request. finally is idempotent.
+        trace.end();
         if (signal?.aborted) throw new AppError('操作已取消', 409);
         const retryableCode = ['ai_model_retry', 'ai_model_response', 'ai_model_format', 'ai_model_schema', 'ai_model_incomplete', 'ai_model_time'];
         const retryable = error instanceof AppError ? retryableCode.includes(error.code) : true;
@@ -518,6 +529,8 @@ export class AIProvider {
         if (error instanceof AppError) throw error;
         const timedOut = error.name === 'TimeoutError';
         throw new AppError(timedOut ? '模型响应超时，请稍后重试' : '无法连接模型服务，请检查网络和服务地址', timedOut ? 504 : 502, timedOut ? 'ai_model_timeout' : 'ai_model_connection');
+      } finally {
+        trace.end();
       }
     }
   }
