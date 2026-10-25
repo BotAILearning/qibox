@@ -19,7 +19,7 @@ export function compactReportInput(input) {
   const result = { ...metadata,
     messageColumns: columns,
     messages: messages.map(row => columns.map(key => row[key])),
-    writeReport: '现在按userRequest和指定格式完成报告。表格按用户指定列，不额外展示未要求的内部字段名。要求逐条、保留原文或其他篇幅时完整遵守；否则概括最多600字，只选主要进展和最后的新变化，不重复状态、逐人罗列或另作总结。概括仍保留动作的实际对象，配件的动作不能写成整件物品的动作。原话只谈通知、申请、查账、受理等证据或流程时，用原话中的短语表述，不压成实际结果；明确已发生或未发生的结果仍照原文。难以简写的否定范围、物主和亲属关系沿原短句，或略去非主要细节，不把两条原话拼成新事实，不以指代不清的“自己”替代第三人。只返回report JSON。' };
+    writeReport: '现在按userRequest及系统给定的篇幅、格式完成报告。表格按用户指定列，不展示未要求的内部字段名。要求逐条、保留原文或其他篇幅时完整遵守；概括只选主要进展和最后的新变化，不逐人罗列或重复状态。每个写入的判断沿其原句核对：谁在说、向谁说、谁实际做了什么；建议、转述与本人决定分开，不能把向对方的建议写成本人的计划。物主、亲属、动作对象、否定范围及通知/申请等证据范围保留原短句，不能拼成新事实或用含混的“自己”换人；难以简写的枝节可略去。按时间组织时，每个小节只纳入该段原消息中的事实，不把后文同主题细节提前；章节时间沿所涵盖的来源时间，不按主题猜时刻。只返回report JSON。' };
   if (typeof input.userRequest === 'string' && input.request === input.userRequest) delete result.request;
   return result;
 }
