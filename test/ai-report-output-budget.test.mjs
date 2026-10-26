@@ -36,13 +36,13 @@ test('reported output usage leaves only the remaining allowance for a format ret
   assert.deepEqual(budgets, [8192, 7288]);
 });
 
-test('unknown transport usage conservatively reserves its requested output allowance', async () => {
+test('unknown transport reserves its first allowance and stops instead of dispatching another paid attempt', async () => {
   const budgets = [];
   const p = provider(async (_url, init) => { budgets.push(JSON.parse(init.body).max_tokens);
     if (budgets.length === 1) throw new TypeError('synthetic transport failure');
     return result('{"report":"恢复后报告"}'); });
-  assert.equal((await p.complete(config, 'JSON报告', {}, undefined, options)).report, '恢复后报告');
-  assert.deepEqual(budgets, [8192, 4096]);
+  await assert.rejects(p.complete(config, 'JSON报告', {}, undefined, options), {code:'ai_model_result_unknown'});
+  assert.deepEqual(budgets, [8192]);
 });
 
 test('missing usage cannot expand the previous three-times-4096 output ceiling', async () => {

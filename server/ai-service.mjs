@@ -3,6 +3,7 @@ import { initDefaultStyleAccounts, rememberDefaultStyle, switchDefaultStyleAccou
 import { initReplyLimitAccounts, replyLimitsForAccount, migrateReplyLimitIdentity } from './ai-reply-limit-scope.mjs';
 import { configurationSnapshotPatch, withConfigurationCommit, configurationCommitPending } from './ai-configuration-commit.mjs';
 import { commitObjectConfiguration } from './ai-object-configuration.mjs';
+import {restoreModelRequest,startModelRequest,closeModelRequest,cleanClosedModelRequests} from './ai-model-request-journal.mjs';
 import { verifyAccountScope, accountRequestScope } from './ai-account-scope.mjs';
 import { mediaCapability, mediaOutputPrompt, generateMediaOutput } from './ai-media-output.mjs';
 import { readableMediaInput } from './ai-media-input.mjs';
@@ -358,6 +359,7 @@ export class AIAssistant {
     }
     if (legacyPaused.length) this.notice = `已解除 ${legacyPaused.length} 个对象遗留的无效暂停`;
     this.proactiveV2.init();
+    for (const profile of this.profiles()) await restoreModelRequest(this, profile);
     this.data.queue.nextAt = null; await this.save();
   }
   // 异常单独成册：events 只保留最近 2000 条混合事件，异常会被正常事件挤掉，
@@ -439,7 +441,7 @@ export class AIAssistant {
     }
     const snapshot = structuredClone(this.data);
     options?.[configurationSnapshotPatch]?.(snapshot);
-    const operation = this.writes.then(() => atomicJson(this.file, snapshot)); this.writes = operation.catch(() => {}); return operation;
+    const operation = this.writes.then(async () => { await atomicJson(this.file, snapshot); await cleanClosedModelRequests(this, snapshot); }); this.writes = operation.catch(() => {}); return operation;
   }
   exclusive(action) {
     const task = this.actions.then(async () => {
@@ -1198,6 +1200,11 @@ export class AIAssistant {
         continue;
       }
       const dueAt = Math.max(mergeDueAt(cursor, effectiveTiming(settings, profile)), profile.kind === 'group' && cursor.trigger === 'realtime' ? (cursor.pendingSince ?? cursor.changedAt) + groupRealtimeDelayMs(profile.groupOptions) : 0);
+      if (profile.modelRequestUnknown?.account === this.data.account && profile.modelRequestUnknown.contact === profile.contact) {
+        live.push({ id, ...this.nameFields(profile), kind: profile.kind, replyFlow: true, phase: 'failed', modelResultUnknown: true,
+          reason: '本次模型结果未知，未取得回复正文；已停止自动重试。上游仍可能计费，重新请求会再次调用模型。' });
+        continue;
+      }
       const retryDue = Math.max(profile.replyRetryAt || 0, profile.sendRetryAt || 0, profile.readRetryAt || 0);
       if (Math.max(dueAt, retryDue) > now) live.push({ id, ...this.nameFields(profile), kind: profile.kind, replyFlow: true, phase: 'waiting', dueAt: Math.max(dueAt, retryDue), reason: retryDue ? '发送失败，等待重试' : profile.kind === 'group' ? '群聊合并等待' : '等待合并回复' });
       else if (profile.replyFlow?.phase === 'failed') live.push({ id, ...this.nameFields(profile), kind: profile.kind, replyFlow: true, phase: 'failed', reason: '发送失败，准备重试' });
@@ -1218,7 +1225,7 @@ export class AIAssistant {
     for (const row of live) {
       const profile = this.data.profiles[row.id];
       row.canSkipWait = !!(row.replyFlow && profile && this.cursors.get(row.id)?.pending && !this.activeRuns.has(row.id) && !this.generatingProfiles.has(row.id) && !profile.paused && !profile.groupReplyLimitBlocked && this.now() >= (profile.stopUntil || 0) && this.manualWaitUntil(profile) !== Infinity);
-      row.canRetry = row.canSkipWait && Math.max(profile.sendRetryAt || 0, profile.replyRetryAt || 0, profile.readRetryAt || 0) > now;
+      row.canRetry = row.canSkipWait && (row.modelResultUnknown === true || Math.max(profile.sendRetryAt || 0, profile.replyRetryAt || 0, profile.readRetryAt || 0) > now);
       if (profile?.groupContextWait && row.phase === 'waiting') row.reason = '等待补充信息';
     }
     return live;
@@ -1237,6 +1244,7 @@ export class AIAssistant {
       return commitObjectConfiguration(this, id, profile => {
         check();
         delete profile.manualWait; delete profile.groupContextWait;
+        closeModelRequest(profile, 'explicit-retry');
         profile.replyRetryAt = 0; profile.readRetryAt = 0; profile.sendRetryAt = 0;
         this.skipReplyWaits.add(id);
       });
@@ -3118,7 +3126,8 @@ export class AIAssistant {
       profileId ||= context.profileId || null;
       const message = error instanceof AppError ? safeErrorText(error.message, this.errorSecrets()) : 'AI 操作暂未完成，稍后重试', profile = profileId && this.data.profiles[profileId];
       this.notice = message;
-      if (profile) profile.replyRetryAt = Math.max(profile.replyRetryAt || 0, this.now() + 30000);
+      if (profile && error.code !== 'ai_model_result_unknown') profile.replyRetryAt = Math.max(profile.replyRetryAt || 0, this.now() + 30000);
+      else if (profile) delete profile.replyRetryAt;
       else this.retryAt = this.now() + 30000;
       this.event('error', profileId, context.source || (profile ? 'reply' : null), message, { ...context, errorCode: error.code }); await this.save();
     }
@@ -3344,10 +3353,17 @@ export class AIAssistant {
           await this.save(); continue;
         }
         if (revision !== this.revision) return;
+        await restoreModelRequest(this, profile);
         const cursor = await this.observe(profile, snapshot);
         if (revision !== this.revision) return;
         if (!cursor.pending) this.skipReplyWaits.delete(id);
         memoryCandidates.push({ profile, snapshot });
+        if (profile.modelRequestUnknown) {
+          const unknown = profile.modelRequestUnknown, latest = snapshot.messages.findLast(message => message.direction === 'other');
+          if (cursor.pending && unknown.account === this.data.account && unknown.contact === profile.contact && (unknown.state === 'unreadable' || unknown.incomingId === latest?.id)) continue;
+          closeModelRequest(profile, 'new-incoming');
+          await this.save();
+        }
         if (!this.data.settings.enabled || !(this.data.settings.reply && this.replySelected(profile)) && !this.continuing(profile)) continue;
         const groupOptions = profile.kind === 'group' ? profile.groupOptions || groupDefaults() : null;
         const mentionLimit = groupOptions ? this.strategy(profile, 'reply').maxRounds : null;
@@ -3810,11 +3826,28 @@ export class AIAssistant {
         const time = currentChatTime(this.now(), selfContext(this, profile.kind));
         const mediaReady = !!mediaCapability(this.modelFor('chat')) && this.bridge.supportsMediaOutput === true;
         const sendImages = this.replyOptions(profile).sendImages && mediaReady, sendAudio = this.replyOptions(profile).sendAudio && mediaReady && this.bridge.supportsNativeVoiceOutput === true;
+        let requestIntent;
+        if (mode === 'reply' && !(onlyImages && !images.length && profile.kind !== 'group')) {
+          const incoming = pendingMessages.findLast(message => message.direction === 'other');
+          if (incoming) {
+            // Persist before dispatch. A crash/cancel cannot silently forget
+            // an upstream request and regenerate the same incoming on restart.
+            requestIntent = await startModelRequest(this, profile, incoming, snapshot.revision);
+            if (!this.canDeliver(profile, mode, revision, signal)) {
+              if (profile.modelRequestUnknown === requestIntent) { closeModelRequest(profile, 'not-dispatched'); await this.save(); }
+              return;
+            }
+          }
+        }
         result = onlyImages && !images.length && profile.kind !== 'group' ? { action: 'skip', mediaSkipped: true } : await this.provider.complete(
           this.modelFor('chat'),
           `${replyFixedRules}${replyAttributionPrompt}${learningEnabled(this) ? learningRules : ' 自动学习已关闭，不提取或返回本人资料、风格更新和聊天记忆更新。'}${contextualStylePrompt}${speakerIdentityPrompt}${personalContextPrompt}${presentTimePrompt}${learningEnabled(this) ? chatMemoryPrompt : ''}${profile.kind === 'group' ? groupMemoryInstruction : ' 单聊中，对方姓名写入 name；只有用户确实直接这样称呼对方且对象明确时，才把称呼写入 addressing。'}${identityPrompt(allowIdentity)}${replyConversationPrompt}${replySummaryContext}${sendImages || sendAudio ? ` ${mediaOutputPrompt}` : ' 本轮只输出文字；图片和语音生成未获本轮启用，不返回media。'} 只能发送文字和capabilities明确允许的生成图片或微信原生语音，不能读取或下载任意文件，不能拨打或接听电话，仅能理解实际附带的图片；未附带的图片与未转写的语音直接略过，不回复这些内容，不要求重发或转文字，不猜测内容；只回应本轮可读取的文字、微信转写或实际附带的图片。${groupTriggerInstruction}${groupBatch?.sender ? ` 本轮只回复成员ID ${groupBatch.sender} 对应的消息 ${groupBatch.ids.join(',')}，其余成员的消息仅作背景。需要称呼时仅使用members中该ID对应的真实称呼，不编造姓名。` : ''}${profile.groupContextWait?.trigger === 'atMe' ? ' 上轮已等待补充信息，本次必须回复；信息仍不足时用一句简短问题澄清，不能再次wait。' : ''}${currentTask}${currentStyle}${profile.kind === 'group' ? groupPrompt(trigger, allowSegments, profile.groupOptions?.realtimeMode) : ''}${generationProtocol({ multiTurn, allowSegments, group: profile.kind === 'group', followUpAllowed: profile.kind !== 'group' && !followUp && multiTurn, updateStyle: this.automaticStyleAllowed(profile, modelMessages), memoryUpdates: learningEnabled(this), allowSkip: !mustReply, allowStop: true })}${reflectiveReplyPrompt}${currentTimeAnchor(time)}${mode === 'reply' && !followUp ? ' 本轮只回应conversation.pendingIncomingMessages列出的来信；其中excerpt=true时按ID查阅messages全文。messages中pending=false的旧问题和已发回复只作背景，不能再补答。' : ''}${replySafetyPrompt}${currentReplyScopePrompt}${safetyCorrection}`,
           { currentTurnOnly: true, identityPolicy: { asked: identityAsked, allowDisclosure: !!allowIdentity }, images: images, onlyImages: onlyImages, capabilityConcern: reason, mode, continuation, multiTurn, allowSegments, followUp, followUpAllowed: profile.kind !== 'group' && !followUp && multiTurn, kind: profile.kind, replyPerspective: replyPerspective(profile), roleAnchor: replyRoleAnchor(profile), conversation, addressing, attributionContext: { ...attributionContext, rules: replyAttributionPrompt }, expressionTendency, memory: replyMemory, ...time, myInformation: replyFacts, groupState, capabilities: { sendText: true, wechatVoiceText: true, files: false, readFiles: false, futureNotification: false, calls: false, executeExternalActions: false, sendImages, sendAudio, receiveImages: images.length > 0, sendMedia: sendImages || sendAudio }, strategy, style, styleOrigin, contextualStyle: contextualReplyStyle(modelMessages, { preferReplySamples: true, kind: profile.kind, query: conversation.pendingIncomingMessages.map(row => row.text || '').join('\n'), maxSamples: 6, maxChars: 2400 }), styleOwner: 'self', ...(learningEnabled(this) ? {styleLearningMessageIds: this.automaticStyleSamples(profile, modelMessages).map(row=>row.id)} : {}), judgeReply: profile.kind === 'group' ? trigger !== 'atMe' : followUp || this.replyOptions(profile).judgeReply, updateStyle: this.automaticStyleAllowed(profile, modelMessages), messages: annotateChatTimes(modelMessages, this.now(), time.timezone).map(message => ({ ...withSpeaker(message, profile), pending: conversation.pendingIncomingIds.includes(message.id), aiGenerated: message.aiGenerated === true || (profile.generatedIds || []).includes(message.id) })) }, signal, { validate: value => validateCurrentTimeReply(validateReplyResult(value, { multiTurn, allowSegments, group: profile.kind === 'group' }), time) }
         );
+        // Clear in memory only: the next existing handled/prepared-result save
+        // commits this together with its outcome. Until then the disk intent
+        // remains conservative if the process disappears between these steps.
+        if (requestIntent && profile.modelRequestUnknown === requestIntent) closeModelRequest(profile);
         // An unrelated group trigger can be saved while this result is in
         // flight. Keep it behind the object fence instead of discarding it;
         // cancellation must still release the running generation immediately.
@@ -3850,11 +3883,17 @@ export class AIAssistant {
         const cursor = this.cursors.get(profile.id);
         if (failedIncoming && cursor?.revision === snapshot.revision) {
           cursor.pending = true;
-          profile.replyFailureCount = (profile.replyFailureCount || 0) + 1;
-          profile.replyRetryAt = this.now() + Math.min(300000, 30000 * 2 ** Math.min(4, profile.replyFailureCount - 1));
+          if (error.code === 'ai_model_result_unknown') {
+            profile.modelRequestUnknown = { ...profile.modelRequestUnknown, account: this.data.account, contact: profile.contact, incomingId: failedIncoming.id, at: this.now(), state: 'unknown' };
+            delete profile.replyRetryAt;
+          } else {
+            closeModelRequest(profile, 'known-error');
+            profile.replyFailureCount = (profile.replyFailureCount || 0) + 1;
+            profile.replyRetryAt = this.now() + Math.min(300000, 30000 * 2 ** Math.min(4, profile.replyFailureCount - 1));
+          }
           cursor.changedAt = this.now();
           cursor.pendingSince = cursor.changedAt;
-          this.replyStage(profile, 'failed', 'AI 请求失败');
+          this.replyStage(profile, 'failed', error.code === 'ai_model_result_unknown' ? '模型结果未知，等待明确重试' : 'AI 请求失败');
           await this.save().catch(() => {});
         }
       }

@@ -37,8 +37,9 @@ test('step 3 and 6: simultaneous contacts retain separate custom styles, strateg
   const complete = provider.complete.bind(provider);
   provider.complete = async (...args) => { const input = args[2]; provider.next = async () => ({ action: 'send', text: input.style.summary.includes('宝') ? '宝，明白啦。' : '收到，我说明一下。' }); return complete(...args); };
   bridge.push(one.id, 'other', '甲的问题'); bridge.push(two.id, 'other', '乙的问题'); await tick(); advance(20000); await tick();
-  assert.deepEqual(bridge.sent.map(x => [x.contact, x.text]), [[one.id, '宝，明白啦。'], [two.id, '收到，我说明一下。']]);
-  for (const [index, call] of provider.calls.entries()) { assert.equal(call.input.strategy.facts, index ? '乙的事实' : '甲的事实'); assert.equal(JSON.stringify(call.input).includes(index ? '甲的问题' : '乙的问题'), false); }
+  assert.equal(bridge.sent.length,2);assert.equal(provider.calls.length,2);
+  assert.deepEqual(new Map(bridge.sent.map(x => [x.contact, x.text])), new Map([[one.id, '宝，明白啦。'], [two.id, '收到，我说明一下。']]));
+  for (const call of provider.calls) { const first=call.input.messages.some(m=>m.text==='甲的问题'); assert.equal(call.input.strategy.facts, first ? '甲的事实' : '乙的事实'); assert.equal(JSON.stringify(call.input).includes(first ? '乙的问题' : '甲的问题'), false); }
 });
 
 test('resuming a paused contact ignores earlier incoming messages, including messages from the same second', async t => {
@@ -59,15 +60,16 @@ test('slow model responses overlap across contacts and out-of-order completion r
   await a.saveReplyProfile({ contact: one.id, style: { summary: '第一位的简短风格' }, strategy: {} });
   await a.saveReplyProfile({ contact: two.id, style: { summary: '第二位的详细风格' }, strategy: {} });
   bridge.push(one.id, 'other', '第一位的新问题'); bridge.push(two.id, 'other', '第二位的新问题'); await tick(); advance(20000);
-  const started = Promise.withResolvers(), release = Promise.withResolvers(); let calls = 0;
+  const started = Promise.withResolvers(), secondFinished=Promise.withResolvers(), release = Promise.withResolvers(); let calls = 0;
   provider.complete = async (config, system, input) => {
     const first = input.style.summary.includes('第一位'); calls++;
+    if(calls===2)started.resolve();await started.promise;
     if (first) await release.promise;
-    else { assert.equal(calls, 2); assert.equal(input.messages.some(m => m.text === '第一位的新问题'), false); started.resolve(); }
+    else { assert.equal(calls, 2); assert.equal(input.messages.some(m => m.text === '第一位的新问题'), false); secondFinished.resolve(); }
     return { action: 'send', text: first ? '第一位的回答。' : '第二位的回答。' };
   };
   const running = tick();
-  try { await Promise.race([started.promise, new Promise((_, reject) => setTimeout(() => reject(new Error('models did not overlap')), 1000))]); }
+  try { await Promise.race([secondFinished.promise, new Promise((_, reject) => setTimeout(() => reject(new Error('models did not overlap')), 1000))]); }
   finally { release.resolve(); }
   await running;
   assert.equal(bridge.sent.length, 2);
@@ -76,11 +78,12 @@ test('slow model responses overlap across contacts and out-of-order completion r
 
 test('background polling notices a second sender while the first reply is still generating', async t => {
   const { a, bridge, provider, enable, advance } = await fixture(t); await enable();
-  const [one, two] = bridge.contacts, gate = Promise.withResolvers(), entered = Promise.withResolvers();
+  const [one, two] = bridge.contacts, gate = Promise.withResolvers(), entered = Promise.withResolvers(), secondEntered = Promise.withResolvers();
   const seen = [];
   provider.complete = async (config, system, input) => {
     const first = input.messages.some(m => m.text === '先来的问题');
     seen.push(first ? one.id : two.id);
+    if (!first) secondEntered.resolve();
     if (first) { entered.resolve(); await gate.promise; }
     return { action: 'send', text: first ? '第一位的回答。' : '第二位的回答。' };
   };
@@ -88,7 +91,7 @@ test('background polling notices a second sender while the first reply is still 
   await entered.promise;
   try {
     bridge.push(two.id, 'other', '后来的问题'); await a.tick({ background: true }); advance(20000); await a.tick({ background: true });
-    await new Promise(resolve => setImmediate(resolve));
+    await Promise.race([secondEntered.promise,new Promise((_,reject)=>setTimeout(()=>reject(new Error('second sender blocked behind first generation')),500))]);
     assert.deepEqual(seen, [one.id, two.id]);
     assert.equal(a.activeRuns.has(a.profiles().find(p => p.contact === one.id).id), true);
   } finally { gate.resolve(); }

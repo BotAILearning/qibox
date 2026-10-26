@@ -842,6 +842,8 @@ test('a delayed skip acknowledgement cannot refresh or replace a newly selected 
   t.after(() => { released.resolve(); controller.detach(); globalThis.document = originalDocument; });
   await controller.attach('instance-a'); calls.length = 0;
   dom.skipWait('profile-a'); await entered.promise;
+  await new Promise(setImmediate);
+  assert.doesNotMatch(dom.node('#ai-feedback').textContent, /请等待当前操作完成/,'A handled retry click must not re-enter the generic busy-error handler');
   controller.detach(); await controller.attach('instance-b'); const renders = dom.node('#ai-content').writes;
   released.resolve(); await new Promise(setImmediate);
   assert.equal(dom.node('#ai-content').writes, renders);

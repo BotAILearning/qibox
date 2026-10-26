@@ -377,6 +377,7 @@ export class AIProvider {
     const traceAttempt = requestTrace({ mode: input.mode, format, purpose });
     for (let attempt = 0; ; attempt++) {
       let reservedOutput = 0;
+      let dispatched = false, received = false, bodyComplete = false, requestSignal;
       const trace = traceAttempt(attempt + 1);
       try {
         if (remainingOutput !== null) {
@@ -408,9 +409,12 @@ export class AIProvider {
           ...(reasonAboutSpeakers ? { thinking: { type: 'adaptive' }, ...(!anthropic ? { reasoning_split: true } : {}) } : {}),
           ...(anthropic ? { system: currentSystem, messages: speakerTurns(input, requestContent) }
             : { messages: [{ role: 'system', content: currentSystem }, ...speakerTurns(input, requestContent)] }) };
-        const requestOptions = { method: 'POST', redirect: 'error', headers: this.headers(config), signal: AbortSignal.any([AbortSignal.timeout(config.timeout * 1000), ...(signal ? [signal] : [])]), body: JSON.stringify(requestBody) };
+        requestSignal = AbortSignal.any([AbortSignal.timeout(config.timeout * 1000), ...(signal ? [signal] : [])]);
+        const requestOptions = { method: 'POST', redirect: 'error', headers: this.headers(config), signal: requestSignal, body: JSON.stringify(requestBody) };
+        dispatched = true;
         trace.dispatch();
         response = await this.fetcher(endpoint, requestOptions);
+        received = true;
         trace.response(response.status);
         if (!response.ok) {
           let modelError = '', modelErrorCode = '', modelErrorType = '';
@@ -450,6 +454,7 @@ export class AIProvider {
         const reader = response.body.getReader(); let size = 0; const parts = [];
         try { while (true) { const { done, value } = await reader.read(); if (done) break; size += value.length; if (size > 128 * 1024) throw new AppError('模型返回内容过长'); parts.push(Buffer.from(value)); } }
         finally { await reader.cancel().catch(() => {}); }
+        bodyComplete = true;
         let data;
         try { data = JSON.parse(Buffer.concat(parts).toString()); }
         catch { throw new AppError('模型接口未返回有效数据，请检查服务地址和接口类型', 502, 'ai_model_response'); }
@@ -519,6 +524,15 @@ export class AIProvider {
         // time spent receiving/parsing this request. finally is idempotent.
         trace.end();
         if (signal?.aborted) throw new AppError('操作已取消', 409);
+        // A fetch/body interruption is not a confirmed rejected generation.
+        // The upstream may have finished and charged it; never repeat it in
+        // this loop or disguise it as a retryable JSON/schema failure.
+        if (dispatched && (!received || response.ok && (
+            !bodyComplete && (requestSignal?.aborted || !(error instanceof AppError)) ||
+            requestSignal?.aborted && error?.code === 'ai_model_response'))) {
+          const timedOut = requestSignal?.aborted || ['TimeoutError', 'AbortError'].includes(error?.name);
+          throw new AppError(`${timedOut ? '模型请求超时' : '模型连接中断'}，结果未知；已停止自动重试，上游仍可能计费。可先核对服务侧请求与用量，再决定是否重新请求`, timedOut ? 504 : 502, 'ai_model_result_unknown');
+        }
         const retryableCode = ['ai_model_retry', 'ai_model_response', 'ai_model_format', 'ai_model_schema', 'ai_model_incomplete', 'ai_model_time'];
         const retryable = error instanceof AppError ? retryableCode.includes(error.code) : true;
         if (retryable && retry && attempt < MODEL_RETRY_LIMIT && (remainingOutput === null || remainingOutput > 0)) {

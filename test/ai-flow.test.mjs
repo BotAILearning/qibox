@@ -248,7 +248,9 @@ test('global reply strategy is independent from proactive edits and never overri
   assert.equal(a.publicState().replyStrategy.replyGoal, '原回复目标');
   await a.settings({ reply: true }); await launch(a); await a.tick();
   bridge.push(reply.contact, 'other', '请答复'); bridge.push(proactive.contact, 'other', '感兴趣'); await a.tick(); advance(20000); await a.tick();
-  const [independent, continuation] = provider.calls.slice(-2).map(x => x.input);
+  const inputs = provider.calls.slice(-2).map(x => x.input);assert.equal(inputs.length,2);
+  const independent = inputs.find(input=>!input.continuation), continuation = inputs.find(input=>input.continuation);
+  assert(independent&&continuation,'Both independent reply and proactive continuation must execute, in either completion order');
   assert.equal(independent.strategy.replyGoal, '原回复目标'); assert.equal(independent.strategy.facts, '原回复事实'); assert.equal(independent.strategy.boundaries, '原回复限制');
   for (const field of ['purpose', 'content', 'persona', 'styleProfileId']) assert.equal(independent.strategy[field], '');
   for (const marker of ['本轮主动目标', '本轮主动话术', '本轮主动人设']) assert.equal(JSON.stringify(independent).includes(marker), false);

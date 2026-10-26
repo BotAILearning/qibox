@@ -20,7 +20,7 @@ test('status retries keep the existing limit and one logical id while every actu
 
 test('a transport timeout is an unconfirmed response rather than definite zero usage or failed dispatch',async t=>{
  const rows=capture(t);let calls=0;const p=new AIProvider({fetcher:async()=>{calls++;throw new DOMException('PRIVATE_TIMEOUT_CONTEXT','TimeoutError');}});
- await assert.rejects(run(p),e=>e.code==='ai_model_timeout');assert.equal(calls,1);assert.deepEqual(rows.map(x=>x.event),['dispatch','end']);assert.equal(rows[1].outcome,'response-unknown');assert.equal(rows[1].status,null);assert.equal(rows[1].usage,null);assert.equal(rows[1].failure,'timeout');assert(!JSON.stringify(rows).includes('PRIVATE_TIMEOUT_CONTEXT'));
+ await assert.rejects(run(p),e=>e.code==='ai_model_result_unknown');assert.equal(calls,1);assert.deepEqual(rows.map(x=>x.event),['dispatch','end']);assert.equal(rows[1].outcome,'response-unknown');assert.equal(rows[1].status,null);assert.equal(rows[1].usage,null);assert.equal(rows[1].failure,'timeout');assert(!JSON.stringify(rows).includes('PRIVATE_TIMEOUT_CONTEXT'));
 });
 
 test('cancelled in-flight fetch is recorded once without retry or leaked signal reason',async t=>{

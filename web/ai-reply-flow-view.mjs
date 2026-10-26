@@ -20,7 +20,7 @@ export function replyFlowMarkup(profile, live, { allowSkip = false } = {}) {
   const detail = live.reason || labels[phase] || '等待新消息';
   const countdown = Number.isFinite(live.dueAt) && live.dueAt > Date.now() ? `<span class="ai-reply-countdown" data-ai-countdown="${live.dueAt}">${countdownText(live.dueAt)}</span>` : '';
   const canSkip = allowSkip && (live.canSkipWait === true || live.canSkipWait === undefined && phase === 'waiting' && skippable.has(live.reason));
-  const skip = canSkip && profile?.id ? `<button type="button" class="secondary" data-ai-skip-reply-wait="${esc(profile.id)}">${live.canRetry ? '直接重试' : '跳过等待'}</button>` : '';
-  const label = phase === 'waiting' && live.canRetry ? '等待重试' : phase === 'waiting' && live.reason === '等待补充信息' ? '等待补充信息' : labels[phase] || '正在处理';
-  return `<div class="ai-reply-flow" data-phase="${esc(phase)}"><div class="ai-reply-flow-detail"><strong>${esc(label)}</strong><span>${esc(detail)}</span>${countdown}${skip}</div></div>`;
+  const skip = canSkip && profile?.id ? `<button type="button" class="secondary" data-ai-skip-reply-wait="${esc(profile.id)}"${live.modelResultUnknown ? ' data-ai-model-result-unknown' : ''}>${live.modelResultUnknown ? '重新请求模型' : live.canRetry ? '直接重试' : '跳过等待'}</button>` : '';
+  const label = live.modelResultUnknown ? '模型结果未知' : phase === 'waiting' && live.canRetry ? '等待重试' : phase === 'waiting' && live.reason === '等待补充信息' ? '等待补充信息' : labels[phase] || '正在处理';
+  return `<div class="ai-reply-flow" data-phase="${esc(phase)}"><div class="ai-reply-flow-detail">${live.modelResultUnknown ? '' : `<strong>${esc(label)}</strong>`}<span>${esc(detail)}</span>${countdown}${skip}</div></div>`;
 }

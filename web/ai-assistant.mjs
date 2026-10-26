@@ -470,7 +470,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     const skipWait = event.target.closest('[data-ai-skip-reply-wait]');
     if (skipWait) {
       event.preventDefault();
-      void execute('skip-reply-wait', { id: skipWait.dataset.aiSkipReplyWait }, '已跳过等待，正在交给 AI 处理').catch(error => failure(error));
+      void execute('skip-reply-wait', { id: skipWait.dataset.aiSkipReplyWait }, skipWait.hasAttribute('data-ai-model-result-unknown') ? '已提交重新请求；上次请求结果仍未知' : '已跳过等待，正在交给 AI 处理').catch(error => failure(error));
       return;
     }
     const resume = event.target.closest('[data-ai-resume-profile]');
@@ -1978,7 +1978,10 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   window.addEventListener('resize', () => { resizeStyleSummary(); resizeAnalysisRequest(); });
   panel.addEventListener('keydown', event => { if (event.key === 'Escape') hideRecordMenu(); });
   panel.addEventListener('click', async event => {
+    // These controls are owned by the earlier delegated handler. Re-entering
+    // the general handler during its request produced a false busy error.
     const button = event.target.closest('button'); if (!button) return;
+    if ('aiSkipReplyWait' in button.dataset || 'aiResumeProfile' in button.dataset) return;
     if ('styleTrialGenerate' in button.dataset) { await styleTrial.generate(); return; }
     if ('styleTrialStop' in button.dataset) { styleTrial.cancel(); return; }
     if (['aiObject', 'aiKind', 'aiObjectBack', 'aiNav'].some(key => key in button.dataset)) styleTrial.cancel({ clear: true });

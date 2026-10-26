@@ -54,12 +54,13 @@ export function objectExecutionStatus(state, contactId) {
   const labels = { waiting: '等待汇总', summarizing: '汇总上下文', requesting: 'AI 请求中', generating: 'AI 请求中', sending: '发送中', confirming: '核实发送结果', unconfirmed: '核验已结束', sent: '已发送', failed: '发送失败', partial: '部分已发送', skipped: '本轮不回复', cancelled: '已取消' };
   const phase = live?.phase || 'idle';
   const replyOn = state.settings?.enabled !== false && state.settings?.reply !== false && !profile?.manualWait && (profile?.kind === 'group' ? ['realtime','atMe','atAll'].some(key => profile.groupOptions?.[key]) : personReplyEnabled(state, profile));
-  const label = profile?.replyLimitNeedsReview ? '需确认回复上限' : unavailable ? !state.available ? '正在恢复微信读取' : '等待微信或模型配置' : replyOn && profile?.groupReplyLimitBlocked ? '已达到回复次数上限' : phase === 'waiting' && live?.canRetry ? '等待重试' : phase === 'waiting' && live?.reason === '等待补充信息' ? '等待补充信息' : labels[phase] || '等待新消息';
+  const label = profile?.replyLimitNeedsReview ? '需确认回复上限' : unavailable ? !state.available ? '正在恢复微信读取' : '等待微信或模型配置' : replyOn && profile?.groupReplyLimitBlocked ? '已达到回复次数上限' : live?.modelResultUnknown ? '模型结果未知' : phase === 'waiting' && live?.canRetry ? '等待重试' : phase === 'waiting' && live?.reason === '等待补充信息' ? '等待补充信息' : labels[phase] || '等待新消息';
   const detail = profile?.replyLimitNeedsReview ? '旧回复上限已保留，保存 1–2000 的有效上限后才能恢复自动回复' : unavailable ? state.available === false ? (state.notice || '微信聊天暂不可读取，正在自动重试') : (state.requirements?.reply || '自动回复暂缓，正在恢复运行')
     : live?.reason || (phase === 'sent' ? '微信已确认发送' : '当前没有正在执行的自动回复');
   const skip = state.settings?.enabled && state.settings?.reply && state.waiting !== true && profile && !profile.paused;
   const flow = !unavailable && profile ? replyFlowMarkup(profile, live, { allowSkip: skip }) : '';
-  return `<details class="ai-object-live ai-reply-module" data-ai-optional="object-live"><summary class="ai-reply-module-heading"><h4>实时状态</h4><span>${esc(label)}</span></summary><div class="ai-object-execution" role="status" aria-live="polite"><div><span class="ai-object-execution-label ${esc(unavailable ? 'unavailable' : phase || 'idle')}">${label}</span>${flow ? '' : `<span class="ai-object-execution-detail">${esc(detail)}</span>`}</div>${flow}</div></details>`;
+  const headline = live?.modelResultUnknown ? '' : `<div><span class="ai-object-execution-label ${esc(unavailable ? 'unavailable' : phase || 'idle')}">${label}</span>${flow ? '' : `<span class="ai-object-execution-detail">${esc(detail)}</span>`}</div>`;
+  return `<details class="ai-object-live ai-reply-module" data-ai-optional="object-live"><summary class="ai-reply-module-heading"><h4>实时状态</h4><span>${esc(label)}</span></summary><div class="ai-object-execution" role="status" aria-live="polite">${headline}${flow}</div></details>`;
 }
 
 export function objectPage(state, view) {
