@@ -461,9 +461,30 @@ export class AIAssistant {
       return true;
     });
   }
-  invalidate({ preservePreparedReplies = false } = {}) {
+  invalidate({ preservePreparedReplies = false, settlePreparedReplies = false } = {}) {
     this.revision++; this.controller.abort(); this.controller = new AbortController(); this.followUps.clear(); this.skipReplyWaits.clear(); this.scanOperation = null;
+    let settled = false;
+    if (settlePreparedReplies) for (const profile of Object.values(this.data?.profiles || {})) {
+      const row = profile.preparedReply;
+      // Desktop takeover cancels a definite unsent answer. Settle its original
+      // incoming as well as dropping its text, or releasing the mouse/key will
+      // silently buy a replacement answer for that same incoming. A sending
+      // intent remains governed by native cleanup/receipt reconciliation.
+      if (profile.account !== this.data.account || !row || !['prepared', 'retry'].includes(row.state)) continue;
+      if (row.latestIncomingId) profile.handledIncomingId = row.latestIncomingId;
+      if (row.replyTo?.length) settleGroupBatch(this.vault, profile, { ids: row.replyTo });
+      const cursor = this.cursors.get(profile.id);
+      if (cursor) {
+        if (profile.kind === 'group') cursor.pending = readGroupInbox(this.vault, profile).pending.length > 0;
+        else if (cursor.revision === row.context || cursor.last === row.latestIncomingId) cursor.pending = false;
+      }
+      delete profile.sendRetryAt;
+      this.replyStage(profile, 'cancelled', '人工操作已取消这条未发送答复；新来信仍正常处理');
+      this.event('cancelled', profile.id, 'reply', '人工操作已取消这条未发送答复，不自动重新生成', { messageId: row.latestIncomingId, reasonCode: 'manual-unsent-cancelled' });
+      settled = true;
+    }
     if (!preservePreparedReplies) for (const profile of Object.values(this.data?.profiles || {})) delete profile.preparedReply;
+    return settled;
   }
   forgetContext({ preserveCursors = false } = {}) { if (!preserveCursors || !this.bridge.stableMessageIds) this.cursors.clear(); this.followUps.clear(); this.bridge.clearContext?.(); }
   readSkipSnapshot(row) {
@@ -4220,10 +4241,15 @@ export class AIAssistant {
     // the user's actual RFB bytes. Native cleanup must finish before their click.
     // Learning/analysis only read data. Manual desktop input should not abort
     // their shared signal; retain the busy window and native input interlock.
-    if (!this.operation) this.invalidate();
+    const settled = !this.operation && this.invalidate({ settlePreparedReplies: true });
     await this.bridge.waitForIdle?.({ type, held, ...details });
+    if (settled) await this.save();
     return { noted: true };
   }
-  userActivity() { this.userBusyUntil = this.now() + 15000; this.followUps.clear(); if (!this.operation && (this.ticking || this.activeRuns.size)) this.invalidate(); return { noted: true }; }
+  async userActivity() {
+    this.userBusyUntil = this.now() + 15000; this.followUps.clear();
+    if (!this.operation && (this.ticking || this.activeRuns.size) && this.invalidate({ settlePreparedReplies: true })) await this.save();
+    return { noted: true };
+  }
   async close() { this.closed = true; clearInterval(this.timer); clearInterval(this.warmupTimer); this.invalidate({ preservePreparedReplies: true }); this.pauseQueue(); await this.receiptFinished?.promise; await this.tickFinished?.promise; await Promise.allSettled([...this.activeRuns.values(), ...this.memoryRuns.values()]); await this.learningFinished?.promise; await this.actions; await this.save(); await this.writes; await this.bridge.close?.(); }
 }

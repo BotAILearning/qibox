@@ -213,6 +213,58 @@ for (const action of ['master-off', 'object-off', 'cancel', 'manual-input', 'mod
   });
 }
 
+for (const group of [false, true]) test(`released desktop input does not regenerate a cancelled unsent answer (${group ? 'group' : 'person'})`, async t => {
+  const f = await fixture(t, { group }); const incoming = await f.incoming('这是一段普通分享，等待接话。');
+  const send = f.bridge.send.bind(f.bridge); f.bridge.send = () => notSent;
+  f.provider.next = async () => ({ action: 'send', text: '已经生成但尚未发送的接话。' });
+  f.advance(20000); await f.a.tick();
+  assert.equal(f.provider.calls.length, 1); assert.equal(f.p.preparedReply?.state, 'retry');
+  await f.a.manualInput({ source: 'desktop', type: 'key', held: true });
+  await f.a.manualInput({ source: 'desktop', type: 'key', held: false });
+  f.bridge.send = send; f.advance(30000); await f.a.tick();
+  assert.equal(f.provider.calls.length, 1, 'Releasing the key must not purchase another answer for the cancelled incoming');
+  assert.equal(f.bridge.sent.length, 0, 'Desktop takeover cancelled the old answer');
+  assert.equal(f.p.handledIncomingId, incoming.id);
+  await f.restart(); f.advance(30000); await f.a.tick();
+  assert.equal(f.provider.calls.length, 1, 'Cancellation must remain settled after restart');
+  await f.incoming('这是后来新发来的另一件事。'); f.advance(20000); await f.a.tick();
+  assert.equal(f.provider.calls.length, 2, 'A new incoming message remains eligible');
+  assert.equal(f.bridge.sent.length, 1);
+});
+
+test('page activity during an actual retry read settles the cancelled answer durably', async t => {
+  const f = await fixture(t); await f.incoming('先聊这个。');
+  const send = f.bridge.send.bind(f.bridge); f.bridge.send = () => notSent;
+  f.advance(20000); await f.a.tick();
+  const read = f.bridge.read.bind(f.bridge); let entered, release;
+  const waiting = new Promise(resolve => { entered = resolve; });
+  const gate = new Promise(resolve => { release = resolve; });
+  f.bridge.read = async (...args) => { entered(); await gate; return read(...args); };
+  f.advance(30000); const tick = f.a.tick(); await waiting;
+  try { await f.a.userActivity(); } finally { release(); }
+  await tick; f.bridge.read = read; f.bridge.send = send;
+  f.advance(30000); await f.a.tick();
+  assert.equal(f.provider.calls.length, 1); assert.equal(f.bridge.sent.length, 0);
+  await f.restart(); f.advance(30000); await f.a.tick();
+  assert.equal(f.provider.calls.length, 1); assert.equal(f.bridge.sent.length, 0);
+});
+
+test('manual cancellation keeps a newer private incoming pending', async t => {
+  const f = await fixture(t); await f.incoming('旧话题。');
+  const send = f.bridge.send.bind(f.bridge); f.bridge.send = () => notSent;
+  f.advance(20000); await f.a.tick();
+  // Observe the next arrival while the old send is still held by its retry
+  // interval: the cursor now belongs to a newer incoming than the cached plan.
+  const newer = await f.incoming('后来的新问题。');
+  await f.a.manualInput({ source: 'desktop', type: 'pointer', held: true });
+  await f.a.manualInput({ source: 'desktop', type: 'pointer', held: false });
+  f.bridge.send = send; f.advance(30000); await f.a.tick();
+  assert.equal(f.a.cursors.get(f.p.id).pending, true, 'The newer incoming is observed after desktop release');
+  f.advance(20000); await f.a.tick(); // normal merge window for the newly observed incoming
+  assert.equal(f.provider.calls.length, 2); assert.equal(f.bridge.sent.length, 1);
+  assert.equal(f.provider.calls.at(-1).input.conversation.pendingIncomingIds.at(-1), newer.id);
+});
+
 test('an unknown submission is reconciled rather than replayed after restart', async t => {
   const f = await fixture(t); await f.incoming(); let attempts = 0;
   f.bridge.send = () => { attempts++; return { status: 'uncertain' }; };
