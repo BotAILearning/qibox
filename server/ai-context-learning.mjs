@@ -15,7 +15,7 @@ export function authoredMessages(vault, profile, messages) {
   messages.forEach((row,index)=>{if(!positions.has(row.id))positions.set(row.id,index);});
   const uncertain = (profile.sentMessages || []).filter(row => row.deliveryConfidence === 'unknown')
     .map(row=>({row,boundary:positions.get(row.baseline)??-1,opened:false}));
-  return messages.map((message, index) => {
+  const authored = messages.map((message, index) => {
     let origin = message.direction === 'other' ? 'other' : 'unknown';
     if (message.direction === 'self') {
       origin = message.authorship === 'ai' || message.aiGenerated || generated.has(message.id) ? 'ai' : 'human';
@@ -33,6 +33,28 @@ export function authoredMessages(vault, profile, messages) {
       }
     }
     return { ...message, authorship: origin, aiGenerated: origin === 'ai' || message.aiGenerated === true };
+  });
+  const originals = new Map();
+  for (const message of authored) originals.set(message.id, originals.has(message.id) ? null : message);
+  return authored.map(message => {
+    const quote = message.quote;
+    if (quote?.verified !== true || !['self', 'other'].includes(quote.direction)) return message;
+    const candidate = originals.get(quote.messageId);
+    const source = candidate?.direction === quote.direction && candidate.timestamp === quote.timestamp &&
+      (candidate.text === quote.text || quote.excerpt === true && typeof quote.text === 'string' && candidate.text?.startsWith(quote.text)) &&
+      (quote.sender === undefined || quote.sender === candidate.sender) ? candidate : null;
+    // A verified native quote proves the author, not who composed the text.
+    // Keep source uncertainty beside the quote too, including an exact saved
+    // receipt whose original row has left the recent-message window. Never
+    // certify an unregistered out-of-window self quote as human by default.
+    let origin = source?.authorship;
+    if (quote.direction === 'self') {
+      if (origin === 'unknown' || quote.authorship === 'unknown' || ambiguousReceipts.has(quote.messageId)) origin = 'unknown';
+      else if (quote.authorship === 'ai' || quote.aiGenerated === true || generated.has(quote.messageId)) origin = 'ai';
+    }
+    if (!origin) return message;
+    return { ...message, quote: { ...quote, authorship: origin,
+      aiGenerated: origin === 'ai' || source?.aiGenerated === true || quote.aiGenerated === true } };
   });
 }
 
