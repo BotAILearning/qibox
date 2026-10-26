@@ -38,6 +38,37 @@ test('third-party wording never authorizes self actions, requests, future promis
   assert.equal(promisesMedia('他明天会发照片。'), false, 'Keep the existing detector scope; this fix adds no new kind of sending block');
 });
 
+test('completed third-party narration retains actor across time prefixes, object-first wording and recipients', () => {
+  for (const text of [
+    '昨晚是小贺把文件传给了打印店。',
+    '昨晚，小贺把文件传给了打印店。',
+    '昨天是同事把附件发给了打印店。',
+    '文件是小贺昨晚传给打印店的。',
+    '这份文件由他昨天发给了打印店。',
+    '昨晚是她给店里打了电话。',
+    '刚才，老师已经上传了文档。',
+    '他昨天把文件发给你了。',
+    '昨晚是小贺把文件传给我了。',
+  ]) assert.equal(unsupportedTextAction(text), null, text);
+  assert.equal(promisesMedia('昨晚是他已经发了照片。'), false);
+});
+
+test('time and object prefixes cannot hide self actions, incoming requests or conditional third-party actions', () => {
+  for (const text of [
+    '昨晚是我把文件传给了打印店。',
+    '文件是我昨晚传给打印店的。',
+    '文件是老子已经发给打印店的。',
+    '昨晚是小贺叫我把文件传给打印店。',
+    '昨晚，小贺说文件发来给我看一下。',
+    '文件是小贺明天会发给打印店的。',
+    '昨晚是小贺说文件可能已经发给打印店了。',
+    '昨晚，小贺把文件传给了打印店，我这就打开附件。',
+    '如果昨晚是小贺发了文件，今天你发来给我看一下。',
+    '昨晚是小贺把文件传给打印店了吗？',
+  ]) assert.ok(unsupportedTextAction(text), text);
+  assert.equal(promisesMedia('昨晚是他发了照片，我现在发图片给你。'), true);
+});
+
 test('instructions to open the recipient own table do not imply file access by the assistant', () => {
   for (const text of ['你先打开群里的表格填一格。', '请你自行下载这份文档保存。', '您可以查看手里的PDF。'])
     assert.equal(unsupportedTextAction(text), null, text);
@@ -49,7 +80,7 @@ test('instructions to open the recipient own table do not imply file access by t
 // Replaying its text isolates the application guard from model sampling.
 const realAnswer = '放映定在2026年11月6日19:30，地点是东桥路18号3层，场地那边已经收到确认。18:30是旧版海报上的时间，最新时间是19:30；小贺只负责印海报，晚上只是把文件传给了打印店，并没有再替我们改时间。\n\n场地费一共480元，我们四个人均摊，每人120元；现在先不用转账。你当前先在原来的群文件里打开选片表，把片名缩写填进右边那个小格，明天再跟另外两位把完整安排说清楚。';
 
-async function replay(t, { group = false, text = realAnswer } = {}) {
+async function replay(t, { group = false, text = realAnswer, pastNight = false } = {}) {
   const root = await temp(), bridge = new ChatFixture();
   bridge.stableMessageIds = true;
   if (group) bridge.contacts[0].kind = 'group';
@@ -68,7 +99,7 @@ async function replay(t, { group = false, text = realAnswer } = {}) {
   if (group) await a.setGroupOptions({ contact, atMe: true });
   else await a.setReplyOptions({ contact, enabled: true, judgeReply: false });
   await a.settings({ enabled: true, autoLearning: false, segmentReplies: false }); await a.tick();
-  const incoming = bridge.push(contact, 'other', '小贺说打印店要明天才开门，他晚上只是把文件传过去，没再替我们改时间。选片表里大家填的都是片名缩写，不是收款码。请按两段详细说明完整日期时间地址、为什么不是18:30，以及每人均摊多少、现在要不要转账、我先做哪一步；明天我会跟另外两位说清楚。');
+  const incoming = bridge.push(contact, 'other', `小贺说打印店要明天才开门，他${pastNight ? '昨晚' : '晚上'}只是把文件传过去，没再替我们改时间。选片表里大家填的都是片名缩写，不是收款码。请按两段详细说明完整日期时间地址、为什么不是18:30，以及每人均摊多少、现在要不要转账、我先做哪一步；明天我会跟另外两位说清楚。`);
   incoming.timestamp = now / 1000;
   if (group) Object.assign(incoming, { sender: key('capability-member'), mentions: { verified: true, self: true, all: false, others: false } });
   await a.tick(); now += 20000; await a.tick();
@@ -80,6 +111,15 @@ for (const group of [false, true]) test(`${group ? 'group' : 'private'} complete
   assert.equal(f.requests, 1, 'No replacement model or extra review');
   assert.equal(f.bridge.sent.length, 1);
   assert.equal(f.bridge.sent[0].text, realAnswer, 'Do not rewrite pronouns, prose or media words to pass');
+  assert(!f.a.data.events.some(x => x.reasonCode === 'unsupported-media'));
+});
+
+for (const group of [false, true]) test(`${group ? 'group' : 'private'} full application retains time-prefixed historical third-party file prose`, async t => {
+  const text = realAnswer.replace('小贺只负责印海报，晚上只是把文件传给了打印店，并没有再替我们改时间。',
+    '昨晚是小贺把最终排版文件传给了打印店，小贺没替我们改时间。');
+  const f = await replay(t, { group, text, pastNight: true });
+  assert.equal(f.requests, 1); assert.equal(f.bridge.sent.length, 1);
+  assert.equal(f.bridge.sent[0].text, text);
   assert(!f.a.data.events.some(x => x.reasonCode === 'unsupported-media'));
 });
 

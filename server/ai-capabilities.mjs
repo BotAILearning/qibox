@@ -6,13 +6,18 @@ const unavailableAction = part => /(?:无法|不能|没法|不支持|不可以|�
 const sentences = text => text.match(/[^。！？!?；;\n]+[。！？!?；;]?/g) || [];
 function thirdPartyPastNarration(text) {
   const value = text.trim();
-  if (/^(?:老子|老娘|老夫|老身)/.test(value) || !/^(?:他(?:们)?|她(?:们)?|对方|店员|客服|老师|同事|负责人|工作人员|(?:小|老|阿)[\p{Script=Han}]{1,3})(?=只负责|负责|说|提到|表示|告诉|昨|前天|上周|刚|已|曾|早|晚|今|把|将|发|传|打|拨|回)/u.test(value)) return false;
+  // Locate the same explicit actor after a leading past-time phrase or a
+  // file-first passive construction. All safety checks still read the whole
+  // unmodified sentence, so a prefix cannot conceal a later self action.
+  const withoutTimePrefix = part => part.replace(/^(?:昨天(?:早上|上午|下午|晚上)?|昨晚|前天|上周|刚刚|刚才)[，,\s]*(?:是)?/u, '');
+  const actor = withoutTimePrefix(withoutTimePrefix(value).replace(/^(?:(?:这|那)(?:份|个)?|该)?(?:文件|附件|文档|表格|PDF|压缩包)\s*(?:是|由)/i, ''));
+  if (/^(?:老子|老娘|老夫|老身)/.test(actor) || !/^(?:他(?:们)?|她(?:们)?|对方|店员|客服|老师|同事|负责人|工作人员|(?:小|老|阿)[\p{Script=Han}]{1,3})(?=只负责|负责|说|提到|表示|告诉|昨|前天|上周|刚|已|曾|早|晚|今|把|将|给|发|传|打|拨|回)/u.test(actor)) return false;
   if (!/(?:已经|已把|已将|曾经|昨天|昨晚|前天|上周|刚刚|刚才|了)/.test(value)) return false;
   if (/(?:明天|后天|下次|稍后|一会|待会|等会|马上|这就|将要|准备|打算|计划|愿意|可以|能不能|会(?:再|给|把|将|发|传|打|拨|接|回)|如果|假如|要是|万一|可能|也许|估计|应该|是否|是不是|吗|\?|？|的话)/.test(value)) return false;
   // A different clause may switch back to self, instruct the recipient, or
   // request delivery to this chat. It must still receive the original checks.
   if (/(?:我|我们|咱|你|您)[^，,。；;!?！？\n]*(?:发|传|提供|上传|下载|打开|查看|打|拨|接|回|看|听)/.test(value)
-    || /(?:发来|传来|给我|发给你|传给你|给你发|给你传)/.test(value)
+    || /(?:发来|传来)/.test(value)
     || /(?:^|[，,])\s*(?:请|麻烦|帮我|劳驾|记得|务必|能否|要不要|最好)/.test(value)) return false;
   return true;
 }
