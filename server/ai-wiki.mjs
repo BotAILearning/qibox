@@ -18,12 +18,16 @@ const key = text => createHash('sha256').update(text).digest('hex').slice(0, 24)
 const summaryOf = entries => entries.map(e => e.text).join('\n');
 const maxMemoryChars = 60000;
 const summaryPreview = entries => Array.from(summaryOf(entries)).slice(0, 12000).join('');
-const memoryEntryId = entry => key(JSON.stringify([
+const factParts = entry => [
   entry.field || 'other', entry.text || '', entry.degree || '', entry.calendar || '',
   Number.isSafeInteger(entry.from) ? entry.from : null, Number.isSafeInteger(entry.to) ? entry.to : null,
-]));
-const memoryFactKey = entry => key(JSON.stringify([entry.field || 'other', entry.text || '', entry.degree || '', entry.calendar || '',
-  Number.isSafeInteger(entry.from) ? entry.from : null, Number.isSafeInteger(entry.to) ? entry.to : null]));
+];
+const sameSubject = (a, b) => (a.subjectId || '') === (b.subjectId || '');
+// Legacy rows keep their old ID/key. Only an explicitly supplied subject adds
+// a namespace; never infer the subject of an existing unscoped memory.
+const legacyFactKey = entry => key(JSON.stringify(factParts(entry)));
+const memoryEntryId = entry => entry.subjectId ? key(JSON.stringify([...factParts(entry), entry.subjectId])) : legacyFactKey(entry);
+const memoryFactKey = memoryEntryId;
 const addressOrWork = entry => ['residence', 'workplace', 'employer', 'shipping'].includes(entry.field);
 const changingFields = new Set(['residence', 'workplace', 'employer', 'shipping']);
 const reviewFields = new Set(['name', 'phone', 'household']);
@@ -51,8 +55,9 @@ export function memoryValue(value) {
       const evidence = Array.isArray(e.evidence) ? [...new Set(e.evidence.filter(id => typeof id === 'string' && id.length > 0 && id.length <= 160 && !/[\x00-\x1f\x7f]/.test(id)))].slice(0, 8) : [];
       if (from !== undefined && to !== undefined && from > to) throw new Error('记忆的结束时间不能早于开始时间');
       const normalized = { field, text, ...(degree ? { degree } : {}), ...(calendar ? { calendar } : {}), ...(from !== undefined ? { from } : {}), ...(to !== undefined ? { to } : {}), ...(recordedAt !== undefined ? { recordedAt } : {}), ...(observedAt !== undefined ? { observedAt } : {}), ...(supersededAt !== undefined ? { supersededAt } : {}), ...(e.status === 'historical' || e.status === 'uncertain' ? { status: e.status } : {}), ...(evidence.length ? { evidence } : {}) };
-      const id = typeof e.id === 'string' && /^[a-f0-9-]{16,40}$/.test(e.id) ? e.id : memoryEntryId(normalized);
-      return { id, ...normalized, ...(e.factTime === null || typeof e.factTime === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(e.factTime) ? {factTime:e.factTime} : {}), ...Object.fromEntries(['account','object','subjectId','source'].filter(key => typeof e[key] === 'string' && e[key].length <= 180).map(key => [key, e[key]])), ...(typeof e.allowGroup === 'boolean' ? { allowGroup: e.allowGroup } : {}), ...(Number.isSafeInteger(e.updatedAt) ? { updatedAt: e.updatedAt } : {}), ...(e.manual === true ? { manual: true } : {}) };
+      const origin = Object.fromEntries(['account','object','subjectId','source'].filter(key => typeof e[key] === 'string' && e[key].length <= 180).map(key => [key, e[key]]));
+      const id = typeof e.id === 'string' && /^[a-f0-9-]{16,40}$/.test(e.id) ? e.id : memoryEntryId({ ...normalized, ...origin });
+      return { id, ...normalized, ...(e.factTime === null || typeof e.factTime === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(e.factTime) ? {factTime:e.factTime} : {}), ...origin, ...(typeof e.allowGroup === 'boolean' ? { allowGroup: e.allowGroup } : {}), ...(Number.isSafeInteger(e.updatedAt) ? { updatedAt: e.updatedAt } : {}), ...(e.manual === true ? { manual: true } : {}) };
     });
     if (summaryOf(entries).length > maxMemoryChars) throw new Error('记忆内容过多，请先整理');
     const suppressed = Array.isArray(value.suppressed) ? [...new Set(value.suppressed.filter(item => typeof item === 'string' && /^[a-f0-9]{24}$/.test(item)))].slice(0, 500) : [];
@@ -80,14 +85,17 @@ export function mergeMemory(vault, profile, value, now, { evidence } = {}) {
     delete entry.manual;
     const raw = value.entries?.[entryIndex];
     if (raw?.evidence?.some(id => current.blockedEvidence?.includes(id))) continue;
-    if (suppressed.has(memoryFactKey(entry))) continue;
+    // Old deletion keys have no recoverable subject. Keep their prior broad
+    // protection; new scoped deletions only suppress that explicit subject.
+    if (suppressed.has(memoryFactKey(entry)) || suppressed.has(legacyFactKey(entry))) continue;
     if (evidence && (!Array.isArray(raw?.evidence) || !raw.evidence.length || raw.evidence.some(id => !evidence.has(id)))) continue;
-    const index = entries.findIndex(e => e.id === entry.id);
-    const same = entries.findIndex(e => e.text === entry.text && e.field === entry.field && e.degree === entry.degree && e.calendar === entry.calendar && e.from === entry.from && e.to === entry.to);
+    const index = entries.findIndex(e => e.id === entry.id && sameSubject(e, entry));
+    if (index < 0 && entries.some(e => e.id === entry.id)) { conflicts.push(entry); continue; }
+    const same = entries.findIndex(e => sameSubject(e, entry) && e.text === entry.text && e.field === entry.field && e.degree === entry.degree && e.calendar === entry.calendar && e.from === entry.from && e.to === entry.to);
     if (same >= 0) {
       const previous = entries[same];
       if (previous.status === 'historical' && !previous.manual && changingFields.has(entry.field) && Number.isSafeInteger(entry.observedAt)) {
-        const active = entries.filter(old => old.id !== previous.id && old.field === entry.field && old.status !== 'historical');
+        const active = entries.filter(old => sameSubject(old, entry) && old.id !== previous.id && old.field === entry.field && old.status !== 'historical');
         if (active.some(old => old.manual || (old.observedAt ?? old.recordedAt ?? 0) >= entry.observedAt)) { conflicts.push(entry); continue; }
         for (const old of active) { old.status = 'historical'; old.supersededAt = now; }
         const revived = { ...previous, ...entry, evidence: [...new Set([...(previous.evidence || []), ...(entry.evidence || [])])].slice(-8), updatedAt: now };
@@ -101,9 +109,9 @@ export function mergeMemory(vault, profile, value, now, { evidence } = {}) {
       continue;
     }
     if (index >= 0 && entries[index].manual) { conflicts.push(entry); continue; }
-    if (reviewFields.has(entry.field) && entries.some(old => old.id !== entry.id && old.field === entry.field && old.status !== 'historical')) { conflicts.push(entry); continue; }
+    if (reviewFields.has(entry.field) && entries.some(old => sameSubject(old, entry) && old.id !== entry.id && old.field === entry.field && old.status !== 'historical')) { conflicts.push(entry); continue; }
     if (changingFields.has(entry.field)) {
-      const active = entries.filter(old => old.id !== entry.id && old.field === entry.field && old.status !== 'historical');
+      const active = entries.filter(old => sameSubject(old, entry) && old.id !== entry.id && old.field === entry.field && old.status !== 'historical');
       if (active.length) {
         const incomingAt = entry.observedAt ?? entry.recordedAt;
         if (active.some(old => old.manual || !Number.isSafeInteger(incomingAt) || (old.observedAt ?? old.recordedAt ?? 0) >= incomingAt)) { conflicts.push(entry); continue; }
@@ -116,7 +124,7 @@ export function mergeMemory(vault, profile, value, now, { evidence } = {}) {
   }
   const summary = summaryOf(entries);
   if (summary.length > maxMemoryChars || entries.length > 300) return { memoryNotice: '记忆空间不足，已保留原内容，请先整理。' };
-  const comparable = values => values.map(e => ({ id: e.id || '', field: e.field || 'other', text: e.text || '', degree: e.degree || '', calendar: e.calendar || '', from: Number.isSafeInteger(e.from) ? e.from : null, to: Number.isSafeInteger(e.to) ? e.to : null, recordedAt: Number.isSafeInteger(e.recordedAt) ? e.recordedAt : null, observedAt: e.observedAt ?? null, status: e.status || '', evidence: e.evidence || [] }));
+  const comparable = values => values.map(e => ({ id: e.id || '', subjectId: e.subjectId || '', field: e.field || 'other', text: e.text || '', degree: e.degree || '', calendar: e.calendar || '', from: Number.isSafeInteger(e.from) ? e.from : null, to: Number.isSafeInteger(e.to) ? e.to : null, recordedAt: Number.isSafeInteger(e.recordedAt) ? e.recordedAt : null, observedAt: e.observedAt ?? null, status: e.status || '', evidence: e.evidence || [] }));
   const changed = JSON.stringify(comparable(entries)) !== JSON.stringify(comparable(current.entries));
   return { ...(changed ? { memory: vault.seal({ summary: summaryPreview(entries), entries, ...(current.blockedEvidence?.length ? { blockedEvidence: current.blockedEvidence } : {}), ...(suppressed.size ? { suppressed: [...suppressed] } : {}) }), memoryHistory: history(vault, profile, current, now) } : {}),
     memorySuggestion: conflicts.length ? vault.seal({ summary: summaryOf(conflicts), entries: conflicts }) : profile.memorySuggestion || null,
@@ -145,15 +153,31 @@ export function editMemory(vault, profile, value, now) {
   if (value.restoreId && !restored) throw new Error('历史版本已变化，请刷新');
   const next = memoryValue(restored ? vault.open(restored.value) : value);
   if (!next) throw new Error('请检查聊天记忆内容');
+  const semantics = entry => JSON.stringify([...factParts(entry), Number.isSafeInteger(entry.recordedAt) ? entry.recordedAt : null]);
+  // Current forms send visible fields and IDs, not internal subject metadata.
+  // An unchanged, uniquely identified row keeps its known subject before the
+  // deletion comparison; a changed body or explicit subject is not guessed.
+  const unchangedSequence = current.entries.length === next.entries.length && next.entries.every((entry, index) => {
+    const old = current.entries[index];
+    return old.id === entry.id && semantics(old) === semantics(entry) && (!Object.hasOwn(entry, 'subjectId') || sameSubject(old, entry));
+  });
+  next.entries = next.entries.map((entry, index) => {
+    if (Object.hasOwn(entry, 'subjectId')) return entry;
+    const matches = current.entries.filter(old => old.id === entry.id);
+    if (matches.length > 1) {
+      if (!unchangedSequence) throw new Error('记忆中存在重复编号，原内容已保留，请先核对每条记忆的主体');
+      const old = current.entries[index];
+      return old.subjectId ? { ...entry, subjectId: old.subjectId } : entry;
+    }
+    return matches.length === 1 && semantics(matches[0]) === semantics(entry) && matches[0].subjectId
+      ? { ...entry, subjectId: matches[0].subjectId } : entry;
+  });
   const suppressed = new Set(current.suppressed || []), blockedEvidence = new Set(current.blockedEvidence || []);
   for (const old of current.entries) if (!next.entries.some(entry => memoryFactKey(entry) === memoryFactKey(old))) { suppressed.add(memoryFactKey(old)); for (const id of old.evidence || []) blockedEvidence.add(id); }
   for (const entry of next.entries) suppressed.delete(memoryFactKey(entry));
   next.entries = next.entries.map(e => {
-    const semantics = entry => JSON.stringify([entry.field || 'other', entry.text || '', entry.degree || '', entry.calendar || '',
-      Number.isSafeInteger(entry.from) ? entry.from : null, Number.isSafeInteger(entry.to) ? entry.to : null,
-      Number.isSafeInteger(entry.recordedAt) ? entry.recordedAt : null]);
-    const prior = current.entries.find(old => old.id === e.id) || current.entries.find(old => semantics(old) === semantics(e));
-    const unchanged = !!prior && semantics(prior) === semantics(e);
+    const prior = current.entries.find(old => old.id === e.id && sameSubject(old, e)) || current.entries.find(old => sameSubject(old, e) && semantics(old) === semantics(e));
+    const unchanged = !!prior && sameSubject(prior, e) && semantics(prior) === semantics(e);
     const { manual: _incomingManual, ...entry } = e;
     return {
       ...(unchanged ? prior : {}),
