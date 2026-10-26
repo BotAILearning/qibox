@@ -20,11 +20,12 @@ const reportEvidencePrompt = '为当前微信账号本人整理一位联系人�
 const reportResultPrompt = '只返回JSON对象{"report":"非空报告正文"}。';
 const reportDefaultLayout = '若用户未指定格式，默认按音乐回顾方式写4–6 个短章节，从数据到主要话题、节奏与事实洞察，温暖克制地收尾。每章固定两行：无Markdown符号的短标题及正文，章间空一行。每章标题不超过 20 字，正文约 60–140 字，全文约 900 字以内，不用 Markdown # 标题或表格，不重复统计、不空泛抒情。用户明确指定格式时优先按其格式；主题分类、倒序等按要求，只指定分析角度仍用默认章节。';
 
-export function analysisPrompt(request = '') {
+export function analysisPrompt(request = '', { partialSource = false } = {}) {
   const layout = analysisOrderMode(request) === 'chronological'
     ? '整篇报告按原始sequence从早到晚连续组织，顺序优先于默认章节，从最早有关消息开始，章节之间也保持先后；不要按主题把较晚消息提前。同一主题隔着其他事项再出现，留在后来的时点；相邻消息可合段，不跨中间事项合并。未另指定排版用时间线；用户指定表格、列表等格式时仍保持此顺序。概括不超过600字；逐条、保留原文或指定其他篇幅时完整遵守，不受概括字数限制。'
     : reportDefaultLayout;
-  return reportEvidencePrompt + '\n' + layout + '\n' + reportResultPrompt;
+  const partial = partialSource ? ' textTruncated=true标明该条只保留原文尾段，不是完整消息。被截掉的前文可能包含主语、否定、条件或引语开头；不能把残余片段提升为肯定事实，不补全缺失内容，归属或范围不完整时保留未知；其他完整消息仍按各自原文分析。' : '';
+  return reportEvidencePrompt + partial + '\n' + layout + '\n' + reportResultPrompt;
 }
 
 function normalizeDefaultReport(text, request) {
@@ -104,7 +105,7 @@ export function tailWithinLimit(input, maxChars = ANALYSIS_INPUT_CHARS) {
   for (let index = messages.length - 1; index >= 0 && remaining > 0; index--) {
     const message = messages[index], chars = Array.from(message.text);
     if (chars.length <= remaining) { kept.unshift(message); remaining -= chars.length; continue; }
-    kept.unshift({ ...message, text: chars.slice(chars.length - remaining).join('') });
+    kept.unshift({ ...message, text: chars.slice(chars.length - remaining).join(''), textTruncated: true });
     partialMessages++; remaining = 0;
   }
   const analyzedChars = maxChars - remaining;
@@ -173,6 +174,7 @@ export async function analyzeContacts(assistant, value) {
           speaker: message.direction === 'self' ? '本人' : message.direction === 'other' ? '对方' : '未知',
           beijingTime: reportMessageTime(message.timestamp), text: message.text,
           secondsSincePrevious: index === 0 ? null : message.timestamp - messages[index - 1].timestamp,
+          ...(message.textTruncated === true ? { textTruncated: true } : {}),
         }));
         const profile=a.profiles().find(row=>row.account===account&&row.contact===contact.id);
         const sourceIndex=analysisSourceIndex(messages,a.vault,profile);
@@ -181,7 +183,7 @@ export async function analyzeContacts(assistant, value) {
         // three-attempt output ceiling. Other models and saved choices stay as-is.
         const boundedDeepSeekReport = config.protocol === 'openai' && config.model === 'deepseek-flash'
           && new URL(config.baseUrl).hostname === 'api.deepseek.com';
-        const validated = await a.provider.complete(config, analysisPrompt(options.request)+(sourceIndex?analysisSourcePrompt:''), {
+        const validated = await a.provider.complete(config, analysisPrompt(options.request, { partialSource: messages.some(row => row.textTruncated === true) })+(sourceIndex?analysisSourcePrompt:''), {
           userRequest: options.request, request: options.request, contact: contact.label,
           from: options.fromDate, to: options.toDate, timezone: 'Asia/Shanghai', analyzedAt: new Date(a.now()).toISOString(),
           rangeCount: material.count, readableCount: sourceMessages.length, analyzedCount: messages.length,

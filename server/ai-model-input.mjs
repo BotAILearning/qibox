@@ -36,7 +36,8 @@ export function compactReportInput(input) {
   if (!input || Object.hasOwn(input, 'participants') || Object.hasOwn(input, 'messageColumns') ||
       Object.hasOwn(input, 'writeReport') ||
       !Array.isArray(input.messages) || !input.messages.length || !input.messages.every((row, index) =>
-        row && Object.keys(row).length === columns.length && columns.every(key => Object.hasOwn(row, key)) &&
+        row && Object.keys(row).every(key => columns.includes(key) || key === 'textTruncated') && columns.every(key => Object.hasOwn(row, key)) &&
+        (!Object.hasOwn(row, 'textTruncated') || row.textTruncated === true) &&
         Number.isSafeInteger(row.sequence) && row.sequence === index + 1 && authors.has(row.speaker) &&
         typeof row.beijingTime === 'string' && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(row.beijingTime) &&
         typeof row.text === 'string' && (index === 0 ? row.secondsSincePrevious === null :
@@ -45,10 +46,11 @@ export function compactReportInput(input) {
   // Keep known provenance beside its own text as well as the sparse index.
   // This is source metadata, never a model-inferred owner/experience table.
   const origins = reportRowOrigins(input.sourceIndex, messages.length);
-  const wireColumns = origins ? [...columns.slice(0, 2), 'origin', ...columns.slice(2)] : columns;
+  const completeColumns = origins ? [...columns.slice(0, 2), 'origin', ...columns.slice(2)] : columns;
+  const wireColumns = messages.some(row => row.textTruncated === true) ? [...completeColumns, 'textTruncated'] : completeColumns;
   const result = { ...metadata,
     messageColumns: wireColumns,
-    messages: messages.map((row, index) => wireColumns.map(key => key === 'origin' ? origins[index] : row[key])),
+    messages: messages.map((row, index) => wireColumns.map(key => key === 'origin' ? origins[index] : key === 'textTruncated' ? row.textTruncated ?? null : row[key])),
     writeReport: '现在按userRequest及系统给定的篇幅、格式完成报告。表格按用户指定列，不展示未要求的内部字段名。要求逐条、保留原文或其他篇幅时完整遵守；概括只选主要进展和最后的新变化，不逐人罗列或重复状态。每个写入的判断沿其原句核对：谁在说、向谁说、谁实际做了什么；建议、转述与本人决定分开，不能把向对方的建议写成本人的计划。物主、亲属、动作对象、否定范围及通知/申请等证据范围保留原短句，不能拼成新事实或用含混的“自己”换人；难以简写的枝节可略去。按时间组织时，每个小节只纳入该段原消息中的事实，不把后文同主题细节提前；章节时间沿所涵盖的来源时间，不按主题猜时刻。只返回report JSON。' };
   if (typeof input.userRequest === 'string' && input.request === input.userRequest) delete result.request;
   return result;
