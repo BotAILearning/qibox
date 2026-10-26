@@ -204,7 +204,13 @@ test('reply targets stay separate when proactive contacts have never been learne
   await a.tick(); advance(20000); await a.tick();
   assert.equal(bridge.sent.length, 3);
   assert.deepEqual(new Set(bridge.sent.slice(1).map(x => x.contact)), new Set([reply.contact, proactive.contact]));
-  assert.deepEqual(provider.calls.slice(-2).map(x => x.input.continuation), [false, true]);
+  // Independent object work can finish in either order; bind the same exact
+  // two continuation checks to their recipients rather than completion order.
+  const calls = provider.calls.slice(-2);
+  for (const [contact, continuation] of [[reply.contact, false], [proactive.contact, true]]) {
+    const rows = calls.filter(call => call.input.replyPerspective?.recipient?.id === `contact:${contact}`);
+    assert.equal(rows.length, 1); assert.equal(rows[0].input.continuation, continuation);
+  }
 });
 
 test('proactive scope is rechecked after an intent write even if the contact remains selected for replies', async t => {

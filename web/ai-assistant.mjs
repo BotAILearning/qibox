@@ -12,6 +12,7 @@ import { objectPage, objectList, objectExecutionStatus, refreshObjectTiming, obj
 import { replyLimitControl, syncReplyLimitControl, parseReplyLimit, replyLimitWarningThreshold } from './ai-reply-limit.mjs';
 import { styleChoice, styleSummary as styleSummaryText } from './ai-style-view.mjs';
 import { createStyleTrialUI, updateStyleTrialRegion } from './ai-style-trial.mjs';
+import { styleFeedbackCopy, copiedStyleBase } from './ai-style-feedback.mjs';
 import { learnedObjectDraft } from './ai-learning-draft.mjs';
 import { activePersonality, bindStyleSelector, newStyleDraftId } from './ai-style-selector.mjs';
 import { analysisPage, analysisContactList, copyReport, presetRequest, analysisRequestState, presetChips, historyList, analysisHistoryWindow, analysisHistorySelectionLabel } from './ai-analysis-view.mjs';
@@ -117,11 +118,11 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   const confirmDialog = message => productDialog({ message });
   function objectStyleDraft(form = $('#ai-object-form')) {
     if (!form) throw new Error('请先打开聊天对象的风格设置');
-    const data = new FormData(form), profile = state.profiles.find(p => p.contact === form.dataset.contact);
+    const data = formData(form), profile = state.profiles.find(p => p.contact === form.dataset.contact);
     const rawSummary = String(data.get('summary') || ''), summary = rawSummary.trim(), styleId = data.get('styleId') || '';
     if (!summary) throw new Error('请填写风格说明，或选择默认风格');
     if (rawSummary.length > 6000) throw new Error('风格说明最多6000字');
-    const base = styleId.startsWith('personality:') ? activePersonality(profile, Object.fromEntries(data)) : styleId === '' ? defaultReplyStyle() : styleId === 'learned' ? profile?.learnedStyle || profile?.style || state.schema?.defaultStyle : objectStyleTabs(state, profile).find(row => row.id === styleId)?.style || profile?.style || state.schema?.defaultStyle;
+    const base = copiedStyleBase(data.get('__styleBase'), styleId) || (styleId.startsWith('personality:') ? activePersonality(profile, Object.fromEntries(data)) : styleId === '' ? defaultReplyStyle() : styleId === 'learned' ? profile?.learnedStyle || profile?.style || state.schema?.defaultStyle : objectStyleTabs(state, profile).find(row => row.id === styleId)?.style || profile?.style || state.schema?.defaultStyle);
     const style = { ...base, summary };
     if (!styleId.startsWith('personality:')) { delete style.personalityId; delete style.traits; }
     return { styleId, style };
@@ -130,6 +131,23 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     scope: () => ({ instance: id, account: state?.account, contact: selectedObject, verified: scopeVerified, revision: state?.configurationRevision }),
     draft: () => objectStyleDraft(),
     changed: trial => updateStyleTrialRegion($('[data-style-trial-region]'), trial),
+    applyCorrection: ({ note, draft }) => {
+      const target = { instance: id, account: state.account, contact: selectedObject, revision: state.configurationRevision };
+      rememberDraft();
+      const before = structuredClone(objectDrafts.get(selectedObject) || {}), wasDirty = objectDirtyContacts.has(selectedObject);
+      const fields = styleFeedbackCopy(draft, note, { id: newStyleDraftId(), name: before.styleName ? `${before.styleName}修订` : '试聊修订' });
+      objectDrafts.set(selectedObject, { ...before, ...fields }); objectDirtyContacts.add(selectedObject); render(); $('#ai-object-form [name=styleName]')?.focus();
+      return { undo: () => {
+        if (id !== target.instance || state?.account !== target.account || selectedObject !== target.contact || state.configurationRevision !== target.revision) return false;
+        rememberDraft(); const current = objectDrafts.get(selectedObject) || {};
+        if (Object.keys(fields).some(key => (current[key] ?? '') !== (fields[key] ?? ''))) return false;
+        const restored = { ...current };
+        for (const key of Object.keys(fields)) { if (Object.hasOwn(before, key)) restored[key] = before[key]; else delete restored[key]; }
+        objectDrafts.set(selectedObject, restored);
+        if (!wasDirty && JSON.stringify(restored) === JSON.stringify(before)) objectDirtyContacts.delete(selectedObject);
+        render(); return true;
+      } };
+    },
   });
   const objectView = () => ({ styleTrial: styleTrial.value(), kind: objectKind, selected: selectedObject, section: objectSection, memoryCategory: objectMemoryCategory, search: objectSearch, draft: objectDrafts.get(selectedObject), dirty: objectDirtyContacts.has(selectedObject), scrollTop: rememberedObjectScroll(), height: $('#ai-object-list')?.clientHeight || 600 });
   function objects() { return objectPage(state, objectView()); }
@@ -1516,6 +1534,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     if (!state) return;
     try {
       const input = event.target;
+      if (input.hasAttribute?.('data-style-trial-note')) { styleTrial.note(input.dataset.styleTrialNote, input.value); return; }
       if (input.closest('#ai-object-form')) objectDirtyContacts.add(selectedObject);
       if (input.closest('#ai-personal-information-form')) {
         if (input.matches('[data-personal-share]')) input.closest('[data-personal-field]').dataset.personalShareChanged = 'true';
@@ -1661,6 +1680,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     } catch (e) { controls(); failure(e); }
   });
   panel.addEventListener('input', event => {
+    if (event.target.hasAttribute?.('data-style-trial-note')) { styleTrial.note(event.target.dataset.styleTrialNote, event.target.value); return; }
     if (event.target.closest('[data-ai-object-panel=style]')) styleTrial.cancel({ stale: true });
     const rhythmBox = event.target.closest('#ai-object-form')?.querySelector('[data-rhythm-personal]');
     if (rhythmBox && event.target.closest('.ai-reply-rhythm')) rhythmBox.dataset.changed = 'true';
@@ -1860,13 +1880,15 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         const changedStyle = String(data.get('styleId') || '') !== baselineStyleId || String(data.get('summary') || '') !== baselineSummary;
         const hasReplySettings = !!profile?.replyStrategy || ['replyGoal','boundaries'].some(key => String(data.get(key) || '').trim()) || changedSwitch || changedRealtimeMode || changedStyle || String(strategy.maxRounds) !== String(profile?.replyStrategy?.maxRounds ?? state.replyRoundLimits?.[kind] ?? state.replyStrategy?.maxRounds ?? 50);
         const memoryEntries = JSON.parse(String(data.get('memorySummary') || '[]'));
-        await execute('reply-profile', { value: { contact, preserveSwitches: true, styleSet: !!summary, styleId, ...(styleName !== undefined ? { styleName } : {}), style, strategy,
+        const saveScope = { generation, instance: id, account: state.account };
+        const saved = await execute('reply-profile', { value: { contact, preserveSwitches: true, styleSet: !!summary, styleId, ...(styleName !== undefined ? { styleName } : {}), style, strategy,
           ...(objectRhythmDraft(form).__rhythmChanged ? { rhythm: { inherit: data.has('inheritRhythm'), personal: objectRhythmDraft(form).__rhythmPersonal } } : {}), inheritStrategy: data.has('inheritStrategy'), options: { judgeReply: optionChecked('judgeReply'), sendImages: optionChecked('sendImages'), sendAudio: optionChecked('sendAudio') },
           ...(kind === 'group' ? { group: { atMe: data.has('atMe'), atAll: data.has('atAll'), realtime: data.has('realtime'), realtimeMode: data.get('realtimeMode') || 'normal', ...(realtimeConfirmed ? { confirmRealtime: true } : {}) } }
             : { replyEnabled: data.has('enabled'), options: { judgeReply: optionChecked('judgeReply'), sendImages: optionChecked('sendImages'), sendAudio: optionChecked('sendAudio') } }),
           ...(!sameWikiEntries(memoryEntries, profile?.memory?.entries || []) && !profile?.memory?.unavailable ? { memory: { entries: memoryEntries } } : {})
         } }, '设置已保存');
-        objectDrafts.delete(contact); objectDirtyContacts.delete(contact); render(); return;
+        if (!saved || generation !== saveScope.generation || id !== saveScope.instance || state?.account !== saveScope.account) return;
+        objectDrafts.delete(contact); objectDirtyContacts.delete(contact); if (selectedObject === contact) styleTrial.saved(); render(); return;
       }
       if (form.id === 'ai-personal-information-form') {
         if (form.dataset.personalAccount !== state.account) throw new Error('微信账号已变化，请重新打开我的信息');
@@ -1984,6 +2006,9 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     if ('aiSkipReplyWait' in button.dataset || 'aiResumeProfile' in button.dataset) return;
     if ('styleTrialGenerate' in button.dataset) { await styleTrial.generate(); return; }
     if ('styleTrialStop' in button.dataset) { styleTrial.cancel(); return; }
+    if ('styleTrialFeedback' in button.dataset) { styleTrial.feedback(button.dataset.styleTrialId, button.dataset.styleTrialFeedback); return; }
+    if ('styleTrialApply' in button.dataset) { styleTrial.apply(button.dataset.styleTrialApply); return; }
+    if ('styleTrialUndo' in button.dataset) { styleTrial.undoCorrection(); return; }
     if (['aiObject', 'aiKind', 'aiObjectBack', 'aiNav'].some(key => key in button.dataset)) styleTrial.cancel({ clear: true });
     try {
       if (button.hasAttribute('data-ai-collapse-record')) {
@@ -2287,7 +2312,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         rememberDraft();
         if (command === 'add') {
           const draft = objectDrafts.get(selectedObject) || {};
-          objectDrafts.set(selectedObject, { ...draft, styleId: newStyleDraftId(), styleName: '', summary: '自然回应当前话题，简短清楚，不编造事实。', __personality: '' });
+          objectDrafts.set(selectedObject, { ...draft, styleId: newStyleDraftId(), styleName: '', summary: '自然回应当前话题，简短清楚，不编造事实。', __personality: '', __styleBase: '' });
           objectDirtyContacts.add(selectedObject); render(); $('#ai-object-form [name=styleName]')?.focus(); return;
         }
         let name;

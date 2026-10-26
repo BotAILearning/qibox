@@ -330,6 +330,21 @@ test('cancelled model edits never enter assignment saves and unfinished forms ke
   assert.equal(Object.hasOwn(saved.value.models[0], 'apiKey'), false);
 });
 
+test('object save reads the original form values while save controls are locked',async t=>{
+  const originalDocument=globalThis.document,OriginalFormData=globalThis.FormData,dom=surface(),calls=[];
+  globalThis.document=dom.document;
+  // Match real FormData's disabled-control omission, which the older entries
+  // fixture did not exercise. Originally inherited disabled fields stay absent.
+  globalThis.FormData=class extends OriginalFormData{constructor(form){super();for(const field of form?.fields||[]){if(field.disabled||(['checkbox','radio'].includes(field.type)&&!field.checked))continue;this.append(field.name,field.value);}}};
+  const snapshot={...availableState(),account:'account-a',profiles:[{id:'profile',contact:'contact',kind:'person',styleId:'custom:old',style:{summary:'原风格'},replyStrategy:{replyGoal:'自然接话',boundaries:'不擅自承诺',maxRounds:50}}]};
+  const controller=aiAssistant({api:async(_url,payload)=>{if(payload)calls.push(payload);return structuredClone(snapshot);}});
+  t.after(()=>{controller.detach();globalThis.document=originalDocument;globalThis.FormData=OriginalFormData;});await controller.attach('instance-a');calls.length=0;
+  const form=dom.form('#ai-object-form',[]);form.dataset={contact:'contact'};
+  const fields=[['summary','保留的有效风格草稿'],['styleId','custom:old'],['replyGoal','自然接话'],['boundaries','不擅自承诺'],['maxRounds','50'],['enabled','on'],['inheritStrategy','on']].map(([name,value])=>({name,value,disabled:false,type:['enabled','inheritStrategy'].includes(name)?'checkbox':'text',checked:true,matches:()=>false}));
+  form.fields=fields;form.querySelectorAll=selector=>selector==='input,select,textarea,button'?fields:[];form.elements={namedItem:name=>fields.find(field=>field.name===name)};
+  await dom.submit(form);assert.equal(calls.length,1,dom.node('#ai-feedback').textContent);assert.equal(calls[0].action,'reply-profile');assert.equal(calls[0].value.style.summary,'保留的有效风格草稿');assert.equal(calls[0].value.strategy.maxRounds,50);assert(fields.every(field=>field.disabled===false));assert.match(dom.node('#ai-feedback').textContent,/设置已保存/);
+});
+
 for (const action of ['scan', 'learn-selected']) for (const destination of ['instance-b', 'instance-a']) {
   test(`pending ${action} cannot redraw or continue after leaving and opening ${destination}`, { timeout: 2000 }, async t => {
     const originalDocument = globalThis.document, dom = surface();

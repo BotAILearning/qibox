@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createStyleTrialUI, styleTrialMarkup } from '../web/ai-style-trial.mjs';
 
-function fixture() {
+function fixture({ applyCorrection } = {}) {
   let target = { instance: 'instance', account: 'account', contact: 'contact', verified: true, revision: 1 }, draft = { styleId: '', style: { summary: '未保存的草稿' } }, state, pending;
   const calls = [];
   const api = (url, data, timeout, options) => {
@@ -10,7 +10,7 @@ function fixture() {
     if (data.action === 'style-trial-cancel') return Promise.resolve({ cancelled: true });
     return new Promise((resolve, reject) => pending = { resolve: trials => resolve({ ...data.value, trials }), reject });
   };
-  const ui = createStyleTrialUI({ api, scope: () => target, draft: () => structuredClone(draft), changed: s => state = structuredClone(s) });
+  const ui = createStyleTrialUI({ api, scope: () => target, draft: () => structuredClone(draft), changed: s => state = structuredClone(s), applyCorrection });
   return { ui, calls, get state() { return state; }, get pending() { return pending; }, target, draft };
 }
 const trials = [{ id: 'question', label: '合成问答', messages: [{ direction: 'other', text: '<img src=x onerror=alert(1)>' }], reply: '<script>不运行</script>' }];
@@ -32,4 +32,37 @@ for (const key of ['instance', 'account', 'contact', 'revision', 'draft']) test(
 });
 test('hide/switch clears old account results and aborts the request before a new object can show them', async () => {
   const f = fixture(), p = f.ui.generate(); f.ui.cancel({ clear: true }); f.pending.resolve(trials); await p; assert.deepEqual(f.state, {}); assert(f.calls[0].options.signal.aborted);
+});
+
+test('feedback needs explicit correction; like/dislike and note typing make zero extra requests', async () => {
+  const applied = [], f = fixture({ applyCorrection: value => { applied.push(value); return { undo: () => true }; } });
+  const p = f.ui.generate(); f.pending.resolve(trials); await p;
+  f.ui.feedback('question', 'like'); assert.equal(f.state.feedback.question.verdict, 'like');
+  f.ui.feedback('question', 'unlike'); f.ui.apply('question'); assert.equal(applied.length, 0); assert(f.state.error.includes('自动猜测'));
+  f.ui.note('question', '这类分享接一句就好，不给建议'); f.ui.apply('question');
+  assert.equal(applied.length, 1); assert.equal(applied[0].note, '这类分享接一句就好，不给建议'); assert.equal(applied[0].draft.style.summary, '未保存的草稿');
+  assert(f.state.stale); assert(f.state.canUndo); assert.equal(f.calls.length, 1);
+  f.ui.apply('question'); assert.equal(applied.length, 1);
+  f.ui.undoCorrection(); assert(!f.state.stale); assert(!f.state.canUndo); assert.equal(f.calls.length, 1);
+});
+
+for (const key of ['instance','account','contact','revision','draft']) test(`feedback ignores old result after ${key} changes without applying or requesting`, async () => {
+  let applied = 0; const f = fixture({ applyCorrection: () => applied++ }); const p = f.ui.generate(); f.pending.resolve(trials); await p;
+  if (key === 'draft') f.draft.style.summary = '新的手动设置'; else f.target[key] = 'other';
+  f.ui.feedback('question', 'unlike'); f.ui.note('question', '不能写入新对象'); f.ui.apply('question');
+  assert.equal(applied, 0); assert.equal(f.calls.length, 1);
+});
+
+test('undo cannot cross account and an edited draft is retained when undo refuses', async () => {
+  let undone = 0; const f = fixture({ applyCorrection: () => ({ undo: () => { undone++; return false; } }) }); const p = f.ui.generate(); f.pending.resolve(trials); await p;
+  f.ui.feedback('question', 'unlike'); f.ui.note('question', '不要固定加追问'); f.ui.apply('question');
+  f.target.account = 'other'; f.ui.undoCorrection(); assert.equal(undone, 0);
+  f.target.account = 'account'; f.ui.undoCorrection(); assert.equal(undone, 1); assert(f.state.error.includes('未覆盖')); assert(f.state.canUndo); assert.equal(f.calls.length, 1);
+  f.ui.cancel({ clear: true }); f.ui.undoCorrection(); assert.equal(undone, 1); assert.deepEqual(f.state, {});
+});
+
+test('successful explicit save retires draft undo and keeps the old preview marked stale without requesting', async()=>{
+ let undone=0;const f=fixture({applyCorrection:()=>({undo:()=>{undone++;return true;}})});const p=f.ui.generate();f.pending.resolve(trials);await p;
+ f.ui.feedback('question','unlike');f.ui.note('question','不加固定结尾');f.ui.apply('question');assert(f.state.canUndo);
+ f.ui.saved();assert(!f.state.canUndo);assert(f.state.stale);assert(f.state.notice.includes('原风格保留'));f.ui.undoCorrection();assert.equal(undone,0);assert.equal(f.calls.length,1);
 });
