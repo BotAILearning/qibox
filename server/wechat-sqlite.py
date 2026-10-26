@@ -300,6 +300,7 @@ class Database:
         self.bind(self.methods, 'sector', [P], lambda *_: PAGE)
         self.bind(self.methods, 'characteristics', [P], lambda *_: 0x2000)  # immutable
         self.bind(self.vfs, 'open', [P, c.c_char_p, P, I, c.POINTER(I)], self.open)
+        self.bind(self.vfs, 'fullpath', [P, c.c_char_p, I, P], self.fullpath)
         self.bind(self.vfs, 'delete', [P, c.c_char_p, I], lambda *_: 8)
         self.bind(self.vfs, 'access', [P, c.c_char_p, I, c.POINTER(I)], lambda _, name, flags, out: self.set_int(out, 0))
         self.api.sqlite3_vfs_register(c.byref(self.vfs), 0)
@@ -321,6 +322,17 @@ class Database:
     @staticmethod
     def set_int(out, value):
         out[0] = value
+        return 0
+
+    @staticmethod
+    def fullpath(_, name, size, out):
+        # This name identifies an in-memory view, never a filesystem file.
+        # The host VFS may reject a launcher's inaccessible/deleted cwd before
+        # our authenticated page reader is called, even with a healthy login.
+        virtual = b'/qibox\0'
+        if name != b'qibox' or size < len(virtual):
+            return 14
+        c.memmove(out, virtual, len(virtual))
         return 0
 
     def open(self, _, name, file, flags, out):
