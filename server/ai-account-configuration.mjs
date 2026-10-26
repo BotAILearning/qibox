@@ -10,7 +10,9 @@ import { withConfigurationCommit } from './ai-configuration-commit.mjs';
 import { verifyAccountScope } from './ai-account-scope.mjs';
 export { personalFields } from './ai-personal-fields.mjs';
 
-const withoutExpiry = ({ expiresAt, ...entry }) => entry;
+// Views and history expose only explicit sharing grants. Reading does not
+// rewrite the encrypted value; malformed legacy truthy values are not consent.
+const withoutExpiry = ({ expiresAt, ...entry }) => ({ ...entry, allowGroup: entry.allowGroup === true });
 const timelessInformation = information => ({ ...information,
   entries: (information.entries || []).map(withoutExpiry).map(entry => ({ ...entry, field: normalizePersonalField(entry.field) })), suggestions: information.suggestions || [],
   history: (information.history || []).map(row => ({ ...row, entries: (row.entries || []).map(withoutExpiry) })) });
@@ -21,7 +23,7 @@ export function personalInformation(a) {
   return information;
 }
 export function selfContext(a, kind, query = null) {
-  const entries = personalInformation(a).entries.filter(entry => !retiredPersonalFields.includes(entry.field) && (kind !== 'group' || entry.allowGroup));
+  const entries = personalInformation(a).entries.filter(entry => !retiredPersonalFields.includes(entry.field) && (kind !== 'group' || entry.allowGroup === true));
   if (query === null) return entries;
   return selectMemoryForChat({ entries }, { query, now: a.now(), maxEntries: 10, maxChars: 1800, relevantOnly: true }).entries;
 }
