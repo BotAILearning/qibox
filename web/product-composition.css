@@ -213,3 +213,12 @@
 .qiapp-product .store-card .install-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 16px; }
 .qiapp-product .store-card .install-actions > button { flex: none; width: auto; }
 .qiapp-product #desktop-status-message { width: max-content; max-width: calc(100% - 32px); margin: 16px; padding: 16px; border: 1px solid var(--qi-border); border-radius: var(--qi-radius-panel); background: var(--qi-surface); color: var(--qi-text); line-height: 1.6; text-align: center; }
+/* This compound field owns content widths; unlayered primitive defaults must
+   not expand the short select or shrink its label when a warning is visible. */
+.qiapp-product #ai-panel .ai-reference-reply-panel .ai-reference-limit { flex-direction: row; flex-wrap: wrap; align-items: flex-start; }
+.qiapp-product #ai-panel .ai-reference-reply-panel .ai-reference-limit-copy { flex: 0 0 auto; align-self: center; }
+.qiapp-product #ai-panel .ai-reference-reply-panel .ai-reference-limit-controls { flex: 1 1 280px; min-width: 0; max-width: 100%; white-space: normal; }
+.qiapp-product #ai-panel .ai-reference-reply-panel .ai-reply-limit-control { flex: 1 1 178px; min-width: 0; max-width: 100%; }
+.qiapp-product #ai-panel .ai-reference-reply-panel .ai-reply-limit-control select { width: 90px; flex: 0 0 90px; }
+.qiapp-product #ai-panel .ai-reference-reply-panel .ai-reply-limit-control input[data-ai-reply-limit-custom] { width: 82px; flex: 0 0 82px; }
+.qiapp-product #ai-panel .ai-reference-reply-panel .ai-reply-limit-control .qi-error-text { flex-basis: 100%; overflow-wrap: anywhere; white-space: normal; }
