@@ -24,7 +24,7 @@ export function analysisPrompt(request = '', { partialSource = false } = {}) {
   const layout = analysisOrderMode(request) === 'chronological'
     ? '整篇报告按原始sequence从早到晚连续组织，顺序优先于默认章节，从最早有关消息开始，章节之间也保持先后；不要按主题把较晚消息提前。同一主题隔着其他事项再出现，留在后来的时点；相邻消息可合段，不跨中间事项合并。未另指定排版用时间线；用户指定表格、列表等格式时仍保持此顺序。概括不超过600字；逐条、保留原文或指定其他篇幅时完整遵守，不受概括字数限制。'
     : reportDefaultLayout;
-  const partial = partialSource ? ' textTruncated=true标明该条只保留原文尾段，不是完整消息。被截掉的前文可能包含主语、否定、条件或引语开头；不能把残余片段提升为肯定事实，不补全缺失内容，归属或范围不完整时保留未知；其他完整消息仍按各自原文分析。' : '';
+  const partial = partialSource ? ' textTruncated=true标明该条只保留部分原文，不是完整消息；读取层可能只保留开头，本次总量裁剪也可能只保留尾段。缺失部分可能包含主语、否定、条件或引语边界；不能把残余片段提升为肯定事实，不补全缺失内容，归属或范围不完整时保留未知；其他完整消息仍按各自原文分析。' : '';
   return reportEvidencePrompt + partial + '\n' + layout + '\n' + reportResultPrompt;
 }
 
@@ -104,7 +104,7 @@ export function tailWithinLimit(input, maxChars = ANALYSIS_INPUT_CHARS) {
   const kept = []; let remaining = maxChars, partialMessages = 0;
   for (let index = messages.length - 1; index >= 0 && remaining > 0; index--) {
     const message = messages[index], chars = Array.from(message.text);
-    if (chars.length <= remaining) { kept.unshift(message); remaining -= chars.length; continue; }
+    if (chars.length <= remaining) { kept.unshift(message); remaining -= chars.length; if (message.textTruncated === true) partialMessages++; continue; }
     kept.unshift({ ...message, text: chars.slice(chars.length - remaining).join(''), textTruncated: true });
     partialMessages++; remaining = 0;
   }
@@ -112,7 +112,7 @@ export function tailWithinLimit(input, maxChars = ANALYSIS_INPUT_CHARS) {
   return { messages: kept, coverage: {
     totalReadableMessages: messages.length, analyzedMessages: kept.length, totalChars, analyzedChars,
     omittedMessages: Math.max(0, messages.length - kept.length), partialMessages,
-    truncated: analyzedChars < totalChars, from: kept[0]?.timestamp ?? null, to: kept.at(-1)?.timestamp ?? null,
+    truncated: analyzedChars < totalChars || partialMessages > 0, from: kept[0]?.timestamp ?? null, to: kept.at(-1)?.timestamp ?? null,
   } };
 }
 

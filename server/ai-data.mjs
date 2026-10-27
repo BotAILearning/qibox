@@ -410,14 +410,17 @@ export class DataChatBridge extends NativeChatBridge {
       ids.add(message.id);
       if (message.type !== undefined && !['voice','image','video'].includes(message.type)) throw unavailable();
       if (message.voiceDurationMs !== undefined && (message.type !== 'voice' || !Number.isSafeInteger(message.voiceDurationMs) || message.voiceDurationMs < 1 || message.voiceDurationMs > 60000)) throw unavailable();
+      if (message.textTruncated !== undefined && typeof message.textTruncated !== 'boolean') throw unavailable();
       const senderName = typeof message.senderName === 'string' && message.senderName.trim() && Array.from(message.senderName.trim()).length <= 120 && !/[\x00-\x1f\x7f]/.test(message.senderName) ? message.senderName.trim() : null;
       if (binding.kind === 'group' && (!key(message.sender) || !message.mentions || ['verified', 'self', 'all', 'others'].some(k => typeof message.mentions[k] !== 'boolean'))) throw unavailable();
       const quote = validatedQuote(message.quote, message, binding.kind);
       let text = message.text;
       const textChars = Array.from(text);
-      if (textChars.length > 150000) { text = textChars.slice(0, 150000).join(''); clipped = true; truncatedReasons.add('message_length'); }
+      const textTruncated = message.textTruncated === true || textChars.length > 150000;
+      if (textTruncated) { text = textChars.slice(0, 150000).join(''); clipped = true; truncatedReasons.add('message_length'); }
       return { id: message.id, direction: message.direction, text, timestamp: message.timestamp, ...(['voice','image','video'].includes(message.type) ? { type: message.type } : {}), ...(senderName ? { senderName } : {}),
         ...(message.voiceDurationMs ? { voiceDurationMs: message.voiceDurationMs } : {}),
+        ...(textTruncated ? { textTruncated: true } : {}),
         ...(quote ? { quote } : {}),
         ...(binding.kind === 'group' ? { sender: message.sender, mentions: Object.fromEntries(['verified', 'self', 'all', 'others'].map(k => [k, message.mentions[k]])) } : {}) };
     });

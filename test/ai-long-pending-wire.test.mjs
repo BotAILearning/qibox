@@ -66,3 +66,9 @@ test('production wire ends with full long incoming turns once, including middle 
   assert.equal(bridge.sent.length, 1);
   assert.equal(bridge.sent[0].text, '原来是混在一页了。', 'No post-generation rewrite');
 });
+
+test('a flagged partial incoming remains readable on one normal reply request without a new send gate', async t => {
+  const root=await temp(),bridge=new ChatFixture(),wires=[];let clock=Date.parse('2026-10-24T10:00:00+08:00');bridge.stableMessageIds=true;
+  const provider=new AIProvider({fetcher:async(_url,options)=>{const body=JSON.parse(options.body);wires.push(body);const input=readableReplyWire(JSON.parse(body.messages.find(row=>row.role==='user').content));const pending=input.conversation.pendingIncomingMessages;assert.equal(pending.length,1);assert.equal(pending[0].textTruncated,true);assert.equal(pending[0].text,'原话这里只读到了开头');return Response.json({choices:[{message:{content:JSON.stringify({action:'send',text:'这段先按看到的说。',followUp:false})},finish_reason:'stop'}]});}});
+  const a=new AIAssistant({dataRoot:root,bridge,provider,now:()=>clock,delay:async()=>{},random:min=>min});t.after(async()=>{await a.close();await cleanup(root);});await a.init();clearInterval(a.timer);clearInterval(a.warmupTimer);await a.configure(modelConfig);await a.scan();const contact=bridge.contacts[0].id;await a.saveReplyProfile({contact,style:{summary:'按用户手动要求自然接话'},strategy:{},replyEnabled:true});await a.settings({enabled:true,autoLearning:false,segmentReplies:false,followUpEnabled:false});await a.tick();const incoming=bridge.push(contact,'other','原话这里只读到了开头');incoming.textTruncated=true;incoming.timestamp=clock/1000+1;await a.tick();clock+=61000;await a.tick();assert.equal(wires.length,1);assert.equal(bridge.sent.length,1);assert.equal(bridge.sent[0].text,'这段先按看到的说。');
+});

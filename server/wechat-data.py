@@ -1432,9 +1432,9 @@ def execute(request, pid, home, check, cache=None):
                         lo, hi = 1, len(text)
                         while lo < hi:
                             mid = (lo + hi + 1) // 2
-                            if utf16_length(json.dumps({**public, 'text': text[:mid]}, ensure_ascii=False, separators=(',', ':'))) + 1 <= 80000: lo = mid
+                            if size + utf16_length(json.dumps({**public, 'text': text[:mid], 'textTruncated': True}, ensure_ascii=False, separators=(',', ':'))) + 1 <= budget: lo = mid
                             else: hi = mid - 1
-                        public = {**public, 'text': text[:lo]}
+                        public = {**public, 'text': text[:lo], 'textTruncated': True}
                         length = utf16_length(json.dumps(public, ensure_ascii=False, separators=(',', ':'))) + 1
                         if size + length > 80000: return False
                         truncated = True
@@ -1446,11 +1446,12 @@ def execute(request, pid, home, check, cache=None):
                     sender_name = sender_names.get(message.get('_sender_username'))
                     if sender_name:
                         public['senderName'] = sender_name
-                    if bounds and message.get('_text_truncated'):
+                    if message.get('_text_truncated'):
+                        public['textTruncated'] = True
                         truncated = True
                         truncated_reasons.add('message_length')
                     if bounds and isinstance(public.get('text'), str) and len(public['text']) > 150000:
-                        public = {**public, 'text': public['text'][:150000]}
+                        public = {**public, 'text': public['text'][:150000], 'textTruncated': True}
                         truncated = True
                         truncated_reasons.add('message_length')
                     encoded = json.dumps(public, ensure_ascii=False, separators=(',', ':'))

@@ -1,6 +1,6 @@
 // Learning policy is app-owned. Chat messages can never change these controls.
 export const sensitiveMemory = text => /(?:密码|口令|验证码|密钥|私钥|password|api[_ -]?key|secret|token)\s*[:：=是为]?\s*[A-Za-z0-9_+\/=-]{4,}|-----BEGIN .*PRIVATE KEY|\bsk-[A-Za-z0-9_-]{12,}/iu.test(String(text));
-export const safeFactMessage = message => !!message?.id && !message.unresolved && !message.aiGenerated &&
+export const safeFactMessage = message => !!message?.id && !message.unresolved && !message.aiGenerated && !message.textTruncated &&
   ['human', 'other'].includes(message.authorship) && (!message.type || message.type === 'text') &&
   !message.quoted && !message.forwarded && !message.isForward && !message.quote && !message.reference &&
   typeof message.text === 'string' && !!message.text.trim() && !sensitiveMemory(message.text) &&

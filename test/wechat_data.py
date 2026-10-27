@@ -96,6 +96,46 @@ def wal_bytes(pages, commit=True):
 
 
 class DataTest(unittest.TestCase):
+    def partial_source_fixture(self, text):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        root = pathlib.Path(directory.name, 'wxid_self_abcd/db_storage')
+        (root/'contact').mkdir(parents=True); (root/'message').mkdir()
+        make_database(root/'contact/contact.db', "CREATE TABLE contact(username TEXT,nick_name TEXT,remark TEXT,alias TEXT,local_type INTEGER); INSERT INTO contact VALUES('wxid_self','我','','',1),('wxid_a','A','','',1);")
+        table = 'Msg_' + hashlib.md5(b'wxid_a').hexdigest()
+        make_database(root/'message/message_0.db', f"CREATE TABLE Name2Id(user_name TEXT); INSERT INTO Name2Id VALUES('wxid_self'),('wxid_a'); CREATE TABLE {table}(local_id INTEGER,local_type INTEGER,create_time INTEGER,real_sender_id INTEGER,message_content TEXT); INSERT INTO {table} VALUES(1,1,1000,2,'{text}');")
+        return directory.name, root
+
+    def test_recent_clipped_message_retains_partial_source_marker(self):
+        original = '😀' * 50000
+        directory, root = self.partial_source_fixture(original)
+        with patch.object(data, 'active_root', return_value=root), patch.object(data, 'discover_keys', side_effect=lambda *_: {SALT:KEY}):
+            scan=data.execute({'action':'contacts'},42,directory,lambda:None)
+            base={'account':scan['account'],'contact':scan['contacts'][0]['id']}
+            recent=data.execute({'action':'read',**base},42,directory,lambda:None)
+            row=recent['messages'][0]
+            self.assertTrue(row.get('textTruncated'))
+            self.assertTrue(recent.get('truncated'))
+            self.assertTrue(original.startswith(row['text']))
+            self.assertLess(len(row['text']),len(original))
+            self.assertLessEqual(data.utf16_length(json.dumps(recent['messages'],ensure_ascii=False,separators=(',',':'))),80000)
+            full=data.execute({'action':'read-range',**base,'from':999,'to':1001},42,directory,lambda:None)
+            self.assertEqual(full['messages'][0]['text'],original)
+            self.assertNotIn('textTruncated',full['messages'][0])
+
+    def test_decoded_clipped_message_retains_partial_source_marker(self):
+        original='甲' * 150001
+        directory, root=self.partial_source_fixture(original)
+        with patch.object(data, 'active_root', return_value=root), patch.object(data, 'discover_keys', side_effect=lambda *_: {SALT:KEY}):
+            scan=data.execute({'action':'contacts'},42,directory,lambda:None)
+            base={'account':scan['account'],'contact':scan['contacts'][0]['id']}
+            result=data.execute({'action':'read-range',**base,'from':999,'to':1001},42,directory,lambda:None)
+            row=result['messages'][0]
+            self.assertEqual(len(row['text']),150000)
+            self.assertTrue(row.get('textTruncated'))
+            self.assertTrue(result.get('truncated'))
+            self.assertIn('message_length',result['truncatedReasons'])
+
     def test_capability_failures_are_classified_without_becoming_empty_data(self):
         self.assertEqual(data.failure_stage(PermissionError('private path')), 'permission')
         self.assertEqual(data.failure_stage(BlockingIOError(errno.EAGAIN, 'busy')), 'database-busy')

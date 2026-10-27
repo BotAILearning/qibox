@@ -40,7 +40,7 @@ function rhythmEvidence(samples) {
 
 function usableSelfText(message, { pairedReply = false } = {}) {
   if (!message || message.direction !== 'self' || message.authorship !== 'human' || message.aiGenerated === true
-    || message.unresolved || message.assumedPresent || message.deliveryConfidence === 'unknown'
+    || message.unresolved || message.textTruncated || message.assumedPresent || message.deliveryConfidence === 'unknown'
     || message.forwarded || message.isForward || message.quoted || message.reference
     || !message.id || !['text', undefined].includes(message.type)) return '';
   if (message.quote && !(pairedReply && message.quote.verified === true)) return '';
@@ -86,7 +86,7 @@ export function naturalStyleEvidence(messages, {
     const incomingText = visibleText(incoming?.text);
     const replyText = usableSelfText(reply, { pairedReply: true });
     if (!incoming || incoming.direction !== 'other' || incoming.authorship !== 'other' || incoming.aiGenerated === true
-      || incoming.unresolved || incoming.assumedPresent || incoming.deliveryConfidence === 'unknown'
+      || incoming.unresolved || incoming.textTruncated || incoming.assumedPresent || incoming.deliveryConfidence === 'unknown'
       || incoming.forwarded || incoming.isForward || incoming.quoted || incoming.reference
       || !['text', undefined].includes(incoming.type) || !incoming.id || !incomingText || incomingText.length > 2000
       || !replyText || quote.messageId !== incoming.id) continue;
@@ -110,7 +110,7 @@ export function naturalStyleEvidence(messages, {
       const incoming = rows[index], reply = rows[index + 1];
       if (pairedExamples.some(pair => pair.reply.id === reply?.id)) continue;
       if (!incoming || incoming.direction !== 'other' || incoming.authorship !== 'other' || incoming.aiGenerated === true
-        || incoming.unresolved || incoming.assumedPresent || incoming.deliveryConfidence === 'unknown'
+        || incoming.unresolved || incoming.textTruncated || incoming.assumedPresent || incoming.deliveryConfidence === 'unknown'
         || incoming.forwarded || incoming.isForward || incoming.quoted || incoming.reference
         || !['text', undefined].includes(incoming.type) || !incoming.id || !uniqueIds.has(incoming.id)
         || !uniqueIds.has(reply?.id)) continue;

@@ -334,6 +334,8 @@ test('combined batch bounds each contact to 150000 codepoints and sends one mate
     assert.equal(Array.from(input.material, part => Array.from(part.text).length).reduce((a, b) => a + b, 0), 150000);
     assert.equal(input.memoryCoverage.includedChars, 150000);
     assert.equal(input.memoryCoverage.truncated, true);
+    assert.equal(input.material[0].textTruncated, true);
+    assert.equal(input.memoryCoverage.partialMessages, 1);
     assert.equal(Object.hasOwn(input, 'memoryMaterial'), false);
     return { style: { ...layers }, memory: { entries: [{ text: `事实 ${input.contact}` }] } };
   });
@@ -356,8 +358,26 @@ test('memory learning trims the oldest text to 150000 codepoints and marks cover
   assert.equal(call.input.coverage.includedChars, 150000);
   assert.equal(call.input.coverage.truncated, true);
   assert.equal(Array.from(call.input.material[0].text).length, 150000);
+  assert.equal(call.input.material[0].textTruncated, true);
   assert.match(f.a.notice, /聊天记忆学习完成，请确认后应用/);
   assert.doesNotMatch(f.a.notice, /Unicode|150000/);
+});
+
+test('memory learning retains an already clipped native source and its partial coverage', async t => {
+  const f = await fixture(t);
+  f.bridge.readRange = async args => ({ account: args.account, contact: args.contact, messages: [
+    { id: key('native-prefix'), direction: 'other', text: '原文开头片段', timestamp: 1789000000, textTruncated: true },
+    { id: key('native-full'), direction: 'self', text: '这是完整消息', timestamp: 1789000001, quote: { verified: true, messageId: key('native-prefix'), direction: 'other', text: '原文开头片段', timestamp: 1789000000 } },
+  ], truncated: true });
+  f.respond(() => ({ memory: { entries: [{ text: '完整消息明确说明该行完整' }] } }));
+  await f.a.learn({ contacts: [f.contacts[0]], target: 'memory', scope: 'range' });
+  assert.equal(f.provider.calls.length, 1);
+  const input = f.provider.calls[0].input;
+  assert.equal(input.material[0].textTruncated, true);
+  assert(!Object.hasOwn(input.material[1], 'textTruncated'));
+  assert.equal(input.material[1].quote.verified, false, 'A partial original cannot be restored as a whole source through its quote pointer');
+  assert.equal(input.coverage.partialMessages, 1);
+  assert.equal(input.coverage.truncated, true);
 });
 
 test('applying replaces the memory, discarding leaves it alone and merging asks the model once more', async t => {

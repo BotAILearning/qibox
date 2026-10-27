@@ -177,6 +177,7 @@ function tailMemoryMaterial(messages, budget = memoryMaterialChars) {
     ...(typeof message.id === 'string' ? { id: message.id } : {}),
     ...(typeof message.sender === 'string' ? { sender: message.sender } : {}),
     ...(message.authorship ? { authorship: message.authorship } : {}),
+    ...(message.textTruncated === true ? { textTruncated: true } : {}),
     ...(message.quote ? { quote: message.quote } : {}),
     timestamp: Number.isSafeInteger(message.timestamp) ? message.timestamp : null,
   }));
@@ -184,8 +185,8 @@ function tailMemoryMaterial(messages, budget = memoryMaterialChars) {
   const kept = []; let remaining = budget, partialMessages = 0;
   for (let index = clean.length - 1; index >= 0 && remaining > 0; index--) {
     const message = clean[index], chars = Array.from(message.text);
-    if (chars.length <= remaining) { kept.unshift(message); remaining -= chars.length; continue; }
-    kept.unshift({ ...message, text: chars.slice(chars.length - remaining).join('') });
+    if (chars.length <= remaining) { kept.unshift(message); remaining -= chars.length; if (message.textTruncated === true) partialMessages++; continue; }
+    kept.unshift({ ...message, text: chars.slice(chars.length - remaining).join(''), textTruncated: true });
     partialMessages++; remaining = 0;
   }
   const includedChars = budget - remaining;
@@ -193,7 +194,7 @@ function tailMemoryMaterial(messages, budget = memoryMaterialChars) {
   // bring omitted facts back through an unbudgeted quoted body.
   const sourceIds = new Map();
   for (const row of clean) if (row.id) sourceIds.set(row.id, sourceIds.has(row.id) ? null : row);
-  const wholeIds = new Map(kept.filter(row => row.id && row.text === sourceIds.get(row.id)?.text).map(row => [row.id, row]));
+  const wholeIds = new Map(kept.filter(row => row.id && row.textTruncated !== true && row.text === sourceIds.get(row.id)?.text).map(row => [row.id, row]));
   for (const row of kept) if (row.quote) {
     const original = wholeIds.get(row.quote.messageId);
     row.quote = row.quote.verified === true && original && ['self', 'other'].includes(original.direction)
@@ -203,7 +204,7 @@ function tailMemoryMaterial(messages, budget = memoryMaterialChars) {
   return { messages: kept, coverage: {
     totalMessages: clean.length, includedMessages: kept.length, totalChars, includedChars,
     omittedMessages: Math.max(0, clean.length - kept.length), partialMessages,
-    truncated: includedChars < totalChars,
+    truncated: includedChars < totalChars || partialMessages > 0,
     from: kept[0]?.timestamp ?? null, to: kept.at(-1)?.timestamp ?? null,
   } };
 }

@@ -46,8 +46,15 @@ test('pending group bulk limit allows another-kind person reply to start and ret
   timestamp: Math.floor(f.a.now() / 1000), sender: key('bulk-pending-member'), mentions: { verified: true, self: true, all: false, others: false }
  });
  let personCanDeliver = false;
- f.provider.next = async () => { personCanDeliver = f.a.canDeliver(f.p, 'reply', f.a.revision, f.a.controller.signal); return { action: 'stop', stop: true }; };
- const tick = f.a.tick(); await new Promise(resolve => setTimeout(resolve, 50));
+ const providerEntered = Promise.withResolvers();
+ f.provider.next = async () => { personCanDeliver = f.a.canDeliver(f.p, 'reply', f.a.revision, f.a.controller.signal); providerEntered.resolve(); return { action: 'stop', stop: true }; };
+ const tick = f.a.tick(); let timeout;
+ // Observe the required interleaving, not filesystem/journal completion in 50ms.
+ // The group write remains held; a configuration-wide deadlock still fails.
+ try { await Promise.race([providerEntered.promise, new Promise((_, reject) => { timeout = setTimeout(() => reject(new Error('Unrelated person reply did not reach the provider while the group write was held')), 5000); })]); }
+ catch (error) { gate.release(); await rejected; await tick; throw error; }
+ finally { clearTimeout(timeout); }
+ assert.equal(f.a.pendingBulkReplyLimit?.kind, 'group');
  const during = { providerCalls: f.provider.calls.length, kinds: f.provider.calls.map(call => call.input.kind), sends: f.bridge.sent.length,
   groupHandled: f.group.handledIncomingId === groupIncoming.id, personCanDeliver };
  gate.release(); await rejected; await tick;
