@@ -43,6 +43,16 @@ export async function verifyAccountScope(a, account = a.data.account) {
   return account;
 }
 
+// A fresh native read proves which account is active now, not which account
+// the submitting page was editing. Bind the caller before entering the write
+// queue; the existing request scope rechecks that identity when queued work runs.
+export async function verifyCallerAccountScope(a, expectedAccount) {
+  const account = await verifyAccountScope(a);
+  if (!validAccount(expectedAccount)) throw new AppError('页面已过期，请刷新栖盒页面后重试', 409, 'AI_SCOPE_CHANGED');
+  if (expectedAccount !== account) throw changed();
+  return account;
+}
+
 // Model settings are instance-owned and remain manageable while WeChat is
 // stopped. No old account's contacts, facts, styles, reports or records enter
 // this response. scopeUnknown tells the UI to conceal without losing drafts.

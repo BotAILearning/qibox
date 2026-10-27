@@ -21,6 +21,7 @@ async function fixture(t) {
   const socketPath = process.platform === 'win32' ? `\\\\.\\pipe\\qibox-test-native-scope-${process.pid}-${Date.now()}` : path.join(dataRoot,'scope.sock');
   await new Promise(resolve=>app.server.listen(socketPath,resolve));
   const call = (route, data, uid = '1001', csrf) => new Promise((resolve,reject) => {
+    if (data?.action && /\/ai(?:\?|$)/.test(route) && !Object.hasOwn(data, 'expectedAccount')) data = { ...data, expectedAccount: bridge.account };
     const req = http.request({ socketPath, path:'/app/qibox/api'+route, method:data===undefined?'GET':'POST', headers:{'x-trim-userid':uid,...(data===undefined?{}:{'content-type':'application/json','x-csrf-token':csrf||token})}},res=>{
       let body='';res.on('data',x=>body+=x);res.on('end',()=>resolve({status:res.statusCode,value:JSON.parse(body)}));
     });req.on('error',reject);req.end(data===undefined?undefined:JSON.stringify(data));

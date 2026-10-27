@@ -25,7 +25,7 @@ import { readWechatAvatar } from './ai-avatar.mjs';
 import { StaticAssets, webChunkRoutes } from './static-assets.mjs';
 import { protectGatewaySocket } from './gateway-socket.mjs';
 import { gatewayPeerVerifier } from './gateway-peer.mjs';
-import { currentAccountState, verifyAccountScope, unverifiedAccountState, accountIndependentAction, accountStopAction, withAccountRequestScope } from './ai-account-scope.mjs';
+import { currentAccountState, verifyAccountScope, verifyCallerAccountScope, unverifiedAccountState, accountIndependentAction, accountStopAction, withAccountRequestScope } from './ai-account-scope.mjs';
 
 const moduleRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const equal = (a, b) => typeof a === 'string' && typeof b === 'string' && Buffer.byteLength(a) === Buffer.byteLength(b) && timingSafeEqual(Buffer.from(a), Buffer.from(b));
@@ -262,7 +262,8 @@ export async function createApplication({ appRoot = moduleRoot, dataRoot = path.
             } };
           if (!Object.hasOwn(handlers, data.action)) throw new AppError('AI 操作无效');
           const independent = accountIndependentAction(data.action), stopping = accountStopAction(data);
-          const account = !independent && !stopping && data.action !== 'scan' ? await verifyAccountScope(ai) : null;
+          const expectedAccount = Object.hasOwn(data, 'expectedAccount') ? data.expectedAccount : data.value?.account;
+          const account = !independent && !stopping && data.action !== 'scan' ? await verifyCallerAccountScope(ai, expectedAccount) : null;
           const result = account ? await withAccountRequestScope(ai, account, handlers[data.action]) : await handlers[data.action]();
           // Safe stops finish without waiting for identity. Instance model
           // operations stay available, but neither may reveal an old account.

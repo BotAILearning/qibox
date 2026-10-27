@@ -210,7 +210,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     skipLoading = true; drawSkips();
     try {
       for (let start = 0; start < eventIds.length && valid(); start += 50) {
-        const result = await api(`/instances/${target}/ai`, { action: 'skip-record-content', value: { eventIds: eventIds.slice(start, start + 50) } }, 130000);
+        const result = await api(`/instances/${target}/ai`, { action: 'skip-record-content', expectedAccount: account, value: { eventIds: eventIds.slice(start, start + 50) } }, 130000);
         if (!valid() || result.account !== account) return;
         for (const row of result.records || []) skipContent.set(row.id, row);
       }
@@ -225,7 +225,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     const currentPage = () => current === generation && target === id && account === state?.account && request === skipPageRequest;
     skipPageLoading = true; drawSkips();
     try {
-      const result = await api(`/instances/${target}/ai`, { action: 'skip-records', value: { limit: 50, before: page.nextBefore } });
+      const result = await api(`/instances/${target}/ai`, { action: 'skip-records', expectedAccount: account, value: { limit: 50, before: page.nextBefore } });
       if (!currentPage()) return;
       skipHistory = [...new Map([...skipState().skipRecords, ...result.records].map(row => [row.id, row])).values()]; skipHistoryPage = result.page;
     } catch (error) { if (currentPage()) failure(error); }
@@ -283,13 +283,13 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   }
   async function loadProactiveRecords(more = false) {
     if (proactiveRecordLoading) return;
-    const current = generation, target = id, epoch = ++proactiveRecordEpoch, taskId = logFilters.taskId || '';
+    const current = generation, target = id, epoch = ++proactiveRecordEpoch, taskId = logFilters.taskId || '', account = state?.account;
     const page = proactiveHistoryPage || (!taskId ? state?.proactiveRecordsPage : null);
     if (more && !page?.hasMore) return;
     proactiveRecordLoading = true;
     drawProactiveRecords(true);
     try {
-      const result = await api(`/instances/${target}/ai`, { action: 'proactive-records', value: { ...(taskId ? { taskId } : {}), limit: 50, ...(more && page?.nextBefore ? { before: page.nextBefore } : {}) } }, 130000);
+      const result = await api(`/instances/${target}/ai`, { action: 'proactive-records', expectedAccount: account, value: { ...(taskId ? { taskId } : {}), limit: 50, ...(more && page?.nextBefore ? { before: page.nextBefore } : {}) } }, 130000);
       if (current !== generation || target !== id || epoch !== proactiveRecordEpoch) return;
       if (more) {
         const rows = new Map(activityState().proactiveRecords.map(r => [r.id, r]));
@@ -311,11 +311,11 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     const page = errorPage || state?.errorsPage;
     const before = more ? (page?.nextBefore || activityState().recentErrors.at(-1)?.id || null) : null;
     if (more && !before) return;
-    const current = generation, target = id, epoch = ++errorEpoch;
+    const current = generation, target = id, epoch = ++errorEpoch, account = state?.account;
     errorLoading = true;
     drawErrors();
     try {
-      const result = await api(`/instances/${target}/ai`, { action: 'error-records', value: { limit: 50, ...(before ? { before } : {}) } }, 30000);
+      const result = await api(`/instances/${target}/ai`, { action: 'error-records', expectedAccount: account, value: { limit: 50, ...(before ? { before } : {}) } }, 30000);
       if (current !== generation || target !== id || epoch !== errorEpoch) return;
       if (more) {
         const rows = new Map(activityState().recentErrors.map(e => [e.id, e]));
@@ -341,7 +341,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     logLoading = true; logSignature = JSON.stringify([state.activity || [], state.activityHistory || []]);
     drawRecords();
     try {
-      const result = await api(`/instances/${target}/ai`, { action: 'activity-records', ids, filters: { ...filters, hydrate: false } }, 15000);
+      const result = await api(`/instances/${target}/ai`, { action: 'activity-records', expectedAccount: account, ids, filters: { ...filters, hydrate: false } }, 15000);
       if (!valid()) return;
       logRecords = mergeRecordResults(logRecords, result.records); drawRecords(); rememberRecords();
       // Show saved records immediately; hydrate older bodies one contact at a
@@ -349,7 +349,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       for (const row of result.records.filter(r => r.pending)) {
         if (!valid()) return;
         let rows;
-        try { rows = (await api(`/instances/${target}/ai`, { action: 'activity-records', ids: [row.id], filters }, 130000)).records; }
+        try { rows = (await api(`/instances/${target}/ai`, { action: 'activity-records', expectedAccount: account, ids: [row.id], filters }, 130000)).records; }
         catch (error) { rows = [{ ...row, pending: false, unavailable: true, error: error.message }]; }
         if (!valid()) return;
         const merged = mergeRecordResults(logRecords, rows);
@@ -366,12 +366,12 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     }
   }
   async function openConversation(profileId, button) {
-    const current = generation, target = id;
+    const current = generation, target = id, account = state?.account;
     const original = button?.textContent;
     if (button) { button.disabled = true; button.textContent = '正在打开聊天…'; }
     message('正在按联系人身份定位微信聊天…');
     let result;
-    try { result = await api(`/instances/${target}/ai`, { action: 'open-conversation', id: profileId }, 30000); }
+    try { result = await api(`/instances/${target}/ai`, { action: 'open-conversation', expectedAccount: account, id: profileId }, 30000); }
     catch (error) { if (current !== generation || target !== id) return; throw error; }
     finally { if (button?.isConnected && current === generation) { button.disabled = false; button.textContent = original; } }
     if (current !== generation || target !== id) return;
@@ -562,7 +562,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     const current = generation, target = id, account = state?.account, epoch = analysisHistoryEpoch;
     if (!await confirmAnalysisDelete(reportId)) return false;
     if (current !== generation || target !== id || account !== state?.account || epoch !== analysisHistoryEpoch) { message('账号或页面已变化，请重新打开历史报告', true); return false; }
-    const result = await api(`/instances/${target}/ai`, { action: 'analysis-report-delete', id: reportId }, 30000);
+    const result = await api(`/instances/${target}/ai`, { action: 'analysis-report-delete', expectedAccount: account, id: reportId }, 30000);
     if (current !== generation || target !== id || account !== state?.account || epoch !== analysisHistoryEpoch) return false;
     state.analysis = { ...(state.analysis || {}), history: result.history || [] };
     if (analysisResult?.reports?.some(report => report.historyId === reportId)) analysisResult = null;
@@ -640,12 +640,12 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     }
   }
   async function call(action, extras = {}, compact = false) {
-    const current = generation, target = id, epoch = action ? ++requestEpoch : requestEpoch, scopeEpoch = scopeVerificationEpoch;
+    const current = generation, target = id, epoch = action ? ++requestEpoch : requestEpoch, scopeEpoch = scopeVerificationEpoch, callerAccount = state?.account || null;
     // 未挂载实例时不要用空 id 发请求（会落到不存在的路由上），先补挂载或明确提示。
     if (!target) throw new Error('AI 辅助尚未就绪，请重新打开微信后再试');
     if (['save-default-style', 'commit-default-style', 'clear-default-style', 'apply-default-style', 'cancel-default-style'].includes(action) || action === 'learn' && extras.value?.asDefault) extras = { ...extras, value: { ...extras.value, account: state?.account || null } };
     let result;
-    try { result = await api(`/instances/${target}/ai${compact && state ? '?view=live' + (selectedObject ? '&contact=' + encodeURIComponent(selectedObject) : '') : ''}`, action ? { action, ...extras } : undefined, ['learn', 'scan'].includes(action) ? 30 * 60 * 1000 : 130000); }
+    try { result = await api(`/instances/${target}/ai${compact && state ? '?view=live' + (selectedObject ? '&contact=' + encodeURIComponent(selectedObject) : '') : ''}`, action ? { action, ...extras, ...(action === 'scan' ? {} : { expectedAccount: callerAccount }) } : undefined, ['learn', 'scan'].includes(action) ? 30 * 60 * 1000 : 130000); }
     catch (error) {
       if (current !== generation || target !== id || epoch !== requestEpoch) return null;
       if (accountScopeError(error)) {
@@ -1852,6 +1852,8 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         return;
       }
       if (form.id === 'ai-object-form') {
+        const saveScope = { generation, instance: id, account: state.account, epoch: requestEpoch, selected: selectedObject };
+        const currentSaveScope = () => generation === saveScope.generation && id === saveScope.instance && state?.account === saveScope.account && requestEpoch === saveScope.epoch && selectedObject === saveScope.selected && scopeVerified;
         const contact = form.dataset.contact, profile = state.profiles.find(p => p.contact === contact);
         const { styleId, style } = objectStyleDraft(form), summary = style.summary;
         const styleName = data.has('styleName') ? String(data.get('styleName')).trim() : undefined;
@@ -1861,6 +1863,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         let realtimeConfirmed = true;
         if ((profile?.kind || state.contacts.find(item => item.id === contact)?.kind) === 'group' && data.has('realtime') && !profile?.groupOptions?.realtime) {
           realtimeConfirmed = await confirmRealtime();
+          if (!currentSaveScope()) throw new Error('账号或聊天对象已变化，请重新打开设置后保存');
           if (!realtimeConfirmed) { objectDrafts.set(contact, { ...(objectDrafts.get(contact) || {}), realtime: false }); render(); return; }
         }
         const kind = profile?.kind || state.contacts.find(item => item.id === contact)?.kind;
@@ -1880,7 +1883,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         const changedStyle = String(data.get('styleId') || '') !== baselineStyleId || String(data.get('summary') || '') !== baselineSummary;
         const hasReplySettings = !!profile?.replyStrategy || ['replyGoal','boundaries'].some(key => String(data.get(key) || '').trim()) || changedSwitch || changedRealtimeMode || changedStyle || String(strategy.maxRounds) !== String(profile?.replyStrategy?.maxRounds ?? state.replyRoundLimits?.[kind] ?? state.replyStrategy?.maxRounds ?? 50);
         const memoryEntries = JSON.parse(String(data.get('memorySummary') || '[]'));
-        const saveScope = { generation, instance: id, account: state.account };
+        if (!currentSaveScope()) throw new Error('账号或聊天对象已变化，请重新打开设置后保存');
         const saved = await execute('reply-profile', { value: { contact, preserveSwitches: true, styleSet: !!summary, styleId, ...(styleName !== undefined ? { styleName } : {}), style, strategy,
           ...(objectRhythmDraft(form).__rhythmChanged ? { rhythm: { inherit: data.has('inheritRhythm'), personal: objectRhythmDraft(form).__rhythmPersonal } } : {}), inheritStrategy: data.has('inheritStrategy'), options: { judgeReply: optionChecked('judgeReply'), sendImages: optionChecked('sendImages'), sendAudio: optionChecked('sendAudio') },
           ...(kind === 'group' ? { group: { atMe: data.has('atMe'), atAll: data.has('atAll'), realtime: data.has('realtime'), realtimeMode: data.get('realtimeMode') || 'normal', ...(realtimeConfirmed ? { confirmRealtime: true } : {}) } }

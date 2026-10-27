@@ -151,7 +151,7 @@ function surface({ without = [], freshForms = false } = {}) {
     skipWait: id => { const button = buttonNode({ aiSkipReplyWait: id }); for (const click of panelClicks) click({ preventDefault() {}, target: { closest: selector => ['button', '[data-ai-skip-reply-wait]'].includes(selector) ? button : null } }); } };
 }
 
-const availableState = () => ({ settings: { enabled: false, replyDelay: 8 },
+const availableState = () => ({ account: '1'.repeat(64), settings: { enabled: false, replyDelay: 8 },
   requirements: { proactive: '', reply: '' }, contacts: [{ id: 'contact', label: 'Fixture', kind: 'person' }],
   profiles: [], targets: [], strategy: {}, events: [], queue: { status: 'idle', items: [] }, available: true,
 });
@@ -345,6 +345,17 @@ test('object save reads the original form values while save controls are locked'
   await dom.submit(form);assert.equal(calls.length,1,dom.node('#ai-feedback').textContent);assert.equal(calls[0].action,'reply-profile');assert.equal(calls[0].value.style.summary,'保留的有效风格草稿');assert.equal(calls[0].value.strategy.maxRounds,50);assert(fields.every(field=>field.disabled===false));assert.match(dom.node('#ai-feedback').textContent,/设置已保存/);
 });
 
+for (const returnToA of [false,true]) test(`delayed group realtime confirmation cannot submit an old account form${returnToA?' after A to B to A':''}`,async t=>{
+  const originalDocument=globalThis.document,OriginalFormData=globalThis.FormData,dom=surface(),calls=[],entered=Promise.withResolvers();let dialog;
+  globalThis.document=dom.document;const createElement=dom.document.createElement.bind(dom.document);dom.document.body={append(){}};dom.document.createElement=tag=>{if(tag!=='dialog')return createElement(tag);const listeners=new Map();dialog={returnValue:'',addEventListener:(name,fn)=>listeners.set(name,fn),showModal(){entered.resolve();},remove(){},confirm(){this.returnValue='confirm';listeners.get('close')();}};return dialog;};
+  globalThis.FormData=class extends OriginalFormData{constructor(form){super();for(const field of form?.fields||[]){if(field.disabled||field.type==='checkbox'&&!field.checked)continue;this.append(field.name,field.value);}}};
+  const snapshot={...availableState(),account:'account-a',contacts:[{id:'contact',kind:'group',label:'Syntheticgroup'}],profiles:[{id:'profile',contact:'contact',kind:'group',styleId:'custom:old',style:{summary:'A 的原有风格'},groupOptions:{atMe:false,atAll:false,realtime:false},replyStrategy:{replyGoal:'自然接话',boundaries:'不擅自承诺',maxRounds:50}}]};
+  const controller=aiAssistant({api:async(_url,payload)=>{if(payload)calls.push(payload);return structuredClone(snapshot);}});t.after(()=>{controller.detach();globalThis.document=originalDocument;globalThis.FormData=OriginalFormData;});await controller.attach('instance-a');calls.length=0;
+  const form=dom.form('#ai-object-form',[]);form.dataset={contact:'contact'};const fields=[['summary','OLD_A_GROUP_DRAFT'],['styleId','custom:old'],['replyGoal','自然接话'],['boundaries','不擅自承诺'],['maxRounds','50'],['realtime','on']].map(([name,value])=>({name,value,disabled:false,type:name==='realtime'?'checkbox':'text',checked:true,matches:()=>false}));form.fields=fields;form.querySelectorAll=selector=>selector==='input,select,textarea,button'?fields:[];form.elements={namedItem:name=>fields.find(field=>field.name===name)};
+  const pending=dom.submit(form);await entered.promise;snapshot.account='account-b';await controller.show();if(returnToA){snapshot.account='account-a';await controller.show();}dialog.confirm();await pending;
+  assert.equal(calls.filter(x=>x.action==='reply-profile').length,0,'A confirmation cannot authorize a different account or revive after an account round trip');
+});
+
 for (const action of ['scan', 'learn-selected']) for (const destination of ['instance-b', 'instance-a']) {
   test(`pending ${action} cannot redraw or continue after leaving and opening ${destination}`, { timeout: 2000 }, async t => {
     const originalDocument = globalThis.document, dom = surface();
@@ -447,7 +458,7 @@ test('bulk learning keeps selections beyond the former ten-contact cap', { timeo
   assert.doesNotMatch(dom.node('#ai-feedback').textContent, /最多学习/);
   assert.doesNotMatch(dom.node('#ai-content').innerHTML, /标签分组|按风格|data-ai-source/);
   await dom.click('learn-selected');
-  assert.deepEqual(calls, [{ action: 'learn', value: { contacts: snapshot.contacts.map(c => c.id), target:'both',previewOnly:true,scope:'range',from:'',to:'' } }]);
+  assert.deepEqual(calls, [{ action: 'learn', expectedAccount: snapshot.account, value: { contacts: snapshot.contacts.map(c => c.id), target:'both',previewOnly:true,scope:'range',from:'',to:'' } }]);
 });
 
 test('learning and applying one contact preserves other contacts reply strategies and targets', { timeout: 2000 }, async t => {

@@ -15,6 +15,7 @@ test('new proactive HTTP workflow enforces ownership, CSRF, validation and idemp
   const socketPath = process.platform === 'win32' ? `\\\\.\\pipe\\qibox-proactive-${randomUUID()}` : path.join(dataRoot, 'test.sock');
   await new Promise(resolve => app.server.listen(socketPath, resolve));
   const call = (route, uid, data, csrf) => new Promise((resolve, reject) => {
+    if (data?.action && /\/ai(?:\?|$)/.test(route) && !Object.hasOwn(data, 'expectedAccount')) data = { ...data, expectedAccount: bridge.account };
     const req = http.request({ socketPath, path: '/app/qibox/api' + route, method: data === undefined ? 'GET' : 'POST', headers: {
       'x-trim-userid': uid, ...(data === undefined ? {} : { 'content-type': 'application/json' }), ...(csrf ? { 'x-csrf-token': csrf } : {})
     } }, res => { let text = ''; res.on('data', x => { text += x; }); res.on('end', () => resolve({ status: res.statusCode, value: JSON.parse(text) })); });
