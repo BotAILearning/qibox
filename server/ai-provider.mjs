@@ -438,8 +438,9 @@ export class AIProvider {
               : this.complete(config, system + ' 本次接口无法接受图片，图片已略过；只回复仍可读取的文字，不猜测图片，不要求重发或转文字。', readable, signal, { format, purpose, budget, ...(remainingOutput !== null ? { maxOutputAcrossAttempts: remainingOutput } : {}), retry, validate });
           }
           // Legacy callers may fall back when a host rejects max_tokens.
-          // A bounded report must retain its explicit output ceiling.
-          if (budget && response.status === 400 && !droppedBudget && retry && remainingOutput === null) { budget = 0; droppedBudget = true; continue; }
+          // Every report must retain its explicit output ceiling, including
+          // models without a cumulative output allowance.
+          if (format !== 'report' && budget && response.status === 400 && !droppedBudget && retry && remainingOutput === null) { budget = 0; droppedBudget = true; continue; }
           throw new AppError(contextTooLarge ? '模型上下文容量不足，无法一次处理当前聊天范围；请缩小范围或更换长上下文模型'
             : response.status === 401 ? '模型认证失败，请检查 API Key'
             : response.status === 403 ? '模型服务拒绝访问，权限不足；请检查账号、模型及接口访问权限'
@@ -471,7 +472,7 @@ export class AIProvider {
           cachedInputTokens: tokenCount(data.usage?.prompt_tokens_details?.cached_tokens ?? data.usage?.cache_read_input_tokens),
           cacheWriteTokens: tokenCount(data.usage?.cache_creation_input_tokens) }));
         if (data.choices?.[0]?.finish_reason === 'length' || data.stop_reason === 'max_tokens') {
-          if (remainingOutput !== null) {
+          if (format === 'report') {
             const visible = anthropic ? (Array.isArray(data.content) ? data.content.filter(x => x.type === 'text').map(x => x.text).join('') : undefined) : data.choices?.[0]?.message?.content;
             // The provider's explicit length stop is authoritative. Its usage
             // may omit reasoning or be a few tokens below max_tokens; neither
