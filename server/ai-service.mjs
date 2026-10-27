@@ -3539,12 +3539,17 @@ export class AIAssistant {
       if (plan) return plan;
     }
     const usable = new Set(contextualReplyStyle(messages, { kind: profile.kind, maxSamples: 64, maxChars: 12000, maxPairs: 0 }).samples.map(row => row.id));
-    let block = null;
+    let block = null, previousTime = null;
     const samples = [];
     for (const row of messages) {
-      if (row.direction !== 'self' || row.authorship !== 'human' || !usable.has(row.id)) { block = null; continue; }
-      block ||= row.id;
+      if (row.direction !== 'self' || row.authorship !== 'human' || !usable.has(row.id)) { block = null; previousTime = null; continue; }
+      // Adjacent rows can still be separate expressions hours apart. Only a
+      // verified short chronological gap supports treating typed segments as
+      // one observed turn; missing/reversed clocks never certify a merge.
+      const at = Number.isSafeInteger(row.timestamp) && row.timestamp > 0 ? row.timestamp : null;
+      if (!block || at === null || previousTime === null || at < previousTime || at - previousTime > 300) block = row.id;
       samples.push({ ...row, styleRoundId: `human:${block}` });
+      previousTime = at;
     }
     const recentSends = [];
     for (const row of (profile.sentMessages || []).slice(-80)) {
