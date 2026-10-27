@@ -39,9 +39,9 @@ test('a partial body is context but cannot certify learned facts or a complete h
  assert.equal(safeFactMessage(partial),false);assert.equal(safeFactMessage({...partial,textTruncated:undefined}),true);
  const evidence=naturalStyleEvidence([{id:'incoming',direction:'other',authorship:'other',text:'终于分清了',timestamp:1},partial]);assert.equal(evidence.samples.length,0);assert.equal(evidence.pairedExamples.length,0);
 });
-test('report selection counts pre-existing prefix fragments without calling them complete originals or suffixes',()=>{
+test('report selection excludes pre-existing prefix fragments and discloses their count without rewriting complete neighbours',()=>{
  const rows=[{id:'head',direction:'other',timestamp:1,text:'我说的到账',textTruncated:true},{id:'full',direction:'self',timestamp:2,text:'本人车位费已经到账'}],before=structuredClone(rows),selection=tailWithinLimit(rows);
- assert.deepEqual(selection.messages,rows);assert.deepEqual(rows,before);assert.equal(selection.coverage.partialMessages,1);assert.equal(selection.coverage.truncated,true);
+ assert.deepEqual(selection.messages,[rows[1]]);assert.deepEqual(rows,before);assert.equal(selection.coverage.partialMessages,0);assert.equal(selection.coverage.omittedIncompleteMessages,1);assert.equal(selection.coverage.omittedMessages,1);assert.equal(selection.coverage.truncated,true);
  assert.doesNotMatch(analysisPrompt('',{partialSource:true}),/只保留原文尾段/);assert.match(analysisPrompt('',{partialSource:true}),/textTruncated/);assert.doesNotMatch(analysisPrompt(''),/textTruncated/);
 });
 test('native encrypted SQLite reader exposes its per-row clipping marker at both size boundaries',()=>{

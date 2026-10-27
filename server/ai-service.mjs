@@ -1090,6 +1090,8 @@ export class AIAssistant {
         ...(Number.isSafeInteger(result.totalChars) ? { totalChars: result.totalChars } : {}),
         ...(Number.isSafeInteger(result.omittedMessages) ? { omittedMessages: result.omittedMessages } : {}),
         ...(Number.isSafeInteger(result.partialMessages) ? { partialMessages: result.partialMessages } : {}),
+        ...(Number.isSafeInteger(result.omittedIncompleteMessages) && result.omittedIncompleteMessages > 0 ? { omittedIncompleteMessages: result.omittedIncompleteMessages } : {}),
+        ...(Number.isSafeInteger(result.omittedBudgetMessages) && result.omittedBudgetMessages > 0 ? { omittedBudgetMessages: result.omittedBudgetMessages } : {}),
         ...(result.sourceRange ? { sourceRange: structuredClone(result.sourceRange) } : {}),
         ...(Number.isSafeInteger(result.rangeCount) && result.rangeCount > result.count ? { rangeCount: result.rangeCount } : {}),
         ...(Number.isSafeInteger(result.sampledCount) ? { sampledCount: result.sampledCount } : {}),

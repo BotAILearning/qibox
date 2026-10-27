@@ -23,6 +23,12 @@ function assistant(reports) {
   } };
 }
 
+test('Word export carries explicit incomplete-source and budget omission counts alongside the unchanged facts',async()=>{
+  const item={...report('7'),count:2,readableCount:7,analyzedCount:2,skipped:0,omittedMessages:5,omittedIncompleteMessages:2,omittedBudgetMessages:3,truncatedReasons:['incomplete_source_excluded','character_limit'],report:'本人已收到车位费退款；阿杰已把钥匙交给店员。'};
+  const file=await exportAnalysisReports(assistant([item]),{ids:[item.id],format:'docx'}),body=strFromU8(unzipSync(file.bytes)['word/document.xml']);
+  assert.match(body,/有 2 条消息原文不完整，未纳入分析；原聊天记录保留/);assert.match(body,/较近的完整消息，另有 3 条未纳入/);assert.match(body,/本人已收到车位费退款/);assert.match(body,/阿杰已把钥匙交给店员/);assert.doesNotMatch(body,/不允许导出的原始聊天/);
+});
+
 test('单份 Word 保留报告、范围、覆盖提示，排除原始聊天', async () => {
   const item = report('1');
   const file = await exportAnalysisReports(assistant([item]), { ids: [item.id], format: 'docx' });

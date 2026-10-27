@@ -8,21 +8,19 @@ import { temp, cleanup } from './fixtures.mjs';
 const stamp = value => Math.floor(Date.parse(value) / 1000);
 const batchReport = (_input, report = '分析报告') => ({ report });
 
-test('analysis retains the newest 150000 Unicode code points and marks a partial source message', () => {
+test('analysis retains the newest whole messages within 150000 Unicode code points without cutting source semantics', () => {
   const messages = [
     { id: 'first', direction: 'self', text: '旧内容', timestamp: 1000 },
     { id: 'large', direction: 'other', text: '😀'.repeat(150001), timestamp: 2000 },
     { id: 'last', direction: 'other', text: '后来确认', timestamp: 3000 },
   ];
   const { messages: kept, coverage } = tailWithinLimit(messages);
-  assert.equal(kept.length, 2);
-  assert.equal(kept[0].id, 'large');
-  assert.equal(Array.from(kept[0].text).length, 149996);
-  assert.equal(kept[1].id, 'last');
-  assert.equal(coverage.analyzedChars, 150000);
+  assert.deepEqual(kept, [messages[2]]);
+  assert.equal(coverage.analyzedChars, 4);
   assert.equal(coverage.totalChars, 150008);
-  assert.equal(coverage.omittedMessages, 1);
-  assert.equal(coverage.partialMessages, 1);
+  assert.equal(coverage.omittedMessages, 2);
+  assert.equal(coverage.omittedBudgetMessages, 2);
+  assert.equal(coverage.partialMessages, 0);
   assert.equal(coverage.truncated, true);
 });
 
@@ -244,17 +242,17 @@ test('desktop activity does not abort an in-progress analysis read', async t => 
   assert.equal(report.status, 'complete');
   assert.equal(report.report, '周末看展是这段对话的主题');
 });
-test('超过 150000 Unicode 字符时保留最近内容并明确标记截断', async t => {
+test('唯一原话超过 150000 Unicode 字符时保留原文且不调用模型生成残片报告', async t => {
   const { bridge, provider, a, contact } = await fixture(t);
   bridge.readRange = async args => ({ account: args.account, contact: args.contact, messages: [
     { id: key('over-limit'), direction: 'other', text: '😀'.repeat(150001), timestamp: stamp('2026-09-02T10:00:00+08:00') },
   ] });
   let calls = 0, sent; provider.complete = async (_config, _system, input) => { calls++; sent = input; return { report: '截断范围分析' }; };
   const report = (await a.analyze({ request: '', contacts: [contact] })).reports[0];
-  assert.equal(report.status, 'complete'); assert.equal(calls, 1);
-  assert.equal(sent.coverage.totalChars, 150001); assert.equal(sent.coverage.analyzedChars, 150000);
-  assert.equal(report.truncated, true); assert.equal(report.scope, 'truncated'); assert.equal(report.partialMessages, 1);
-  assert.equal(Object.hasOwn(report, 'sampledCount'), false); assert.equal(a.publicState().analysis.history.length, 1);
+  assert.equal(report.status, 'error'); assert.equal(calls, 0); assert.equal(sent, undefined);
+  assert.match(report.error, /完整|过长|上限/);
+  assert.equal(Object.hasOwn(report, 'sampledCount'), false); assert.equal(a.publicState().analysis.history.length, 0);
+  assert.equal(Array.from((await bridge.readRange({account:a.data.account,contact})).messages[0].text).length,150001);
 });
 test('底层读取截断仍只发一次请求并明确标记不完整范围', async t => {
   const { bridge, provider, a, contact } = await fixture(t);

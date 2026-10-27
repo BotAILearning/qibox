@@ -94,7 +94,10 @@ function coverageNotices(report) {
   }
   if (reasons.has('message_limit')) notices.push('部分较早的聊天未读取，统计仅包含已读取的记录。');
   if (reasons.has('analysis_sample') && !(Number.isInteger(report.sampledCount) && report.sampledCount < report.count)) notices.push('部分聊天未纳入分析。');
-  if (reasons.has('character_limit')) notices.push('聊天内容较多，本次只分析了较近的内容。');
+  if (report.omittedIncompleteMessages > 0) notices.push(`有 ${report.omittedIncompleteMessages} 条消息原文不完整，未纳入分析；原聊天记录保留。`);
+  if (reasons.has('character_limit')) notices.push(report.omittedBudgetMessages > 0
+    ? `内容较多，本次仅纳入较近的完整消息，另有 ${report.omittedBudgetMessages} 条未纳入。`
+    : '聊天内容较多，本次只分析了较近的内容。');
   if (reasons.has('source_read_truncated')) notices.push('部分聊天未能读取，报告仅依据已读取的记录。');
   if (reasons.has('message_length')) notices.push('部分较长消息未完整纳入报告。');
   if (reasons.has('message_output_limit')) notices.push('部分聊天未纳入报告。');

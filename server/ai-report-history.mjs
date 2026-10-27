@@ -55,6 +55,8 @@ export function historySummary(report) {
     totalChars: report.totalChars,
     omittedMessages: report.omittedMessages,
     partialMessages: report.partialMessages,
+    ...(report.omittedIncompleteMessages > 0 ? { omittedIncompleteMessages: report.omittedIncompleteMessages } : {}),
+    ...(report.omittedBudgetMessages > 0 ? { omittedBudgetMessages: report.omittedBudgetMessages } : {}),
     sourceRange: report.sourceRange,
     rangeCount: report.rangeCount,
     sampledCount: report.sampledCount,

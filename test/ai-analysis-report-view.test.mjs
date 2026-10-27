@@ -5,6 +5,17 @@ import { historySummary } from '../server/ai-report-history.mjs';
 import { analysisPage, analysisRangeLabel, reportSections, presetChips } from '../web/ai-analysis-view.mjs';
 import { activityPage } from '../web/ai-activity-view.mjs';
 
+test('report result and saved detail explicitly disclose incomplete and whole-message budget omissions',()=>{
+ const report={id:'complete-source-report',label:'合成联系人',status:'complete',count:2,analyzedCount:2,readableCount:7,analyzedChars:36,omittedMessages:5,omittedIncompleteMessages:2,omittedBudgetMessages:3,truncated:true,truncatedReasons:['incomplete_source_excluded','character_limit'],metrics:{total:2,self:1,other:1,activeDays:1},report:'本人已收到车位费退款；阿杰已把钥匙交给店员。'};
+ const summary=historySummary(report);assert.equal(summary.omittedIncompleteMessages,2);assert.equal(summary.omittedBudgetMessages,3);
+ const state={contacts:[],analysis:{history:[summary]}},draft={contacts:[]};
+ for(const html of[analysisPage(state,draft,{reports:[report]}),analysisPage(state,draft,null,'',report)]){
+  assert.match(html,/本次分析 2 条（已读取 7 条）/);assert.match(html,/有 2 条消息原文不完整，未纳入分析；原聊天记录保留/);assert.match(html,/较近的完整消息，另有 3 条未纳入/);assert.match(html,/阿杰已把钥匙交给店员/);assert.doesNotMatch(html,/全部结果未知/);
+ }
+ const legacy={...report,omittedIncompleteMessages:undefined,omittedBudgetMessages:undefined,truncatedReasons:['character_limit']};
+ const old=analysisPage(state,draft,null,'',legacy);assert.match(old,/本次只分析了较近的内容/);assert.doesNotMatch(old,/原文不完整/);
+});
+
 test('analysis range stays unknown while loading or failed and only confirmed empty results claim no records', () => {
  for(const status of ['waiting','analyzing','error','cancelled']) {
   const label=analysisRangeLabel({reports:[{status}]});

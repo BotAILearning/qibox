@@ -101,18 +101,25 @@ function normalizeChronologicalChapters(text, messages, options) {
 export function tailWithinLimit(input, maxChars = ANALYSIS_INPUT_CHARS) {
   const messages = input.filter(message => typeof message?.text === 'string' && message.text.trim());
   const totalChars = messages.reduce((sum, message) => sum + Array.from(message.text).length, 0);
-  const kept = []; let remaining = maxChars, partialMessages = 0;
-  for (let index = messages.length - 1; index >= 0 && remaining > 0; index--) {
-    const message = messages[index], chars = Array.from(message.text);
-    if (chars.length <= remaining) { kept.unshift(message); remaining -= chars.length; if (message.textTruncated === true) partialMessages++; continue; }
-    kept.unshift({ ...message, text: chars.slice(chars.length - remaining).join(''), textTruncated: true });
-    partialMessages++; remaining = 0;
+  // A fragment may have lost its negation, actor or opening quotation. The
+  // model cannot recover those missing operators from a truncation flag.
+  // Keep source records untouched; disclose excluded material separately.
+  const eligible = messages.filter(message => message.textTruncated !== true);
+  const kept = []; let remaining = maxChars;
+  for (let index = eligible.length - 1; index >= 0 && remaining > 0; index--) {
+    const message = eligible[index], chars = Array.from(message.text);
+    if (chars.length > remaining) break;
+    kept.unshift(message); remaining -= chars.length;
   }
   const analyzedChars = maxChars - remaining;
+  const omittedIncompleteMessages = messages.length - eligible.length;
+  const omittedBudgetMessages = eligible.length - kept.length;
   return { messages: kept, coverage: {
     totalReadableMessages: messages.length, analyzedMessages: kept.length, totalChars, analyzedChars,
-    omittedMessages: Math.max(0, messages.length - kept.length), partialMessages,
-    truncated: analyzedChars < totalChars || partialMessages > 0, from: kept[0]?.timestamp ?? null, to: kept.at(-1)?.timestamp ?? null,
+    omittedMessages: messages.length - kept.length, partialMessages: 0,
+    ...(omittedIncompleteMessages ? { omittedIncompleteMessages } : {}),
+    ...(omittedBudgetMessages ? { omittedBudgetMessages } : {}),
+    truncated: kept.length < messages.length, from: kept[0]?.timestamp ?? null, to: kept.at(-1)?.timestamp ?? null,
   } };
 }
 
@@ -139,7 +146,7 @@ export async function analyzeContacts(assistant, value) {
       const material = await readStableRange(a.bridge, { account, contact: contact.id, from: options.from, to: options.to, signal, skipUnparsed: true }, check);
       const sourceMessages = material.messages.filter(message => typeof message.text === 'string' && message.text.trim());
       const selection = tailWithinLimit(sourceMessages), selectedMessages = selection.messages;
-      const resolved = options.includeVoice || options.includeVisual
+      const resolved = selectedMessages.length && (options.includeVoice || options.includeVisual)
         ? await resolveAnalysisMedia({ assistant: a, config, account, contact: contact.id, messages: selectedMessages, includeVoice: options.includeVoice, includeVisual: options.includeVisual, signal, check })
         : null;
       const finalSelection = resolved ? tailWithinLimit(resolved.messages) : selection;
@@ -150,7 +157,13 @@ export async function analyzeContacts(assistant, value) {
          totalReadableMessages: selection.coverage.totalReadableMessages,
          totalChars: selection.coverage.totalChars + extraChars,
          omittedMessages: sourceMessages.length - messages.length,
-         partialMessages: selection.coverage.partialMessages + finalSelection.coverage.partialMessages,
+         partialMessages: 0,
+         ...((selection.coverage.omittedIncompleteMessages || finalSelection.coverage.omittedIncompleteMessages) ? {
+           omittedIncompleteMessages: (selection.coverage.omittedIncompleteMessages || 0) + (finalSelection.coverage.omittedIncompleteMessages || 0),
+         } : {}),
+         ...((selection.coverage.omittedBudgetMessages || finalSelection.coverage.omittedBudgetMessages) ? {
+           omittedBudgetMessages: (selection.coverage.omittedBudgetMessages || 0) + (finalSelection.coverage.omittedBudgetMessages || 0),
+         } : {}),
          truncated: selection.coverage.truncated || finalSelection.coverage.truncated,
       } : selection.coverage;
       if (mediaCoverage && messages.length < selectedMessages.length) {
@@ -162,11 +175,20 @@ export async function analyzeContacts(assistant, value) {
         }
       }
       const sourceTruncated = material.truncated === true, truncated = coverage.truncated || sourceTruncated;
+      const truncatedReasons = [...new Set([...(material.truncatedReasons || []),
+        ...(coverage.omittedBudgetMessages ? ['character_limit'] : []),
+        ...(coverage.omittedIncompleteMessages ? ['incomplete_source_excluded'] : []),
+        ...(sourceTruncated ? ['source_read_truncated'] : []),
+      ])];
       a.operation.completed = 1;
       if (!sourceMessages.length) {
         const skipped = material.count;
         reports.push({ ...head, status: 'empty', count: 0, rangeCount: material.count, skipped,
           report: skipped ? `所选时间范围内有 ${skipped} 条消息暂时无法解析，没有可供分析的文字。` : '所选时间范围内没有聊天记录。' });
+      } else if (!messages.length) {
+        throw new AppError(coverage.omittedIncompleteMessages
+          ? '可读记录没有可完整纳入的消息，部分原文不完整或超出本次内容上限。本次未生成报告，原有报告保留。'
+          : '较近的消息过长，无法完整纳入本次内容上限。本次未生成报告，原有报告保留。', 422, 'ai_analysis_incomplete_source');
       } else {
         Object.assign(a.operation, { phase: 'analysis-model', total: 1, completed: 0, skipped: 0, attempt: 0, startedAt: Date.now() });
         const inputMessages = messages.map((message, index) => ({
@@ -189,7 +211,7 @@ export async function analyzeContacts(assistant, value) {
           rangeCount: material.count, readableCount: sourceMessages.length, analyzedCount: messages.length,
           ...(mediaCoverage ? { contentParsedCount } : {}),
           actualRange: actualRange(messages), sourceRange: actualRange(sourceMessages),
-          coverage: { ...coverage, sourceTruncated, truncated, reasons: [...(material.truncatedReasons || [])] },
+          coverage: { ...coverage, sourceTruncated, truncated, reasons: truncatedReasons },
           metrics: reportMetrics(messages), ...(mediaCoverage ? { mediaCoverage } : {}), messages: inputMessages,
           ...(sourceIndex?{sourceIndex}:{}),
         }, signal, { format: 'report', budget: boundedDeepSeekReport ? 8192 : 4096,
@@ -208,8 +230,10 @@ export async function analyzeContacts(assistant, value) {
         const report = { ...head, status: 'complete', count: messages.length, rangeCount: material.count,
           readableCount: sourceMessages.length, analyzedCount: messages.length, ...(mediaCoverage ? { contentParsedCount } : {}), analyzedChars: coverage.analyzedChars,
           totalChars: coverage.totalChars, omittedMessages: coverage.omittedMessages, partialMessages: coverage.partialMessages,
+          ...(coverage.omittedIncompleteMessages ? { omittedIncompleteMessages: coverage.omittedIncompleteMessages } : {}),
+          ...(coverage.omittedBudgetMessages ? { omittedBudgetMessages: coverage.omittedBudgetMessages } : {}),
           skipped: Math.max(0, material.count - sourceMessages.length), scope: truncated ? 'truncated' : 'full', truncated,
-          truncatedReasons: [...new Set([...(material.truncatedReasons || []), ...(coverage.truncated ? ['character_limit'] : []), ...(sourceTruncated ? ['source_read_truncated'] : [])])],
+          truncatedReasons,
           actualRange: actualRange(messages), sourceRange: actualRange(sourceMessages), metrics: reportMetrics(messages), ...(mediaCoverage ? { mediaCoverage } : {}), report: reportText };
         try {
           const saved = await a.saveAnalysisReport(report, { account, revision, signal, request: options.request, requestedRange: { from: options.fromDate || null, to: options.toDate || null } });
