@@ -41,6 +41,20 @@ test('a receipt mention cannot exempt a separate real monetary request', () => {
   assert.equal(guardFinancialCommitment('能帮我付款吗？',result,{facts:'我已经同意付款'}),result);
 });
 
+test('legacy ambiguous or punctuated monetary requests cannot gain permission through an assent or payment draft',()=>{
+  const incoming=['你明天，付款500给他。','可不可以，先给我钱？','你先办一下：转账给我。','你方便的话，帮我垫付。'];
+  for(const text of ['可以啊','好，我明天给他付。','明天转给你。','先垫着吧。','给你转五百。',"Sure, I'll pay tomorrow."]){
+    for(const request of incoming)assert.equal(guardFinancialCommitment(request,{action:'send',text,followUp:false}).text,'这事我现在答应不了，抱歉',request+' → '+text);
+  }
+});
+
+test('a payment receipt reference cannot permit an invented payment promise in any outgoing text part',()=>{
+  const incoming='你发的付款截图我收到了，数字挺清楚。';
+  for(const draft of [{text:'可以啊，我明天给他付。'},{segments:['没问题','明天转给你']},{text:'看看',media:{text:'我明天给你转账'}}]){
+    assert.equal(guardFinancialCommitment(incoming,{action:'send',...draft,followUp:false}).text,'这事我现在答应不了，抱歉');
+  }
+});
+
 test('two ordinary payment discussions reach the send boundary unchanged and without a second generation',async t=>{
   const root=await temp(),bridge=new ChatFixture(),provider=new AIModelFixture();let now=Date.parse('2026-10-28T03:15:00+08:00');bridge.stableMessageIds=true;
   const ai=new AIAssistant({dataRoot:root,bridge,provider,now:()=>now,delay:async()=>{}});await ai.init();clearInterval(ai.timer);clearInterval(ai.warmupTimer);t.after(async()=>{await ai.close();await cleanup(root);});await ai.configure(modelConfig);await ai.scan();const contact=bridge.contacts[0].id;await ai.setReplyOptions({contact,enabled:true});await ai.settings({enabled:true,autoLearning:false,judgeReply:false,segmentReplies:false});await ai.tick();
