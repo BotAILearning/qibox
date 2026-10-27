@@ -132,8 +132,10 @@ export function naturalStyleEvidence(messages, {
     }
     pairedExamples.reverse();
   }
-  const chronological = related ? pairedExamples.toSorted((a, b) => rows.indexOf(byId.get(a.reply.id)) - rows.indexOf(byId.get(b.reply.id))) : pairedExamples;
-  const selectedPairs = related ? relatedExamples(chronological, query, maxPairs, maxPairChars) : pairedExamples;
+  // The private adjacency pass can reverse a mixed list of quote and adjacent
+  // examples. Restore source order even when no relevance query was supplied.
+  const chronological = pairedExamples.toSorted((a, b) => rows.indexOf(byId.get(a.reply.id)) - rows.indexOf(byId.get(b.reply.id)));
+  const selectedPairs = related ? relatedExamples(chronological, query, maxPairs, maxPairChars) : chronological;
   // A long self announcement supplies wording and facts, but is not a sample
   // of how this person answers somebody. Prefer the selected interaction's
   // reply side only when at least two distinct human replies support it. This
