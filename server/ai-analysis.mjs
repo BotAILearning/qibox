@@ -133,7 +133,7 @@ export async function analyzeContacts(assistant, value) {
   if (!a.bridge.readRange) throw new AppError('当前连接暂不支持按时间分析');
   a.invalidate();
   const controller = new AbortController(); a.analysisController = controller;
-  const revision = a.revision, signal = AbortSignal.any([a.controller.signal, controller.signal]), account = a.data.account;
+  const revision = a.revision, signal = AbortSignal.any([a.learningModelSignal(), controller.signal]), account = a.data.account;
   const check = () => { signal.throwIfAborted(); if (a.revision !== revision || a.data.account !== account) throw new AppError('分析已取消或微信账号已变化', 409); };
   const identity = contact => ({ contact: contact.id, label: contact.label, ...(contact.nickname ? { nickname: contact.nickname } : {}) });
   a.operation = { phase: 'analysis-reading', total: 1, completed: 0 };

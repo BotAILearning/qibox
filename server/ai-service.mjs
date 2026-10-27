@@ -1353,6 +1353,10 @@ export class AIAssistant {
   }
   analysisModel() { return this.modelFor('analysis'); }
   providerRevision(scope) { return `${this.revision}:${scope === 'analysis' ? this.analysisRevision : ''}`; }
+  learningModelSignal(signal = this.controller.signal) {
+    this.learningModelController ||= new AbortController();
+    return AbortSignal.any([signal, this.learningModelController.signal]);
+  }
   commitProvider(config, scope, tested) {
     this.invalidate(); this.pauseQueue(); this.bridge.clearContext?.(); this.config = config;
     this.data.provider = this.vault.seal(config); this.data.tested = tested ? providerFingerprint(config) : null;
@@ -1397,25 +1401,36 @@ export class AIAssistant {
   }
   async persistModelConfiguration(payload, persist, { legacy = false, tested = false, draftIds = [], pauseQueueOnSuccess = false } = {}) {
     const currentModels = this.models, currentAssignments = this.assignments;
-    const changed = legacy
+    const before = legacy ? null : JSON.parse(this.modelConfigurationSemantics(currentModels, currentAssignments, this.config));
+    const after = legacy ? null : JSON.parse(this.modelConfigurationSemantics(payload.models, payload.assignments, this.config));
+    const chatChanged = legacy
       ? (this.config == null ? null : modelFingerprint(canonicalKeyValue(this.config)))
         !== (payload.config == null ? null : modelFingerprint(canonicalKeyValue(payload.config)))
-      : this.modelConfigurationSemantics(currentModels, currentAssignments, this.config) !== this.modelConfigurationSemantics(payload.models, payload.assignments, this.config);
+      : before.chat !== after.chat;
+    const learningChanged = legacy ? chatChanged : before.learningAnalysis !== after.learningAnalysis;
     const patch = legacy
       ? { provider: this.vault.seal(payload.config), tested: tested ? providerFingerprint(payload.config) : null, analysisMode: 'shared' }
       : payload.data;
     await persist({ [configurationSnapshotPatch]: snapshot => {
       Object.assign(snapshot, patch);
-      if (changed || pauseQueueOnSuccess) {
+      if (chatChanged || pauseQueueOnSuccess) {
         if (snapshot.queue?.status === 'running') snapshot.queue.status = 'paused';
         if (snapshot.queue) snapshot.queue.nextAt = null;
       }
-      if (changed) for (const profile of Object.values(snapshot.profiles || {})) delete profile.preparedReply;
+      if (chatChanged) for (const profile of Object.values(snapshot.profiles || {})) delete profile.preparedReply;
     } });
-    if (changed) {
+    if (chatChanged) {
       this.invalidate(); this.pauseQueue(); this.bridge.clearContext?.(); this.retryAt = 0;
     } else if (pauseQueueOnSuccess) this.pauseQueue();
-    else this.followUps.clear();
+    else if (!learningChanged) this.followUps.clear();
+    // A learning-only change must cancel old learning/report work without
+    // discarding a valid chat answer, its retry deadline, or an in-flight chat.
+    // Effective fingerprints also detect a shared model edited via analysis.
+    if (learningChanged) {
+      this.analysisRevision++;
+      this.learningModelController?.abort(); this.learningModelController = new AbortController();
+      this.analysisController?.abort();
+    }
     if (legacy) {
       this.config = payload.config;
       this.data.provider = patch.provider; this.data.tested = patch.tested; this.data.analysisMode = 'shared';
@@ -1689,7 +1704,7 @@ export class AIAssistant {
     if (asDefault && requestedTarget === 'memory') throw new AppError('默认风格不包含聊天记忆，请选择「风格 + 记忆」');
     target = asDefault ? 'style' : ['style', 'memory'].includes(target) ? target : 'both';
     this.invalidate();
-    const revision = this.revision, signal = this.controller.signal;
+    const revision = this.revision, signal = this.learningModelSignal();
     const range = dateRange({ from, to });
     const items = typeof text === 'string' ? [{ text: textField(text, 90000, true), label: textField(label || '', 120, !contact && !id && !asDefault), id, contact }] : (Array.isArray(contacts) ? [...new Set(contacts)].map(key => this.contacts.get(key)) : []);
     if (!items.length || items.some(x => !x || x.kind && !['person', 'group'].includes(x.kind))) throw new AppError('请选择要学习的联系人');
@@ -1782,6 +1797,7 @@ export class AIAssistant {
               kind: profile.kind, material, ...(prepared.styleEvidence ? { styleEvidence: prepared.styleEvidence } : {}), defaultStyle: true };
             const learnedResult = await this.provider.complete(this.modelFor('learning'), learningPromptFor(perspective), input, signal,
               { purpose: 'learning', validate: result => validatedLearnedStyleFields(result?.style) });
+            signal.throwIfAborted();
             const style = validatedLearnedStyleFields(learnedResult?.style ?? learnedResult);
             learned.push({ contact: profile.contact, kind: profile.kind, label: profile.label, source, style });
           } catch (error) {
@@ -1799,6 +1815,7 @@ export class AIAssistant {
           else {
             const summary = await this.provider.complete(this.modelFor('learning'), defaultLearningSummaryPrompt, { profiles: learned }, signal,
               { purpose: 'learning', validate: value => validatedLearnedStyleFields(value?.style) });
+            signal.throwIfAborted();
             result = { style: validatedLearnedStyle(summary?.style ?? summary) };
           }
           if (learned.length > 1) this.operation.completed++;
@@ -1853,6 +1870,7 @@ export class AIAssistant {
             const memoryPromptForKind = profile.kind === 'group' ? `${memoryLearningPrompt}\n${groupMemoryInstruction}` : memoryLearningPrompt;
             let parsed = await this.provider.complete(this.modelFor('learning'), memoryPromptForKind, memoryInputData,
               signal, { purpose: 'learning', budget: 16384, validate: validateMemoryResult });
+            signal.throwIfAborted();
             if (revision !== this.revision) throw new AppError('学习已取消');
             let parsedMemory = validatedLearnedMemory(parsed?.memory, memoryInput);
             if (!parsedMemory) throw new AppError('模型未返回有效聊天记忆，未保存空结果');
@@ -1860,6 +1878,7 @@ export class AIAssistant {
               const recheckPrompt = `${memoryPromptForKind}\n这是对同一份材料的补充核查。上一轮没有返回任何条目，请重新检查材料前段和后段，留意有明确依据的稳定事实、重要经历、已确认约定与待办；有依据的事实分别列出，不要因为聊天很多或范围截断就整体留空。不得编造，也不要凑数；确实没有符合条件的事实时才返回空 entries。`;
               parsed = await this.provider.complete(this.modelFor('learning'), recheckPrompt, memoryInputData,
                 signal, { purpose: 'learning', budget: 16384, validate: validateMemoryResult });
+              signal.throwIfAborted();
               if (revision !== this.revision) throw new AppError('学习已取消');
               parsedMemory = validatedLearnedMemory(parsed?.memory, memoryInput);
               if (!parsedMemory) throw new AppError('模型未返回有效聊天记忆，未保存空结果');
@@ -2412,7 +2431,7 @@ export class AIAssistant {
     });
   }
   async finishMemoryMerge(id) {
-    const revision = this.revision, signal = this.controller.signal;
+    const revision = this.revision, signal = this.learningModelSignal();
     try {
       const profile = this.data.profiles[id];
       if (!profile) return;
@@ -2423,6 +2442,7 @@ export class AIAssistant {
           current: { entries: current.entries.map(memoryMergeEntry) },
           incoming: { entries: incoming.entries.map(memoryMergeEntry) } },
         signal, { purpose: 'learning', budget: 16384 });
+      signal.throwIfAborted();
       const merged = memoryValue(result?.memory);
       if (!merged) throw new AppError('模型返回的记忆格式不正确');
       const metadataById = new Map([...current.entries, ...incoming.entries].map(entry => [entry.id, entry]));
@@ -2743,7 +2763,7 @@ export class AIAssistant {
     const from = range === 'takeover' ? takeoverStart : range === 'day' ? now - 86400000 : range === 'week' ? now - 7 * 86400000 : range === 'month' ? now - 30 * 86400000 : null;
     // Reading a report must survive a new manual WeChat input, which cancels
     // reply generation through this.controller. Bound this read independently.
-    const signal = AbortSignal.timeout(125000);
+    const signal = this.learningModelSignal(AbortSignal.timeout(125000));
     const snapshot = typeof this.bridge.readRange === 'function'
       ? await readStableRange(this.bridge, { account, contact: profile.contact, from: Math.max(0, Math.floor((from ?? 0) / 1000)), to: Math.ceil(now / 1000) + 1, signal })
       : await this.read(profile, signal);
@@ -3232,6 +3252,7 @@ export class AIAssistant {
   }
   async learnMonitoredMemory(profile, snapshot, revision, signal) {
     if (!learningEnabled(this)) return;
+    signal = this.learningModelSignal(signal);
     const epoch = learningEpoch(this), checkpoint = profile.memoryWatch, originalMemory = JSON.stringify(profile.memory);
     if (!checkpoint || checkpoint.pendingAt === undefined || this.now() - checkpoint.pendingAt < 20000 || this.now() < (checkpoint.retryAt || 0) || this.now() - (checkpoint.lastAttemptAt ?? -Infinity) < 120000) return;
     const config = this.modelFor('learning');
