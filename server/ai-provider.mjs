@@ -11,6 +11,7 @@ import { textField } from './ai-schema.mjs';
 import { readableMediaInput } from './ai-media-input.mjs';
 import { replyFixedRules } from './ai-reply-prompt.mjs';
 import { requestTrace } from './ai-request-trace.mjs';
+import { structuredDeepSeekReply, structuredReplyBody, structuredReplyResult } from './ai-deepseek-reply.mjs';
 
 export function providerValue(value, previous = {}, { discovery = false } = {}) {
   let url;
@@ -348,6 +349,7 @@ export class AIProvider {
       config.model === 'MiniMax-M3' && ['api.minimax.io', 'api.minimaxi.com'].includes(new URL(config.baseUrl).hostname);
     const {images = [], ...textInput} = input;
     const validImages = images.filter(x => x && ['image/png','image/jpeg','image/gif','image/webp'].includes(x.mime) && typeof x.data === 'string' && x.data.length <= 5600000).slice(0,3);
+    const structuredReply = structuredDeepSeekReply(config, input, { completePolicy: completeReplyPolicy, format, imageCount: images.length });
     if (requireImages && (!images.length || validImages.length !== images.length)) throw new AppError('图片或视频帧不符合模型输入要求', 400);
     const expanded = hasSpeakerTurns(input) ? { ...textInput, sourceIndexVersion: 2, messages: input.messages, replySpeakerHistory: speakerHistory(input.messages).map(({ messages, ...group }) => ({ ...group, messageIds: messages.map(message => message.id) })), confirmedSpeakerHistory: confirmedSpeakerHistory(input.messages), replyRelations: replyRelations(input.messages) } : textInput;
     const wireSystem = completeReplyPolicy ? modelInputReferencePrompt + roleSystem
@@ -410,10 +412,11 @@ export class AIProvider {
           ...(anthropic ? { system: currentSystem, messages: speakerTurns(input, requestContent) }
             : { messages: [{ role: 'system', content: currentSystem }, ...speakerTurns(input, requestContent)] }) };
         requestSignal = AbortSignal.any([AbortSignal.timeout(config.timeout * 1000), ...(signal ? [signal] : [])]);
-        const requestOptions = { method: 'POST', redirect: 'error', headers: this.headers(config), signal: requestSignal, body: JSON.stringify(requestBody) };
+        const outboundBody = structuredReply ? structuredReplyBody(requestBody, { allowSkip: input.judgeReply === true }) : requestBody;
+        const requestOptions = { method: 'POST', redirect: 'error', headers: this.headers(config), signal: requestSignal, body: JSON.stringify(outboundBody) };
         dispatched = true;
         trace.dispatch();
-        response = await this.fetcher(endpoint, requestOptions);
+        response = await this.fetcher(structuredReply ? 'https://api.deepseek.com/responses' : endpoint, requestOptions);
         received = true;
         trace.response(response.status);
         if (!response.ok) {
@@ -440,7 +443,7 @@ export class AIProvider {
           // Legacy callers may fall back when a host rejects max_tokens.
           // Every report must retain its explicit output ceiling, including
           // models without a cumulative output allowance.
-          if (format !== 'report' && budget && response.status === 400 && !droppedBudget && retry && remainingOutput === null) { budget = 0; droppedBudget = true; continue; }
+          if (!structuredReply && format !== 'report' && budget && response.status === 400 && !droppedBudget && retry && remainingOutput === null) { budget = 0; droppedBudget = true; continue; }
           throw new AppError(contextTooLarge ? '模型上下文容量不足，无法一次处理当前聊天范围；请缩小范围或更换长上下文模型'
             : response.status === 401 ? '模型认证失败，请检查 API Key'
             : response.status === 403 ? '模型服务拒绝访问，权限不足；请检查账号、模型及接口访问权限'
@@ -459,14 +462,17 @@ export class AIProvider {
         let data;
         try { data = JSON.parse(Buffer.concat(parts).toString()); }
         catch { throw new AppError('模型接口未返回有效数据，请检查服务地址和接口类型', 502, 'ai_model_response'); }
+        // Retain available usage even if the structured status/envelope is
+        // rejected. This observation never dispatches a recovery request.
+        if (structuredReply) { trace.usage(data.usage); data = structuredReplyResult(data); }
         trace.usage(data.usage);
         const tokenCount = value => Number.isSafeInteger(value) && value >= 0 ? value : null;
         const reportedOutput = tokenCount(data.usage?.completion_tokens ?? data.usage?.output_tokens);
         if (remainingOutput !== null && reportedOutput !== null && reportedOutput <= reservedOutput)
           remainingOutput += reservedOutput - reportedOutput;
         console.info('[ai-request-cost]', JSON.stringify({ mode: input.mode || format,
-          inputChars: currentSystem.length + text.length,
-          compactedChars: Math.max(0, system.length + JSON.stringify(expanded).length - currentSystem.length - text.length),
+          inputChars: (structuredReply ? outboundBody.instructions.length : currentSystem.length) + text.length,
+          compactedChars: Math.max(0, system.length + JSON.stringify(expanded).length - (structuredReply ? outboundBody.instructions.length : currentSystem.length) - text.length),
           inputTokens: tokenCount(data.usage?.prompt_tokens ?? data.usage?.input_tokens),
           outputTokens: tokenCount(data.usage?.completion_tokens ?? data.usage?.output_tokens),
           cachedInputTokens: tokenCount(data.usage?.prompt_tokens_details?.cached_tokens ?? data.usage?.cache_read_input_tokens),
