@@ -16,7 +16,11 @@ const comicTraits = new Set(['laughter', 'rhetorical', 'teasing']);
 const MAX_PLANS = 128;
 const MAX_COMMITTED_ROUNDS = 128;
 const MAX_OPERATION_IDS = 16;
-const minTextLength = 2;
+// A one-character confirmation is still a complete expression turn. Dropping
+// it would inflate decoration frequencies and leave older decorated sends in
+// the supposedly most-recent eight rounds. Authorship/receipt checks below
+// decide eligibility; only blank text is excluded by length.
+const minTextLength = 1;
 
 const validKeyPart = value => typeof value === 'string' && value.length > 0 && value.length <= 512;
 const scopeFor = (account, contact) => {
