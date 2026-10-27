@@ -53,7 +53,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     return !!id;
   }
   let id, state, tab = 'overview', timer, lastPollAt = 0, generation = 0, requestEpoch = 0, workToken = 0, analysisQueueToken = 0, analysisQueueAccount = null, polling = false, busy = false, attaching = false;
-  let scopeVerified = false, scopeChecking = false, scopeVerificationEpoch = 0;
+  let scopeVerified = false, scopeChecking = false, scopeVerificationEpoch = 0, accountRevision = 0;
   const identityReadErrors = new WeakSet();
   const accountScopeError = error => ['AI_ACCOUNT_UNVERIFIED', 'AI_SCOPE_CHANGED', 'ai_account_changed', 'ai_wechat_logged_out', 'ai_data_unavailable'].includes(error?.code);
   let dateRangeOperation = null;
@@ -672,6 +672,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     const initialState = !state;
     const accountChanged = state && state.account !== result.account;
     if (accountChanged) {
+      accountRevision++;
       styleTrial.cancel({ clear: true });
       invalidateDateRange();
       finishSave(pendingSave);
@@ -1818,7 +1819,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
             const contact = chosen[index], row = analysisResult.reports[index];
             row.status = 'analyzing'; render();
             try {
-              const result = await api(`/instances/${target}/ai`, { action: 'analyze', value: { ...value, contacts: [contact], mode: 'auto' } }, 30 * 60 * 1000);
+              const result = await api(`/instances/${target}/ai`, { action: 'analyze', expectedAccount: account, value: { ...value, contacts: [contact], mode: 'auto' } }, 30 * 60 * 1000);
               if (!valid()) return;
               const completed = result?.reports?.[0];
               if (!completed || completed.contact !== contact || !['complete', 'empty', 'error'].includes(completed.status)) throw new Error('分析服务没有返回该联系人的有效结果');
@@ -2081,13 +2082,13 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       if ('aiRetryRecords' in button.dataset) { await loadActivity(); return; }
       if ('aiRetrySkips' in button.dataset) { await loadSkipContent(true); return; }
       if ('aiMarkReply' in button.dataset) {
-        const current = generation, target = id, account = state?.account;
+        const current = generation, target = id, account = state?.account, accountEpoch = accountRevision, scopeEpoch = scopeVerificationEpoch;
         const eventId = button.dataset.eventId, profileId = button.dataset.aiMarkReply, messageId = button.dataset.messageId;
         if (!target || !account || !eventId || !profileId || !messageId) throw new Error('未回复记录已变化，请刷新后重试');
-        const valid = () => current === generation && target === id && account === state?.account;
+        const valid = () => current === generation && target === id && account === state?.account && accountEpoch === accountRevision && scopeEpoch === scopeVerificationEpoch && scopeVerified;
         markReplyStatus.set(eventId, { markingForReply: true }); drawSkips();
         try {
-          const result = await api(`/instances/${target}/ai`, { action: 'mark-reply-needed', value: { profileId, eventId, messageId } }, 130000);
+          const result = await api(`/instances/${target}/ai`, { action: 'mark-reply-needed', expectedAccount: account, value: { profileId, eventId, messageId } }, 130000);
           if (!valid()) return;
           if (result?.account !== account) throw new Error('微信账号已变化，请刷新后重试');
           state = { ...state, skipRecords: result.skipRecords, events: result.events };
@@ -2104,14 +2105,15 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         const profileId = button.dataset.aiSummaryProfile, row = button.closest('[data-ai-reply-card]'), output = row?.querySelector(`[data-ai-summary-result="${CSS.escape(profileId)}"]`);
         const range = row?.querySelector(`[data-ai-summary-range="${CSS.escape(profileId)}"]`)?.value || 'takeover';
         if (!output) return;
-        const current = generation, target = id;
+        const current = generation, target = id, account = state?.account, accountEpoch = accountRevision, scopeEpoch = scopeVerificationEpoch;
+        const valid = () => current === generation && target === id && account === state?.account && accountEpoch === accountRevision && scopeEpoch === scopeVerificationEpoch && scopeVerified && tab === 'activity' && !panel.hidden;
         showSummary(profileId, { range, text: '正在整理聊天…', pending: true });
         try {
-          const result = await api(`/instances/${id}/ai`, { action: 'activity-summary', id: profileId, value: { range } }, 130000);
-          if (current !== generation || target !== id) return;
+          const result = await api(`/instances/${target}/ai`, { action: 'activity-summary', expectedAccount: account, id: profileId, value: { range } }, 130000);
+          if (!valid()) return;
           const start = beijingTime(result.from), end = beijingTime(result.to);
           showSummary(profileId, { range, text: `${result.summary}\n\n证据范围：${start} 至 ${end}；共读取 ${result.count}/${result.total} 条双方消息，其中 AI 代回复 ${result.aiReplyCount} 条${result.truncated ? '（内容较多，使用最近部分）' : ''}。` });
-        } catch (error) { if (current === generation && target === id) showSummary(profileId, { range, text: `总结失败：${error.message || '请重试'}` }); }
+        } catch (error) { if (valid()) showSummary(profileId, { range, text: `总结失败：${error.message || '请重试'}` }); }
         return;
       }
       if ('aiDeleteRecord' in button.dataset) {
@@ -2170,7 +2172,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
           tab === 'activity' && !panel.hidden && errorHost?.isConnected && errorHost === $('#ai-recent-errors');
         button.disabled = true;
         let result;
-        try { result = await api(`/instances/${target}/ai`, { action: 'error-related-record', id: button.dataset.aiErrorRecordTarget }, 30000); }
+        try { result = await api(`/instances/${target}/ai`, { action: 'error-related-record', expectedAccount: account, id: button.dataset.aiErrorRecordTarget }, 30000); }
         catch (error) { if (!unchanged()) return; throw error; }
         finally { if (button.isConnected) button.disabled = false; }
         if (!unchanged()) return;
@@ -2469,7 +2471,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         const active = () => dateRangeOperation === operation && current === generation && target === id && page === tab && account === state?.account && !panel.hidden && contactKey === JSON.stringify([...(scope === 'analysis' ? analysisDraft.contacts : selectedContacts)].sort());
         button.setAttribute('aria-busy','true'); message('正在读取聊天日期…');
         try {
-        const calendar = await api(`/instances/${target}/ai`, {action:'calendar',value:{contacts}}, 130000);
+        const calendar = await api(`/instances/${target}/ai`, {action:'calendar',expectedAccount:account,value:{contacts}}, 130000);
         if (!active()) return;
         message('');
         const result = await chooseDateRange(calendar.dates, scope === 'analysis' ? analysisDraft : learnRange, { analysis: scope === 'analysis', signal: operation.controller.signal });

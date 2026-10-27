@@ -4,6 +4,7 @@ import { aiAssistant } from '../web/ai-assistant.mjs';
 import { categories, styleOptions, avoidOptions, defaultStyle } from '../server/ai-schema.mjs';
 import { replyPresets } from '../server/ai-presets.mjs';
 import { RecordCache } from '../web/ai-record-cache.mjs';
+import { verifyCallerAccountScope } from '../server/ai-account-scope.mjs';
 
 let originalWindow;
 test.beforeEach(() => {
@@ -147,13 +148,75 @@ function surface({ without = [], freshForms = false } = {}) {
     input: target => handlers.get('#ai-panel:input')({ target: { closest: () => null, ...target } }),
     submit: form => handlers.get('#ai-panel:submit')({ preventDefault() {}, target: form }),
     click: action => handlers.get('#ai-panel:click')({ target: { closest: () => buttonNode(action === 'new-proactive' ? { proactiveNew: '' } : { aiAction: action }) } }),
-    button: dataset => handlers.get('#ai-panel:click')({ preventDefault() {}, target: { closest: () => buttonNode(dataset) } }),
+    button: (dataset, properties = {}) => handlers.get('#ai-panel:click')({ preventDefault() {}, target: { closest: () => Object.assign(buttonNode(dataset), properties) } }),
     skipWait: id => { const button = buttonNode({ aiSkipReplyWait: id }); for (const click of panelClicks) click({ preventDefault() {}, target: { closest: selector => ['button', '[data-ai-skip-reply-wait]'].includes(selector) ? button : null } }); } };
 }
 
 const availableState = () => ({ account: '1'.repeat(64), settings: { enabled: false, replyDelay: 8 },
   requirements: { proactive: '', reply: '' }, contacts: [{ id: 'contact', label: 'Fixture', kind: 'person' }],
   profiles: [], targets: [], strategy: {}, events: [], queue: { status: 'idle', items: [] }, available: true,
+});
+
+for (const action of ['analyze', 'calendar', 'mark-reply-needed', 'activity-summary', 'error-related-record']) test(`direct ${action} UI request satisfies the actual caller account guard`, async t => {
+  const originalDocument = globalThis.document, OriginalFormData = globalThis.FormData, OriginalCSS = globalThis.CSS;
+  const dom = surface(), snapshot = { ...availableState(), analysis: { history: [] } }, requests = [];
+  globalThis.document = dom.document;
+  globalThis.CSS ||= { escape: value => value };
+  globalThis.FormData = class extends OriginalFormData { constructor(form) { super(); for (const [key,value] of form?.entries || []) this.append(key,value); } };
+  // Use the production identity+caller guard at the API boundary. The native
+  // identity is synthetic; no model/WeChat is called by these contract tests.
+  const assistant = { data: { account: snapshot.account }, ready: () => true, bridge: { currentAccount: async () => ({ account: snapshot.account }) } };
+  const controller = aiAssistant({ api: async (_url,payload) => {
+    if (payload?.action === action) {
+      const row = { payload: structuredClone(payload), accepted: false }; requests.push(row);
+      try { await verifyCallerAccountScope(assistant,payload.expectedAccount); row.accepted = true; }
+      catch (error) { row.error = error.code; throw error; }
+      // Stop exactly after the API boundary for calendar/locator, whose
+      // subsequent rendering has separate browser and context regressions.
+      if (['calendar','error-related-record'].includes(action)) throw new Error('FIXTURE_AFTER_ACCOUNT_GUARD');
+      if (action === 'analyze') return { reports: [{contact:'contact',label:'Fixture',status:'empty',report:'没有聊天记录'}] };
+      if (action === 'mark-reply-needed') return {account:snapshot.account,skipRecords:[],events:[]};
+      return {summary:'仅合成总结',from:1793034000,to:1793034010,count:1,total:1,aiReplyCount:0};
+    }
+    if (payload?.action === 'activity-records') return {account:snapshot.account,records:[]};
+    return snapshot;
+  } });
+  t.after(() => { controller.detach(); globalThis.document=originalDocument;globalThis.FormData=OriginalFormData;globalThis.CSS=OriginalCSS; });
+  await controller.attach('instance-a');
+  if (['analyze','calendar'].includes(action)) {
+    await dom.navigate('analysis');
+    const form=dom.form('#ai-analysis-form',[['contacts','contact'],['from','2026-10-10'],['to','2026-10-10'],['request','只整理明确事实']]);
+    if (action==='analyze') await dom.submit(form); else await dom.button({aiDateRange:'analysis'},{setAttribute(){},removeAttribute(){}});
+  } else if (action==='mark-reply-needed') await dom.button({aiMarkReply:'profile',eventId:'event',messageId:'message'});
+  else if (action==='error-related-record') {await dom.navigate('activity');await dom.button({aiErrorRecordTarget:'error'});}
+  else {
+    const output={hidden:true,textContent:''},row={querySelector:selector=>selector.includes('summary-range')?{value:'takeover'}:output};
+    await dom.button({aiSummaryProfile:'profile'},{closest:selector=>selector==='[data-ai-reply-card]'?row:null});
+  }
+  assert.equal(requests.length,1,'The real handler must reach its intended direct API path exactly once: '+dom.node('#ai-feedback').textContent);
+  assert.equal(requests[0].accepted,true,JSON.stringify(requests));
+  assert.equal(requests[0].payload.expectedAccount,snapshot.account);
+});
+
+for (const action of ['activity-summary','mark-reply-needed']) for (const returnToA of [null,false,true]) for (const fail of action==='activity-summary'?[false,true]:[false]) test(`late ${action} ${fail?'failure':'success'} ${returnToA===null?'remains visible in current A':'is ignored after A to B'+(returnToA?' to A':'')}`, {timeout:2000}, async t => {
+  const originalDocument=globalThis.document,OriginalCSS=globalThis.CSS,dom=surface({without:['#ai-skip-records']}),A='1'.repeat(64),B='2'.repeat(64);
+  globalThis.document=dom.document;globalThis.CSS||={escape:value=>value};
+  let account=A;const entered=Promise.withResolvers(),release=Promise.withResolvers();
+  const controller=aiAssistant({api:async(_url,payload)=>{
+    if(payload?.action===action){entered.resolve();await release.promise;if(fail)throw Error('LATE_A_SUMMARY_FAILURE');return action==='activity-summary'?{summary:'LATE_A_PRIVATE_SUMMARY',from:1793034000,to:1793034010,count:1,total:1,aiReplyCount:0}:{account:A,skipRecords:[],events:[]};}
+    if(payload?.action==='activity-records')return{account,records:[]};
+    return{...availableState(),account};
+  }});let pending;t.after(async()=>{release.resolve();await pending;controller.detach();globalThis.document=originalDocument;globalThis.CSS=OriginalCSS;});
+  await controller.attach('instance-a');await controller.show();await dom.navigate('activity');
+  const output=dom.node('[data-ai-summary-result]'),row={querySelector:selector=>selector.includes('summary-range')?{value:'takeover'}:output};
+  pending=action==='activity-summary'?dom.button({aiSummaryProfile:'profile'},{closest:selector=>selector==='[data-ai-reply-card]'?row:null}):dom.button({aiMarkReply:'profile',eventId:'event',messageId:'message'});
+  await entered.promise;if(returnToA!==null){account=B;await controller.show();if(returnToA){account=A;await controller.show();}}else await dom.click('scan');
+  const before={summary:output.textContent,feedback:dom.node('#ai-feedback').textContent,content:dom.node('#ai-content').innerHTML};
+  release.resolve();await pending;
+  if(returnToA===null){if(action==='activity-summary')assert.match(output.textContent,fail?/LATE_A_SUMMARY_FAILURE/:/LATE_A_PRIVATE_SUMMARY/);else assert.match(dom.node('#ai-feedback').textContent,/已标记/);return;}
+  assert.equal(output.textContent,before.summary,'An old account result must not paint the current summary output');
+  assert.equal(dom.node('#ai-feedback').textContent,before.feedback,'An obsolete operation cannot display completion in the new context');
+  assert.equal(dom.node('#ai-content').innerHTML,before.content);
 });
 
 test('closing an invalid execution-record filter error retains the form and performs no mutation', async t => {
