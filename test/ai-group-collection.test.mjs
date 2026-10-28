@@ -144,3 +144,53 @@ test('ordinary group traffic identifies the disabled realtime switch while menti
   const record = a.publicState().skipRecords.find(row => row.messageId === message.id);
   assert.equal(record.reasonCode, 'group-realtime-disabled'); assert.equal(record.trigger, 'realtime');
 });
+
+test('reopening a group does not reply to unseen mentions received while disabled', async t => {
+  const { a, bridge, provider, profile, push, advance } = await fixture(t);
+  await a.setGroupOptions({ contact: profile.contact, atMe: false, atAll: false, realtime: false });
+  advance(1000);
+  const old = push('甲', false, '关闭期间的旧提及'); old.mentions.all = true;
+  advance(5000);
+  await a.setGroupOptions({ contact: profile.contact, atAll: true });
+  await a.tick(); advance(3000); await a.tick();
+  assert.equal(provider.calls.length, 0, 'old inbox high-water mark must not override the new reply boundary');
+  assert.equal(bridge.sent.length, 0);
+  advance(1000);
+  const fresh = push('乙', false, '开启后的新提及'); fresh.mentions.all = true;
+  await a.tick(); advance(3000); await a.tick();
+  assert.equal(bridge.sent.length, 1);
+  assert.deepEqual(profile.sentMessages.at(-1).replyTo, [fresh.id]);
+});
+
+test('enabling another trigger preserves an unseen mention for a continuously enabled trigger', async t => {
+  const { a, bridge, profile, push, advance } = await fixture(t);
+  await a.setGroupOptions({ contact: profile.contact, atAll: false, realtime: false });
+  advance(1000); const active = push('甲');
+  const inactive = push('乙', false); inactive.mentions.all = true;
+  advance(5000); await a.setGroupOptions({ contact: profile.contact, atAll: true });
+  await a.tick(); advance(3000); await a.tick();
+  assert.equal(bridge.sent.length, 1);
+  assert.deepEqual(profile.sentMessages.at(-1).replyTo, [active.id]);
+});
+
+test('reopening the master switch excludes unobserved group messages from its disabled period', async t => {
+  const { a, bridge, provider, push, advance } = await fixture(t);
+  await a.settings({ enabled: false });
+  advance(1000); push('甲');
+  advance(5000); await a.settings({ enabled: true });
+  await a.tick(); advance(3000); await a.tick();
+  assert.equal(provider.calls.length, 0);
+  assert.equal(bridge.sent.length, 0);
+});
+
+test('changing a private reply switch preserves inheritance for untouched options', async t => {
+  const { a, bridge } = await fixture(t);
+  const contact = bridge.contacts[1].id;
+  await a.setReplyOptions({ contact, enabled: true });
+  const p = a.profiles().find(p => p.contact === contact);
+  await a.setReplyOptions({ contact, enabled: false });
+  assert.equal(p.replyOptions.multiTurn, undefined);
+  assert.equal(p.replyOptions.judgeReply, undefined);
+  await a.settings({ multiTurn: true });
+  assert.equal(a.replyOptions(p).multiTurn, true);
+});

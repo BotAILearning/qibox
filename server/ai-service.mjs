@@ -907,6 +907,8 @@ export class AIAssistant {
         profile.replyWatchSince = this.now();
         this.cursors.delete(id);
         delete profile.manualWait;
+        profile.groupEnabledSince ||= {};
+        for (const key of enabling) profile.groupEnabledSince[key] = this.now();
         if (profile.groupBaselines) for (const key of enabling) delete profile.groupBaselines[key];
       }
       for (const key of triggerKeys) if (next[key] !== before[key] || key === 'realtime' && next.realtimeMode !== (before.realtimeMode ?? 'normal')) { this.replyControllers.get(`${id}:${key}`)?.abort(); this.replyControllers.delete(`${id}:${key}`); if (profile.groupWait?.trigger === key) delete profile.groupWait; }
@@ -937,11 +939,12 @@ export class AIAssistant {
       const before = this.replyOptions(profile);
       this.replyControllers.get(id)?.abort(); this.replyControllers.delete(id);
       if (takeover === null) delete profile.takeover; else if (takeover !== undefined) profile.takeover = takeover;
-      profile.replyOptions = { ...before, ...value };
+      profile.replyOptions = { ...profile.replyOptions, ...value };
+      const after = this.replyOptions(profile);
       profile.replyVersion = (profile.replyVersion || 0) + 1;
       this.followUps.delete(id);
-      if (before.enabled !== profile.replyOptions.enabled) { profile.replyWatchSince = this.now(); this.cursors.delete(id); delete profile.manualWait; }
-      if (profile.replyOptions.enabled) this.data.replyTargets = [...new Set([...this.data.replyTargets, id])];
+      if (before.enabled !== after.enabled) { profile.replyWatchSince = this.now(); this.cursors.delete(id); delete profile.manualWait; }
+      if (after.enabled) this.data.replyTargets = [...new Set([...this.data.replyTargets, id])];
       else { this.data.replyTargets = this.data.replyTargets.filter(x => x !== id); this.endReplyRound(profile, 'disabled'); }
       this.syncTargets();
     }));
@@ -2272,7 +2275,10 @@ export class AIAssistant {
       if (options) profile.replyOptions = { ...profile.replyOptions, ...options };
       if (resolvedGroup) {
         const before = profile.groupOptions || groupDefaults();
-        for (const trigger of ['atMe','atAll','realtime']) if (resolvedGroup[trigger] && !before[trigger]) { profile.groupBaselines ||= {}; profile.groupBaselines[trigger] = this.cursors.get(id)?.last; }
+        for (const trigger of ['atMe','atAll','realtime']) if (resolvedGroup[trigger] && !before[trigger]) {
+          profile.groupBaselines ||= {}; profile.groupBaselines[trigger] = this.cursors.get(id)?.last;
+          profile.groupEnabledSince ||= {}; profile.groupEnabledSince[trigger] = this.now();
+        }
         profile.groupOptions = resolvedGroup;
         if (groupReplyEnabled(resolvedGroup)) { this.data.replyTargets = [...new Set([...this.data.replyTargets, id])]; this.data.settings.reply = true; }
         else this.data.replyTargets = this.data.replyTargets.filter(target => target !== id);

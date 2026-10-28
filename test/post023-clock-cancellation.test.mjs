@@ -27,7 +27,7 @@ for (const [number,answer,expectedText] of [[277,raw,expected],[288,'明天早�
   await a.setGroupOptions({contact,atMe:true});await a.settings({enabled:true});await a.tick();
   assert.equal(provider.calls.length,0);
   provider.next=async()=>({action:'send',text:answer,followUp:false});
-  Object.assign(bridge.push(contact,'other','所以几点？'),context.pendingMessages[0],{mentions:{verified:true,self:true,all:false,others:false}});
+  Object.assign(bridge.push(contact,'other','所以几点？'),context.pendingMessages[0],{timestamp:clock/1000,mentions:{verified:true,self:true,all:false,others:false}});
   await a.tick();clock+=20000;await a.tick();clock+=20000;await a.tick();
   assert.equal(provider.calls.length,1);assert.deepEqual(bridge.sent.map(x=>x.text),[expectedText]);
   clock+=20000;await a.tick();assert.equal(provider.calls.length,1);

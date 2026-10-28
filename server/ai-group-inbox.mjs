@@ -25,6 +25,11 @@ export function observeGroupInbox(vault, profile, snapshot, cursor, now) {
     if (known.has(message.id) || boundary < 0 && inbox.seenAt && message.timestamp * 1000 < inbox.seenAt) continue;
     const trigger = groupTrigger(message, profile.groupOptions || {});
     if (!trigger) { if (message.direction === 'other') ignored.push(message); continue; }
+    // A persisted high-water mark may precede a disabled period. Only discover
+    // new obligations after the last round reset and this trigger's enable time.
+    // Keep already-observed obligations for other, continuously enabled triggers.
+    const since = Math.max(profile.replyRoundEndedAt || 0, profile.groupEnabledSince?.[trigger] || 0);
+    if (since && Number.isFinite(message.timestamp) && message.timestamp < Math.floor(since / 1000)) continue;
     const baseline = profile.groupBaselines?.[trigger];
     if (baseline && snapshot.messages.findIndex(row => row.id === baseline) >= snapshot.messages.findIndex(row => row.id === message.id)) continue;
     inbox.pending.push({ ...message, trigger, queuedAt: now });
