@@ -198,18 +198,19 @@ test('@all continues to ask the model after more than 20 recent replies', async 
   assert.equal(profile.groupWait, undefined);
 });
 
-test('model wait on @all preserves the batch until new context, ignoring model duration', async t => {
+test('invalid model wait on @all preserves the obligation without appending a wait or automatic retry', async t => {
   const { a, bridge, provider, profile, advance } = await fixture(t);
   await a.setGroupOptions({ contact: profile.contact, atMe: false, atAll: true, realtime: false });
   Object.assign(bridge.push(profile.contact, 'other', '@所有人 请判断'), { timestamp: Math.floor(a.now() / 1000), sender: key('member'), mentions: { verified: true, self: false, all: true, others: false } });
   await a.tick(); advance(4000); provider.next = async () => ({ action: 'wait', waitSeconds: 1 }); await a.tick();
   assert.equal(profile.groupWait, undefined); assert.equal(provider.calls.length, 1); assert.equal(bridge.sent.length, 0);
-  assert.equal(profile.groupContextWait.dueAt, a.now()+8000);
+  assert.equal(profile.groupContextWait, undefined);
+  assert.ok(a.liveStates().some(row => row.id === profile.id && row.phase === 'failed' && row.canRetry));
   advance(60000); await a.tick(); assert.equal(provider.calls.length, 1);
   Object.assign(bridge.push(profile.contact, 'other', '@所有人 补充完成'), { timestamp: Math.floor(a.now()/1000), sender: key('member'), mentions: { verified: true, self: false, all: true, others: false } });
   await a.tick(); advance(4000); await a.tick();
   assert.equal(provider.calls.length, 2); assert.equal(bridge.sent.length, 1);
-  assert.equal(a.data.events.some(e => e.code === 'error' && e.target === profile.id), false);
+  assert.equal(a.data.events.some(e => e.code === 'error' && e.target === profile.id), true);
 });
 test('group multi-segment sends are unrestricted across turns and restarts', async t => {
   const { a, bridge, provider, profile, options, push, advance } = await fixture(t);

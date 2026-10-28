@@ -45,7 +45,7 @@ test('judgment on preserves legitimate skip with a single model call',async t=>{
   assert.equal(a.data.events[0].code,'skip');
 });
 
-test('verified group @me asks for clarification after two model skips', async t => {
+test('verified group @me reports two invalid skips without inventing a reply or consuming the mention', async t => {
   const root = await temp(), bridge = new ChatFixture(), provider = new AIModelFixture();
   let now = 1700000000000; bridge.stableMessageIds = true;
   const a = new AIAssistant({ dataRoot: root, bridge, provider, now: () => now, delay: async () => {} });
@@ -59,13 +59,12 @@ test('verified group @me asks for clarification after two model skips', async t 
     mentions: { verified: true, self: true, all: false, others: false },
   });
   await a.tick(); now += 3000; await a.tick();
-  assert.equal(bridge.sent.length, 1);
-  assert.match(bridge.sent[0].text, /补充.*情况/);
+  assert.equal(bridge.sent.length, 0);
   assert.equal(calls, 2);
   assert.equal(a.data.events.some(e => e.code === 'skip' && e.target === a.profiles()[0].id), false);
-  assert.equal(a.data.events.some(e => e.code === 'error' && e.target === a.profiles()[0].id), false);
+  assert.equal(a.data.events.some(e => e.code === 'error' && e.target === a.profiles()[0].id), true);
   assert.equal(a.profiles()[0].paused, false);
-  assert.deepEqual(a.profiles()[0].sentMessages[0].replyTo, [incoming.id]);
+  assert.notEqual(a.profiles()[0].handledIncomingId, incoming.id);
   await a.close(); await cleanup(root);
 });
 
@@ -89,7 +88,7 @@ test('verified group @me sends after one invalid model skip', async t => {
   await a.close(); await cleanup(root);
 });
 
-test('@me explicit stop request sets stopUntil like required private replies', async t => {
+test('@me invalid model stop does not pause the group or consume the mention', async t => {
   const root = await temp(), bridge = new ChatFixture(), provider = new AIModelFixture();
   let now = 1700000000000; bridge.stableMessageIds = true;
   const a = new AIAssistant({ dataRoot: root, bridge, provider, now: () => now, delay: async () => {} });
@@ -100,17 +99,22 @@ test('@me explicit stop request sets stopUntil like required private replies', a
   const incoming = Object.assign(bridge.push(target.id, 'other', '@我 请不要再回复'), { timestamp: Math.floor(now / 1000), sender: 'a'.repeat(64), mentions: { verified: true, self: true, all: false, others: false } });
   await a.tick(); now += 3000; await a.tick(); await a.tick();
   assert.equal(calls, 1); assert.equal(bridge.sent.length, 0);
-  assert.equal(a.data.events.some(e => e.code === 'stop' && e.target === a.profiles()[0].id), true);
-  assert.equal(a.profiles()[0].handledIncomingId, incoming.id);
+  assert.equal(a.data.events.some(e => e.code === 'stop' && e.target === a.profiles()[0].id), false);
+  assert.equal(a.data.events.some(e => e.code === 'error' && e.target === a.profiles()[0].id), true);
+  assert.notEqual(a.profiles()[0].handledIncomingId, incoming.id);
   assert.equal(a.profiles()[0].paused, false);
-  assert.equal(a.profiles()[0].stopUntil, now + 5 * 60 * 1000);
+  assert.equal(a.profiles()[0].stopUntil, undefined);
+  // A legacy stop window must not suppress a new verified group mention.
+  a.profiles()[0].stopUntil = now + 5 * 60 * 1000;
+  provider.complete = async () => { calls++; return { action: 'send', text: '已收到这次确认' }; };
   Object.assign(bridge.push(target.id, 'other', '@我 仍在停止窗口内'), { timestamp: Math.floor(now / 1000), sender: 'a'.repeat(64), mentions: { verified: true, self: true, all: false, others: false } });
   await a.tick(); now += 3000; await a.tick();
-  assert.equal(calls, 1); assert.equal(bridge.sent.length, 0);
+  assert.equal(calls, 2); assert.equal(bridge.sent.length, 1);
+  assert.equal(bridge.sent[0].text, '已收到这次确认');
   await a.close(); await cleanup(root);
 });
 
-test('verified group @all may skip when the model sees no reason to participate', async t => {
+test('verified group @all disallows skip and reports invalid output without adding a model request', async t => {
   const root = await temp(), bridge = new ChatFixture(), provider = new AIModelFixture();
   let now = 1700000000000; bridge.stableMessageIds = true;
   const a = new AIAssistant({ dataRoot: root, bridge, provider, now: () => now, delay: async () => {} });
@@ -121,13 +125,16 @@ test('verified group @all may skip when the model sees no reason to participate'
   Object.assign(bridge.push(target.id, 'other', '@所有人 通知'), { timestamp: Math.floor(now / 1000), sender: 'a'.repeat(64), mentions: { verified: true, self: false, all: true, others: false } });
   await a.tick(); now += 3000; await a.tick();
   assert.equal(provider.calls.length, 1); assert.equal(bridge.sent.length, 0);
-  assert.equal(provider.calls[0].input.judgeReply, true);
-  assert.match(provider.calls[0].system, /普通决策的action只能为 send、skip、wait/);
-  assert.equal(a.data.events.some(e => e.code === 'skip'), true);
+  assert.equal(provider.calls[0].input.judgeReply, false);
+  assert.match(provider.calls[0].system, /普通决策的action只能为 send；/);
+  assert.doesNotMatch(provider.calls[0].system, /普通决策的action只能为 send、skip/);
+  assert.equal(a.data.events.some(e => e.code === 'skip'), false);
+  assert.equal(a.data.events.some(e => e.code === 'error'), true);
+  assert.equal(a.profiles()[0].handledIncomingId, undefined);
   await a.close(); await cleanup(root);
 });
 
-test('verified group @all accepts an explicit request not to reply', async t => {
+test('verified group @all invalid stop is visible and does not pause subsequent mentions', async t => {
   const root = await temp(), bridge = new ChatFixture(), provider = new AIModelFixture();
   let now = 1700000000000; bridge.stableMessageIds = true;
   const a = new AIAssistant({ dataRoot: root, bridge, provider, now: () => now, delay: async () => {} });
@@ -138,10 +145,16 @@ test('verified group @all accepts an explicit request not to reply', async t => 
   const incoming = Object.assign(bridge.push(target.id, 'other', '@所有人 请不要回复'), { timestamp: Math.floor(now / 1000), sender: 'a'.repeat(64), mentions: { verified: true, self: false, all: true, others: false } });
   await a.tick(); now += 3000; await a.tick();
   assert.equal(provider.calls.length, 1); assert.equal(bridge.sent.length, 0);
-  assert.equal(a.profiles()[0].handledIncomingId, incoming.id);
-  assert.equal(a.profiles()[0].stopUntil, now + 5 * 60 * 1000);
-  assert.equal(a.data.events.some(e => e.code === 'stop'), true);
+  assert.notEqual(a.profiles()[0].handledIncomingId, incoming.id);
+  assert.equal(a.profiles()[0].stopUntil, undefined);
+  assert.equal(a.data.events.some(e => e.code === 'stop'), false);
   assert.equal(a.data.events.some(e => e.code === 'skip'), false);
+  assert.equal(a.data.events.some(e => e.code === 'error'), true);
+  provider.next = async () => ({ action: 'send', segments: ['第一项已确认', '第二项也收到了'] });
+  Object.assign(bridge.push(target.id, 'other', '@所有人 请确认两项'), { timestamp: Math.floor(now / 1000), sender: 'a'.repeat(64), mentions: { verified: true, self: false, all: true, others: false } });
+  await a.tick(); now += 3000; await a.tick();
+  assert.equal(provider.calls.length, 2);
+  assert.deepEqual(bridge.sent.map(row => row.text), ['第一项已确认', '第二项也收到了']);
   await a.close(); await cleanup(root);
 });
 
@@ -177,7 +190,7 @@ test('unreadable voice on @all is consumed without a model call or reply', async
   await a.close(); await cleanup(root);
 });
 
-test('@me briefly waits then clarifies without pausing or losing the mention', async t => {
+test('@me invalid model wait does not append another wait window or another model call', async t => {
   const root = await temp(), bridge = new ChatFixture(), provider = new AIModelFixture();
   let now = 1700000000000; bridge.stableMessageIds = true;
   const a = new AIAssistant({ dataRoot: root, bridge, provider, now: () => now, delay: async () => {} });
@@ -188,14 +201,14 @@ test('@me briefly waits then clarifies without pausing or losing the mention', a
   Object.assign(bridge.push(target.id, 'other', '@我 这个问题'), { timestamp: Math.floor(now / 1000), sender: 'a'.repeat(64), mentions: { verified: true, self: true, all: false, others: false } });
   await a.tick(); now += 3000; await a.tick();
   assert.equal(calls, 1); assert.equal(bridge.sent.length, 0);
-  assert.ok(a.profiles()[0].groupContextWait);
+  assert.equal(a.profiles()[0].groupContextWait, undefined);
   now += 8000; await a.tick();
-  assert.equal(calls, 3); assert.equal(bridge.sent.length, 1);
-  assert.match(bridge.sent[0].text, /补充.*情况/);
+  assert.equal(calls, 1); assert.equal(bridge.sent.length, 0);
+  assert.equal(a.profiles()[0].handledIncomingId, undefined);
   assert.equal(a.profiles()[0].paused, false);
   assert.equal(a.profiles()[0].groupPauseReason, undefined);
   assert.equal(a.data.events.some(e => e.code === 'wait' && e.source === 'model'), false);
-  assert.equal(a.data.events.some(e => e.code === 'error' && e.target === a.profiles()[0].id), false);
+  assert.equal(a.data.events.some(e => e.code === 'error' && e.target === a.profiles()[0].id), true);
   await a.close(); await cleanup(root);
 });
 

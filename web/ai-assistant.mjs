@@ -1,3 +1,4 @@
+import { bindSplitLayout } from './ai-split-layout.mjs';
 import { replyRhythm } from '../server/ai-reply-rhythm.mjs';
 import { productDialog as platformProductDialog, bindDialogFocus } from './dialogs.mjs';
 import { personalInformationPage, personalEntriesFromForm, personalDraftFromForm, updatePersonalInformationForm, globalReplyStrategyPage, objectStyleTabs } from './ai-account-settings.mjs';
@@ -25,7 +26,7 @@ import { contactPickerMatches, contactPickerRow, openContactPickerDialog, setCon
 import { refreshReplyCountdowns } from './ai-reply-flow-view.mjs';
 import { dismissibleNotice } from './dismissible-notice.mjs';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const eventLabels = { contacted: '已主动联系', replied: '已自动回复', manual: '已交由你回复', limit: '已达到回复次数上限', skip: '本轮无需回复', stop: '已收到停止联系要求', uncertain: '发送结果未知，本次不重发', error: '任务已暂停', failed: '对象不可读取，本次未发送' };
+const eventLabels = { contacted: '已主动联系', replied: '已自动回复', manual: '已交由你回复', limit: '已达到回复次数上限', skip: '本轮无需回复', stop: '已收到停止联系要求', uncertain: '发送结果未知，本次不重发', error: '本轮处理失败', failed: '对象不可读取，本次未发送' };
 const names = { formality: '正式程度', warmth: '亲切程度', length: '回复长度', directness: '表达方式', emoji: '表情使用', humor: '幽默程度' };
 const option = (value, label, selected) => `<option value="${esc(value)}" ${selected ? 'selected' : ''}>${esc(label)}</option>`;
 const field = (name, label, value, max = 1200, placeholder = '') => `<label class="ai-field">${label}<textarea name="${name}" maxlength="${max}" rows="${name === 'summary' ? 6 : 2}" placeholder="${esc(placeholder)}">${esc(value)}</textarea></label>`;
@@ -43,6 +44,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   const setPanelVisible = visible => { panel.hidden = !visible; rail.querySelector('#ai-open')?.setAttribute('aria-expanded', String(visible)); onVisibilityChange?.(visible); };
   panel.addEventListener('error', event => { noteContactAvatarFailure(event.target); }, true);
   // guard：入口常驻后，操作开关 / 打开面板前由外层判断可用性，不满足时弹窗提醒并返回 false。
+  const splitLayout = bindSplitLayout(panel);
   const pass = () => guard ? guard() !== false : true;
   // ensure：入口常驻后入口可能先于实例挂载出现，操作前补一次挂载，避免用空实例 id 发请求。
   async function ensureInstance() {
@@ -927,7 +929,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     return '<div class="ai-style-summary ai-style-text">' + esc(summaryText(p.style)) + (p.style.customAvoid ? '<p>注意：' + esc(p.style.customAvoid) + '</p>' : '') + '</div>';
   }
   function resizeWikiTextarea(textarea) {
-    if (!textarea) return;
+    if (!textarea || textarea.closest('[hidden]')) return;
     textarea.style.height = 'auto';
     textarea.style.height = `${Math.max(textarea.scrollHeight, 42)}px`;
   }
@@ -977,7 +979,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   }
   function selectedContactRows(kinds = ['person', 'group']) {
     const chosen = (state.contacts || []).filter(c => kinds.includes(c.kind) && selectedContacts.has(c.id));
-    return chosen.length ? chosen.map((contact, index) => contactPickerRow(contact, { index, selected: true, button: `data-ai-remove-contact="${esc(contact.id)}"`, trailing: '<span aria-hidden="true">×</span>' })).join('') : '<p class="ai-help">还没有选择联系人。</p>';
+    return chosen.length ? chosen.map((contact, index) => contactPickerRow(contact, { index, selected: true, button: `data-ai-remove-contact="${esc(contact.id)}"`, trailing: icon('x') })).join('') : '<p class="ai-help">还没有选择联系人。</p>';
   }
   function contactPicker(headingSide = '', note = '', kinds = null) {
     return `<section class="ai-card ai-learning-contacts ai-contact-picker"><div class="ai-card-heading"><div><h4>选择联系人</h4><p>${note || '选择要学习聊天风格的联系人或群聊。'}</p></div><button type="button" class="secondary" data-ai-action="open-contact-picker">选择联系人</button></div><p id="ai-contact-count" class="ai-help ai-learning-count" aria-live="polite">已选择 ${selectedContacts.size} 位联系人</p><div class="ai-selected-contact-list ai-contact-picker-list">${selectedContactRows(kinds || ['person', 'group'])}</div>${headingSide}</section>`;
@@ -1269,6 +1271,8 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       dialog?.showModal();
     }
     panel.append($('#ai-content .qibox-workspace-menu'));
+    if (!panel.querySelector('[data-ai-resize=nav]')) panel.insertAdjacentHTML('beforeend', '<div class="ai-column-resizer ai-nav-resizer" role="separator" tabindex="0" aria-orientation="vertical" aria-label="调整导航宽度" data-ai-resize="nav"></div>');
+    splitLayout.refresh();
     if (focusedNavigation) panel.querySelector(focusedNavigation === 'summary' ? '.qibox-workspace-menu > summary' : `.qibox-workspace-menu [data-ai-nav="${focusedNavigation}"]`)?.focus({ preventScroll: true });
     const activeMemoryCategory = panel.querySelector(`.ai-reference-memory-categories button[data-ai-memory-category="${objectMemoryCategory}"]`)?.dataset.aiMemoryCategory || panel.querySelector('.ai-reference-memory-categories button')?.dataset.aiMemoryCategory;
     for (const node of panel.querySelectorAll('.ai-reference-memory [data-ai-wiki-field]')) node.hidden = node.dataset.aiWikiField !== activeMemoryCategory;
@@ -2360,8 +2364,20 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
       }
       if (button.dataset.aiKind) { rememberDraft(); objectKind = button.dataset.aiKind; selectedObject = ''; objectSection = 'reply'; objectMemoryCategory = objectKind === 'group' ? 'group_info' : 'name'; objectSearch = ''; const list = $('#ai-object-list'); if (list) list.scrollTop = 0; render(); return; }
       if (button.dataset.aiLearnKind) { learnContactKind = button.dataset.aiLearnKind; render(); return; }
-      if (button.dataset.aiObjectSection) { rememberDraft(); objectSection = button.dataset.aiObjectSection; render(); return; }
-      if (button.dataset.aiMemoryCategory) { rememberDraft(); objectMemoryCategory = button.dataset.aiMemoryCategory; render(); return; }
+      if (button.dataset.aiObjectSection) {
+        rememberDraft(); objectSection = button.dataset.aiObjectSection;
+        for (const node of panel.querySelectorAll('[data-ai-object-panel]')) node.hidden = node.dataset.aiObjectPanel !== objectSection;
+        for (const node of panel.querySelectorAll('[data-ai-object-section]')) { const active = node.dataset.aiObjectSection === objectSection; node.classList.toggle('active', active); node.setAttribute('aria-current', active ? 'page' : 'false'); }
+        for (const node of panel.querySelectorAll('.ai-wiki-bubble textarea')) resizeWikiTextarea(node);
+        resizeStyleSummary(); return;
+      }
+      if (button.dataset.aiMemoryCategory) {
+        objectMemoryCategory = button.dataset.aiMemoryCategory;
+        for (const node of panel.querySelectorAll('.ai-reference-memory [data-ai-wiki-field]')) node.hidden = node.dataset.aiWikiField !== objectMemoryCategory;
+        for (const node of panel.querySelectorAll('[data-ai-memory-category]')) { const active = node.dataset.aiMemoryCategory === objectMemoryCategory; node.classList.toggle('active', active); node.setAttribute('aria-current', String(active)); }
+        for (const node of panel.querySelectorAll('.ai-wiki-bubble textarea')) resizeWikiTextarea(node);
+        return;
+      }
       if (button.dataset.aiObject) { rememberDraft(); selectedObject = button.dataset.aiObject; objectSection = 'reply'; objectMemoryCategory = objectKind === 'group' ? 'group_info' : 'name'; render(); return; }
       if ('aiObjectBack' in button.dataset) { rememberDraft(); selectedObject = ''; render(); return; }
       if ('aiLogPage' in button.dataset) { logFilters.page = Number(button.dataset.aiLogPage); logLoading = true; logRequestScope = ''; render(); await loadActivity(); return; }

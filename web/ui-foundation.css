@@ -22,7 +22,7 @@ button {
   overflow-wrap: anywhere;
 }
 
-button:not(.icon-button):not(.ai-key-eye) {
+button:not(.icon-button):not(.ai-key-eye):not(.ai-wiki-remove) {
   min-height: var(--ui-control-height);
   padding-block: 8px;
   padding-inline: var(--ui-control-inline-padding);
@@ -30,7 +30,7 @@ button:not(.icon-button):not(.ai-key-eye) {
   white-space: normal;
 }
 
-#ai-panel button:not(.icon-button):not(.ai-key-eye) {
+#ai-panel button:not(.icon-button):not(.ai-key-eye):not(.ai-wiki-remove) {
   min-height: var(--ui-control-height);
   padding-block: 8px;
   line-height: var(--ui-control-line-height);
@@ -217,7 +217,9 @@ textarea:not(#native-input) {
 
 #ai-panel .ai-wiki-remove {
   right: 8px;
-  top: 8px;
+  top: 10px;
+  border-radius: 50%;
+  padding: 0;
 }
 
 #ai-panel .ap-action-menu button,

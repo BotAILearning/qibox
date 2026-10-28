@@ -203,7 +203,7 @@ for (const mention of ['self', 'all']) for (const otherSpeaker of [false, true])
   push('普通补充。', '', 'one'); await a.tick(); advance(4000); await a.tick();
   assert.equal(provider.calls.length, 1);
 });
-test('AI-03 @me cannot be lost and @all participation stays conditional', async t => {
+test('AI-03 both enabled mention triggers require replies and invalid skips remain visible', async t => {
   const { a, bridge, provider, advance } = await fixture(t), c = bridge.contacts[0]; c.kind = 'group'; await a.scan();
   const push = field => Object.assign(bridge.push(c.id, 'other', '测试'), { timestamp: Math.floor(a.now()/1000), sender: key('one'), mentions: { verified: true, self: field === 'self', all: field === 'all', others: false } });
   push('self'); advance(2000);
@@ -212,14 +212,14 @@ test('AI-03 @me cannot be lost and @all participation stays conditional', async 
   const profile = a.profiles().find(value => value.contact === c.id);
   provider.complete = async (_config, system, input) => { provider.calls.push({ system, input }); return { action: 'skip' }; };
   const mention = push('self'); await a.tick(); advance(4000); await a.tick();
-  assert.equal(provider.calls.length, 2); assert.equal(bridge.sent.length, 1);
-  assert.deepEqual(profile.sentMessages.at(-1).replyTo, [mention.id]);
-  assert.equal(a.data.events.some(e => e.code === 'error' && e.target === profile.id), false);
+  assert.equal(provider.calls.length, 2); assert.equal(bridge.sent.length, 0);
+  assert.notEqual(profile.handledIncomingId, mention.id);
+  assert.equal(a.data.events.some(e => e.code === 'error' && e.target === profile.id), true);
   await a.setGroupOptions({ contact: c.id, atMe: false, atAll: true }); await a.tick();
   const priorSkips = a.data.events.filter(e => e.code === 'skip' && e.target === profile.id).length;
   push('all'); await a.tick(); advance(4000); await a.tick();
-  assert.equal(provider.calls.length, 3); assert.equal(bridge.sent.length, 1);
-  assert.equal(a.data.events.filter(e => e.code === 'skip' && e.target === profile.id).length, priorSkips+1);
+  assert.equal(provider.calls.length, 3); assert.equal(bridge.sent.length, 0);
+  assert.equal(a.data.events.filter(e => e.code === 'skip' && e.target === profile.id).length, priorSkips);
   push(''); await a.tick(); advance(4000); await a.tick(); assert.equal(provider.calls.length, 3);
 });
 test('AI-03 pending burst survives restart with its original unprocessed boundary', async t => {

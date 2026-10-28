@@ -11,4 +11,4 @@
 
 图形运行环境使用 Debian 12 组件，版本、下载来源和 SHA-256 见 config/runtime-lock.json 与 config/runtime-lock-arm64.json。组件自身的版权与许可随运行归档保存在 usr/share/doc，另附 licenses/debian。Xvfb 的私有副本使用两处等长路径重定位，将 xkbcomp 搜索路径和键盘编译输出路径改为实例的私有工作目录。两种架构的修改位置、原始字节、替换字节及完整输入/输出 SHA-256 见 config/xvfb-relocations.json；不修改微信二进制。运行环境其余代码按上游原样提取。
 
-这是自有设备验证构建。公开分发前需完成各 GPL/LGPL 组件对应源码提供、修改说明和许可证履约核验；仅附版权文件不作为已完成该义务的声明。
+本候选版的公开 Release 同页提供产品源码、Debian 对应源码分卷、npm 原始源码包及 SHA-256。二进制与源版本映射见 config/runtime-source-lock.json，源码构建与栖盒修改说明见 docs/release/THIRD-PARTY-SOURCE.md。各组件继续使用其自身许可证；请与安装包一同保留对应源码与许可入口。

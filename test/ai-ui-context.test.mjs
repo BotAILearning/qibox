@@ -157,6 +157,21 @@ const availableState = () => ({ account: '1'.repeat(64), settings: { enabled: fa
   profiles: [], targets: [], strategy: {}, events: [], queue: { status: 'idle', items: [] }, available: true,
 });
 
+test('memory categories and object tabs preserve the existing form without redrawing the page', async t => {
+  const originalDocument = globalThis.document, dom = surface();
+  globalThis.document = dom.document;
+  const controller = aiAssistant({ api: async () => availableState() });
+  t.after(() => { controller.detach(); globalThis.document = originalDocument; });
+  await controller.attach('instance-a');
+  await dom.button({ aiObject: 'contact' });
+  const content = dom.node('#ai-content');
+  assert.match(content.innerHTML, /data-ai-resize="contacts"/);
+  const writes = content.writes;
+  for (const section of ['memory', 'style', 'reply', 'memory']) await dom.button({ aiObjectSection: section });
+  for (const category of ['school', 'date_info', 'address', 'other', 'name']) await dom.button({ aiMemoryCategory: category });
+  assert.equal(content.writes, writes, 'Switching must retain the form and its unsaved inputs');
+});
+
 for (const action of ['analyze', 'calendar', 'mark-reply-needed', 'activity-summary', 'error-related-record']) test(`direct ${action} UI request satisfies the actual caller account guard`, async t => {
   const originalDocument = globalThis.document, OriginalFormData = globalThis.FormData, OriginalCSS = globalThis.CSS;
   const dom = surface(), snapshot = { ...availableState(), analysis: { history: [] } }, requests = [];

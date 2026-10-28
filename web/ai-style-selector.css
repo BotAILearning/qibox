@@ -20,3 +20,6 @@
 .ai-trait-options .qi-check{display:inline-flex;align-items:center;gap:8px;min-height:40px;width:auto;cursor:pointer}
 .ai-trait-options input{accent-color:var(--qi-primary);width:18px;height:18px}
 @media(max-width:639px),(any-pointer:coarse){.ai-style-source-menu [role^=menuitem],.ai-trait-options .qi-check{min-height:44px}.ai-style-source-row{gap:8px}.ai-style-source-menu{grid-template-columns:88px auto;gap:4px}.ai-style-source-menu [role^=menuitem]{padding-inline:8px}}
+
+.ai-style-selector [data-trigger]{display:inline-flex;align-items:center;justify-content:space-between;gap:16px;min-width:132px}
+.ai-style-source-chevron{flex:none;pointer-events:none}

@@ -215,3 +215,59 @@
 .qiapp-product #ai-panel .ai-reference-reply-panel .ai-reply-limit-control select { width: 90px; flex: 0 0 90px; }
 .qiapp-product #ai-panel .ai-reference-reply-panel .ai-reply-limit-control input[data-ai-reply-limit-custom] { width: 82px; flex: 0 0 82px; }
 .qiapp-product #ai-panel .ai-reference-reply-panel .ai-reply-limit-control .qi-error-text { flex-basis: 100%; overflow-wrap: anywhere; white-space: normal; }
+
+/* Object settings: size columns by their task, and reflow within the detail pane. */
+.qiapp-product #ai-panel .ai-reference-reply-main{container:reply-settings / inline-size}
+.qiapp-product #ai-panel .ai-reference-group-options,.qiapp-product #ai-panel .ai-reference-child-grid{display:flex;flex-wrap:wrap;gap:12px;border:0;overflow:visible}
+.qiapp-product #ai-panel .ai-reference-group-options .ai-reference-toggle,.qiapp-product #ai-panel .ai-reference-child-grid .ai-reference-toggle{flex:1 1 170px;min-height:64px;padding:8px 0;border:0;border-radius:0}
+.qiapp-product #ai-panel .ai-reference-toggle small{font-size:13px;color:var(--ai-muted)}
+.qiapp-product #ai-panel .ai-reference-group-options .ai-reference-limit,.qiapp-product #ai-panel .ai-reference-child-grid .ai-reference-limit{display:flex;flex-direction:row;align-items:center;flex:1 1 290px;gap:12px;min-height:64px;padding:8px 0;margin:0;border:0;grid-column:auto}
+.qiapp-product #ai-panel .ai-reference-limit-copy{flex:0 0 auto}
+.qiapp-product #ai-panel .ai-reference-limit-controls{flex:1;justify-content:space-between}
+.qiapp-product #ai-panel .ai-reference-group-options .ai-reference-limit-controls{width:auto}
+.qiapp-product #ai-panel .ai-reference-group-options .ai-reference-toggle{flex-basis:135px;min-height:40px}
+.qiapp-product #ai-panel .ai-reference-group-options .ai-reference-limit{min-height:40px}
+.qiapp-product #ai-panel .ai-mention-help{margin:4px 0 16px}
+.qiapp-product #ai-panel .ai-reference-children{padding:12px 18px}
+.qiapp-product #ai-panel .ai-reference-children:before{display:none}
+.qiapp-product #ai-panel .ai-reference-children>.ai-reference-toggle{margin-top:8px;border:0;border-top:1px solid var(--ai-border);border-radius:0;padding:12px 0}
+.qiapp-product #ai-panel .ai-wiki-bubble{padding-right:60px;min-height:64px}
+.qiapp-product #ai-panel .ai-wiki-bubble>textarea[aria-label="信息内容"]{width:100%;max-width:100%;margin:0}
+.qiapp-product #ai-panel .ai-wiki-remove svg{display:block;width:20px;height:20px;pointer-events:none}
+.qiapp-product #ai-panel .ai-column-resizer{position:absolute;z-index:8;top:0;bottom:0;width:10px;cursor:col-resize;touch-action:none;outline-offset:-2px}
+.qiapp-product #ai-panel .ai-column-resizer:after{content:"";position:absolute;top:20%;bottom:20%;left:4px;width:2px;border-radius:2px;background:var(--ai-border)}
+.qiapp-product #ai-panel .ai-column-resizer:hover:after,.qiapp-product #ai-panel .ai-column-resizer:focus-visible:after{background:var(--qi-primary)}
+.qiapp-product #ai-panel.ai-resizing,.qiapp-product #ai-panel.ai-resizing *{cursor:col-resize!important;user-select:none!important}
+@media(min-width:861px){
+ .qiapp-product #ai-panel{--ai-sidebar:var(--ai-nav-width,144px)}
+ .qiapp-product #ai-panel .ai-object-workspace.ai-object-reference{position:relative;display:grid;grid-template-columns:var(--ai-contacts-width,300px) minmax(0,1fr);gap:16px;padding:16px 20px 24px}
+ .qiapp-product #ai-panel .ai-nav-resizer{left:calc(var(--ai-sidebar) - 5px)}
+ .qiapp-product #ai-panel [data-ai-resize="contacts"]{left:calc(20px + var(--ai-contacts-width,300px) + 3px)}
+}
+@media(max-width:860px){.qiapp-product #ai-panel .ai-column-resizer{display:none}}
+@container reply-settings (max-width:560px){
+ .qiapp-product #ai-panel .ai-reference-group-options .ai-reference-limit{flex-basis:100%}
+}
+@media(max-width:420px){
+ .qiapp-product #ai-panel .ai-reference-limit-controls{flex-wrap:wrap;gap:8px}
+ .qiapp-product #ai-panel .ai-reference-limit{flex-wrap:wrap}
+ .qiapp-product #ai-panel .ai-wiki-bubble.ai-wiki-school{grid-template-columns:minmax(0,1fr)}
+ .qiapp-product #ai-panel .ai-wiki-bubble.ai-wiki-school>.ai-wiki-degree{grid-column:1;grid-row:auto}
+}
+
+/* Keep the related controls on one row when their content fits. */
+.qiapp-product #ai-panel .ai-reference-reply-panel :is(.ai-reference-group-options,.ai-reference-child-grid){align-items:center;padding-top:8px}
+.qiapp-product #ai-panel .ai-reference-reply-panel .ai-reference-limit{flex-wrap:nowrap;align-items:center}
+.qiapp-product #ai-panel .ai-reference-reply-panel .ai-reference-limit-controls{display:flex;flex:1 1 auto;flex-wrap:nowrap;align-items:center;gap:8px;justify-content:space-between}
+.qiapp-product #ai-panel .ai-reference-reply-panel .ai-reply-limit-control{flex:0 1 auto}
+.qiapp-product #ai-panel .ai-reference-limit-copy label{white-space:nowrap}
+.qiapp-product #ai-panel .ai-wiki-remove{display:flex;align-items:center;justify-content:center;right:8px;top:10px;width:44px;height:44px;min-width:44px;min-height:44px;padding:0;border-radius:50%}
+.qiapp-product #ai-panel .ai-wiki-remove svg{flex:none;width:20px;height:20px}
+@container reply-settings (max-width:650px){.qiapp-product #ai-panel .ai-reference-group-options .ai-reference-limit{flex-basis:100%}}
+@container reply-settings (max-width:450px){
+ .qiapp-product #ai-panel .ai-reference-reply-panel .ai-reference-limit{flex-wrap:wrap}
+ .qiapp-product #ai-panel .ai-reference-reply-panel .ai-reference-limit-controls{flex-wrap:wrap}
+}
+
+.qiapp-product #ai-panel .ai-mention-help{padding-inline:var(--reply-module-padding,24px)}
+@container reply-settings (max-width:450px){.qiapp-product #ai-panel .ai-reference-group-options .ai-reference-toggle{flex-basis:100%;min-height:44px}}
