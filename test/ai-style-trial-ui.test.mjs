@@ -1,68 +1,31 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createStyleTrialUI, styleTrialMarkup } from '../web/ai-style-trial.mjs';
+import {readFile,access} from 'node:fs/promises';
+import {styleSummaryInput,customStyleSummaryHint,customStyleSummaryValue} from '../web/ai-style-selector.mjs';
 
-function fixture({ applyCorrection } = {}) {
-  let target = { instance: 'instance', account: 'account', contact: 'contact', verified: true, revision: 1 }, draft = { styleId: '', style: { summary: '未保存的草稿' } }, state, pending;
-  const calls = [];
-  const api = (url, data, timeout, options) => {
-    calls.push({ url, data, timeout, options });
-    if (data.action === 'style-trial-cancel') return Promise.resolve({ cancelled: true });
-    return new Promise((resolve, reject) => pending = { resolve: trials => resolve({ ...data.value, trials }), reject });
-  };
-  const ui = createStyleTrialUI({ api, scope: () => target, draft: () => structuredClone(draft), changed: s => state = structuredClone(s), applyCorrection });
-  return { ui, calls, get state() { return state; }, get pending() { return pending; }, target, draft };
-}
-const trials = [{ id: 'question', label: '合成问答', messages: [{ direction: 'other', text: '<img src=x onerror=alert(1)>' }], reply: '<script>不运行</script>' }];
-test('trial UI deduplicates busy clicks, sends current unsaved draft, and renders model text as escaped text', async () => {
-  const f = fixture(), p = f.ui.generate(); await f.ui.generate(); assert.equal(f.calls.length, 1); assert.equal(f.calls[0].data.value.style.summary, '未保存的草稿'); assert(f.state.busy);
-  f.pending.resolve(trials); await p; assert.deepEqual(f.state.result.trials, trials); assert(!f.state.busy);
-  const html = styleTrialMarkup(f.state); assert(html.includes('&lt;script&gt;')); assert(!html.includes('<img src=x')); assert(html.includes('按上游服务计费')); assert(html.includes('不会发微信'));
+test('new custom summary is an empty editor with the unchanged starter wording as a hint',()=>{
+ const html=styleSummaryInput({styleId:'draft:new',summary:'',__styleSummaryHint:customStyleSummaryHint});
+ assert.match(html,/<textarea[^>]*placeholder="自然回应当前话题，简短清楚，不编造事实。"[^>]*><\/textarea>/);
+ assert.match(html,/aria-describedby="ai-custom-style-summary-help"/);assert.match(html,/不填写时使用提示内容/);
+ const data=new Map([['styleId','draft:new'],['summary',''],['__styleSummaryHint',customStyleSummaryHint]]);
+ assert.equal(customStyleSummaryValue(data),customStyleSummaryHint);
+ data.set('summary','直接接话，不加解释。');assert.equal(customStyleSummaryValue(data),'直接接话，不加解释。');
+ data.set('summary','   ');assert.equal(customStyleSummaryValue(data),'   ','Validation still rejects an explicitly whitespace-only edit');
 });
-test('trial failure and cancellation retain old results and draft without automatically retrying', async () => {
-  const f = fixture(), first = f.ui.generate(); f.pending.resolve(trials); await first;
-  const second = f.ui.generate(); f.pending.reject(new Error('合成服务失败')); await second;
-  assert.equal(f.calls.length, 2); assert.deepEqual(f.state.result.trials, trials); assert(f.state.error.includes('不会自动重试')); assert.equal(f.draft.style.summary, '未保存的草稿');
-  const third = f.ui.generate(), old = f.pending; f.ui.cancel({ stale: true }); assert(f.calls[2].options.signal.aborted); assert.equal(f.calls[3].data.action, 'style-trial-cancel'); old.resolve([{ ...trials[0], reply: '迟到内容不能覆盖' }]); await third;
-  assert.deepEqual(f.state.result.trials, trials); assert(f.state.stale); assert(!f.state.busy);
+test('saved custom styles and existing invalid blank edits never acquire the new-draft fallback',()=>{
+ for(const id of ['custom:saved','learned','','preset:natural']){
+  const data=new Map([['styleId',id],['summary',''],['__styleSummaryHint',customStyleSummaryHint]]);
+  assert.equal(customStyleSummaryValue(data),'');
+  const html=styleSummaryInput({styleId:id,summary:customStyleSummaryHint,__styleSummaryHint:customStyleSummaryHint});
+  assert(!html.includes('placeholder='));assert(html.includes('>'+customStyleSummaryHint+'</textarea>'));
+ }
+ const data=new Map([['styleId','draft:old'],['summary','']]);assert.equal(customStyleSummaryValue(data),'');
 });
-for (const key of ['instance', 'account', 'contact', 'revision', 'draft']) test(`trial ignores late result after ${key} changes`, async () => {
-  const f = fixture(), p = f.ui.generate(); if (key === 'draft') f.draft.style.summary = '新的草稿'; else f.target[key] = 'changed';
-  f.pending.resolve(trials); await p; assert.equal(f.state.result, undefined); assert.equal(f.state.busy, false); assert.equal(f.calls.length, 1);
-});
-test('hide/switch clears old account results and aborts the request before a new object can show them', async () => {
-  const f = fixture(), p = f.ui.generate(); f.ui.cancel({ clear: true }); f.pending.resolve(trials); await p; assert.deepEqual(f.state, {}); assert(f.calls[0].options.signal.aborted);
-});
-
-test('feedback needs explicit correction; like/dislike and note typing make zero extra requests', async () => {
-  const applied = [], f = fixture({ applyCorrection: value => { applied.push(value); return { undo: () => true }; } });
-  const p = f.ui.generate(); f.pending.resolve(trials); await p;
-  f.ui.feedback('question', 'like'); assert.equal(f.state.feedback.question.verdict, 'like');
-  f.ui.feedback('question', 'unlike'); f.ui.apply('question'); assert.equal(applied.length, 0); assert(f.state.error.includes('自动猜测'));
-  f.ui.note('question', '这类分享接一句就好，不给建议'); f.ui.apply('question');
-  assert.equal(applied.length, 1); assert.equal(applied[0].note, '这类分享接一句就好，不给建议'); assert.equal(applied[0].draft.style.summary, '未保存的草稿');
-  assert(f.state.stale); assert(f.state.canUndo); assert.equal(f.calls.length, 1);
-  f.ui.apply('question'); assert.equal(applied.length, 1);
-  f.ui.undoCorrection(); assert(!f.state.stale); assert(!f.state.canUndo); assert.equal(f.calls.length, 1);
-});
-
-for (const key of ['instance','account','contact','revision','draft']) test(`feedback ignores old result after ${key} changes without applying or requesting`, async () => {
-  let applied = 0; const f = fixture({ applyCorrection: () => applied++ }); const p = f.ui.generate(); f.pending.resolve(trials); await p;
-  if (key === 'draft') f.draft.style.summary = '新的手动设置'; else f.target[key] = 'other';
-  f.ui.feedback('question', 'unlike'); f.ui.note('question', '不能写入新对象'); f.ui.apply('question');
-  assert.equal(applied, 0); assert.equal(f.calls.length, 1);
-});
-
-test('undo cannot cross account and an edited draft is retained when undo refuses', async () => {
-  let undone = 0; const f = fixture({ applyCorrection: () => ({ undo: () => { undone++; return false; } }) }); const p = f.ui.generate(); f.pending.resolve(trials); await p;
-  f.ui.feedback('question', 'unlike'); f.ui.note('question', '不要固定加追问'); f.ui.apply('question');
-  f.target.account = 'other'; f.ui.undoCorrection(); assert.equal(undone, 0);
-  f.target.account = 'account'; f.ui.undoCorrection(); assert.equal(undone, 1); assert(f.state.error.includes('未覆盖')); assert(f.state.canUndo); assert.equal(f.calls.length, 1);
-  f.ui.cancel({ clear: true }); f.ui.undoCorrection(); assert.equal(undone, 1); assert.deepEqual(f.state, {});
-});
-
-test('successful explicit save retires draft undo and keeps the old preview marked stale without requesting', async()=>{
- let undone=0;const f=fixture({applyCorrection:()=>({undo:()=>{undone++;return true;}})});const p=f.ui.generate();f.pending.resolve(trials);await p;
- f.ui.feedback('question','unlike');f.ui.note('question','不加固定结尾');f.ui.apply('question');assert(f.state.canUndo);
- f.ui.saved();assert(!f.state.canUndo);assert(f.state.stale);assert(f.state.notice.includes('原风格保留'));f.ui.undoCorrection();assert.equal(undone,0);assert.equal(f.calls.length,1);
+test('style pages no longer import, render or handle the removed paid trial',async()=>{
+ for(const file of ['web/ai-assistant.mjs','web/ai-object-page-new.mjs']){
+  const source=await readFile(new URL('../'+file,import.meta.url),'utf8');
+  assert.doesNotMatch(source,/styleTrial|style-trial|生成试聊/);
+ }
+ await assert.rejects(access(new URL('../web/ai-style-trial.mjs',import.meta.url)),{code:'ENOENT'});
+ await assert.rejects(access(new URL('../server/ai-style-trial.mjs',import.meta.url)),{code:'ENOENT'});
 });

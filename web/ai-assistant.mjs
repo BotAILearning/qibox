@@ -11,10 +11,9 @@ import { memoryFields, pendingMemoryFields, wikiEntryMarkup, sameWikiEntries, de
 import { objectPage, objectList, objectExecutionStatus, refreshObjectTiming, objectRhythmDraft, objectWindow, OBJECT_ROW_HEIGHT } from './ai-object-view.mjs';
 import { replyLimitControl, syncReplyLimitControl, parseReplyLimit, replyLimitWarningThreshold } from './ai-reply-limit.mjs';
 import { styleChoice, styleSummary as styleSummaryText } from './ai-style-view.mjs';
-import { createStyleTrialUI, updateStyleTrialRegion } from './ai-style-trial.mjs';
-import { styleFeedbackCopy, copiedStyleBase } from './ai-style-feedback.mjs';
+import { copiedStyleBase } from './ai-style-feedback.mjs';
 import { learnedObjectDraft } from './ai-learning-draft.mjs';
-import { activePersonality, bindStyleSelector, newStyleDraftId } from './ai-style-selector.mjs';
+import { activePersonality, bindStyleSelector, newStyleDraftId, customStyleSummaryHint, customStyleSummaryValue } from './ai-style-selector.mjs';
 import { analysisPage, analysisContactList, copyReport, presetRequest, analysisRequestState, presetChips, historyList, analysisHistoryWindow, analysisHistorySelectionLabel } from './ai-analysis-view.mjs';
 import { activityPage, activityEntries, activityRows, activityPagination, proactiveRecordRows, liveActivityBox, recentErrorsBox, skipRecordsView, updateActivityCounts } from './ai-activity-view.mjs';
 import { beijingTime, createProactiveUI } from './ai-proactive-view.mjs';
@@ -40,7 +39,7 @@ const serviceIdentity = value => `${String(value?.protocol || 'openai')}|${Strin
 
 export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, onVisibilityChange, guard, ensure }) {
   const rail = document.querySelector('#ai-rail'), panel = document.querySelector('#ai-panel');
-  bindStyleSelector(panel, () => { styleTrial.cancel({ stale: true }); const dirty = panel.querySelector('[data-ai-dirty]'); if (dirty) dirty.hidden = false; rememberDraft(); render(); });
+  bindStyleSelector(panel, () => { const dirty = panel.querySelector('[data-ai-dirty]'); if (dirty) dirty.hidden = false; rememberDraft(); render(); });
   const setPanelVisible = visible => { panel.hidden = !visible; rail.querySelector('#ai-open')?.setAttribute('aria-expanded', String(visible)); onVisibilityChange?.(visible); };
   panel.addEventListener('error', event => { noteContactAvatarFailure(event.target); }, true);
   // guard：入口常驻后，操作开关 / 打开面板前由外层判断可用性，不满足时弹窗提醒并返回 false。
@@ -119,7 +118,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
   function objectStyleDraft(form = $('#ai-object-form')) {
     if (!form) throw new Error('请先打开聊天对象的风格设置');
     const data = formData(form), profile = state.profiles.find(p => p.contact === form.dataset.contact);
-    const rawSummary = String(data.get('summary') || ''), summary = rawSummary.trim(), styleId = data.get('styleId') || '';
+    const rawSummary = customStyleSummaryValue(data), summary = rawSummary.trim(), styleId = data.get('styleId') || '';
     if (!summary) throw new Error('请填写风格说明，或选择默认风格');
     if (rawSummary.length > 6000) throw new Error('风格说明最多6000字');
     const base = copiedStyleBase(data.get('__styleBase'), styleId) || (styleId.startsWith('personality:') ? activePersonality(profile, Object.fromEntries(data)) : styleId === '' ? defaultReplyStyle() : styleId === 'learned' ? profile?.learnedStyle || profile?.style || state.schema?.defaultStyle : objectStyleTabs(state, profile).find(row => row.id === styleId)?.style || profile?.style || state.schema?.defaultStyle);
@@ -127,29 +126,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     if (!styleId.startsWith('personality:')) { delete style.personalityId; delete style.traits; }
     return { styleId, style };
   }
-  const styleTrial = createStyleTrialUI({ api,
-    scope: () => ({ instance: id, account: state?.account, contact: selectedObject, verified: scopeVerified, revision: state?.configurationRevision }),
-    draft: () => objectStyleDraft(),
-    changed: trial => updateStyleTrialRegion($('[data-style-trial-region]'), trial),
-    applyCorrection: ({ note, draft }) => {
-      const target = { instance: id, account: state.account, contact: selectedObject, revision: state.configurationRevision };
-      rememberDraft();
-      const before = structuredClone(objectDrafts.get(selectedObject) || {}), wasDirty = objectDirtyContacts.has(selectedObject);
-      const fields = styleFeedbackCopy(draft, note, { id: newStyleDraftId(), name: before.styleName ? `${before.styleName}修订` : '试聊修订' });
-      objectDrafts.set(selectedObject, { ...before, ...fields }); objectDirtyContacts.add(selectedObject); render(); $('#ai-object-form [name=styleName]')?.focus();
-      return { undo: () => {
-        if (id !== target.instance || state?.account !== target.account || selectedObject !== target.contact || state.configurationRevision !== target.revision) return false;
-        rememberDraft(); const current = objectDrafts.get(selectedObject) || {};
-        if (Object.keys(fields).some(key => (current[key] ?? '') !== (fields[key] ?? ''))) return false;
-        const restored = { ...current };
-        for (const key of Object.keys(fields)) { if (Object.hasOwn(before, key)) restored[key] = before[key]; else delete restored[key]; }
-        objectDrafts.set(selectedObject, restored);
-        if (!wasDirty && JSON.stringify(restored) === JSON.stringify(before)) objectDirtyContacts.delete(selectedObject);
-        render(); return true;
-      } };
-    },
-  });
-  const objectView = () => ({ styleTrial: styleTrial.value(), kind: objectKind, selected: selectedObject, section: objectSection, memoryCategory: objectMemoryCategory, search: objectSearch, draft: objectDrafts.get(selectedObject), dirty: objectDirtyContacts.has(selectedObject), scrollTop: rememberedObjectScroll(), height: $('#ai-object-list')?.clientHeight || 600 });
+  const objectView = () => ({ kind: objectKind, selected: selectedObject, section: objectSection, memoryCategory: objectMemoryCategory, search: objectSearch, draft: objectDrafts.get(selectedObject), dirty: objectDirtyContacts.has(selectedObject), scrollTop: rememberedObjectScroll(), height: $('#ai-object-list')?.clientHeight || 600 });
   function objects() { return objectPage(state, objectView()); }
   function drawObjectList() {
     const list = $('#ai-object-list');
@@ -673,7 +650,6 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     const accountChanged = state && state.account !== result.account;
     if (accountChanged) {
       accountRevision++;
-      styleTrial.cancel({ clear: true });
       invalidateDateRange();
       finishSave(pendingSave);
       message('');
@@ -719,7 +695,6 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     return result;
   }
   function concealUnverifiedAccount() {
-    styleTrial.cancel({ clear: true });
     if (scopeVerified) rememberDraft();
     scopeVerificationEpoch++;
     scopeVerified = false;
@@ -1230,7 +1205,6 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     if (paste) learningDraft = Object.fromEntries(new FormData(paste));
   }
   async function navigate(next) {
-    styleTrial.cancel({ clear: true });
     if (next !== tab) { globalReplyConfirmController?.abort(); globalReplyConfirmController = null; }
     invalidateDateRange();
     rememberDraft();
@@ -1472,7 +1446,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     }).catch(error => { if (current === generation) failure(error); })
       .finally(() => { if (current === generation) scopeChecking = false; });
   }
-  function hide() { styleTrial.cancel({ clear: true }); globalReplyConfirmController?.abort(); globalReplyConfirmController = null; invalidateDateRange(); rememberDraft(); rememberRecords(); concealKey(true); proactiveUI.closeOverlay(); if (learningDraft) learningDraft.text = ''; setPanelVisible(false); rail.querySelector('#ai-open').setAttribute('aria-expanded', 'false'); panel.querySelectorAll('[name=text], [name=styleText]').forEach(input => { input.value = ''; }); rail.querySelector('#ai-open').focus(); onClose?.(); }
+  function hide() { globalReplyConfirmController?.abort(); globalReplyConfirmController = null; invalidateDateRange(); rememberDraft(); rememberRecords(); concealKey(true); proactiveUI.closeOverlay(); if (learningDraft) learningDraft.text = ''; setPanelVisible(false); rail.querySelector('#ai-open').setAttribute('aria-expanded', 'false'); panel.querySelectorAll('[name=text], [name=styleText]').forEach(input => { input.value = ''; }); rail.querySelector('#ai-open').focus(); onClose?.(); }
   rail.querySelector('#ai-open').onclick = async () => {
     if (panel.hidden && !pass()) return;
     if (panel.hidden && !id && !(await ensureInstance())) { message('AI 辅助尚未就绪，请重新打开微信后再试', true); return; }
@@ -1535,7 +1509,6 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     if (!state) return;
     try {
       const input = event.target;
-      if (input.hasAttribute?.('data-style-trial-note')) { styleTrial.note(input.dataset.styleTrialNote, input.value); return; }
       if (input.closest('#ai-object-form')) objectDirtyContacts.add(selectedObject);
       if (input.closest('#ai-personal-information-form')) {
         if (input.matches('[data-personal-share]')) input.closest('[data-personal-field]').dataset.personalShareChanged = 'true';
@@ -1681,8 +1654,6 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     } catch (e) { controls(); failure(e); }
   });
   panel.addEventListener('input', event => {
-    if (event.target.hasAttribute?.('data-style-trial-note')) { styleTrial.note(event.target.dataset.styleTrialNote, event.target.value); return; }
-    if (event.target.closest('[data-ai-object-panel=style]')) styleTrial.cancel({ stale: true });
     const rhythmBox = event.target.closest('#ai-object-form')?.querySelector('[data-rhythm-personal]');
     if (rhythmBox && event.target.closest('.ai-reply-rhythm')) rhythmBox.dataset.changed = 'true';
     resizeStyleSummary();
@@ -1892,7 +1863,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
           ...(!sameWikiEntries(memoryEntries, profile?.memory?.entries || []) && !profile?.memory?.unavailable ? { memory: { entries: memoryEntries } } : {})
         } }, '设置已保存');
         if (!saved || generation !== saveScope.generation || id !== saveScope.instance || state?.account !== saveScope.account) return;
-        objectDrafts.delete(contact); objectDirtyContacts.delete(contact); if (selectedObject === contact) styleTrial.saved(); render(); return;
+        objectDrafts.delete(contact); objectDirtyContacts.delete(contact); render(); return;
       }
       if (form.id === 'ai-personal-information-form') {
         if (form.dataset.personalAccount !== state.account) throw new Error('微信账号已变化，请重新打开我的信息');
@@ -2008,12 +1979,6 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     // the general handler during its request produced a false busy error.
     const button = event.target.closest('button'); if (!button) return;
     if ('aiSkipReplyWait' in button.dataset || 'aiResumeProfile' in button.dataset) return;
-    if ('styleTrialGenerate' in button.dataset) { await styleTrial.generate(); return; }
-    if ('styleTrialStop' in button.dataset) { styleTrial.cancel(); return; }
-    if ('styleTrialFeedback' in button.dataset) { styleTrial.feedback(button.dataset.styleTrialId, button.dataset.styleTrialFeedback); return; }
-    if ('styleTrialApply' in button.dataset) { styleTrial.apply(button.dataset.styleTrialApply); return; }
-    if ('styleTrialUndo' in button.dataset) { styleTrial.undoCorrection(); return; }
-    if (['aiObject', 'aiKind', 'aiObjectBack', 'aiNav'].some(key => key in button.dataset)) styleTrial.cancel({ clear: true });
     try {
       if (button.hasAttribute('data-ai-collapse-record')) {
         const details = button.closest('details[data-ai-record-expand]');
@@ -2317,7 +2282,7 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         rememberDraft();
         if (command === 'add') {
           const draft = objectDrafts.get(selectedObject) || {};
-          objectDrafts.set(selectedObject, { ...draft, styleId: newStyleDraftId(), styleName: '', summary: '自然回应当前话题，简短清楚，不编造事实。', __personality: '', __styleBase: '' });
+          objectDrafts.set(selectedObject, { ...draft, styleId: newStyleDraftId(), styleName: '', summary: '', __styleSummaryHint: customStyleSummaryHint, __personality: '', __styleBase: '' });
           objectDirtyContacts.add(selectedObject); render(); $('#ai-object-form [name=styleName]')?.focus(); return;
         }
         let name;
@@ -2587,7 +2552,6 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
     show,
     attached: () => !!id,
     async attach(instanceId) {
-      styleTrial.cancel({ clear: true });
       scopeVerified = false; scopeChecking = false;
       analysisHistoryQuery = ''; analysisHistoryPage = 0; analysisHistoryReturn = null;
       for (const controller of confirmationControllers) controller.abort();
@@ -2636,6 +2600,6 @@ export function aiAssistant({ api, downloadAnalysisReport, onClose, onOpenChat, 
         finally { if (current === generation) polling = false; }
       }, 1000);
     },
-    detach() { styleTrial.cancel({ clear: true }); for (const controller of confirmationControllers) controller.abort(); replyLimitConfirmController?.abort(); replyLimitConfirmController = null; accountFormDrafts.clear(); accountFormBaselines.clear(); finishSave(pendingSave); contactDialog?.close(); analysisQueueToken++; analysisQueueAccount = null; rememberRecords(); proactiveRecordEpoch++; proactiveRecordLoading = false; proactiveHistory = []; proactiveHistoryPage = null; errorEpoch++; errorLoading = false; errorHistory = []; errorPage = null; logEpoch++; analysisDraft = { request: '', from: '', to: '', contacts: [] }; analysisSearch = ''; analysisHistoryReport = null; analysisHistoryEpoch++; resetAnalysisExport(); analysisResult = null; reviewAlert.hidden = true; concealKey(true); modelDraft = null; learningDraft = null; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); objectDirtyContacts.clear(); objectScrollKey = ''; objectScrollTop = 0; personalDraft = null; personalDraftAccount = null; selectedObject = ''; objectSearch = ''; objectKind = 'person'; editingReplyContact = null; providerRevision++; accountFormDrafts.clear(); accountFormBaselines.clear(); generation++; skipEpoch++; skipLoading = false; skipHistory = []; skipHistoryPage = null; skipPageLoading = false; skipContent.clear(); markReplyStatus.clear(); clearInterval(timer); id = null; setContactAvatarInstance(null); state = null; attaching = false; rail.hidden = true; setPanelVisible(false); panel.querySelector(':scope > .qibox-workspace-menu')?.remove(); $('#ai-content').replaceChildren(); selectedContacts.clear(); replyProfiles.clear(); proactiveUI.reset(); replyDraft = null; },
+    detach() { for (const controller of confirmationControllers) controller.abort(); replyLimitConfirmController?.abort(); replyLimitConfirmController = null; accountFormDrafts.clear(); accountFormBaselines.clear(); finishSave(pendingSave); contactDialog?.close(); analysisQueueToken++; analysisQueueAccount = null; rememberRecords(); proactiveRecordEpoch++; proactiveRecordLoading = false; proactiveHistory = []; proactiveHistoryPage = null; errorEpoch++; errorLoading = false; errorHistory = []; errorPage = null; logEpoch++; analysisDraft = { request: '', from: '', to: '', contacts: [] }; analysisSearch = ''; analysisHistoryReport = null; analysisHistoryEpoch++; resetAnalysisExport(); analysisResult = null; reviewAlert.hidden = true; concealKey(true); modelDraft = null; learningDraft = null; profileDrafts.clear(); manualReplyDrafts.clear(); objectDrafts.clear(); objectDirtyContacts.clear(); objectScrollKey = ''; objectScrollTop = 0; personalDraft = null; personalDraftAccount = null; selectedObject = ''; objectSearch = ''; objectKind = 'person'; editingReplyContact = null; providerRevision++; accountFormDrafts.clear(); accountFormBaselines.clear(); generation++; skipEpoch++; skipLoading = false; skipHistory = []; skipHistoryPage = null; skipPageLoading = false; skipContent.clear(); markReplyStatus.clear(); clearInterval(timer); id = null; setContactAvatarInstance(null); state = null; attaching = false; rail.hidden = true; setPanelVisible(false); panel.querySelector(':scope > .qibox-workspace-menu')?.remove(); $('#ai-content').replaceChildren(); selectedContacts.clear(); replyProfiles.clear(); proactiveUI.reset(); replyDraft = null; },
   };
 }

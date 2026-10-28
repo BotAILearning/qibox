@@ -53,7 +53,6 @@ test('HTTP rejects old native account mutations before contacts are rescanned', 
     {action:'configuration',value:{type:'personal-information',account:f.oldAccount,entries:[{field:'city',text:'WRONG'}]}},
     {action:'configuration',value:{type:'global-reply-strategy',account:f.oldAccount,changes:{facts:'WRONG'},expected:{facts:f.ai.globalReplyStrategy().facts||''}}},
     {action:'clear-activity-errors'},
-    {action:'style-trial',value:{account:f.oldAccount,contact:f.bridge.contacts[0].id,operationId:key('old-account-trial'),style:{summary:'不可发出'}}},
   ];
   for(const action of actions){const response=await f.call(f.route,action);assert.equal(response.status,409,action.action);assert.equal(response.value.code,'AI_SCOPE_CHANGED');assert.equal(await readFile(f.ai.file,'utf8'),before);}
 });
@@ -134,4 +133,11 @@ test('independent model configuration and parent closing remain available withou
   assert.equal(JSON.stringify(configured).includes('PRIVATE_OLD_NATIVE_ACCOUNT'),false);
   const closed=await f.call(f.route,{action:'settings',value:{enabled:false,reply:false,proactive:false,autoLearning:false}});
   assert.equal(closed.status,200);assert.equal(closed.value.scopeUnknown,true);assert.equal(f.ai.data.settings.enabled,false);
+});
+
+// Removed feature: even an obsolete authenticated page cannot incur a request.
+test('retired style trial actions return410 without reading native identity, saving or calling a model',async t=>{
+ const f=await fixture(t),before=await readFile(f.ai.file,'utf8');f.bridge.currentAccount=async()=>{throw Error('must not read identity for a removed action');};
+ for(const action of ['style-trial','style-trial-cancel']){const r=await f.call(f.route,{action,value:{account:f.oldAccount,style:{summary:'old browser'}}});assert.equal(r.status,410);assert.equal(r.value.code,'ai_style_trial_removed');assert.equal(await readFile(f.ai.file,'utf8'),before);}
+ assert.equal(f.provider.calls.length,0);assert.equal(f.bridge.sent.length,0);
 });

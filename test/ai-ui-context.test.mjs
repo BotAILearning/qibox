@@ -361,6 +361,22 @@ test('blank or oversized object style edits retain the draft and saved style wit
   assert.equal(calls[0].value.style.summary,'改'.repeat(6000)); assert.equal(calls[0].value.styleSet,true);
 });
 
+test('new custom summary hint is used only if untouched; typed content fully replaces it on save', async t=>{
+ const originalDocument=globalThis.document,OriginalFormData=globalThis.FormData,dom=surface(),calls=[];
+ globalThis.document=dom.document;globalThis.FormData=class extends OriginalFormData{constructor(form){super();for(const[k,v]of form?.entries||[])this.append(k,v);}};
+ const snapshot={...availableState(),profiles:[{id:'profile',contact:'contact',kind:'person',styleId:'custom:old',style:{summary:'原来的风格保留'},replyStrategy:{replyGoal:'自然接话',boundaries:'不擅自承诺',maxRounds:50}}]};
+ const controller=aiAssistant({api:async(_url,payload)=>{if(payload)calls.push(payload);return snapshot;}});
+ t.after(()=>{controller.detach();globalThis.document=originalDocument;globalThis.FormData=OriginalFormData;});
+ await controller.attach('instance-a');calls.length=0;
+ const hint='自然回应当前话题，简短清楚，不编造事实。',form=dom.form('#ai-object-form',[]);form.dataset={contact:'contact'};form.querySelectorAll=()=>[];form.elements={namedItem:key=>({checked:['enabled','inheritStrategy'].includes(key)})};
+ for(const text of ['','我自己写的简洁风格']){
+  form.entries=[['styleId','draft:144'],['styleName','自定义验证'],['summary',text],['__styleSummaryHint',hint],['replyGoal','自然接话'],['boundaries','不擅自承诺'],['maxRounds','50'],['enabled','on'],['inheritStrategy','on']];
+  await dom.submit(form);assert.equal(calls.at(-1).action,'reply-profile',dom.node('#ai-feedback').textContent);assert.equal(calls.at(-1).value.style.summary,text||hint);
+  assert.equal(snapshot.profiles[0].style.summary,'原来的风格保留');
+ }
+ assert.equal(calls.length,2);assert(calls.every(x=>x.action==='reply-profile'));
+});
+
 test('cancelled model edits never enter assignment saves and unfinished forms keep their input', async t => {
   const originalDocument = globalThis.document, OriginalFormData = globalThis.FormData, dom = surface(), calls = [];
   globalThis.document = dom.document;
